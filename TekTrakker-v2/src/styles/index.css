@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', sans-serif;
+}
+
+/* Base Overrides for Mobile Experience */
+html, body {
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Custom scrollbar for admin panels */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #475569;
+}
+
+/* Mobile-First Utility Classes */
+.h-screen-fix {
+  height: 100vh;
+  height: calc(var(--vh, 1vh) * 100);
+}
+
+.min-h-screen-fix {
+  min-height: 100vh;
+  min-height: calc(var(--vh, 1vh) * 100);
+}
+
+/* Interactive elements should feel snappier on touch */
+button, a, input, select {
+    touch-action: manipulation;
+}
+
+/* Scroll Shadow Hints for Mobile Tables */
+.overflow-x-auto {
+    background-image: linear-gradient(to right, white, white), linear-gradient(to right, white, white), linear-gradient(to right, rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0)), linear-gradient(to left, rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0));
+    background-position: left center, right center, left center, right center;
+    background-repeat: no-repeat;
+    background-color: white;
+    background-size: 20px 100%, 20px 100%, 10px 100%, 10px 100%;
+    background-attachment: local, local, scroll, scroll;
+}
+.dark .overflow-x-auto {
+    background-image: linear-gradient(to right, #1e293b, #1e293b), linear-gradient(to right, #1e293b, #1e293b), linear-gradient(to right, rgba(0, 0, 0, 0.2), rgba(30, 41, 59, 0)), linear-gradient(to left, rgba(0, 0, 0, 0.2), rgba(30, 41, 59, 0));
+    background-color: #1e293b;
+}
+
+/* Animation utilities */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-in-out;
+}

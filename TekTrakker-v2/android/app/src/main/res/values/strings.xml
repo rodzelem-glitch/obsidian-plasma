@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TekTrakker</string>
+    <string name="title_activity_main">TekTrakker</string>
+    <string name="package_name">com.tektrakker.app</string>
+    <string name="custom_url_scheme">com.tektrakker.app</string>
+</resources>

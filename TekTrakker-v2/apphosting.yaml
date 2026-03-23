@@ -1,0 +1,12 @@
+# Settings for Cloud Run
+runConfig:
+  cpu: 1
+  memoryMiB: 512
+
+# Environment variables and secrets
+env:
+  - variable: VITE_GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+    availability:
+      - BUILD
+      - RUNTIME

@@ -1,0 +1,415 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // ROBUST ORG CHECK: Checks token claims first, then falls back to DB if needed
+    function isOrgMember(resourceOrgId) {
+      return isSignedIn() && (
+        (request.auth.token.organizationId != null && request.auth.token.organizationId == resourceOrgId) ||
+        (getUserData().organizationId == resourceOrgId)
+      );
+    }
+
+    // Checks if user is an admin of their own organization
+    function isOrgAdmin() {
+      // Expanded to include 'both' and 'supervisor' as they often have administrative duties
+      return isSignedIn() && (
+        (request.auth.token.role != null && request.auth.token.role in ['admin', 'master_admin', 'both', 'supervisor']) ||
+        getUserData().role in ['admin', 'master_admin', 'both', 'supervisor']
+      );
+    }
+
+    // Checks if user is a Master Admin (superuser)
+    function isMaster() {
+      return isSignedIn() && (
+        request.auth.token.role == 'master_admin' || 
+        getUserData().role == 'master_admin'
+      );
+    }
+    
+    // Checks if user is a Platform Sales Rep
+    function isPlatformSales() {
+      return isSignedIn() && (
+        request.auth.token.role == 'platform_sales' ||
+        getUserData().role == 'platform_sales'
+      );
+    }
+
+    // Checks if the user is the customer assigned to this document
+    function isCustomerOwner(resourceData) {
+      let customerDoc = exists(/databases/$(database)/documents/customers/$(request.auth.uid)) ? get(/databases/$(database)/documents/customers/$(request.auth.uid)).data : null;
+      return isSignedIn() && (
+        (resourceData.customerEmail != null && resourceData.customerEmail == request.auth.token.email) ||
+        (resourceData.email != null && resourceData.email == request.auth.token.email) ||
+        (resourceData.customerId != null && resourceData.customerId == request.auth.uid) ||
+        (customerDoc != null && resourceData.customerName != null && customerDoc.name == resourceData.customerName)
+      );
+    }
+
+    // Check if the user's organization is the assigned partner for the job
+    function isAssignedPartner(resourceData) {
+      return isSignedIn() && 
+             resourceData.assignedPartnerId != null &&
+             isOrgMember(resourceData.assignedPartnerId);
+    }
+    
+    // --- Core Collections ---
+
+    match /users/{userId} {
+      allow get: if isMaster() 
+                 || isUser(userId) 
+                 || (isSignedIn() && request.auth.token.email == userId) 
+                 || (isSignedIn() && request.auth.token.email == resource.data.email)
+                 || isOrgMember(resource.data.organizationId);
+                 
+      allow list: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId); 
+      
+      allow write: if isMaster() || isPlatformSales() || isUser(userId) || (isOrgAdmin() && isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn();
+    }
+
+    // Organizations: Public read for login/branding, Admin write only.
+    match /organizations/{orgId} {
+      allow read: if true; 
+      allow write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      
+      match /users/{docId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+      }
+      
+      match /jobs/{jobId}/ai_messages/{msgId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+      }
+    }
+
+    // Customers: Accessible by organization members.
+    match /customers/{customerId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || request.resource.data.email == request.auth.token.email;
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if true;
+    }
+
+    match /jobs/{jobId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data) || isAssignedPartner(resource.data);
+      allow write: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isAssignedPartner(resource.data) || isCustomerOwner(resource.data);
+      allow create: if isMaster() || isPlatformSales() || isOrgMember(request.resource.data.organizationId);
+      
+      match /ai_messages/{msgId} {
+        allow read, write: if isMaster() || 
+                             isPlatformSales() || 
+                             isOrgMember(resource.data.organizationId) || 
+                             isCustomerOwner(resource.data) ||
+                             isAssignedPartner(resource.data);
+      }
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isPlatformSales() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /inventory/{itemId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /payables/{payableId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /proposals/{proposalId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || (isCustomerOwner(resource.data) && request.resource.data.status == 'Accepted');
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /proposalPresets/{presetId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /serviceAgreements/{agreementId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || isCustomerOwner(request.resource.data);
+    }
+    
+    match /membershipPlans/{planId} {
+      allow read: if true; 
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /partOrders/{orderId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /shopOrders/{orderId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /projects/{projectId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /project_notes/{noteId} {
+       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+       allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+       allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /project_tasks/{taskId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /permits/{permitId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /equipment_rentals/{rentalId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /subcontractors/{subId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /bids/{bidId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /leads/{leadId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if true; 
+    }
+    
+    match /platformLeads/{leadId} {
+       allow list: if isMaster() || isPlatformSales();
+       allow read, write: if isSignedIn();
+    }
+    
+    match /platform_leads/{leadId} {
+       allow list: if isMaster() || isPlatformSales();
+       allow read, write: if isSignedIn();
+    }
+
+    match /marketingCampaigns/{campaignId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /sales_campaigns/{campaignId} {
+      allow read, write: if isMaster() || isPlatformSales();
+    }
+    
+    match /sales_templates/{templateId} {
+      allow read, write: if isMaster() || isPlatformSales();
+    }
+    
+    match /salesResources/{resourceId} {
+      allow read, write: if isMaster() || isPlatformSales();
+    }
+
+    match /commissions/{commId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /platformCommissions/{commId} {
+        allow read: if isMaster() || isUser(resource.data.repId);
+        allow list: if isMaster();
+    }
+    
+    match /platform_commissions/{commId} {
+        allow read: if isMaster() || isUser(resource.data.repId);
+        allow list: if isMaster();
+    }
+    
+    match /salesActivities/{activityId} {
+       allow read, write: if isMaster() || isPlatformSales() || isUser(resource.data.repId);
+    }
+
+    match /workSchedules/{scheduleId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /shiftLogs/{shiftId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /shifts/{shiftId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /vehicleLogs/{logId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /vehicle_logs/{logId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /vehicles/{vehicleId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /toolMaintenanceLogs/{logId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /refrigerantCylinders/{cylId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /refrigerantTransactions/{logId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /incidentReports/{reportId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /messages/{messageId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow create: if true; 
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isUser(resource.data.userId) || isCustomerOwner(resource.data);
+      allow create: if isSignedIn();
+    }
+
+    match /mail/{mailId} {
+      allow create: if true;
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+    }
+
+    match /pricebook_items/{itemId} {
+      allow read: if true; // Allow public read for pricebook items
+      allow write: if isMaster() || (isOrgMember(resource.data.organizationId) && isOrgAdmin());
+    }
+    
+    match /business_documents/{docId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /documents/{docId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data) || (isSignedIn() && request.resource.data.status == 'Signed');
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true; 
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if true; 
+    }
+    
+    match /applicants/{appId} {
+       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+       allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+       allow create: if true; 
+    }
+    
+    match /inspectionTemplates/{templateId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+    
+    match /platformSettings/{settingId} {
+       allow read: if true;
+       allow write: if isMaster();
+    }
+    
+    match /settings/{settingId} {
+       allow read: if true;
+       allow write: if isMaster();
+    }
+
+    match /promoCodes/{codeId} {
+       allow read: if true;
+       allow write: if isMaster();
+    }
+
+    match /public/{docId} {
+      allow read: if true;
+    }
+  }
+}
