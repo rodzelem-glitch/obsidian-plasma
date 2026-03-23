@@ -22,6 +22,7 @@ interface JobDetailModalProps {
 const JobDetailModal: React.FC<JobDetailModalProps> = ({ 
     isOpen, onClose, job, isAdmin = false, onEditInvoice, onEditRecord, onPrint 
 }) => {
+    if (!job) return null;
     
     const photoFiles = (job.files || []).filter(f => f.fileType?.startsWith('image/') || f.dataUrl?.startsWith('data:image/'));
     const docFiles = (job.files || []).filter(f => !f.fileType?.startsWith('image/') && !f.dataUrl?.startsWith('data:image/'));

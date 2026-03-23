@@ -47,6 +47,7 @@ interface WorkflowState {
 }
 
 const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => void, onUpdate: (job: Job) => void }> = ({ job, isOpen, onClose, onUpdate }) => {
+    if (!job) return null;
     const { state, dispatch } = useAppContext();
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
