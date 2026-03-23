@@ -55,6 +55,33 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
         }
     };
 
+    const handleSaveResult = async (overrideStatus?: string) => {
+        if (!result && !overrideStatus) return;
+        setIsSaving(true);
+        try {
+            const qcRecord = {
+                id: `qc-${Date.now()}`,
+                status: overrideStatus || result?.status,
+                comments: result?.comments || (overrideStatus === 'manual' ? 'Manually overridden by technician.' : ''),
+                timestamp: new Date().toISOString(),
+                imageUrl: image
+            };
+
+            const { db, firebase } = await import('../../../lib/firebase');
+            await db.collection('jobs').doc(jobId).update({
+                qcAudits: firebase.firestore.FieldValue.arrayUnion(qcRecord),
+                updatedAt: new Date().toISOString()
+            });
+
+            onComplete(qcRecord.id);
+        } catch (error) {
+            console.error("Save QC Error:", error);
+            alert("Failed to save QC result. Please try again.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const runAIQC = async () => {
         if (!image) return;
         setIsAnalyzing(true);
@@ -87,33 +114,6 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
             setResult({ status: 'warning', comments: "Visual analysis unavailable. Please review manually." });
         } finally {
             setIsAnalyzing(false);
-        }
-    };
-
-    const handleSaveResult = async (overrideStatus?: string) => {
-        if (!result && !overrideStatus) return;
-        setIsSaving(true);
-        try {
-            const qcRecord = {
-                id: `qc-${Date.now()}`,
-                status: overrideStatus || result?.status,
-                comments: result?.comments || (overrideStatus === 'manual' ? 'Manually overridden by technician.' : ''),
-                timestamp: new Date().toISOString(),
-                imageUrl: image
-            };
-
-            const { db, firebase } = await import('lib/firebase');
-            await db.collection('jobs').doc(jobId).update({
-                qcAudits: firebase.firestore.FieldValue.arrayUnion(qcRecord),
-                updatedAt: new Date().toISOString()
-            });
-
-            onComplete(qcRecord.id);
-        } catch (error) {
-            console.error("Save QC Error:", error);
-            alert("Failed to save QC result. Please try again.");
-        } finally {
-            setIsSaving(false);
         }
     };
 
@@ -211,13 +211,13 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
                                 
                                 <div className="mt-6 flex gap-3">
                                     {result.status === 'pass' ? (
-                                        <Button onClick={() => handleSaveResult()} disabled={isSaving} className="flex-1 bg-emerald-600 font-black uppercase text-xs tracking-widest">
+                                        <Button onClick={() => handleSaveResult()} disabled={(isSaving as any)} className="flex-1 bg-emerald-600 font-black uppercase text-xs tracking-widest">
                                             {isSaving ? 'Saving...' : 'Submit as Passed'}
                                         </Button>
                                     ) : (
                                         <>
-                                            <Button variant="secondary" onClick={reset} disabled={isSaving} className="flex-1 font-black uppercase text-xs tracking-widest">Retry Photo</Button>
-                                            <Button onClick={() => handleSaveResult('manual')} disabled={isSaving} variant="secondary" className="flex-1 bg-slate-800 text-white border-none font-black uppercase text-xs tracking-widest">
+                                            <Button variant="secondary" onClick={reset} disabled={(isSaving as any)} className="flex-1 font-black uppercase text-xs tracking-widest">Retry Photo</Button>
+                                            <Button onClick={() => handleSaveResult('manual')} disabled={(isSaving as any)} variant="secondary" className="flex-1 bg-slate-800 text-white border-none font-black uppercase text-xs tracking-widest">
                                                 {isSaving ? 'Saving...' : 'Manual Override'}
                                             </Button>
                                         </>

@@ -30,7 +30,7 @@ const FleetManager: React.FC = () => {
 
     const employees = useMemo(() => state.users.filter(u => 
         u.organizationId === state.currentOrganization?.id && 
-        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor')
+        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor')
     ), [state.users, state.currentOrganization]);
 
     const vehicles = state.vehicles;

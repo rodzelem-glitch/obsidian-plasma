@@ -293,12 +293,21 @@ export interface Job {
     inspectionTemplates?: InspectionTemplate[];
     waivers?: BusinessDocument[];
   } | null;
+  partsUsed?: Array<{
+    id: string;
+    name: string;
+    sku?: string;
+    quantity: number;
+    unitPrice?: number;
+    total?: number;
+    location?: string;
+  }>;
   qcAudits?: Array<{
-      id: string;
-      status: 'pass' | 'fail' | 'warning' | 'manual';
-      comments: string;
-      timestamp: string;
-      imageUrl?: string;
+    id: string;
+    status: 'pass' | 'fail' | 'warning' | 'manual';
+    comments: string;
+    timestamp: string;
+    imageUrl?: string;
   }>;
 }
 

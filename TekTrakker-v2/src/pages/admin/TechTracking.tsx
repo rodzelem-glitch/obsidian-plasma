@@ -17,7 +17,7 @@ const TechTracking: React.FC = () => {
         return (state.users as User[])
             .filter((u: User) => 
                 u.organizationId === state.currentOrganization?.id && 
-                (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor') &&
+                (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor') &&
                 (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id)
             )
             .map((u: User) => {

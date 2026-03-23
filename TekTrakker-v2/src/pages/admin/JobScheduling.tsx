@@ -35,7 +35,7 @@ const JobScheduling: React.FC = () => {
     // Filter employees by current organization ID
     const employees = useMemo(() => state.users.filter((u: User) => 
         u.organizationId === state.currentOrganization?.id && 
-        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor')
+        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor')
     ), [state.users, state.currentOrganization]);
 
     // Linked Partners

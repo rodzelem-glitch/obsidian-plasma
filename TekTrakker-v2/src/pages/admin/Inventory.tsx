@@ -222,7 +222,7 @@ const Inventory: React.FC = () => {
                             <td className="px-6 py-4 flex gap-2">
                                 <button onClick={() => handleTransferInit(item)} className="text-blue-500 hover:underline text-sm">Transfer</button>
                                 <button onClick={() => handleEdit(item)} className="text-primary-600 hover:underline text-sm">Edit</button>
-                                <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:underline text-sm">Delete</button>
+                                <button onClick={() => handleDelete(item.id)} className="text-red-700 dark:text-red-400 hover:underline text-sm font-bold">Delete</button>
                             </td>
                         </tr>
                     ))}

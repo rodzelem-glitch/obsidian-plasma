@@ -8,9 +8,9 @@ import Select from 'components/ui/Select';
 import Modal from 'components/ui/Modal';
 import { db } from 'lib/firebase';
 import type { RefrigerantCylinder, RefrigerantTransaction, ToolMaintenanceLog, BusinessDocument, User } from 'types';
-import { CheckCircle, AlertTriangle, Wrench, Shield, Users, Printer, Flag } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Wrench, Shield, Users, Printer, Flag, Trash2 } from 'lucide-react';
+import { globalConfirm } from 'lib/globalConfirm';
 
-import RefrigerantTab from './compliance/components/RefrigerantTab';
 import ToolsTab from './compliance/components/ToolsTab';
 import CertsTab from './compliance/components/CertsTab';
 import PolicyTrackingTab from './compliance/components/PolicyTrackingTab';
@@ -37,7 +37,7 @@ const ComplianceDashboard: React.FC = () => {
         const tabParam = searchParams.get('tab');
         if (tabParam === 'hr') return 'hr';
         if (tabParam === 'incidents') return 'incidents';
-        return industry === 'HVAC' ? 'refrigerant' : 'tools';
+        return 'tools';
     };
 
     const [activeTab, setActiveTab] = useState<'tools' | 'certs' | 'hr' | 'policy_tracking' | 'incidents'>(
@@ -114,6 +114,14 @@ const ComplianceDashboard: React.FC = () => {
             dispatch({ type: 'ADD_REF_TRANSACTION', payload: trans });
         }
         setIsAddCylinderOpen(false);
+    };
+
+    const handleDeleteCylinder = async (id: string) => {
+        if (!await globalConfirm("Permanently remove this cylinder from inventory?")) return;
+        try {
+            await db.collection('refrigerantCylinders').doc(id).delete();
+            dispatch({ type: 'DELETE_CYLINDER', payload: id });
+        } catch (e) { alert("Delete failed"); }
     };
 
     const handleLogMaintenance = async () => {

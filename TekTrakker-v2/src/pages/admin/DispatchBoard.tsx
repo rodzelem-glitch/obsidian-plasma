@@ -20,7 +20,7 @@ const DispatchBoard: React.FC = () => {
         const currentOrgId = state.currentOrganization?.id;
         const allTechs = (state.users as User[]).filter((u: User) => 
             u.organizationId === currentOrgId && 
-            (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor')
+            (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor')
         );
         
         if (state.currentUser?.role === 'supervisor') {

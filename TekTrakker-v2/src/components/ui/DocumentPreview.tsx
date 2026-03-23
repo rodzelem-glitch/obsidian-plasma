@@ -1,7 +1,7 @@
 
 import React, { useRef, useState } from 'react';
 import { useAppContext } from 'context/AppContext';
-import { Printer, ArrowRight, ExternalLink, CreditCard, FileText } from 'lucide-react';
+import { Printer, ArrowRight, ExternalLink, CreditCard, FileText, X } from 'lucide-react';
 import type { Proposal, Job, Organization, Address } from 'types';
 import Button from './Button';
 import { db } from 'lib/firebase';
@@ -52,15 +52,19 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
     const total = (isProposal ? prop?.total : (job?.invoice?.totalAmount || job?.invoice?.amount)) || 0;
     const subtotal = (isProposal ? prop?.subtotal : job?.invoice?.subtotal) || 0;
     const tax = (isProposal ? prop?.taxAmount : job?.invoice?.taxAmount) || 0;
-    const customerName = isProposal ? prop?.customerName : (isOther ? '' : job?.customerName);
+    const customerName = isProposal ? prop?.customerName : (isOther ? (data.customerName || '') : job?.customerName);
     
-    const addressObj = isProposal ? (state.customers.find(c => c.name === prop?.customerName)?.address) : (isOther ? '' : job?.address);
+    const addressObj = isProposal ? (state.customers.find(c => c.name === prop?.customerName)?.address) : (isOther ? (data.address || '') : job?.address);
     const address = formatAddress(addressObj);
 
-    const date = isProposal ? (prop?.createdAt || new Date().toISOString()) : (isOther ? new Date().toISOString() : job?.appointmentTime);
-    const id = isProposal ? (prop?.id || 'DRAFT') : (isOther ? 'DOC-PREVIEW' : job?.invoice?.id);
-    const status = isProposal ? prop?.status : (isOther ? 'Draft' : job?.invoice?.status);
-    const signature = isProposal ? (prop?.signatureDataUrl || prop?.signature) : (isOther ? null : (job?.invoiceSignature || null));
+    const date = isProposal ? (prop?.createdAt || new Date().toISOString()) : (isOther ? (data.createdAt || data.timestamp || new Date().toISOString()) : job?.appointmentTime);
+    const id = isProposal ? (prop?.id || 'DRAFT') : (isOther ? (data.id || 'DOC-PREVIEW') : job?.invoice?.id);
+    const status = isProposal ? prop?.status : (isOther ? 'Signed' : job?.invoice?.status);
+    const signature = isProposal 
+        ? (prop?.signatureDataUrl || prop?.signature) 
+        : (isOther 
+            ? (data?.signatureImage || data?.signatureDataUrl || data?.signature || null) 
+            : (job?.invoiceSignature || null));
 
     const handleConvertToJob = async () => {
         if (!isProposal || !prop || !state.currentOrganization) return;
@@ -154,47 +158,6 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
         }
     };
 
-    // --- RENDER CUSTOM HTML CONTENT (e.g. WAIVERS) ---
-    if (isOther && data.htmlContent) {
-        return (
-            <div className="fixed inset-0 z-[100] flex flex-col bg-slate-100 dark:bg-slate-900">
-                <div className="bg-white dark:bg-slate-800 shadow-xl p-3 md:p-4 flex justify-between items-center border-b border-slate-200 dark:border-slate-700 min-h-[5rem] md:h-20">
-                    <div className="flex items-center gap-3 md:gap-4">
-                         <div className="bg-primary-600 p-1.5 md:p-2 rounded-xl text-white shadow-lg shadow-primary-500/20">
-                            <FileText size={20} className="md:w-6 md:h-6"/>
-                        </div>
-                        <h2 className="text-sm md:text-xl font-black text-slate-900 dark:text-white leading-tight truncate">{data.title || 'Document Preview'}</h2>
-                    </div>
-                    <div className="flex gap-2">
-                        <button onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-800">Close</button>
-                        <Button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 font-black shadow-xl shadow-primary-500/20"><Printer size={16}/> Print</Button>
-                    </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 md:p-12 flex justify-center custom-scrollbar bg-slate-100 dark:bg-slate-900">
-                     <div ref={printRef} className="bg-white text-slate-900 shadow-2xl w-full max-w-[8.5in] p-4 md:p-8 md:p-16 rounded-xl min-h-[11in] box-border">
-                         {/* Header for Custom Doc */}
-                         <div className="flex justify-between items-start mb-8 border-b pb-8">
-                             <div>
-                                 {org?.logoUrl ? <img src={org.logoUrl} alt="Logo" className="h-12 object-contain" /> : <h1 className="text-2xl font-black text-primary-600 uppercase">{org?.name}</h1>}
-                             </div>
-                             <div className="text-right text-sm">
-                                 <p className="font-bold text-slate-900">{new Date().toLocaleDateString()}</p>
-                                 <p className="text-slate-500 font-medium">{data.title}</p>
-                             </div>
-                         </div>
-                         
-                         <div className="prose max-w-none prose-slate dark:prose-invert" dangerouslySetInnerHTML={{ __html: data.htmlContent }} />
-                         
-                         <div className="mt-12 pt-8 border-t text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                             Generated by TekTrakker Platform
-                         </div>
-                     </div>
-                </div>
-            </div>
-        );
-    }
-
-    // --- STANDARD RENDER (INVOICE / PROPOSAL) ---
     return (
         <div className="fixed inset-0 z-[100] flex flex-col bg-slate-100 dark:bg-slate-900">
             <div className="bg-white dark:bg-slate-800 shadow-xl p-3 md:p-4 flex justify-between items-center border-b border-slate-200 dark:border-slate-700 min-h-[5rem] md:h-20">
@@ -271,61 +234,85 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                             </div>
                         </div>
 
-                        {/* Table */}
-                        <div className="table-area overflow-x-auto" style={{marginBottom:'30px', border:'1px solid #f1f5f9', borderRadius:'20px'}}>
-                            <table style={{width:'100%', minWidth: '600px', borderCollapse:'collapse'}}>
-                                <thead style={{background:'#f8fafc'}}>
-                                    <tr>
-                                        <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'left'}}>Item & Services</th>
-                                        <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'center', width:'70px'}}>Qty</th>
-                                        <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'right', width:'110px'}}>Price</th>
-                                        <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'right', width:'110px'}}>Total</th>
-                                    </tr>
-                                </thead>
-                                <tbody style={{background:'white'}}>
-                                    {items.map((item, idx) => (
-                                        <tr key={idx}>
-                                            <td style={{padding:'15px 20px', borderBottom:'1px solid #f1f5f9'}}>
-                                                <div className="item-name" style={{fontWeight:800, fontSize:'14px', color:'#0f172a', marginBottom:'2px'}}>{item.name}</div>
-                                                {item.description && <div className="item-desc" style={{fontSize:'11px', color:'#64748b'}}>{item.description}</div>}
-                                            </td>
-                                            <td style={{padding:'15px 20px', borderBottom:'1px solid #f1f5f9', textAlign:'center', fontWeight:700, color:'#64748b', fontSize: '13px'}}>{item.quantity}</td>
-                                            <td style={{padding:'15px 20px', borderBottom:'1px solid #f1f5f9', textAlign:'right', fontWeight:700, fontSize: '13px'}}>${Number(item.unitPrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                            <td style={{padding:'15px 20px', borderBottom:'1px solid #f1f5f9', textAlign:'right', fontWeight:800, color:'#0f172a', fontSize: '13px'}}>${Number(item.total).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Summary */}
-                        <div className="summary-grid flex justify-end mb-10 md:mb-[60px]">
-                            <div className="summary-box w-full md:w-[320px]">
-                                <div className="summary-row flex justify-between py-2 border-b border-dashed border-slate-200" style={{fontSize:'13px'}}>
-                                    <span className="summary-label" style={{color:'#64748b', fontWeight:700}}>Subtotal</span>
-                                    <span style={{fontWeight:800}}>${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                                </div>
-                                <div className="summary-row flex justify-between py-2 border-b border-dashed border-slate-200" style={{fontSize:'13px'}}>
-                                    <span className="summary-label" style={{color:'#64748b', fontWeight:700}}>Estimated Tax</span>
-                                    <span style={{fontWeight:800}}>${tax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                                </div>
-                                <div className="summary-row grand-total flex justify-between pt-4 mt-2" style={{fontSize:'22px', fontWeight:800, color:'#0f172a'}}>
-                                    <span style={{color: org?.primaryColor || '#0284c7'}}>Total</span>
-                                    <span style={{letterSpacing:'-1px'}}>${total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-                                </div>
-                                
-                                {org?.financingLink && (
-                                    <div style={{marginTop:'25px', textAlign:'center'}}>
-                                        <a href={org.financingLink} target="_blank" rel="noopener noreferrer" style={{display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', background:'#0284c7', color:'white', padding:'12px', borderRadius:'10px', textDecoration:'none', fontWeight:800, fontSize:'12px', textTransform:'uppercase', letterSpacing:'1px', boxShadow:'0 10px 15px -3px rgba(2, 132, 199, 0.2)'}}>
-                                            <CreditCard size={16}/> Financing Available
-                                        </a>
-                                        <p style={{fontSize:'9px', color:'#94a3b8', marginTop:'8px', fontWeight:600}}>Click to view financing options.</p>
-                                    </div>
+                        {/* Table or Content */}
+                        {isOther ? (
+                            <div className="extra-section bg-[#f8fafc] p-5 md:p-8 rounded-[20px] md:rounded-[32px] mb-10 border border-slate-100 min-h-[4in]">
+                                <div className="terms-title" style={{fontSize:'10px', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', color:'#0f172a', marginBottom:'15px'}}>{data.title || 'Document Content'}</div>
+                                {data.htmlContent ? (
+                                    <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.htmlContent }} />
+                                ) : (data.url || data.dataUrl) && (
+                                    (data.url?.toLowerCase().includes('.html')) || 
+                                    (data.dataUrl?.includes('text/html')) ||
+                                    (data.fileName?.toLowerCase().endsWith('.html'))
+                                ) ? (
+                                    <iframe 
+                                        srcDoc={data.dataUrl?.includes('base64,') ? decodeURIComponent(escape(atob(data.dataUrl.split('base64,')[1]))) : data.dataUrl}
+                                        src={!data.dataUrl ? data.url : undefined} 
+                                        className="w-full h-[700px] border-none rounded-2xl bg-white" 
+                                        title="Document Preview"
+                                    />
+                                ) : (
+                                    <div className="terms-content" style={{fontSize:'14px', color:'#334155', textAlign:'justify', lineHeight: 1.6, whiteSpace: 'pre-wrap'}}>{data.content || data.body || 'No content available for this document.'}</div>
                                 )}
                             </div>
-                        </div>
+                        ) : (
+                            <div className="table-area overflow-x-auto" style={{marginBottom:'30px', border:'1px solid #f1f5f9', borderRadius:'20px'}}>
+                                <table style={{width:'100%', minWidth: '600px', borderCollapse:'collapse'}}>
+                                    <thead style={{background:'#f8fafc'}}>
+                                        <tr>
+                                            <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'left'}}>Item & Services</th>
+                                            <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'center', width:'70px'}}>Qty</th>
+                                            <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'right', width:'110px'}}>Price</th>
+                                            <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'right', width:'110px'}}>Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody style={{background:'white'}}>
+                                        {items.map((item, idx) => (
+                                            <tr key={idx} style={{borderBottom:'1px solid #f1f5f9'}}>
+                                                <td style={{padding:'15px 20px'}}>
+                                                    <div className="item-name" style={{fontWeight:800, fontSize:'14px', color:'#0f172a', marginBottom:'2px'}}>{item.name}</div>
+                                                    {item.description && <div className="item-desc" style={{fontSize:'11px', color:'#64748b'}}>{item.description}</div>}
+                                                </td>
+                                                <td style={{padding:'15px 20px', textAlign:'center', fontWeight:700, color:'#64748b', fontSize: '13px'}}>{item.quantity}</td>
+                                                <td style={{padding:'15px 20px', textAlign:'right', fontWeight:700, fontSize: '13px'}}>${Number(item.unitPrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                <td style={{padding:'15px 20px', textAlign:'right', fontWeight:800, color:'#0f172a', fontSize: '13px'}}>${Number(item.total).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
 
-                        {org?.termsAndConditions && (
+                        {/* Summary (Only for Proposal/Invoice) */}
+                        {!isOther && (
+                            <div className="summary-grid flex justify-end mb-10 md:mb-[60px]">
+                                <div className="summary-box w-full md:w-[320px]">
+                                    <div className="summary-row flex justify-between py-2 border-b border-dashed border-slate-200" style={{fontSize:'13px'}}>
+                                        <span className="summary-label" style={{color:'#64748b', fontWeight:700}}>Subtotal</span>
+                                        <span style={{fontWeight:800}}>${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                    </div>
+                                    <div className="summary-row flex justify-between py-2 border-b border-dashed border-slate-200" style={{fontSize:'13px'}}>
+                                        <span className="summary-label" style={{color:'#64748b', fontWeight:700}}>Estimated Tax</span>
+                                        <span style={{fontWeight:800}}>${tax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                    </div>
+                                    <div className="summary-row grand-total flex justify-between pt-4 mt-2" style={{fontSize:'22px', fontWeight:800, color:'#0f172a'}}>
+                                        <span style={{color: org?.primaryColor || '#0284c7'}}>Total</span>
+                                        <span style={{letterSpacing:'-1px'}}>${total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                    </div>
+                                    
+                                    {org?.financingLink && (
+                                        <div style={{marginTop:'25px', textAlign:'center'}}>
+                                            <a href={org.financingLink} target="_blank" rel="noopener noreferrer" style={{display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', background:'#0284c7', color:'white', padding:'12px', borderRadius:'10px', textDecoration:'none', fontWeight:800, fontSize:'12px', textTransform:'uppercase', letterSpacing:'1px', boxShadow:'0 10px 15px -3px rgba(2, 132, 199, 0.2)'}}>
+                                                <CreditCard size={16}/> Financing Available
+                                            </a>
+                                            <p style={{fontSize:'9px', color:'#94a3b8', marginTop:'8px', fontWeight:600}}>Click to view financing options.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {org?.termsAndConditions && !isOther && (
                             <div className="extra-section bg-[#f8fafc] p-5 md:p-8 rounded-[20px] md:rounded-[32px] mb-10">
                                 <div className="terms-title" style={{fontSize:'10px', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', color:'#0f172a', marginBottom:'10px'}}>Terms & Conditions</div>
                                 <div className="terms-content" style={{fontSize:'11px', color:'#64748b', textAlign:'justify', lineHeight: 1.6}}>{org.termsAndConditions}</div>
@@ -350,7 +337,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                         </div>
 
                         {org?.complianceFooter && (
-                             <div className="legal-footer">
+                             <div className="legal-footer" style={{fontSize:'8px', color:'#94a3b8', marginTop:'40px', textAlign:'center'}}>
                                  {org.complianceFooter}
                              </div>
                         )}

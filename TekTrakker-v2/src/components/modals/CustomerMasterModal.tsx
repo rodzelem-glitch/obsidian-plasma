@@ -382,7 +382,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                         <Button onClick={handleSendInvite} disabled={isSendingInvite} variant="secondary" className="text-xs flex items-center gap-2">
                             <Mail size={14} /> {isSendingInvite ? 'Sending...' : 'Send Portal Invite'}
                         </Button>
-                        <Button onClick={handleDeleteCustomer} className="bg-red-50 text-red-600 border-red-200 hover:bg-red-100 text-xs">Delete Record</Button>
+                        <Button onClick={handleDeleteCustomer} className="bg-red-700 text-white hover:bg-red-800 text-xs font-bold shadow-md border-none">Delete Record</Button>
                     </div>
                 </div>
 

@@ -34,7 +34,7 @@ const JobHistory: React.FC = () => {
 
     const employees = useMemo(() => state.users.filter(u => 
         u.organizationId === state.currentOrganization?.id && 
-        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor')
+        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor')
     ), [state.users, state.currentOrganization]);
 
     const filteredJobs = useMemo(() => {
@@ -151,12 +151,48 @@ const JobHistory: React.FC = () => {
                         <div>Status: ${viewJob.jobStatus}</div>
                     </div>
                 </div>
-                <h3>Tasks Performed</h3>
-                <ul>${viewJob.tasks.map(t => `<li>${t}</li>`).join('')}</ul>
-                
-                <h3>Notes</h3>
-                <p>${viewJob.notes?.internalNotes || 'No notes logged.'}</p>
-                <p><strong>Tech Report:</strong> ${viewJob.notes?.employeeFeedback || 'N/A'}</p>
+
+                <h3>Work Overview</h3>
+                <div class="box">
+                    <div class="label">Tasks List</div>
+                    <p>${viewJob.tasks.join(', ')}</p>
+                    <div class="label">Technician Notes</div>
+                    <p>${viewJob.notes?.employeeFeedback || 'No notes provided.'}</p>
+                </div>
+
+                ${viewJob.notes?.diagnosisChecklist ? `
+                    <h3>Diagnosis Checklist</h3>
+                    <ul>${JSON.parse(viewJob.notes.diagnosisChecklist).map((i: any) => `<li>[${i.completed ? 'X' : ' '}] ${i.label}</li>`).join('')}</ul>
+                ` : ''}
+
+                ${viewJob.partsUsed && viewJob.partsUsed.length > 0 ? `
+                    <h3>Parts & Materials</h3>
+                    <table style="width:100%; border-collapse: collapse;">
+                        <tr style="background:#f4f4f4;"><th style="text-align:left; padding:5px;">Part</th><th style="padding:5px;">Qty</th><th style="padding:5px;">Price</th></tr>
+                        ${viewJob.partsUsed.map((p: any) => `
+                            <tr>
+                                <td style="padding:5px; border-bottom:1px solid #eee;">${p.name} <br/><small>${p.sku}</small></td>
+                                <td style="text-align:center; padding:5px; border-bottom:1px solid #eee;">${p.quantity}</td>
+                                <td style="text-align:right; padding:5px; border-bottom:1px solid #eee;">$${(p.unitPrice || 0).toFixed(2)}</td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                ` : ''}
+
+                ${viewJob.refrigerantLog && viewJob.refrigerantLog.length > 0 ? `
+                    <h3>Refrigerant Tracking</h3>
+                    <table style="width:100%; border-collapse: collapse;">
+                        <tr style="background:#f4f4f4;"><th style="text-align:left; padding:5px;">Type</th><th style="padding:5px;">Action</th><th style="padding:5px;">Amount</th><th style="padding:5px;">Cylinder</th></tr>
+                        ${viewJob.refrigerantLog.map((r: any) => `
+                            <tr>
+                                <td style="padding:5px; border-bottom:1px solid #eee;">${r.type}</td>
+                                <td style="padding:5px; border-bottom:1px solid #eee;">${r.action}</td>
+                                <td style="text-align:center; padding:5px; border-bottom:1px solid #eee;">${r.amount} ${r.unit}</td>
+                                <td style="padding:5px; border-bottom:1px solid #eee;">${r.cylinderNumber || 'N/A'}</td>
+                            </tr>
+                        `).join('')}
+                    </table>
+                ` : ''}
                 
                 ${viewJob.toolReadings && viewJob.toolReadings.length > 0 ? `
                     <h3>Technical Readings</h3>

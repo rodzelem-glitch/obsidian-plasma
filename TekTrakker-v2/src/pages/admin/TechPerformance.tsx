@@ -10,7 +10,8 @@ const TechPerformance: React.FC = () => {
     const stats = useMemo(() => {
         const techs = state.users.filter(u => 
             u.organizationId === state.currentOrganization?.id &&
-            (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor')
+            (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor') &&
+            (state.currentUser?.role !== 'supervisor' || u.reportsTo === state.currentUser?.id || u.id === state.currentUser?.id)
         );
         
         return techs.map(tech => {

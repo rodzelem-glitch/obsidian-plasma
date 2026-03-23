@@ -98,7 +98,7 @@ const AnalyticsMaster: React.FC = () => {
     const wasteData = useMemo(() => {
         const usersWithPay = (state.users as User[]).filter((u: User) => {
             const rate = typeof u.payRate === 'number' ? u.payRate : parseFloat(u.payRate);
-            return (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor') && !isNaN(rate) && rate > 0;
+            return (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor') && !isNaN(rate) && rate > 0;
         });
         const totalPayRate = usersWithPay.reduce((sum: number, u: User) => {
             const rate = typeof u.payRate === 'number' ? u.payRate : parseFloat(u.payRate);

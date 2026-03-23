@@ -78,6 +78,7 @@ export type Action =
     | { type: 'SET_CYLINDERS'; payload: RefrigerantCylinder[] }
     | { type: 'UPDATE_CYLINDER'; payload: any }
     | { type: 'ADD_CYLINDER'; payload: any }
+    | { type: 'DELETE_CYLINDER'; payload: string }
     | { type: 'SET_REF_TRANSACTIONS'; payload: RefrigerantTransaction[] }
     | { type: 'ADD_REF_TRANSACTION'; payload: any }
     | { type: 'SET_TOOL_LOGS'; payload: ToolMaintenanceLog[] }
@@ -262,6 +263,7 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'SET_CYLINDERS': return { ...state, refrigerantCylinders: action.payload };
         case 'UPDATE_CYLINDER': return { ...state, refrigerantCylinders: state.refrigerantCylinders.map(c => c.id === action.payload.id ? { ...c, ...action.payload } : c) };
         case 'ADD_CYLINDER': return { ...state, refrigerantCylinders: [...state.refrigerantCylinders, action.payload] };
+        case 'DELETE_CYLINDER': return { ...state, refrigerantCylinders: state.refrigerantCylinders.filter(c => c.id !== action.payload) };
         case 'SET_REF_TRANSACTIONS': return { ...state, refrigerantTransactions: action.payload };
         case 'ADD_REF_TRANSACTION': return { ...state, refrigerantTransactions: [...state.refrigerantTransactions, action.payload] };
         case 'SET_TOOL_LOGS': return { ...state, toolMaintenanceLogs: action.payload };

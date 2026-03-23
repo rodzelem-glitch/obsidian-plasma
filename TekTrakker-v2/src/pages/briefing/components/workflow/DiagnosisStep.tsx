@@ -132,7 +132,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                             />
                             <button 
                                 onClick={(e) => { e.stopPropagation(); onDeletePhoto(f); }}
-                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="absolute top-1 right-1 p-1 bg-red-700 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm shadow-black/20"
                             >
                                 <X size={10}/>
                             </button>

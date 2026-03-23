@@ -348,7 +348,7 @@ const PaymentsAndOrders: React.FC = () => {
                                 <div className="text-right flex flex-col items-end gap-2 w-full sm:w-auto">
                                     <span className="text-2xl font-bold text-gray-900 dark:text-white">${(job.invoice.totalAmount || job.invoice.amount).toFixed(2)}</span>
                                     <div className="flex gap-2 w-full sm:w-auto">
-                                        <Button variant="secondary" onClick={() => handleDeleteInvoice(job.id)} className="text-red-500 px-3 py-1 text-xs border-red-200 hover:bg-red-50">
+                                        <Button variant="secondary" onClick={() => handleDeleteInvoice(job.id)} className="text-red-700 dark:text-red-400 font-bold px-3 py-1 text-xs border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/40">
                                             <Trash2 size={14}/>
                                         </Button>
                                         <Button onClick={() => setEditingInvoiceId(job.id)} className="px-4 py-1 text-xs flex items-center justify-center gap-2 flex-1">
@@ -389,7 +389,7 @@ const PaymentsAndOrders: React.FC = () => {
                                 <div className="text-right flex flex-col items-end gap-2 w-full sm:w-auto">
                                     <span className="text-2xl font-bold text-gray-900 dark:text-white">${p.total.toFixed(2)}</span>
                                     <div className="flex gap-2 w-full sm:w-auto">
-                                        <Button variant="secondary" onClick={() => handleDeleteProposal(p.id)} className="text-red-500 px-3 py-1 text-xs border-red-200 hover:bg-red-50">
+                                        <Button variant="secondary" onClick={() => handleDeleteProposal(p.id)} className="text-red-700 dark:text-red-400 font-bold px-3 py-1 text-xs border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/40">
                                             <Trash2 size={14}/>
                                         </Button>
                                         <Button onClick={() => handleEditProposal(p.id)} className="px-4 py-1 text-xs flex items-center justify-center gap-2 flex-1 bg-purple-600 hover:bg-purple-700">

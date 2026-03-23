@@ -31,7 +31,7 @@ export const ActiveTechsView: React.FC = () => {
     // Include supervisors in the list and filter by organization
     const employees = state.users.filter(u => 
         u.organizationId === state.currentOrganization?.id &&
-        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor')
+        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor')
     );
     
     return (

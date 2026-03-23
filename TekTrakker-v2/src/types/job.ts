@@ -66,9 +66,18 @@ export interface Job {
 
   // Added for B2B document sharing
   embeddedData?: {
-    inspectionTemplates?: InspectionTemplate[];
-    waivers?: BusinessDocument[];
-  } | null;
+    inspectionTemplates?: any[];
+    waivers?: any[];
+  };
+  partsUsed?: Array<{
+    id: string;
+    name: string;
+    sku?: string;
+    quantity: number;
+    unitPrice?: number;
+    total?: number;
+    location?: string;
+  }>;
   qcAudits?: Array<{
     id: string;
     status: 'pass' | 'fail' | 'warning' | 'manual';

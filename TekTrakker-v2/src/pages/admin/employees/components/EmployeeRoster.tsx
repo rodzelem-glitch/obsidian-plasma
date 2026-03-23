@@ -60,9 +60,9 @@ const EmployeeRoster: React.FC<EmployeeRosterProps> = ({
                                 </div>
                             </td>
                             <td className="px-6 py-4 flex gap-3">
-                                <button onClick={() => handleEdit(emp)} className="text-blue-600 hover:underline text-sm font-medium">Edit</button>
-                                <button onClick={() => handleArchive(emp.id)} className="text-orange-600 hover:underline text-sm">Archive</button>
-                                <button onClick={() => handleDelete(emp.id)} className="text-red-600 hover:underline text-sm"><Trash2 size={14}/></button>
+                                <button onClick={() => handleEdit(emp)} className="text-blue-600 hover:underline text-sm font-bold">Edit</button>
+                                <button onClick={() => handleArchive(emp.id)} className="text-orange-700 dark:text-orange-400 hover:underline text-sm font-bold">Archive</button>
+                                <button onClick={() => handleDelete(emp.id)} className="text-red-700 dark:text-red-400 hover:underline text-sm font-bold"><Trash2 size={14}/></button>
                             </td>
                         </tr>
                     );

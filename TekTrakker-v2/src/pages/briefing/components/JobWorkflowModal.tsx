@@ -5,9 +5,10 @@ import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
-import { Check, ArrowRight, Sparkles, PlusCircle } from 'lucide-react';
+import { Check, ArrowRight, Sparkles, PlusCircle, X, Package } from 'lucide-react';
 import { db, firebase } from '../../../lib/firebase';
 import { useAppContext } from '../../../context/AppContext';
+import Textarea from '../../../components/ui/Textarea';
 import { useNavigate } from 'react-router-dom';
 import { compressFile } from '../../../lib/utils';
 import InvoiceEditorModal from '../../../components/modals/InvoiceEditorModal';
@@ -47,7 +48,6 @@ interface WorkflowState {
 }
 
 const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => void, onUpdate: (job: Job) => void }> = ({ job, isOpen, onClose, onUpdate }) => {
-    if (!job) return null;
     const { state, dispatch } = useAppContext();
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
@@ -63,8 +63,9 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         qualityChecklist: [],
         customerDetails: { email: job.customerEmail || '', phone: job.customerPhone || '' },
         refrigerantLog: job.refrigerantLog || [],
-        toolReadings: job.toolReadings || []
-    });
+        toolReadings: job.toolReadings || [],
+        partsUsed: (job as any).partsUsed || []
+    } as any);
     
     const [assets, setAssets] = useState<EquipmentAsset[]>([]);
     const [isAddAssetOpen, setIsAddAssetOpen] = useState(false);
@@ -89,9 +90,14 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
     // Data Capture Modals
     const [isRefrigerantModalOpen, setIsRefrigerantModalOpen] = useState(false);
     const [isToolReadingModalOpen, setIsToolReadingModalOpen] = useState(false);
+    const [isPartModalOpen, setIsPartModalOpen] = useState(false);
     
     const [newReading, setNewReading] = useState({ toolType: '', summary: '' });
-    const [refrigerantEntry, setRefrigerantEntry] = useState({ type: 'R-410A', action: 'Added', amount: '', unit: 'oz' });
+    const [refrigerantEntry, setRefrigerantEntry] = useState({ type: 'R-410A', action: 'Added', amount: '', unit: 'oz', cylinderNumber: '' });
+    const [partSearch, setPartSearch] = useState('');
+    const [selectedPart, setSelectedPart] = useState<any>(null);
+    const [partQuantity, setPartQuantity] = useState(1);
+    const [partLocation, setPartLocation] = useState('Truck');
 
     const docTemplates = useMemo(() => {
         if (job.assignedPartnerId === state.currentOrganization?.id && job.embeddedData?.inspectionTemplates) {
@@ -120,7 +126,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
             const customer = state.customers.find(c => c.id === job.customerId);
             setAssets(customer?.equipment || []);
 
-            setWorkflowState(prevState => ({
+            setWorkflowState((prevState: any) => ({
                 ...prevState,
                 arrivalNotes: job.notes?.arrival || '',
                 diagnosisNotes: job.notes?.diagnosis || '',
@@ -131,7 +137,8 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                 qualityChecklist: job.notes?.qualityChecklist ? JSON.parse(job.notes.qualityChecklist) : prevState.qualityChecklist,
                 customerDetails: { email: job.customerEmail || '', phone: job.customerPhone || '' },
                 refrigerantLog: job.refrigerantLog || [],
-                toolReadings: job.toolReadings || []
+                toolReadings: job.toolReadings || [],
+                partsUsed: (job as any).partsUsed || []
             }));
             setFiles(job.files || []);
         }
@@ -142,7 +149,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
             const initialDiagnosisChecklist = generateItemsFromIds(job.requiredDiagnosisChecklistIds || [], docTemplates);
             const initialQualityChecklist = generateItemsFromIds(job.requiredQualityChecklistIds || [], docTemplates);
             
-            setWorkflowState(prevState => ({
+            setWorkflowState((prevState: any) => ({
                 ...prevState,
                 diagnosisChecklist: job.notes?.diagnosisChecklist ? JSON.parse(job.notes.diagnosisChecklist) : initialDiagnosisChecklist,
                 qualityChecklist: job.notes?.qualityChecklist ? JSON.parse(job.notes.qualityChecklist) : initialQualityChecklist,
@@ -162,7 +169,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         setWorkflowState(prev => ({ ...prev, [key]: value }));
     };
 
-    const handleJobUpdate = async (updates: Partial<Job & { notes: any }>) => {
+    const handleJobUpdate = async (updates: Partial<Job & { notes: any, partsUsed: any[] }>) => {
         setIsSaving(true);
         try {
             const fullUpdates = { 
@@ -174,10 +181,10 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
 
             if (state.isDemoMode) {
                 console.log("Demo Mode: Skipping Firestore update.", fullUpdates);
-                onUpdate({ ...job, ...fullUpdates, notes: { ...job.notes, ...fullUpdates.notes } });
+                onUpdate({ ...job, ...fullUpdates, notes: { ...job.notes, ...fullUpdates.notes } } as any);
             } else {
                 await db.collection('jobs').doc(job.id).update(fullUpdates);
-                onUpdate({ ...job, ...fullUpdates, notes: { ...job.notes, ...fullUpdates.notes } });
+                onUpdate({ ...job, ...fullUpdates, notes: { ...job.notes, ...fullUpdates.notes } } as any);
             }
         } catch (e) {
             console.error("Update failed:", e);
@@ -200,10 +207,11 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
             customerFeedback: workflowState.customerFeedback,
             customerEmail: workflowState.customerDetails.email,
             customerPhone: workflowState.customerDetails.phone,
-            refrigerantLog: workflowState.refrigerantLog,
-            toolReadings: workflowState.toolReadings,
+            refrigerantLog: workflowState.refrigerantLog || [],
+            toolReadings: workflowState.toolReadings || [],
+            partsUsed: (workflowState as any).partsUsed || []
         };
-        await handleJobUpdate(updates);
+        await handleJobUpdate(updates as any);
     };
 
     const handleStepAdvance = async (nextStep: number) => {
@@ -296,8 +304,26 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         if (!refrigerantEntry.amount) return;
         const entry = { ...refrigerantEntry, id: `ref-${Date.now()}`, date: new Date().toISOString() };
         updateWorkflowState('refrigerantLog', [...workflowState.refrigerantLog, entry]);
-        setRefrigerantEntry({ type: 'R-410A', action: 'Added', amount: '', unit: 'oz' });
+        setRefrigerantEntry({ type: 'R-410A', action: 'Added', amount: '', unit: 'oz', cylinderNumber: '' });
         setIsRefrigerantModalOpen(false);
+    };
+
+    const handleAddPart = () => {
+        if (!selectedPart || partQuantity <= 0) return;
+        const entry = { 
+            id: `p-${Date.now()}`, 
+            name: selectedPart.name, 
+            sku: selectedPart.sku, 
+            quantity: partQuantity, 
+            location: partLocation,
+            unitPrice: selectedPart.price || 0,
+            total: (selectedPart.price || 0) * partQuantity
+        };
+        const updatedParts = [...((workflowState as any).partsUsed || []), entry];
+        updateWorkflowState('partsUsed' as any, updatedParts as any);
+        setIsPartModalOpen(false);
+        setSelectedPart(null);
+        setPartQuantity(1);
     };
 
     const handleAddReading = () => {
@@ -475,6 +501,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                         setIsScannerOpen={setIsScannerOpen} 
                         setIsLiveAssistOpen={setIsLiveAssistOpen} 
                         setIsRefrigerantModalOpen={() => setIsRefrigerantModalOpen(true)}
+                        setIsPartModalOpen={() => setIsPartModalOpen(true)}
                         workNotes={workflowState.workNotes} 
                         setWorkNotes={(val) => updateWorkflowState('workNotes', val)} 
                         handlePhotoUpload={handlePhotoUpload} 
@@ -482,6 +509,12 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                         files={files} 
                         onDeletePhoto={handleDeletePhoto} 
                         onViewPhoto={setViewingPhoto} 
+                        partsUsed={(workflowState as any).partsUsed || []}
+                        onRemovePart={(idx) => {
+                            const newList = [...((workflowState as any).partsUsed || [])];
+                            newList.splice(idx, 1);
+                            updateWorkflowState('partsUsed' as any, newList as any);
+                        }}
                         hidden={step !== 3} 
                     />
                     <QualityStep setIsQCOpen={setIsQCOpen} setIsImportModalOpen={() => openImport('quality')} checklists={workflowState.qualityChecklist} toggleChecklistItem={(id) => toggleChecklistItem('qualityChecklist', id)} completionNotes={workflowState.completionNotes} setCompletionNotes={(val) => updateWorkflowState('completionNotes', val)} customerFeedback={workflowState.customerFeedback} setCustomerFeedback={(val) => updateWorkflowState('customerFeedback', val)} hidden={step !== 4} />
@@ -498,6 +531,139 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                             </Button>
                         ) : null}
                     </div>
+                </div>
+            </div>
+        </Modal>
+
+        {/* Improved Refrigerant Modal */}
+        <Modal isOpen={isRefrigerantModalOpen} onClose={() => setIsRefrigerantModalOpen(false)} title="Log Refrigerant Usage">
+            <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    <Select label="Refrigerant Type" value={refrigerantEntry.type} onChange={e => setRefrigerantEntry({...refrigerantEntry, type: e.target.value})}>
+                        <option>R-410A</option>
+                        <option>R-22</option>
+                        <option>R-404A</option>
+                        <option>R-134A</option>
+                        <option>R-32</option>
+                        <option>R-438A (MO99)</option>
+                    </Select>
+                    <Select label="Action" value={refrigerantEntry.action} onChange={e => setRefrigerantEntry({...refrigerantEntry, action: e.target.value})}>
+                        <option>Added</option>
+                        <option>Recovered</option>
+                        <option>Reclaimed</option>
+                    </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <Input label="Amount" type="number" step="0.1" value={refrigerantEntry.amount} onChange={e => setRefrigerantEntry({...refrigerantEntry, amount: e.target.value})} placeholder="e.g. 2.5"/>
+                    <Select label="Unit" value={refrigerantEntry.unit} onChange={e => setRefrigerantEntry({...refrigerantEntry, unit: e.target.value})}>
+                        <option>lbs</option>
+                        <option>oz</option>
+                        <option>kg</option>
+                    </Select>
+                </div>
+                
+                <Select label="Select Container/Cylinder" value={refrigerantEntry.cylinderNumber} onChange={e => setRefrigerantEntry({...refrigerantEntry, cylinderNumber: e.target.value})}>
+                    <option value="">-- Choose Container --</option>
+                    {state.inventory.filter(i => i.category === 'Refrigerant' || i.name.toLowerCase().includes('cyl') || i.name.toLowerCase().includes('tank')).map(i => (
+                        <option key={i.id} value={i.sku}>{i.name} ({i.sku}) - {i.location}</option>
+                    ))}
+                    <option value="CUSTOM">Manual Entry...</option>
+                </Select>
+
+                {refrigerantEntry.cylinderNumber === 'CUSTOM' && (
+                    <Input label="Manual Cylinder #" placeholder="Enter serial or tracking #" onChange={e => setRefrigerantEntry({...refrigerantEntry, cylinderNumber: e.target.value})} />
+                )}
+
+                 <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="secondary" onClick={() => setIsRefrigerantModalOpen(false)}>Cancel</Button>
+                    <Button onClick={handleAddRefrigerant} disabled={!refrigerantEntry.amount || !refrigerantEntry.cylinderNumber}>Log Usage</Button>
+                </div>
+            </div>
+        </Modal>
+
+        {/* Parts Selection Modal */}
+        <Modal isOpen={isPartModalOpen} onClose={() => setIsPartModalOpen(false)} title="Add Parts from Inventory">
+            <div className="space-y-4">
+                {!selectedPart ? (
+                    <>
+                        <Input 
+                            label="Search Inventory" 
+                            placeholder="Search by name, SKU or barcode..." 
+                            value={partSearch} 
+                            onChange={e => setPartSearch(e.target.value)}
+                        />
+                        <div className="max-h-60 overflow-y-auto border rounded divide-y bg-slate-50 dark:bg-slate-900 shadow-inner">
+                            {state.inventory
+                                .filter(i => 
+                                    i.name.toLowerCase().includes(partSearch.toLowerCase()) || 
+                                    i.sku.toLowerCase().includes(partSearch.toLowerCase()) ||
+                                    (i.barcode && i.barcode.includes(partSearch))
+                                )
+                                .slice(0, 50)
+                                .map(item => (
+                                <button 
+                                    key={item.id} 
+                                    onClick={() => setSelectedPart(item)}
+                                    className="w-full text-left p-3 hover:bg-primary-50 dark:hover:bg-primary-900/10 flex justify-between items-center group transition-colors"
+                                >
+                                    <div>
+                                        <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{item.name}</p>
+                                        <p className="text-[10px] text-slate-400 uppercase font-black">SKU: {item.sku} • {item.location}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-xs font-black text-emerald-600">${item.price}</p>
+                                        <p className={`text-[10px] font-bold ${item.quantity <= item.minQuantity ? 'text-red-500' : 'text-slate-500'}`}>Stock: {item.quantity}</p>
+                                    </div>
+                                </button>
+                            ))}
+                            {state.inventory.length === 0 && <p className="p-4 text-center text-xs text-slate-400">Inventory is empty.</p>}
+                        </div>
+                    </>
+                ) : (
+                    <div className="bg-primary-50 dark:bg-primary-900/10 p-4 rounded-xl border border-primary-100 dark:border-primary-900/20">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 className="font-black text-primary-600 uppercase tracking-tight">{selectedPart.name}</h4>
+                                <p className="text-xs text-slate-500">Inventory SKU: {selectedPart.sku}</p>
+                            </div>
+                            <button onClick={() => setSelectedPart(null)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input label="Quantity Used" type="number" value={partQuantity} onChange={e => setPartQuantity(Number(e.target.value))} min={1} />
+                            <Select label="Pulled From" value={partLocation} onChange={e => setPartLocation(e.target.value)}>
+                                <option>Truck</option>
+                                <option>Warehouse</option>
+                                <option>Job Site</option>
+                            </Select>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-primary-100 dark:border-primary-900/20 flex justify-end gap-2">
+                            <Button variant="secondary" onClick={() => setSelectedPart(null)}>Change Part</Button>
+                            <Button onClick={handleAddPart}>Confirm & Add</Button>
+                        </div>
+                    </div>
+                )}
+                 <div className="flex justify-end pt-4">
+                    <Button variant="secondary" onClick={() => setIsPartModalOpen(false)} className="w-full">Cancel</Button>
+                </div>
+            </div>
+        </Modal>
+
+        {/* Tool Reading Modal */}
+        <Modal isOpen={isToolReadingModalOpen} onClose={() => setIsToolReadingModalOpen(false)} title="Add Tool Reading">
+            <div className="space-y-4">
+                <Select label="Tool Type" value={newReading.toolType} onChange={e => setNewReading({...newReading, toolType: e.target.value})}>
+                    <option value="">-- Select Tool --</option>
+                    <option>Sman Digital Manifold</option>
+                    <option>JobLink Probes</option>
+                    <option>Scale</option>
+                    <option>Multimeter</option>
+                    <option>Thermal Camera</option>
+                    <option>Vacuum Gauge</option>
+                </Select>
+                <Textarea label="Reading Summary" placeholder="e.g. Low Side: 120 PSI, High Side: 350 PSI, Subcool: 12F" value={newReading.summary} onChange={e => setNewReading({...newReading, summary: e.target.value})} />
+                <div className="flex justify-end gap-2 pt-4">
+                    <Button variant="secondary" onClick={() => setIsToolReadingModalOpen(false)}>Cancel</Button>
+                    <Button onClick={handleAddReading} disabled={!newReading.toolType || !newReading.summary}>Save Reading</Button>
                 </div>
             </div>
         </Modal>

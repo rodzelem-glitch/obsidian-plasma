@@ -422,7 +422,7 @@ const TimeAndMileage: React.FC = () => {
             <Card>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-primary-600 dark:text-primary-400">{isEditMode ? 'Edit Log' : 'Mileage & Expenses'}</h3>
-                    {isEditMode && <button onClick={() => {setIsEditMode(false); setNewVehicleLog({type:'Mileage', cost:'', miles:'', startMiles: '', endMiles: '', notes:'', id:''}); setReceiptFile(null); setCapturedReceiptData(null)}} className="text-xs text-red-500 hover:underline">Cancel Edit</button>}
+                    {isEditMode && <button onClick={() => {setIsEditMode(false); setNewVehicleLog({type:'Mileage', cost:'', miles:'', startMiles: '', endMiles: '', notes:'', id:''}); setReceiptFile(null); setCapturedReceiptData(null)}} className="text-xs text-red-700 dark:text-red-400 font-bold hover:underline">Cancel Edit</button>}
                 </div>
                 
                 <form onSubmit={handleVehicleLogSubmit} className="space-y-4 mb-6">
