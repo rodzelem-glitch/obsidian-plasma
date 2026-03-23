@@ -1,0 +1,10 @@
+
+{
+  "name": "TekTrakker v2",
+  "description": "version 2",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera",
+    "microphone"
+  ]
+}
