@@ -6,6 +6,7 @@ import type { Proposal, Job, Organization, Address } from 'types';
 import Button from './Button';
 import { db } from 'lib/firebase';
 import { globalConfirm } from "lib/globalConfirm";
+import DOMPurify from 'dompurify';
 
 interface DocumentPreviewProps {
     type: 'Proposal' | 'Invoice' | 'Other';
@@ -239,7 +240,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                             <div className="extra-section bg-[#f8fafc] p-5 md:p-8 rounded-[20px] md:rounded-[32px] mb-10 border border-slate-100 min-h-[4in]">
                                 <div className="terms-title" style={{fontSize:'10px', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', color:'#0f172a', marginBottom:'15px'}}>{data.title || 'Document Content'}</div>
                                 {data.htmlContent ? (
-                                    <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: data.htmlContent }} />
+                                    <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data.htmlContent) }} />
                                 ) : (data.url || data.dataUrl) && (
                                     (data.url?.toLowerCase().includes('.html')) || 
                                     (data.dataUrl?.includes('text/html')) ||

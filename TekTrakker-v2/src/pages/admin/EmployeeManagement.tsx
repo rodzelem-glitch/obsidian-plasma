@@ -11,6 +11,9 @@ import EmployeeRoster from './employees/components/EmployeeRoster';
 import MergeModal from './employees/components/MergeModal';
 import { globalConfirm } from "lib/globalConfirm";
 
+// All roles that should appear in the workforce roster
+const WORKFORCE_ROLES = ['employee', 'both', 'supervisor', 'Technician', 'Subcontractor', 'admin'];
+
 const EmployeeManagement: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -22,7 +25,7 @@ const EmployeeManagement: React.FC = () => {
         const currentUser = state.currentUser;
         return state.users.filter(u => 
             u.organizationId === state.currentOrganization?.id && 
-            (u.role !== 'customer') &&
+            WORKFORCE_ROLES.includes(u.role) &&
             (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id)
         );
     }, [state.users, state.currentOrganization, state.currentUser]);

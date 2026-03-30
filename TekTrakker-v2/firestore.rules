@@ -18,20 +18,25 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // ROBUST ORG CHECK: Checks token claims first, then falls back to DB if needed
+    // ROBUST ORG CHECK: Prioritize token claims (fast), fallback to simple UID check
     function isOrgMember(resourceOrgId) {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
       return isSignedIn() && (
         (request.auth.token.organizationId != null && request.auth.token.organizationId == resourceOrgId) ||
-        (getUserData().organizationId == resourceOrgId)
+        (exists(userPath) && get(userPath).data.organizationId == resourceOrgId)
       );
     }
-
-    // Checks if user is an admin of their own organization
+    
+    // Checks if user is an admin (UID or Email keyed)
     function isOrgAdmin() {
-      // Expanded to include 'both' and 'supervisor' as they often have administrative duties
+      let userPathByUid = /databases/$(database)/documents/users/$(request.auth.uid);
+      let userPathByEmail = /databases/$(database)/documents/users/$(request.auth.token.email);
+      let userData = exists(userPathByUid) ? get(userPathByUid).data : 
+                     (exists(userPathByEmail) ? get(userPathByEmail).data : null);
+                     
       return isSignedIn() && (
         (request.auth.token.role != null && request.auth.token.role in ['admin', 'master_admin', 'both', 'supervisor']) ||
-        getUserData().role in ['admin', 'master_admin', 'both', 'supervisor']
+        (userData != null && (userData.role in ['admin', 'master_admin', 'both', 'supervisor']))
       );
     }
 
@@ -51,14 +56,28 @@ service cloud.firestore {
       );
     }
 
+    // Checks if user is a customer (UID or Email keyed)
+    function isCustomer() {
+      let userPathByUid = /databases/$(database)/documents/users/$(request.auth.uid);
+      let userPathByEmail = /databases/$(database)/documents/users/$(request.auth.token.email);
+      let userData = exists(userPathByUid) ? get(userPathByUid).data : 
+                     (exists(userPathByEmail) ? get(userPathByEmail).data : null);
+                     
+      return isSignedIn() && (
+        (request.auth.token.role != null && request.auth.token.role == 'customer') ||
+        (userData != null && userData.role == 'customer')
+      );
+    }
+
     // Checks if the user is the customer assigned to this document
     function isCustomerOwner(resourceData) {
-      let customerDoc = exists(/databases/$(database)/documents/customers/$(request.auth.uid)) ? get(/databases/$(database)/documents/customers/$(request.auth.uid)).data : null;
-      return isSignedIn() && (
-        (resourceData.customerEmail != null && resourceData.customerEmail == request.auth.token.email) ||
-        (resourceData.email != null && resourceData.email == request.auth.token.email) ||
+      // Direct UID match (for Doc ID) or field match
+      return isSignedIn() && resourceData != null && (
+        (resourceData.userId != null && resourceData.userId == request.auth.uid) ||
         (resourceData.customerId != null && resourceData.customerId == request.auth.uid) ||
-        (customerDoc != null && resourceData.customerName != null && customerDoc.name == resourceData.customerName)
+        (resourceData.email != null && request.auth.token.email != null && resourceData.email == request.auth.token.email) ||
+        (resourceData.customerEmail != null && request.auth.token.email != null && resourceData.customerEmail == request.auth.token.email) ||
+        (resourceData.id != null && resourceData.id == request.auth.uid)
       );
     }
 
@@ -74,13 +93,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isMaster() 
                  || isUser(userId) 
-                 || (isSignedIn() && request.auth.token.email == userId) 
-                 || (isSignedIn() && request.auth.token.email == resource.data.email)
-                 || isOrgMember(resource.data.organizationId);
+                 || (isSignedIn() && request.auth.token.email != null && request.auth.token.email == userId) 
+                 || (isSignedIn() && resource != null && resource.data.email != null && request.auth.token.email != null && request.auth.token.email == resource.data.email)
+                 || (resource != null && isOrgMember(resource.data.organizationId));
                  
-      allow list: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId); 
+      allow list: if isMaster() || isPlatformSales() || (resource != null && isOrgMember(resource.data.organizationId)) || (isSignedIn() && resource != null && resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email); 
       
-      allow write: if isMaster() || isPlatformSales() || isUser(userId) || (isOrgAdmin() && isOrgMember(resource.data.organizationId));
+      allow write: if isMaster() || isPlatformSales() || isUser(userId) || (isOrgAdmin() && resource != null && isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn();
     }
 
@@ -92,23 +111,31 @@ service cloud.firestore {
       match /users/{docId} {
          allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
       }
+
+      match /marketingTemplates/{templateId} {
+         allow read, write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      }
       
       match /jobs/{jobId}/ai_messages/{msgId} {
          allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
       }
+
+      match /secrets/{secretId} {
+         allow read, write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      }
     }
 
-    // Customers: Accessible by organization members.
+    // Customers: Accessible by organization members or the customer themselves.
     match /customers/{customerId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || request.resource.data.email == request.auth.token.email;
+      allow read: if isMaster() || isPlatformSales() || (resource != null && isOrgMember(resource.data.organizationId)) || (resource != null && isCustomerOwner(resource.data)) || request.auth.uid == customerId || (isSignedIn() && resource != null && resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email) || (isSignedIn() && resource != null && resource.data.userId == request.auth.uid);
+      allow write: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId)) || (resource != null && isCustomerOwner(resource.data)) || request.auth.uid == customerId;
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || (request.resource.data.email != null && request.auth.token.email != null && request.resource.data.email == request.auth.token.email) || request.auth.uid == customerId;
     }
 
     match /appointments/{appointmentId} {
       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
       allow write: if isMaster() || isOrgMember(resource.data.organizationId);
-      allow create: if true;
+      allow create: if isSignedIn();
     }
 
     match /jobs/{jobId} {
@@ -123,10 +150,16 @@ service cloud.firestore {
                              isCustomerOwner(resource.data) ||
                              isAssignedPartner(resource.data);
       }
+      
+      match /diagnostics/{reportId} {
+         allow read: if isMaster() || isPlatformSales() || isOrgMember(get(/databases/$(database)/documents/jobs/$(jobId)).data.organizationId);
+         allow write: if false; // Only written by trusted Cloud Functions (measureQuickWebhook)
+      }
     }
 
     match /invoices/{invoiceId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow get: if true;
+      allow list: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
       allow write: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
       allow create: if isMaster() || isPlatformSales() || isOrgMember(request.resource.data.organizationId);
     }
@@ -150,8 +183,9 @@ service cloud.firestore {
     }
 
     match /proposals/{proposalId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || (isCustomerOwner(resource.data) && request.resource.data.status == 'Accepted');
+      allow get: if true;
+      allow list: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || (isCustomerOwner(resource.data) && request.resource.data.status == 'Accepted') || (isSignedIn() && request.resource.data.status == 'Accepted');
       allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
     }
     
@@ -230,7 +264,7 @@ service cloud.firestore {
     match /leads/{leadId} {
       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
       allow write: if isMaster() || isOrgMember(resource.data.organizationId);
-      allow create: if true; 
+      allow create: if isSignedIn();
     }
     
     match /platformLeads/{leadId} {
@@ -358,6 +392,11 @@ service cloud.firestore {
       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
     }
 
+    match /mail_queue/{queueId} {
+      allow create: if true;
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+    }
+
     match /pricebook_items/{itemId} {
       allow read: if true; // Allow public read for pricebook items
       allow write: if isMaster() || (isOrgMember(resource.data.organizationId) && isOrgAdmin());
@@ -370,9 +409,10 @@ service cloud.firestore {
     }
     
     match /documents/{docId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow get: if true;
+      allow list: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
       allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data) || (isSignedIn() && request.resource.data.status == 'Signed');
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || isCustomer();
     }
 
     match /reviews/{reviewId} {
@@ -410,6 +450,12 @@ service cloud.firestore {
 
     match /public/{docId} {
       allow read: if true;
+    }
+
+    match /marketingCampaigns/{campaignId} {
+      allow read: if isMaster() || isPlatformSales() || (isOrgMember(resource.data.organizationId) && isOrgAdmin());
+      allow write: if isMaster() || isPlatformSales() || (isOrgMember(resource.data.organizationId) && isOrgAdmin());
+      allow create: if isMaster() || isPlatformSales() || (isOrgMember(request.resource.data.organizationId) && isOrgAdmin());
     }
   }
 }

@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 import type { Job, User, Address, Subcontractor, BusinessDocument, InspectionTemplate } from '../../types';
 import Card from '../../components/ui/Card';
@@ -138,6 +137,16 @@ const JobScheduling: React.FC = () => {
         try {
             await db.collection('jobs').doc(job.id).update(updates); 
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
+
+            // Notify Technician
+            if (updates.assignedTechnicianId) {
+                const { sendNotification } = await import('lib/notificationService');
+                await sendNotification(updates.assignedTechnicianId, {
+                    title: "New Job Assigned",
+                    body: `You have been assigned to ${job.customerName} for ${new Date(job.appointmentTime).toLocaleDateString()}.`,
+                    type: 'job_assignment'
+                });
+            }
         } catch (e) { alert("Failed to assign."); }
     };
 
@@ -220,23 +229,23 @@ const JobScheduling: React.FC = () => {
              <Modal isOpen={!!editingCrewJob} onClose={() => setEditingCrewJob(null)} title="Manage Job Crew">
                  {editingCrewJob && (
                      <div className="space-y-4">
-                         <p className="text-sm text-gray-500">Select additional technicians assisting on this job.</p>
-                         <div className="max-h-60 overflow-y-auto border p-2 rounded">
-                            {employees.filter(u => u.id !== editingCrewJob.assignedTechnicianId).map(u => (
-                                <label key={u.id} className="flex items-center gap-2 p-2 hover:bg-gray-100 cursor-pointer">
-                                    <input type="checkbox" checked={crewSelection.includes(u.id)} onChange={() => setCrewSelection(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])} />
-                                    <span>{u.firstName} {u.lastName}</span>
-                                </label>
-                            ))}
-                         </div>
-                         <div className="flex justify-end gap-2">
-                             <Button variant="secondary" onClick={() => setEditingCrewJob(null)}>Cancel</Button>
-                             <Button onClick={async () => {
-                                 await db.collection('jobs').doc(editingCrewJob.id).update({ assistants: crewSelection });
-                                 dispatch({ type: 'UPDATE_JOB', payload: { ...editingCrewJob, assistants: crewSelection } });
-                                 setEditingCrewJob(null);
-                             }}>Save Crew</Button>
-                         </div>
+                          <p className="text-sm text-gray-500">Select additional technicians assisting on this job.</p>
+                          <div className="max-h-60 overflow-y-auto border p-2 rounded">
+                             {employees.filter(u => u.id !== editingCrewJob.assignedTechnicianId).map(u => (
+                                 <label key={u.id} className="flex items-center gap-2 p-2 hover:bg-gray-100 cursor-pointer">
+                                     <input type="checkbox" checked={crewSelection.includes(u.id)} onChange={() => setCrewSelection(prev => prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id])} />
+                                     <span>{u.firstName} {u.lastName}</span>
+                                 </label>
+                             ))}
+                          </div>
+                          <div className="flex justify-end gap-2">
+                              <Button variant="secondary" onClick={() => setEditingCrewJob(null)}>Cancel</Button>
+                              <Button onClick={async () => {
+                                  await db.collection('jobs').doc(editingCrewJob.id).update({ assistants: crewSelection });
+                                  dispatch({ type: 'UPDATE_JOB', payload: { ...editingCrewJob, assistants: crewSelection } });
+                                  setEditingCrewJob(null);
+                              }}>Save Crew</Button>
+                          </div>
                      </div>
                  )}
              </Modal>
@@ -303,6 +312,75 @@ const JobScheduling: React.FC = () => {
                      </div>
                  </div>
              </Modal>
+
+            <div className="md:hidden space-y-4">
+                {(allJobs as Job[]).map((job: Job) => (
+                    <div key={job.id} className={`p-4 rounded-xl border bg-white dark:bg-gray-800 shadow-sm transition-all ${job.assignedPartnerId === state.currentOrganization?.id ? 'border-blue-200 bg-blue-50/30' : 'border-gray-200 dark:border-gray-700'}`}>
+                        <div className="flex justify-between items-start mb-3">
+                            <div>
+                                <h3 className="font-bold text-gray-900 dark:text-white">{job.customerName}</h3>
+                                <p className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5"><MapPin size={10}/> {formatAddress(job.address)}</p>
+                            </div>
+                            <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
+                                job.invoice?.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                                {job.invoice?.status}
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div className="space-y-1">
+                                <label className="text-[9px] uppercase font-black text-gray-400">Unit/System</label>
+                                <p className="text-xs font-bold text-blue-600 truncate">{job.hvacBrand || '---'}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] uppercase font-black text-gray-400">Time</label>
+                                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                                    {new Date(job.appointmentTime).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700">
+                            <div className="flex gap-3">
+                                <button onClick={() => openSmsModal(job)} className="text-blue-500 p-1"><MessageSquare size={18}/></button>
+                                <button onClick={() => openNotesModal(job)} className="text-amber-500 p-1"><Edit size={18}/></button>
+                                <button onClick={() => openDocsModal(job)} className="text-slate-500 p-1"><FileText size={18}/></button>
+                            </div>
+                            <div className="flex gap-2">
+                                <select 
+                                    value={job.jobStatus} 
+                                    onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)} 
+                                    className="text-[10px] border rounded p-1 bg-gray-50 font-bold"
+                                >
+                                    <option value="Scheduled">Scheduled</option>
+                                    <option value="In Progress">In Progress</option>
+                                    <option value="Completed">Completed</option>
+                                </select>
+                                <button onClick={() => handleDeleteJob(job.id)} className="text-red-500 p-1 ml-1"><Trash2 size={18}/></button>
+                            </div>
+                        </div>
+                        
+                        <div className="mt-3">
+                            <select 
+                                value={job.assignedTechnicianId || (job.assignedPartnerId && job.assignedPartnerId !== state.currentOrganization?.id ? `partner:${job.assignedPartnerId}` : '')} 
+                                onChange={(e) => handleAssignmentChange(job, e.target.value)} 
+                                className="w-full text-xs border rounded-lg p-2 bg-gray-50 dark:bg-gray-700 font-medium"
+                            >
+                                <option value="">Assign Technician...</option>
+                                <optgroup label="Internal Technicians">
+                                    {employees.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName} {tech.lastName}</option>)}
+                                </optgroup>
+                                {linkedPartners.length > 0 && (
+                                    <optgroup label="Partner Network">
+                                        {linkedPartners.map(p => <option key={p.id} value={`partner:${p.linkedOrgId}`}>{p.companyName}</option>)}
+                                    </optgroup>
+                                )}
+                            </select>
+                        </div>
+                    </div>
+                ))}
+            </div>
 
             <Card className="hidden md:block">
                 <Table headers={['Customer', 'Unit/System', 'Appointment Time', 'Invoice Status', 'Job Status', 'Assigned Tech / Partner', 'Crew', 'Actions']}>

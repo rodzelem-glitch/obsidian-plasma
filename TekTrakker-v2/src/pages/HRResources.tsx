@@ -9,6 +9,7 @@ import { db } from 'lib/firebase';
 import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import Textarea from 'components/ui/Textarea';
+import DOMPurify from 'dompurify';
 
 const HRResources: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -70,7 +71,7 @@ const HRResources: React.FC = () => {
                         <Card key={doc.id} className="hover:shadow-lg transition-shadow cursor-pointer border-t-4 border-primary-500">
                             <DocumentTextIcon className="w-8 h-8 text-gray-400 mb-4" />
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{doc.title}</h3>
-                            <div className="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 mb-4" dangerouslySetInnerHTML={{__html: doc.content}} />
+                            <div className="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 mb-4" dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(doc.content)}} />
                             <Button variant="secondary" className="text-xs">Read Full Policy</Button>
                         </Card>
                     )) : (

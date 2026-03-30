@@ -22,7 +22,7 @@ const AnalyticsMaster: React.FC = () => {
     const { state } = useAppContext();
     const navigate = useNavigate();
     
-    const [excludeTest, setExcludeTest] = useState(false);
+    const [excludeTest, setExcludeTest] = useState(true);
 
     // Helper to check if item is test data
     const isTestItem = (name: string) => {
@@ -177,13 +177,15 @@ const AnalyticsMaster: React.FC = () => {
                     <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight uppercase">Executive Insights</h2>
                     <p className="text-slate-500 dark:text-slate-400 font-medium">Core business performance and operational efficiency.</p>
                 </div>
-                <div className="bg-white dark:bg-slate-800 px-4 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-4 shadow-sm">
-                    <div className="flex items-center gap-2">
-                        <Filter size={14} className="text-slate-400"/>
-                        <span className="text-[10px] font-black uppercase text-slate-400">Filters</span>
+                {state.currentUser?.role === 'master_admin' && (
+                    <div className="bg-white dark:bg-slate-800 px-4 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-4 shadow-sm">
+                        <div className="flex items-center gap-2">
+                            <Filter size={14} className="text-slate-400"/>
+                            <span className="text-[10px] font-black uppercase text-slate-400">Filters</span>
+                        </div>
+                        <Toggle label="Hide Test Data" enabled={excludeTest} onChange={setExcludeTest} />
                     </div>
-                    <Toggle label="Hide Test Data" enabled={excludeTest} onChange={setExcludeTest} />
-                </div>
+                )}
             </header>
 
             {/* 1. FINANCIAL HEALTH ROW */}

@@ -22,8 +22,9 @@ export const initializePushNotifications = async (userId: string) => {
 
   await PushNotifications.addListener('registration', token => {
     console.log('Push registration success, token: ' + token.value);
-    // Here you would typically save the token to your user document in Firestore
-    // db.collection('users').doc(userId).update({ fcmToken: token.value });
+    import('./firebase').then(({ db }) => {
+      db.collection('users').doc(userId).update({ fcmToken: token.value });
+    });
   });
 
   await PushNotifications.addListener('registrationError', err => {

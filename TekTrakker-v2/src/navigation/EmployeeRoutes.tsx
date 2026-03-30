@@ -22,7 +22,7 @@ const EmployeeRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMod
   }
 
   return (
-    <ProtectedRoute isAllowed={!!user}>
+    <ProtectedRoute isAllowed={!!user && (user.role === 'employee' || user.role === 'both' || user.role === 'supervisor' || user.role === 'Technician' || user.role === 'Subcontractor')}>
         <EmployeeLayout user={user} onLogout={handleLogout}>
             <Routes>
                 <Route path="/" element={<DailyBriefing />} />

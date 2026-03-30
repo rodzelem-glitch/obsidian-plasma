@@ -1,14 +1,24 @@
 
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
     Wrench, Briefcase, ArrowRight, ShieldCheck, Zap, History, FileText, 
     Search, DollarSign, BarChart3, Globe, Smartphone, Users, CheckCircle, Map, Building
 } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
-import LandingChatbot from '../../components/LandingChatbot';
+const LandingChatbot = lazy(() => import('../../components/LandingChatbot'));
 import Modal from '../../components/ui/Modal';
 import Button from '../../components/ui/Button';
+
+// Utility to delay background chunk execution until after LCP paint
+const NavigationDelayer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [shouldRender, setShouldRender] = useState(false);
+    React.useEffect(() => {
+        const t = setTimeout(() => setShouldRender(true), 3500);
+        return () => clearTimeout(t);
+    }, []);
+    return shouldRender ? <>{children}</> : null;
+};
 
 const SplitHome: React.FC = () => {
   const navigate = useNavigate();
@@ -36,7 +46,7 @@ const SplitHome: React.FC = () => {
                 <div className="flex items-center gap-3">
                     <button 
                         onClick={() => navigate('/login')} 
-                        className="px-5 py-2 text-slate-700 font-bold text-sm hover:text-slate-900 transition-colors hidden sm:block"
+                        className="px-4 py-2 text-slate-700 font-bold text-sm hover:text-slate-900 transition-colors"
                     >
                         Log In
                     </button>
@@ -108,9 +118,12 @@ const SplitHome: React.FC = () => {
                     </div>
                 </div>
                 
-                <div className="flex justify-center">
+                <div className="flex flex-col items-center">
                     <button onClick={handlePrimaryActionClick} className="w-full sm:w-auto px-4 md:px-8 py-4 bg-blue-600 text-white rounded-xl font-black text-lg shadow-xl shadow-blue-500/20 hover:bg-blue-700 hover:shadow-2xl transition-all flex items-center justify-center gap-2 group-hover:gap-4">
                         Find a Pro & Get Started <ArrowRight size={20} />
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); navigate('/login'); }} className="mt-4 text-sm font-bold text-blue-600 hover:underline">
+                        Already have an account? Log in
                     </button>
                 </div>
             </div>
@@ -170,9 +183,12 @@ const SplitHome: React.FC = () => {
                     </div>
                 </div>
                 
-                <div className="flex justify-center">
-                    <button className="w-full sm:w-auto px-4 md:px-8 py-4 bg-emerald-500 text-white rounded-xl font-black text-lg shadow-xl shadow-emerald-500/20 hover:bg-emerald-600 hover:shadow-2xl transition-all flex items-center justify-center gap-2 group-hover:gap-4">
+                <div className="flex flex-col items-center">
+                    <button className="w-full sm:w-auto px-4 md:px-8 py-4 bg-emerald-700 text-white rounded-xl font-black text-lg shadow-xl shadow-emerald-500/20 hover:bg-emerald-800 hover:shadow-2xl transition-all flex items-center justify-center gap-2 group-hover:gap-4">
                         Boost Your Revenue <ArrowRight size={20} />
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); navigate('/login'); }} className="mt-4 text-sm font-bold text-emerald-400 hover:underline">
+                        Partner Login
                     </button>
                 </div>
             </div>
@@ -183,25 +199,27 @@ const SplitHome: React.FC = () => {
       {/* Trust Badges / Footer Strip */}
       <div className="bg-white border-t border-slate-100 py-6 md:py-8">
         <div className="max-w-7xl mx-auto px-4 flex flex-wrap justify-center items-center gap-x-8 gap-y-4 md:gap-x-12 text-slate-500 font-bold text-xs uppercase tracking-widest">
-            <span className="flex items-center gap-2 text-slate-400">
+            <span className="flex items-center gap-2 text-slate-500">
                 <CheckCircle size={16} className="text-blue-500"/> Verified Professionals
             </span>
-            <span className="flex items-center gap-2 text-slate-400">
+            <span className="flex items-center gap-2 text-slate-500">
                 <CheckCircle size={16} className="text-blue-500"/> Bank-Level Security
             </span>
-            <span className="flex items-center gap-2 text-slate-400">
+            <span className="flex items-center gap-2 text-slate-500">
                 <CheckCircle size={16} className="text-blue-500"/> 24/7 Support
             </span>
             <Link to="/eula" className="hover:text-slate-900 transition-colors">EULA</Link>
             <Link to="/terms" className="hover:text-slate-900 transition-colors">Terms</Link>
             <Link to="/privacy" className="hover:text-slate-900 transition-colors">Privacy</Link>
-            <a href="/tektrakker.zip" className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-slate-700 dark:text-slate-300" download>
-                <Smartphone size={16} className="text-blue-500"/> Download Android App
-            </a>
+
         </div>
       </div>
 
-      <LandingChatbot />
+      <NavigationDelayer>
+        <Suspense fallback={null}>
+          <LandingChatbot />
+        </Suspense>
+      </NavigationDelayer>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="How would you like to proceed?">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">

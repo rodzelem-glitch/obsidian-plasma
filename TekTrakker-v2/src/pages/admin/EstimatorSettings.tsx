@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { PRICE_BOOKS } from 'pricebooks';
 import { globalConfirm } from "lib/globalConfirm";
+import * as XLSX from 'xlsx';
 
 const CATEGORIES = ['Diagnostics', 'Cooling', 'Heating', 'Electrical', 'Plumbing', 'Cleaning', 'Airflow', 'Accessories', 'Maintenance', 'Roofing', 'Painting', 'Contracting', 'Masonry', 'Telecommunications', 'Solar', 'Security', 'Bath Service', 'Grooming', 'Treatment', 'Other'];
 
@@ -104,6 +105,74 @@ const EstimatorSettings: React.FC = () => {
         }
     };
 
+    const handleImportTargetFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !state.currentOrganization) return;
+        
+        const orgId = state.currentOrganization.id;
+        
+        setIsPopulating("CSV/Excel Upload");
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                 const data = new Uint8Array(event.target?.result as ArrayBuffer);
+                 const workbook = XLSX.read(data, { type: 'array' });
+                 const firstSheetName = workbook.SheetNames[0];
+                 const worksheet = workbook.Sheets[firstSheetName];
+                 const json: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+                 if (json.length === 0) {
+                     alert("The uploaded file is empty or formatted incorrectly.");
+                     setIsPopulating(null);
+                     return;
+                 }
+                 
+                 // Auto-detect columns based on common CSV structures
+                 if (!await globalConfirm(`Found ${json.length} records. Do you want to inject these tasks into your Pricebook?`)) {
+                     setIsPopulating(null);
+                     return;
+                 }
+
+                 const batch = db.batch();
+                 
+                 json.forEach(row => {
+                     // Best effort mapping of row columns to TekTrakker fields
+                     const name = row['Task'] || row['Name'] || row['Service'] || row['Title'] || row['Item'] || row['Description'] || 'Imported Task';
+                     const description = row['Description'] || row['Details'] || row['Notes'] || '';
+                     const category = row['Category'] || row['Department'] || row['Type'] || 'Other';
+                     const rawCost = String(row['Cost'] || row['Base Cost'] || row['Price'] || row['Unit Price'] || '0').replace(/[^0-9.]/g, '');
+                     const rawLabor = String(row['Labor Hours'] || row['Labor'] || row['Hours'] || row['Time'] || '0').replace(/[^0-9.]/g, '');
+                     
+                     const id = `preset-csv-${Math.random().toString(36).substr(2, 9)}`;
+                     const ref = db.collection('proposalPresets').doc(id);
+                     const fullItem = {
+                         id,
+                         organizationId: orgId,
+                         name: String(name).trim(),
+                         description: String(description).trim(),
+                         category: String(category).trim(),
+                         baseCost: Number(rawCost) || 0,
+                         avgLabor: Number(rawLabor) || 0
+                     } as ProposalPreset;
+                     
+                     batch.set(ref, fullItem);
+                     dispatch({ type: 'ADD_PROPOSAL_PRESET', payload: fullItem });
+                 });
+                 
+                 await batch.commit();
+                 alert(`Successfully imported ${json.length} tasks into your Catalog!`);
+            } catch (err) {
+                 console.error(err);
+                 alert("File parsing failed. Please ensure it is a valid CSV or XLSX spreadsheet.");
+            } finally {
+                 setIsPopulating(null);
+                 // Reset file input
+                 e.target.value = '';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
     const handleDelete = async (id: string) => {
         if (await globalConfirm("Delete this task from your pricebook?")) {
             await db.collection('proposalPresets').doc(id).delete();
@@ -136,6 +205,11 @@ const EstimatorSettings: React.FC = () => {
                     <p className="text-gray-600 dark:text-gray-400 font-medium">Configure high-speed flat rate pricing and AI generation.</p>
                 </div>
                 <div className="flex gap-2 flex-wrap">
+                    <label className="flex items-center gap-2 shadow-lg btn bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded font-bold cursor-pointer transition-colors duration-200">
+                         {isPopulating === "CSV/Excel Upload" ? <Sparkles size={18} className="animate-spin" /> : <Book size={18} />}
+                         <span className="text-sm">Import CSV / Excel</span>
+                         <input type="file" accept=".csv, .xlsx, .xls" onChange={handleImportTargetFile} className="hidden" />
+                    </label>
                     <Button onClick={() => { setCurrentPreset({ name: '', description: '', baseCost: 0, avgLabor: 0, category: 'Other' }); setIsModalOpen(true); }} className="flex items-center gap-2 shadow-lg"><Plus size={18}/> Custom Task</Button>
                 </div>
             </header>

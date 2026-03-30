@@ -176,6 +176,28 @@ const Messages: React.FC = () => {
         try {
             await db.collection('messages').doc(msgId).set(msg);
             
+            // Trigger Push Notification for Team Messages
+            if (activeTab === 'team') {
+                const { sendNotification } = await import('lib/notificationService');
+                if (selectedPartnerId !== 'all') {
+                    await sendNotification(selectedPartnerId, {
+                        title: `New Message from ${user.firstName}`,
+                        body: newMessage.trim(),
+                        type: 'message',
+                        data: { senderId: user.id }
+                    });
+                } else {
+                    // Trigger global broadcast cascade
+                    const promises = teamPartners.map(p => sendNotification(p.id, {
+                        title: `Broadcast from ${user.firstName}`,
+                        body: newMessage.trim(),
+                        type: 'broadcast',
+                        data: { senderId: user.id }
+                    }));
+                    await Promise.all(promises);
+                }
+            }
+
             // Optimistic Update
             const updatedMessages = [...state.messages, msg];
             dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });

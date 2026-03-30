@@ -12,9 +12,10 @@ const EmployeeScheduling: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const currentUser = state.currentUser;
     
+    const WORKFORCE_ROLES = new Set(['employee', 'both', 'supervisor', 'technician', 'subcontractor', 'admin']);
     const employees = useMemo(() => state.users.filter(u => 
         u.organizationId === state.currentOrganization?.id &&
-        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor') &&
+        WORKFORCE_ROLES.has((u.role || '').toLowerCase()) &&
         (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id)
     ), [state.users, state.currentOrganization, currentUser]);
 

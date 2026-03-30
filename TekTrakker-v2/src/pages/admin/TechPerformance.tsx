@@ -8,9 +8,10 @@ const TechPerformance: React.FC = () => {
     const { state } = useAppContext();
     
     const stats = useMemo(() => {
+    const WORKFORCE_ROLES = new Set(['employee', 'both', 'supervisor', 'technician', 'subcontractor', 'admin']);
         const techs = state.users.filter(u => 
             u.organizationId === state.currentOrganization?.id &&
-            (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor') &&
+            WORKFORCE_ROLES.has((u.role || '').toLowerCase()) &&
             (state.currentUser?.role !== 'supervisor' || u.reportsTo === state.currentUser?.id || u.id === state.currentUser?.id)
         );
         

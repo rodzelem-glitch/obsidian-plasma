@@ -24,41 +24,44 @@ export interface OfferDetails {
 
 const OfferModal: React.FC<OfferModalProps> = ({ isOpen, onClose, applicant, organization, onSendOffer }) => {
     const [details, setDetails] = useState<OfferDetails>({ rate: '', type: 'Hourly', startDate: '', supervisor: '' });
-    const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+    const [showPreview, setShowPreview] = useState(false);
 
-    const generateOfferHtml = () => {
-        if (!applicant || !organization) return '';
+    const OfferPreview = () => {
+        if (!applicant || !organization) return null;
         const orgName = organization.name;
-        const logoHtml = organization.logoUrl ? `<img src="${organization.logoUrl}" style="max-height: 60px; margin-bottom: 20px;" alt="${orgName}"/>` : `<h1>${orgName}</h1>`;
         const name = applicant.name || `${applicant.firstName} ${applicant.lastName}`;
 
-        return `
-            <div style="font-family: sans-serif; padding: 30px; border: 1px solid #eee; max-width: 600px; margin: auto;">
-                ${logoHtml}
-                <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Employment Offer</h2>
-                <p>Dear ${name},</p>
-                <p>We are pleased to offer you the position of <strong>${applicant.position}</strong> at ${orgName}.</p>
-                <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
-                    <p><strong>Start Date:</strong> ${details.startDate || 'TBD'}</p>
-                    <p><strong>Compensation:</strong> $${details.rate || '[Rate]'} / ${details.type}</p>
-                    <p><strong>Reporting To:</strong> ${details.supervisor || '[Supervisor]'}</p>
+        return (
+            <div style={{ fontFamily: 'sans-serif', padding: '30px', border: '1px solid #eee', maxWidth: '600px', margin: 'auto' }}>
+                {organization.logoUrl ? (
+                    <img src={organization.logoUrl} style={{ maxHeight: '60px', marginBottom: '20px' }} alt={orgName} />
+                ) : (
+                    <h1>{orgName}</h1>
+                )}
+                <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Employment Offer</h2>
+                <p>Dear {name},</p>
+                <p>We are pleased to offer you the position of <strong>{applicant.position}</strong> at {orgName}.</p>
+                <div style={{ background: '#f9fafb', padding: '15px', borderRadius: '8px', margin: '20px 0', border: '1px solid #e5e7eb' }}>
+                    <p><strong>Start Date:</strong> {details.startDate || 'TBD'}</p>
+                    <p><strong>Compensation:</strong> ${details.rate || '[Rate]'} / {details.type}</p>
+                    <p><strong>Reporting To:</strong> {details.supervisor || '[Supervisor]'}</p>
                 </div>
                 <p>This offer is contingent upon successful completion of any background checks and verification of your employment eligibility.</p>
                 <p>Please reply to this email to accept or decline this offer.</p>
                 <br/>
-                <p>Sincerely,<br>The ${orgName} Team</p>
+                <p>Sincerely,<br/>The {orgName} Team</p>
             </div>
-        `;
+        );
     };
 
     const handlePreview = () => {
-        setPreviewHtml(generateOfferHtml());
+        setShowPreview(true);
     };
 
     const handleSend = () => {
         onSendOffer(details);
         onClose();
-        setPreviewHtml(null);
+        setShowPreview(false);
     };
 
     return (
@@ -95,9 +98,9 @@ const OfferModal: React.FC<OfferModalProps> = ({ isOpen, onClose, applicant, org
                     placeholder="e.g. Jane Doe"
                 />
                 
-                {previewHtml && (
-                    <div className="bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 p-4 rounded-lg max-h-48 overflow-y-auto text-xs">
-                        <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                {showPreview && (
+                    <div className="bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 p-4 rounded-lg max-h-48 overflow-y-auto text-xs text-slate-800 dark:text-slate-200">
+                        <OfferPreview />
                     </div>
                 )}
 

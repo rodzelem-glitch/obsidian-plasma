@@ -5,9 +5,9 @@ import {
     Calendar, MapPin, Clock, CheckCircle, Package, 
     ShieldCheck, FileText, ChevronRight, Droplets, 
     Thermometer, Wrench, DollarSign, Printer, ArrowLeft,
-    Check
+    Check, Shield
 } from 'lucide-react';
-import type { Job, Proposal } from '../../types';
+import { Job, Proposal, DiagnosticReport } from '../../types';
 import Button from '../ui/Button';
 import { db } from '../../lib/firebase';
 import DocumentPreview from '../ui/DocumentPreview';
@@ -28,14 +28,42 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
 }) => {
     const [proposal, setProposal] = useState<Proposal | null>(null);
     const [previewDoc, setPreviewDoc] = useState<any>(null);
+    const [diagnostics, setDiagnostics] = useState<DiagnosticReport[]>([]);
 
     useEffect(() => {
-        if (job?.projectId) {
-            db.collection('proposals').doc(job.projectId).get().then(doc => {
-                if (doc.exists) setProposal(doc.data() as Proposal);
-            });
+        if (!job?.id) return;
+        setProposal(null);
+
+        const promises: Promise<Proposal | null>[] = [];
+
+        // Query by jobId field (primary — this is how FieldProposal saves it)
+        promises.push(
+            db.collection('proposals').where('jobId', '==', job.id).limit(1).get()
+                .then(snap => snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() } as Proposal)
+                .catch(() => null)
+        );
+
+        // Direct lookup by projectId (fallback for older records)
+        if (job.projectId) {
+            promises.push(
+                db.collection('proposals').doc(job.projectId).get()
+                    .then(doc => doc.exists ? { id: doc.id, ...doc.data() } as Proposal : null)
+                    .catch(() => null)
+            );
         }
-    }, [job?.projectId]);
+
+        Promise.all(promises).then(results => {
+            const found = results.find(r => r !== null);
+            if (found) setProposal(found);
+        });
+
+        // Fetch measureQuick diagnostics
+        const unsubDiags = db.collection('jobs').doc(job.id).collection('diagnostics').onSnapshot(snap => {
+            setDiagnostics(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as DiagnosticReport)));
+        });
+
+        return () => unsubDiags();
+    }, [job?.id, job?.projectId]);
 
     if (!job) return null;
 
@@ -45,8 +73,19 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
         return `${addr.street}, ${addr.city}, ${addr.state} ${addr.zip}`;
     };
 
-    const photoFiles = job.files?.filter(f => f.type === 'Photo' || (f as any).contentType?.startsWith('image/')) || [];
-    const docFiles = job.files?.filter(f => f.type === 'Document' || (f as any).contentType === 'application/pdf') || [];
+    const photoFiles = job.files?.filter(f => 
+        f.type === 'Photo' || 
+        (f as any).contentType?.startsWith('image/') || 
+        (f as any).fileType?.startsWith('image/')
+    ) || [];
+    const docFiles = job.files?.filter(f => 
+        f.type === 'Document' || 
+        (f as any).contentType === 'application/pdf' || 
+        (f as any).fileType === 'application/pdf' ||
+        (f as any).fileType === 'text/html' ||
+        f.fileName?.toLowerCase().endsWith('.html') ||
+        f.fileName?.toLowerCase().endsWith('.pdf')
+    ) || [];
 
     return (
         <>
@@ -243,12 +282,70 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                         </section>
 
                         {/* Refrigerant & Technical Data */}
-                        {( (job.refrigerantLog && job.refrigerantLog.length > 0) || (job.toolReadings && job.toolReadings.length > 0) || (job.qcAudits && job.qcAudits.length > 0) ) && (
+                        {( (job.refrigerantLog && job.refrigerantLog.length > 0) || (job.toolReadings && job.toolReadings.length > 0) || (job.qcAudits && job.qcAudits.length > 0) || (diagnostics.length > 0) ) && (
                             <section className="space-y-4">
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                                     <Wrench size={14}/> Technical, Environmental & QC Data
                                 </h4>
                                 <div className="space-y-4">
+                                    {/* MeasureQuick Diagnostics */}
+                                    {diagnostics && diagnostics.length > 0 && (
+                                        <div className="space-y-3">
+                                            {diagnostics.map((diag, i) => (
+                                                <div key={i} className="p-5 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-3xl print:bg-white print:border-slate-200 shadow-sm relative overflow-hidden">
+                                                    <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                                                        <Thermometer size={60} />
+                                                    </div>
+                                                    <div className="flex justify-between items-center mb-4 relative z-10">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-8 h-8 rounded-xl bg-purple-200 dark:bg-purple-900/50 flex items-center justify-center text-purple-700 dark:text-purple-300">
+                                                                <Thermometer size={14}/>
+                                                            </div>
+                                                            <div>
+                                                                <h5 className="text-[10px] font-black text-purple-700 dark:text-purple-400 uppercase tracking-widest">
+                                                                    {diag.source === 'measureQuick' ? 'measureQuick Diagnostics' : 'Field Diagnostics'}
+                                                                </h5>
+                                                                {diag.systemType && <p className="text-[9px] font-bold text-slate-500 uppercase">{diag.systemType}</p>}
+                                                            </div>
+                                                        </div>
+                                                        {diag.healthScore !== undefined && diag.healthScore !== null && (
+                                                            <span className={`text-[10px] font-black px-3 py-1.5 rounded-xl shadow-sm border ${diag.healthScore >= 80 ? 'bg-emerald-500 border-emerald-400 text-white' : diag.healthScore >= 50 ? 'bg-amber-500 border-amber-400 text-white' : 'bg-red-500 border-red-400 text-white'}`}>
+                                                                System Health: {diag.healthScore}/100
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {diag.measurements && Object.keys(diag.measurements).length > 0 && (
+                                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4 relative z-10">
+                                                            {Object.entries(diag.measurements).map(([key, val]) => (
+                                                                <div key={key} className="bg-white/80 dark:bg-slate-900/80 p-3 rounded-2xl border border-purple-100/80 dark:border-purple-900/40 text-left shadow-sm">
+                                                                    <p className="text-[9px] uppercase font-black text-slate-500 mb-0.5">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                                                                    <p className="text-lg font-black text-purple-900 dark:text-purple-100 tracking-tight">{val as string | number}</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {diag.diagnostics && diag.diagnostics.length > 0 && (
+                                                        <div className="mb-4 space-y-1 relative z-10">
+                                                            <p className="text-[9px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-widest mb-2">Automated Analysis</p>
+                                                            {diag.diagnostics.map((d, index) => (
+                                                                <p key={index} className="text-xs text-slate-700 dark:text-slate-300 font-bold flex items-center gap-2">
+                                                                    <span className="w-1.5 h-1.5 bg-purple-400 rounded-full"></span> {d}
+                                                                </p>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {diag.pdfReportUrl && (
+                                                        <a href={diag.pdfReportUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 text-[10px] w-full lg:w-auto font-black uppercase text-white bg-purple-600 hover:bg-purple-500 shadow-md shadow-purple-500/20 px-5 py-2.5 rounded-xl transition-all relative z-10">
+                                                            <FileText size={14}/> Download Official PDF Report 
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                     {/* AI Quality Audits */}
                                     {job.qcAudits && job.qcAudits.length > 0 && (
                                         <div className="space-y-3">
@@ -405,7 +502,67 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                             </div>
                         </section>
 
-                        {/* Photo Gallery */}
+                        {/* Warranty Coverage */}
+                        {((job.invoice as any)?.workmanshipWarrantyMonths > 0 || (job.invoice as any)?.partsWarrantyMonths > 0) && (() => {
+                            const inv = job.invoice as any;
+                            const wm: number = inv?.workmanshipWarrantyMonths || 0;
+                            const pm: number = inv?.partsWarrantyMonths || 0;
+                            const agreed: boolean = !!inv?.warrantyDisclaimerAgreed;
+                            const issued = inv?.warrantyIssuedDate ? new Date(inv.warrantyIssuedDate) : new Date(job.appointmentTime);
+                            const now = new Date();
+                            const addMonths = (d: Date, m: number) => { const r = new Date(d); r.setMonth(r.getMonth() + m); return r; };
+                            const wmExpiry = wm > 0 ? addMonths(issued, wm) : null;
+                            const pmExpiry = pm > 0 ? addMonths(issued, pm) : null;
+                            const monthsLeft = (d: Date | null) => d ? Math.max(0, Math.round((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30.44))) : 0;
+                            const wmActive = agreed && !!wmExpiry && wmExpiry > now;
+                            const pmActive = agreed && !!pmExpiry && pmExpiry > now;
+                            return (
+                                <section className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30 shadow-sm print:bg-white print:border-slate-200">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <Shield size={16} className="text-blue-600 dark:text-blue-400" />
+                                        <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Warranty Coverage</p>
+                                        {!agreed && (
+                                            <span className="ml-auto px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-black uppercase">Disclaimer Pending</span>
+                                        )}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                        {wm > 0 && (
+                                            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/20">
+                                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Workmanship</p>
+                                                <p className="text-2xl font-black text-slate-900 dark:text-white">
+                                                    {wmActive ? monthsLeft(wmExpiry) : '—'}
+                                                    {wmActive && <span className="text-xs font-bold text-slate-400 ml-1">mo left</span>}
+                                                </p>
+                                                {wmExpiry && <p className="text-[9px] text-slate-400 mt-1">{wmActive ? `Exp. ${wmExpiry.toLocaleDateString()}` : `Expired ${wmExpiry.toLocaleDateString()}`}</p>}
+                                                <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                                    <div className={`h-full rounded-full ${wmActive ? 'bg-blue-500' : 'bg-slate-300'}`} style={{ width: `${wmActive ? Math.min(100, (monthsLeft(wmExpiry) / wm) * 100) : 0}%` }} />
+                                                </div>
+                                            </div>
+                                        )}
+                                        {pm > 0 && (
+                                            <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/20">
+                                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Parts</p>
+                                                <p className="text-2xl font-black text-slate-900 dark:text-white">
+                                                    {pmActive ? monthsLeft(pmExpiry) : '—'}
+                                                    {pmActive && <span className="text-xs font-bold text-slate-400 ml-1">mo left</span>}
+                                                </p>
+                                                {pmExpiry && <p className="text-[9px] text-slate-400 mt-1">{pmActive ? `Exp. ${pmExpiry.toLocaleDateString()}` : `Expired ${pmExpiry.toLocaleDateString()}`}</p>}
+                                                <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                                    <div className={`h-full rounded-full ${pmActive ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ width: `${pmActive ? Math.min(100, (monthsLeft(pmExpiry) / pm) * 100) : 0}%` }} />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                    {inv?.warrantyNotes && (
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 italic border-t border-blue-100 dark:border-blue-900/20 pt-3 mt-1">{inv.warrantyNotes}</p>
+                                    )}
+                                    {!agreed && (
+                                        <p className="text-[10px] text-amber-600 font-bold mt-2">⚠️ Warranty not yet active — disclaimer agreement required.</p>
+                                    )}
+                                </section>
+                            );
+                        })()}
+
                         {photoFiles.length > 0 && (
                             <section className="print:hidden">
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Job Photos</h4>
@@ -427,12 +584,16 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                 </h4>
                                 <div className="space-y-2">
                                     {/* Signed Proposal */}
-                                    {proposal && proposal.signatureDataUrl && (
-                                        <button onClick={() => setPreviewDoc({ ...proposal, type: 'Proposal', title: 'Signed Proposal' })} className="w-full text-left p-3 px-4 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 flex items-center justify-between hover:bg-primary-50 hover:text-primary-500 transition-all shadow-sm">
-                                            <span className="flex items-center gap-2"><FileText size={12}/> Signed Proposal</span>
-                                            <span className="text-emerald-500 font-bold">SIGNED</span>
-                                        </button>
-                                    )}
+                                    {proposal && (() => {
+                                        const sig = (proposal as any).signatureDataUrl || (proposal as any).signatureImage || (proposal as any).signature;
+                                        const isSigned = !!sig;
+                                        return (
+                                            <button onClick={() => setPreviewDoc({ ...proposal, type: 'Proposal', title: isSigned ? 'Signed Proposal' : 'Proposal' })} className="w-full text-left p-3 px-4 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 flex items-center justify-between hover:bg-primary-50 hover:text-primary-500 transition-all shadow-sm">
+                                                <span className="flex items-center gap-2"><FileText size={12}/> {isSigned ? 'Signed Proposal' : 'Proposal'}</span>
+                                                <span className={isSigned ? "text-emerald-500 font-bold" : "text-amber-500 font-bold"}>{isSigned ? 'SIGNED' : 'UNSIGNED'}</span>
+                                            </button>
+                                        );
+                                    })()}
 
                                     {/* Waivers from Embedded Data */}
                                     {job.embeddedData?.waivers?.map((waiver, i) => (
@@ -468,7 +629,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                 <h4 className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                                     <FileText size={14}/> Job Proposal / Estimate
                                 </h4>
-                                <a href={`/proposal?id=${job.projectId}`} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline font-bold">
+                                <a href={`/#/${isAdmin ? 'admin' : 'briefing'}/proposal?proposalId=${job.projectId}`} target="_blank" rel="noreferrer" className="text-xs text-primary-600 hover:underline font-bold">
                                     View Original Proposal Context
                                 </a>
                             </section>

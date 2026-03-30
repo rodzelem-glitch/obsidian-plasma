@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import Card from 'components/ui/Card';
 import Select from 'components/ui/Select';
@@ -115,21 +114,27 @@ const PaymentsAndOrders: React.FC = () => {
     const handleDeleteInvoice = async (jobId: string) => {
         if (await globalConfirm("Delete this invoice record?")) {
             await db.collection('jobs').doc(jobId).delete();
+            dispatch({ type: 'DELETE_JOB', payload: jobId });
         }
     };
 
     // --- ACTIONS: PROPOSALS ---
     const handleCreateProposal = () => {
-        navigate('/proposal');
+        const isStaff = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'supervisor';
+        const basePath = isStaff ? '/admin' : '/briefing';
+        navigate(`${basePath}/proposal`);
     };
 
     const handleEditProposal = (id: string) => {
-        navigate(`/proposal?proposalId=${id}`);
+        const isStaff = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'supervisor';
+        const basePath = isStaff ? '/admin' : '/briefing';
+        navigate(`${basePath}/proposal?proposalId=${id}`);
     };
 
     const handleDeleteProposal = async (id: string) => {
         if (await globalConfirm("Delete this proposal?")) {
             await db.collection('proposals').doc(id).delete();
+            dispatch({ type: 'DELETE_PROPOSAL', payload: id });
         }
     };
 

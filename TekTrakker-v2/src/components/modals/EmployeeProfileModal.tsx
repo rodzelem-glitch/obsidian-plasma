@@ -10,6 +10,7 @@ import { db, auth } from 'lib/firebase';
 import type { User } from 'types';
 import { User as UserIcon, Lock, Mail, Camera, RefreshCw, CheckCircle, Sparkles, Key, Trash2, DollarSign, Settings } from 'lucide-react';
 import { encryptSensitiveData, decryptSensitiveData } from 'lib/encryption';
+import { sendEmail } from 'lib/notificationService';
 
 interface EmployeeProfileModalProps {
     isOpen: boolean;
@@ -144,14 +145,50 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         }
     };
 
+    const handleSendInvite = async () => {
+        const { name: orgName, id: orgId } = state.currentOrganization || {};
+        const normalizedEmail = (formData.email || '').toLowerCase().trim();
+        if (!orgName || !orgId || !normalizedEmail) return;
+
+        const fullName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim();
+        const inviteLink = `${window.location.origin}/#/register?view=register_user&userType=staff&email=${encodeURIComponent(normalizedEmail)}&name=${encodeURIComponent(fullName)}&oid=${orgId}`;
+        const subject = `Join ${orgName} on TekTrakker`;
+
+        const htmlBody = `
+            <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #4f46e5;">Invitation from ${orgName}</h2>
+                <p>Hi ${formData.firstName || 'there'},</p>
+                <p>${orgName} has invited you to join their team on <strong>TekTrakker</strong>.</p>
+                <p style="margin: 30px 0;">
+                    <a href="${inviteLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Accept Invitation & Setup Account</a>
+                </p>
+                <p style="font-size: 12px; color: #666;">If the button above doesn't work, copy and paste this link into your browser:<br/>
+                <a href="${inviteLink}">${inviteLink}</a></p>
+                <br/>
+                <p>Thanks,<br/>The TekTrakker Team</p>
+            </div>
+        `;
+
+        try {
+            await sendEmail(state.currentOrganization, {
+                to: [normalizedEmail],
+                message: { subject, html: htmlBody },
+                type: 'Invite'
+            });
+            alert("Invitation email sent!");
+        } catch (e) { alert("Failed to send invite."); }
+    };
+
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!state.currentOrganization) return;
+        const isOfflineOnly = formData.hasAppAccess === false;
         const normalizedEmail = (formData.email || '').toLowerCase().trim();
-        if (!normalizedEmail && !formData.id) { alert("Email is required."); return; }
+        if (!isOfflineOnly && !normalizedEmail && !formData.id) { alert("Email is required for App Access users."); return; }
+        if (isOfflineOnly && (!formData.kioskPin || formData.kioskPin.length !== 4)) { alert("A 4-digit Kiosk PIN is required for Offline employees."); return; }
         setIsSaving(true);
         const orgId = state.currentOrganization.id;
-        const id = formData.id || normalizedEmail;
+        const id = formData.id || (isOfflineOnly ? `kiosk-${Date.now()}` : normalizedEmail);
         try {
             let finalPayRate = formData.payRate;
             let finalSsn = formData.ssn;
@@ -161,8 +198,8 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
             }
             const finalData: any = {
                 ...formData, 
-                id, organizationId: orgId, email: normalizedEmail,
-                username: formData.username || normalizedEmail.split('@')[0],
+                id, organizationId: orgId, email: isOfflineOnly ? null : normalizedEmail,
+                username: formData.username || (isOfflineOnly ? formData.firstName : normalizedEmail.split('@')[0]),
                 firstName: formData.firstName || '', lastName: formData.lastName || '', 
                 status: formData.status || 'active'
             };
@@ -170,6 +207,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                 finalData.role = formData.role || 'employee';
                 finalData.payRate = finalPayRate;
                 finalData.ssn = finalSsn;
+                finalData.squareTeamMemberId = (formData as any).squareTeamMemberId || null;
             }
             Object.keys(finalData).forEach(key => finalData[key] === undefined && delete finalData[key]);
             
@@ -233,7 +271,20 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                 <Input label="First Name" value={formData.firstName || ''} onChange={e => setFormData({...formData, firstName: e.target.value})} required />
                                 <Input label="Last Name" value={formData.lastName || ''} onChange={e => setFormData({...formData, lastName: e.target.value})} required />
                             </div>
-                            <Input label="Email" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} required disabled={isSelf} />
+                            {!isSelf && (
+                                <div className="my-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-lg">
+                                    <Toggle 
+                                        label="TekTrakker App Access"
+                                        description="If disabled, this user cannot login. They exist strictly for Kiosk clock-ins & Payroll (consuming 0 licenses)."
+                                        enabled={formData.hasAppAccess !== false} 
+                                        onChange={(val) => setFormData({...formData, hasAppAccess: val})} 
+                                    />
+                                </div>
+                            )}
+                            {formData.hasAppAccess !== false && (
+                                <Input label="Email Address" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} required={!isSelf} disabled={isSelf} />
+                            )}
+                            <Input label="Kiosk Access PIN (4 Digits)" type="text" maxLength={4} value={formData.kioskPin || ''} onChange={e => setFormData({...formData, kioskPin: e.target.value.replace(/\D/g, '')})} required={formData.hasAppAccess === false} placeholder="1234" />
                             <Input label="Phone" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></>
                         )}
                         
@@ -314,6 +365,15 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                             />
                                         </div>
                                     </div>
+                                    <h5 className="font-bold text-sm text-slate-600 dark:text-slate-400 mt-4 mb-2 flex items-center gap-2"><Key size={14}/> Integrations & API</h5>
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800 border rounded-lg space-y-3">
+                                        <Input 
+                                            label="Square Team Member ID (Optional)" 
+                                            value={(formData as any).squareTeamMemberId || ''} 
+                                            onChange={e => setFormData({...formData, squareTeamMemberId: e.target.value} as any)} 
+                                            placeholder="TMA..." 
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -341,6 +401,11 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                         )}
 
                         <div className="pt-4 flex justify-end gap-2 border-t dark:border-gray-700">
+                            {!isSelf && formData.id && (
+                                <Button variant="secondary" onClick={handleSendInvite} type="button" className="mr-auto">
+                                    <Mail size={16} className="mr-2"/> Send Login Invite
+                                </Button>
+                            )}
                             <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
                             <Button type="submit" disabled={isSaving || isDecrypting}>{isSaving ? 'Saving...' : 'Save Profile'}</Button>
                         </div>

@@ -15,7 +15,11 @@
 
     // 2. CSS Styles
     const styles = `
-        .tt-hiring-fab { position: fixed; bottom: 90px; right: 20px; background-color: #10b981; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.2); cursor: pointer; z-index: 9998; font-size: 24px; }
+        .tt-hiring-fab-container { position: fixed; bottom: 90px; right: 20px; display: flex; flex-direction: column; align-items: center; z-index: 9998; }
+        .tt-hiring-fab { background-color: #10b981; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.2); cursor: pointer; font-size: 24px; transition: transform 0.2s; }
+        .tt-hiring-fab:hover { transform: scale(1.05); }
+        .tt-hiring-seo-link { display: block; font-size: 10px; color: #9ca3af; text-decoration: none; margin-top: 6px; font-family: sans-serif; opacity: 0.8; transition: opacity 0.2s; }
+        .tt-hiring-seo-link:hover { opacity: 1; text-decoration: underline; color: #6b7280; }
         .tt-hiring-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 10000; align-items: center; justify-content: center; }
         .tt-hiring-container { background: white; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); width: 100%; height: 100%; max-width: 100%; max-height: 100%; overflow-y: auto; font-family: sans-serif; }
         .tt-hiring-header { padding: 16px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
@@ -167,7 +171,13 @@
             if (!targetContainer) return;
             targetContainer.innerHTML = widgetHTML;
         } else {
-            document.body.insertAdjacentHTML('beforeend', '<div class="tt-hiring-fab">💼</div><div class="tt-hiring-overlay" style="display:none;"></div>');
+            document.body.insertAdjacentHTML('beforeend', `
+                <div class="tt-hiring-fab-container">
+                    <div class="tt-hiring-fab">💼</div>
+                    <a href="https://tektrakker.com" class="tt-hiring-seo-link" target="_blank" rel="noopener">Powered by TekTrakker</a>
+                </div>
+                <div class="tt-hiring-overlay" style="display:none;"></div>
+            `);
             targetContainer = document.querySelector('.tt-hiring-overlay');
             targetContainer.innerHTML = widgetHTML;
         }

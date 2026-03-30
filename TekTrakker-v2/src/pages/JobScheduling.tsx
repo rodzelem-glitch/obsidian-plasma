@@ -85,6 +85,18 @@ const JobScheduling: React.FC = () => {
                                 </a>
                             </p>
                             <p>If you have any remaining questions or concerns, please reply to this email or call us.</p>
+                            ${org.socialLinks ? `
+                            <div style="text-align: center; margin-top: 25px;">
+                                <p style="font-size: 13px; font-weight: bold; color: #666;">Follow us to stay updated:</p>
+                                <p>
+                                    ${org.socialLinks.facebook ? `<a href="${org.socialLinks.facebook}" style="margin: 0 8px; color: #0284c7; text-decoration: none;">Facebook</a>` : ''}
+                                    ${org.socialLinks.instagram ? `<a href="${org.socialLinks.instagram}" style="margin: 0 8px; color: #0284c7; text-decoration: none;">Instagram</a>` : ''}
+                                    ${org.socialLinks.x ? `<a href="${org.socialLinks.x}" style="margin: 0 8px; color: #0284c7; text-decoration: none;">X (Twitter)</a>` : ''}
+                                    ${org.socialLinks.linkedin ? `<a href="${org.socialLinks.linkedin}" style="margin: 0 8px; color: #0284c7; text-decoration: none;">LinkedIn</a>` : ''}
+                                    ${org.socialLinks.youtube ? `<a href="${org.socialLinks.youtube}" style="margin: 0 8px; color: #0284c7; text-decoration: none;">YouTube</a>` : ''}
+                                </p>
+                            </div>
+                            ` : ''}
                             <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
                             <p style="font-size: 12px; color: #666; text-align: center;">${orgName}</p>
                         </div>

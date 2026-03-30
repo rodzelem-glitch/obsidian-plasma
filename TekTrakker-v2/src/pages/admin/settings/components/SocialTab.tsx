@@ -19,28 +19,16 @@ interface SocialTabProps {
         google?: string;
         yelp?: string;
         nextdoor?: string;
-        angi?: string;
-        bbb?: string;
         trustpilot?: string;
-        homeadvisor?: string;
-        houzz?: string;
+        angi?: string;
+        thumbtack?: string;
     };
     setReviewLinks: (links: any) => void;
-    googleApiConnected: boolean;
-    googleClientId: string;
-    setGoogleClientId: (val: string) => void;
-    handleConnectGoogle: () => void;
-    handleDisconnectGoogle: () => void;
-    isConnectingGoogle: boolean;
 }
 
 const SocialTab: React.FC<SocialTabProps> = ({
     socialLinks, setSocialLinks,
-    reviewLinks, setReviewLinks,
-    googleApiConnected,
-    googleClientId, setGoogleClientId,
-    handleConnectGoogle, handleDisconnectGoogle,
-    isConnectingGoogle
+    reviewLinks, setReviewLinks
 }) => {
     return (
         <div className="space-y-6">
@@ -79,54 +67,33 @@ const SocialTab: React.FC<SocialTabProps> = ({
             </Card>
 
             <Card>
-                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-yellow-600"><Star size={20}/> Review Site Profiles</h3>
-                <p className="text-sm text-slate-500 mb-4">Adding these links improves the AI Review Scraper accuracy significantly.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                        <Input label="Google Business Profile (Maps Link)" value={reviewLinks.google || ''} onChange={e => setReviewLinks({...reviewLinks, google: e.target.value})} placeholder="https://maps.app.goo.gl/..." />
-                        <Input label="Yelp Page URL" value={reviewLinks.yelp || ''} onChange={e => setReviewLinks({...reviewLinks, yelp: e.target.value})} placeholder="https://yelp.com/biz/..." />
-                        <Input label="Nextdoor Business Page" value={reviewLinks.nextdoor || ''} onChange={e => setReviewLinks({...reviewLinks, nextdoor: e.target.value})} placeholder="https://nextdoor.com/pages/..." />
-                        <Input label="Angi / HomeAdvisor" value={reviewLinks.angi || ''} onChange={e => setReviewLinks({...reviewLinks, angi: e.target.value})} />
-                    </div>
-                    <div className="space-y-4">
-                        <Input label="Better Business Bureau (BBB)" value={reviewLinks.bbb || ''} onChange={e => setReviewLinks({...reviewLinks, bbb: e.target.value})} />
-                        <Input label="Trustpilot URL" value={reviewLinks.trustpilot || ''} onChange={e => setReviewLinks({...reviewLinks, trustpilot: e.target.value})} />
-                        <Input label="Houzz Profile" value={reviewLinks.houzz || ''} onChange={e => setReviewLinks({...reviewLinks, houzz: e.target.value})} />
+                <div className="flex items-center gap-3 mb-4">
+                    <Star size={24} className="text-yellow-500" />
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">External Review Sync</h3>
+                        <p className="text-xs text-slate-500">We automatically ingest your public reviews so you can use TekTrakker's AI to draft responses natively.</p>
                     </div>
                 </div>
-            </Card>
-
-            <Card>
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-green-600"><Cloud size={20}/> Google Integration</h3>
-                <div className={`p-6 rounded-lg border ${googleApiConnected ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800' : 'bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700'}`}>
-                    <p className="text-sm font-bold mb-4 flex items-center gap-2">
-                        {googleApiConnected ? <CheckCircle2 size={16} className="text-green-600"/> : <Cloud size={16}/>} 
-                        Google Business Profile Connection
+                
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-100 dark:border-blue-800 mb-6">
+                    <p className="text-sm text-blue-800 dark:text-blue-300">
+                        <strong>Link Your Profiles:</strong> Paste the exact public URLs for your business profiles below. Your reviews will automatically sync to your Review Hub.
                     </p>
-                    
-                    {googleApiConnected ? (
-                        <div>
-                            <p className="text-xs text-green-700 dark:text-green-400 mb-3">Status: Connected</p>
-                            <Button onClick={handleDisconnectGoogle} variant="secondary" className="w-full sm:w-auto text-xs text-red-600 border-red-200 bg-red-50 hover:bg-red-100">Disconnect</Button>
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            <p className="text-xs text-gray-500">Connect to fetch verified reviews and manage your profile directly.</p>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-600 dark:text-gray-300 mb-1">Google Client ID (OAuth 2.0)</label>
-                                <Input 
-                                    value={googleClientId} 
-                                    onChange={e => setGoogleClientId(e.target.value)} 
-                                    placeholder="e.g. 123456789-abc...apps.googleusercontent.com" 
-                                    className="text-xs"
-                                />
-                                <p className="text-[10px] text-gray-400 mt-1">Found in Google Cloud Console &gt; APIs & Services &gt; Credentials</p>
-                            </div>
-                            <Button onClick={handleConnectGoogle} disabled={isConnectingGoogle || !googleClientId} className="w-full sm:w-auto text-xs bg-blue-600 hover:bg-blue-700 text-white">
-                                {isConnectingGoogle ? 'Connecting...' : 'Connect with Google'}
-                            </Button>
-                        </div>
-                    )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+                    <div className="space-y-4">
+                        <Input label="Google Maps (Places URL)" value={reviewLinks.google || ''} onChange={e => setReviewLinks({...reviewLinks, google: e.target.value})} placeholder="https://maps.app.goo.gl/..." />
+                        <Input label="Yelp Business Page" value={reviewLinks.yelp || ''} onChange={e => setReviewLinks({...reviewLinks, yelp: e.target.value})} placeholder="https://yelp.com/biz/..." />
+                    </div>
+                    <div className="space-y-4">
+                        <Input label="Nextdoor Business Page" value={reviewLinks.nextdoor || ''} onChange={e => setReviewLinks({...reviewLinks, nextdoor: e.target.value})} placeholder="https://nextdoor.com/pages/..." />
+                        <Input label="Trustpilot URL" value={reviewLinks.trustpilot || ''} onChange={e => setReviewLinks({...reviewLinks, trustpilot: e.target.value})} placeholder="https://trustpilot.com/review/..." />
+                    </div>
+                    <div className="space-y-4">
+                        <Input label="Angi (Angie's List) URL" value={reviewLinks.angi || ''} onChange={e => setReviewLinks({...reviewLinks, angi: e.target.value})} placeholder="https://www.angi.com/companylist/..." />
+                        <Input label="Thumbtack Pro Profile" value={reviewLinks.thumbtack || ''} onChange={e => setReviewLinks({...reviewLinks, thumbtack: e.target.value})} placeholder="https://www.thumbtack.com/..." />
+                    </div>
                 </div>
             </Card>
         </div>

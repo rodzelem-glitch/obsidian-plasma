@@ -104,12 +104,16 @@ const Settings: React.FC = () => {
     const [invoiceTerms, setInvoiceTerms] = useState('');
     const [membershipTerms, setMembershipTerms] = useState('');
     const [complianceFooter, setComplianceFooter] = useState('');
+    const [warrantyDisclaimer, setWarrantyDisclaimer] = useState('');
+    const [defaultWorkmanshipMonths, setDefaultWorkmanshipMonths] = useState(12);
+    const [defaultPartsMonths, setDefaultPartsMonths] = useState(12);
 
     // Integrations
     const [paypalClientId, setPaypalClientId] = useState('');
     const [stripePublicKey, setStripePublicKey] = useState('');
     const [squareAppId, setSquareAppId] = useState('');
     const [squareLocId, setSquareLocId] = useState('');
+    const [squareToken, setSquareToken] = useState('');
     const [smtpHost, setSmtpHost] = useState('');
     const [smtpPort, setSmtpPort] = useState(587);
     const [smtpUser, setSmtpUser] = useState('');
@@ -119,6 +123,7 @@ const Settings: React.FC = () => {
     const [twilioNumber, setTwilioNumber] = useState('');
     const [bookingWidgetMode, setBookingWidgetMode] = useState<'popup' | 'inline'>('popup');
     const [hiringWidgetMode, setHiringWidgetMode] = useState<'popup' | 'inline'>('popup');
+    const [measureQuickApiKey, setMeasureQuickApiKey] = useState('');
     
     // Accounting Integrations
     const [quickbooksConnected, setQuickbooksConnected] = useState(false);
@@ -140,6 +145,9 @@ const Settings: React.FC = () => {
     // Capabilities
     const [serviceTypes, setServiceTypes] = useState<('Residential' | 'Commercial')[]>([]);
     const [specializations, setSpecializations] = useState<string[]>([]);
+    
+    // Webhook Secuity Key
+    const [webhookSecretKey, setWebhookSecretKey] = useState('');
 
     const [isSaving, setIsSaving] = useState(false);
     const [isSendingTest, setIsSendingTest] = useState(false);
@@ -200,26 +208,58 @@ const Settings: React.FC = () => {
             setInvoiceTerms(org.invoiceTerms || '');
             setMembershipTerms(org.membershipTerms || '');
             setComplianceFooter(org.complianceFooter || '');
+            setWarrantyDisclaimer((org as any).warrantyDisclaimer || '');
+            setDefaultWorkmanshipMonths((org as any).defaultWorkmanshipMonths ?? 12);
+            setDefaultPartsMonths((org as any).defaultPartsMonths ?? 12);
             setPaypalClientId(org.paypalClientId || '');
             setStripePublicKey(org.stripePublicKey || '');
             setSquareAppId(org.squareApplicationId || '');
             setSquareLocId(org.squareLocationId || '');
+            // Prevent clearing the token out locally if the public map naturally doesn't have it
+            if ((org as any).squareToken) setSquareToken((org as any).squareToken);
             setSocialLinks(org.socialLinks || {});
             setReviewLinks(org.reviewLinks || {});
             setGoogleApiConnected(org.googleApiConnected || false);
             setGoogleClientId(org.googleClientId || DEFAULT_GOOGLE_CLIENT_ID);
             setQuickbooksConnected(org.quickbooksConnected || false);
-            if (org.smtpConfig) {
-                setSmtpHost(org.smtpConfig.host || '');
-                setSmtpPort(org.smtpConfig.port || 587);
-                setSmtpUser(org.smtpConfig.user || '');
-                setSmtpPass(org.smtpConfig.pass || '');
-            }
-            if (org.twilioConfig) {
-                setTwilioSid(org.twilioConfig.accountSid || '');
-                setTwilioToken(org.twilioConfig.authToken || '');
-                setTwilioNumber(org.twilioConfig.phoneNumber || '');
-            }
+            
+            // Fetch Protected Secrets
+            db.collection('organizations').doc(org.id).collection('secrets').doc('config').get()
+                .then(doc => {
+                    if (doc.exists) {
+                        const sec = doc.data() as any;
+                        setMeasureQuickApiKey(sec.measureQuickApiKey || '');
+                        if (sec.webhookSecretKey) setWebhookSecretKey(sec.webhookSecretKey);
+                        if (sec.smtpConfig) {
+                            setSmtpHost(sec.smtpConfig.host || '');
+                            setSmtpPort(sec.smtpConfig.port || 587);
+                            setSmtpUser(sec.smtpConfig.user || '');
+                            setSmtpPass(sec.smtpConfig.pass || '');
+                        }
+                        if (sec.twilioConfig) {
+                            setTwilioSid(sec.twilioConfig.accountSid || '');
+                            setTwilioToken(sec.twilioConfig.authToken || '');
+                            setTwilioNumber(sec.twilioConfig.phoneNumber || '');
+                        }
+                        if (sec.squareToken) setSquareToken(sec.squareToken);
+                        if (sec.squareAppId) setSquareAppId(sec.squareAppId);
+                        if (sec.squareLocId) setSquareLocId(sec.squareLocId);
+                    } else {
+                        // Fallback if migration hasn't run yet
+                        setMeasureQuickApiKey((org as any).measureQuickApiKey || '');
+                        if (org.smtpConfig) {
+                            setSmtpHost(org.smtpConfig.host || '');
+                            setSmtpPort(org.smtpConfig.port || 587);
+                            setSmtpUser(org.smtpConfig.user || '');
+                            setSmtpPass(org.smtpConfig.pass || '');
+                        }
+                        if (org.twilioConfig) {
+                            setTwilioSid(org.twilioConfig.accountSid || '');
+                            setTwilioToken(org.twilioConfig.authToken || '');
+                            setTwilioNumber(org.twilioConfig.phoneNumber || '');
+                        }
+                    }
+                }).catch(err => console.error("Failed to load secure API keys", err));
         }
     }, [state.currentOrganization]);
 
@@ -228,7 +268,7 @@ const Settings: React.FC = () => {
         if (!org) return null;
         const currentPlan = org.plan || 'starter';
         const planConfig = state.platformSettings?.plans?.[currentPlan];
-        const activeUsers = state.users.filter(u => u.organizationId === org.id && u.status !== 'archived').length;
+        const activeUsers = state.users.filter(u => u.organizationId === org.id && u.status !== 'archived' && u.hasAppAccess !== false).length;
         const monthlyCost = planConfig?.monthly || (currentPlan === 'enterprise' ? 299 : currentPlan === 'growth' ? 149 : 49);
         const maxUsers = org.additionalUserSlots ? (planConfig?.maxUsers || 5) + org.additionalUserSlots : (planConfig?.maxUsers || 5);
         const discountPct = org.customDiscountPct || 0;
@@ -266,15 +306,11 @@ const Settings: React.FC = () => {
             taxRate: parseFloat(taxRate) || 0,
             licenseNumber, ueid, cageCode, primaryNaics, customPositions, requiredCertifications: requiredCerts,
             termsAndConditions, proposalDisclaimer, invoiceTerms, membershipTerms, complianceFooter,
+            warrantyDisclaimer, defaultWorkmanshipMonths, defaultPartsMonths,
             paypalClientId, stripePublicKey, squareApplicationId: squareAppId, squareLocationId: squareLocId,
             marketMultiplier: parseFloat(marketMultiplier) || 1.0,
             aiPricebookEnabled,
             quickbooksConnected,
-            smtpConfig: {
-                host: smtpHost, port: Number(smtpPort), user: smtpUser, pass: smtpPass,
-                fromEmail: email, fromName: orgName, secure: Number(smtpPort) === 465
-            },
-            twilioConfig: { accountSid: twilioSid, authToken: twilioToken, phoneNumber: twilioNumber },
             settings: {
                 ...(state.currentOrganization.settings || {}),
                 publicProfile: publicProfileEnabled,
@@ -285,8 +321,31 @@ const Settings: React.FC = () => {
             }
         };
 
+        const secretsData = {
+            measureQuickApiKey,
+            webhookSecretKey,
+            squareToken,
+            squareLocId,
+            squareAppId,
+            smtpConfig: {
+                host: smtpHost, port: Number(smtpPort), user: smtpUser, pass: smtpPass,
+                fromEmail: email, fromName: orgName, secure: Number(smtpPort) === 465
+            },
+            twilioConfig: { accountSid: twilioSid, authToken: twilioToken, phoneNumber: twilioNumber }
+        };
+
         try {
-            await db.collection('organizations').doc(state.currentOrganization.id).set(updatedOrgData, { merge: true });
+            const orgRef = db.collection('organizations').doc(state.currentOrganization.id);
+            const batch = db.batch();
+            
+            // Update public profile (removing exposed secrets over time as they are nullified by the backend)
+            batch.set(orgRef, updatedOrgData, { merge: true });
+            
+            // Upsert Secrets Document
+            const secretsRef = orgRef.collection('secrets').doc('config');
+            batch.set(secretsRef, secretsData, { merge: true });
+
+            await batch.commit();
             
             const finalOrgState = { ...state.currentOrganization, ...updatedOrgData };
             delete (finalOrgState as any).publicProfileEnabled;
@@ -507,11 +566,11 @@ const Settings: React.FC = () => {
 
             <div className="animate-fade-in">
                 {activeTab === 'profile' && <ProfileTab {...{ orgName, setOrgName, email, setEmail, phone, setPhone, website, setWebsite, notificationEmails, setNotificationEmails, industry, setIndustry, supportedTrades, handleTradeToggle, allIndustries: ALL_INDUSTRIES }} />}
-                {activeTab === 'social' && <SocialTab {...{ socialLinks, setSocialLinks, reviewLinks, setReviewLinks, googleApiConnected, googleClientId, setGoogleClientId, handleConnectGoogle, handleDisconnectGoogle, isConnectingGoogle }} />}
+                {activeTab === 'social' && <SocialTab {...{ socialLinks, setSocialLinks, reviewLinks, setReviewLinks }} />}
                 {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled }} />}
                 {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
-                {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter }} />}
-                {activeTab === 'integrations' && <IntegrationsTab {...{ paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode }} />}
+                {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths }} />}
+                {activeTab === 'integrations' && <IntegrationsTab {...{ paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, webhookSecretKey, setWebhookSecretKey, orgId: state.currentOrganization?.id || '' }} />}
                 {activeTab === 'accounting' && <AccountingTab {...{ quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks }} />}
                 {activeTab === 'branding' && <BrandingTab {...{ brandingColor, setBrandingColor, financingLink, setFinancingLink, logoUrl, setLogoUrl, publicLogoUrl, setPublicLogoUrl, letterheadUrl, setLetterheadUrl, footerImageUrl, setFooterImageUrl, bannerUrl, setBannerUrl, handleFileUpload, publicProfileEnabled, setPublicProfileEnabled, publicDescription, setPublicDescription, publicCredentials, setPublicCredentials, publicServices, setPublicServices }} />}
                 {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling }} />}

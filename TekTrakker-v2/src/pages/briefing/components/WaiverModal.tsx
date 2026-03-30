@@ -7,6 +7,7 @@ import SignatureCanvas from 'react-signature-canvas';
 import { StoredFile, Job } from '../../../types';
 import { Eye, CheckCircle, FileText, ArrowRight } from 'lucide-react';
 import DocumentPreview from '../../../components/ui/DocumentPreview';
+import DOMPurify from 'dompurify';
 
 const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClose: () => void, onSign: (signature: string) => void, job?: Job }) => {
     const { state, dispatch } = useAppContext();
@@ -228,7 +229,7 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                                             </div>
                                             <div>
                                                 <h4 className="font-bold text-gray-900 dark:text-white text-sm">{t.title}</h4>
-                                                <p className="text-xs text-gray-500 line-clamp-2 mt-1" dangerouslySetInnerHTML={{ __html: t.content.substring(0, 100).replace(/<[^>]*>?/gm, '') + '...' }} />
+                                                <p className="text-xs text-gray-500 line-clamp-2 mt-1" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(t.content.substring(0, 100).replace(/<[^>]*>?/gm, '') + '...') }} />
                                             </div>
                                         </div>
                                     );

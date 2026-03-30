@@ -19,15 +19,23 @@ const LandingChatbot: React.FC = () => {
     const [isThinking, setIsThinking] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    // This is where we will store the training data once loaded
     const [trainingData, setTrainingData] = useState('');
 
     useEffect(() => {
-        // In a real app, you might fetch this from a file or CDN. For this demo, we'll embed it.
-        const adminData = `# TekTrakker AI Training Data - Admin Role...`; // Content from TRAINING_DATA_ADMIN.md
-        const techData = `# TekTrakker AI Training Data - Technician Role...`; // Content from TRAINING_DATA_TECHNICIAN.md
-        const customerData = `# TekTrakker AI Training Data - Customer Role...`; // Content from TRAINING_DATA_CUSTOMER.md
-        setTrainingData(`${adminData}\n\n${techData}\n\n${customerData}`);
+        const platformFeatures = `
+        # PLATFORM FEATURES
+        - **Enterprise Dispatch Board**: Interactive Multi-Day scheduling grid. Drag and drop jobs across days.
+        - **B2B Contractor Marketplace**: Subcontract jobs seamlessly between partner organizations.
+        - **Consumer Vault**: 100% Free portal for homeowners to track warranties, save receipts, view history, and pay bills.
+        - **Free Homeowner Leads**: The Consumer Vault feeds FREE local leads directly back to service pros.
+        - **AI-Powered Estimating**: Intelligent quoting for instant Good/Better/Best proposals on the field.
+        - **Geofenced Time Tracking**: Automatic GPS logging of tech arrival/departure for perfect payroll.
+        - **Shared Device Kiosk Mode**: Easily support non-user employees (like warehouse staff or apprentices) who don't need a full software license. They can securely punch in and out using a PIN code on a shared company device.
+        - **Automated Pay Tracking**: Timesheets are generated instantly from Kiosk Mode punches or field technician GPS records, making running payroll flawless and automatic.
+        - **Recurring Memberships**: Service companies can put clients on auto-pay for maintenance agreements.
+        - **Vendor & 1099 Management**: Generate specific tax forms for your subcontractors directly within the Document Creator.
+        `;
+        setTrainingData(platformFeatures);
     }, []);
 
     useEffect(() => {
@@ -61,6 +69,12 @@ const LandingChatbot: React.FC = () => {
                 **Core Values:** Efficiency, Transparency, Community building.
                 **Target Audience:** HVAC, Plumbing, Electrical, and other trade professionals.
                 
+                **Formatting Rules (CRITICAL):**
+                1. NEVER output large block-paragraphs or walls of text. 
+                2. ALWAYS use bullet points (using - or *), numbered lists, and extremely short sentences.
+                3. Use explicit line breaks between sections to make it highly readable.
+                4. Keep responses highly structured and easy to skim on mobile devices.
+
                 **Pricing:**
                 ${pricingContext}
 
@@ -69,7 +83,7 @@ const LandingChatbot: React.FC = () => {
                 ${trainingData}
                 ---
                 
-                Answer questions based on the documentation provided. Be helpful, concise, and encourage users to start a free trial.
+                Answer questions based on the documentation provided. Be helpful, concise, strictly formatted, and encourage users to start a free trial.
             `;
 
             const result = await chatbotFunction({
@@ -93,14 +107,15 @@ const LandingChatbot: React.FC = () => {
             {!isOpen && (
                 <button 
                     onClick={() => setIsOpen(true)}
-                    className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center z-50"
+                    className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center z-50 hover:bg-indigo-700 transition-colors"
                 >
-                    <MessageSquare size={28} />
+                    <span className="sr-only">Open support chat</span>
+                    <MessageSquare size={28} aria-hidden="true" />
                 </button>
             )}
 
             {isOpen && (
-                <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border flex flex-col z-50">
+                <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-32px)] sm:w-96 h-[500px] max-h-[calc(100vh-80px)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border flex flex-col z-50">
                     <div className="bg-indigo-600 p-4 rounded-t-2xl flex justify-between items-center text-white">
                         <div className="flex items-center gap-2"><Bot size={20} /><span className="font-bold">TekTrakker Assistant</span></div>
                         <button onClick={() => setIsOpen(false)}><X size={18}/></button>
@@ -109,7 +124,7 @@ const LandingChatbot: React.FC = () => {
                     <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950">
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-900 dark:bg-slate-800 dark:text-white'}`}>
+                                <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-900 border border-slate-100 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white'}`}>
                                     {msg.content}
                                 </div>
                             </div>

@@ -155,10 +155,13 @@ const GlobalCustomers: React.FC = () => {
 
             const list: CustomerWithRequest[] = snap.docs.map(d => ({...d.data(), id: d.id} as CustomerWithRequest));
             
+            const existingIds = new Set(list.map(c => c.id));
+            
             // Add appts if not in customer list
             snapAppt.forEach(doc => {
                 const a = doc.data() as Appointment;
-                if (!list.find(c => c.id === a.customerId)) {
+                if (!existingIds.has(a.customerId)) {
+                    existingIds.add(a.customerId);
                     list.push({
                         id: a.customerId || doc.id,
                         organizationId: a.organizationId,

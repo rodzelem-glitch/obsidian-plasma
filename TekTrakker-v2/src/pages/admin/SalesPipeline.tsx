@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
@@ -52,6 +51,10 @@ const SalesPipeline: React.FC = () => {
             // Notify technician of approval/rejection
             if (newStatus === 'Draft' || newStatus === 'Rejected') {
                 const notifyId = `notif-${Date.now()}`;
+                
+                const isStaff = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'supervisor';
+                const basePath = isStaff ? '/admin' : '/briefing';
+
                 const notification: Notification = {
                     id: notifyId,
                     userId: proposal.technicianId,
@@ -59,7 +62,7 @@ const SalesPipeline: React.FC = () => {
                     title: newStatus === 'Draft' ? 'Proposal Approved' : 'Proposal Rejected',
                     message: `Your proposal for ${proposal.customerName} has been ${newStatus === 'Draft' ? 'approved and moved back to Drafts' : 'rejected'}.`,
                     read: false,
-                    link: `/proposal?proposalId=${proposal.id}`,
+                    link: `${basePath}/proposal?proposalId=${proposal.id}`,
                     createdAt: new Date().toISOString()
                 };
                 await db.collection('notifications').doc(notifyId).set(notification);
@@ -71,7 +74,9 @@ const SalesPipeline: React.FC = () => {
     };
 
     const handleEditProposal = (id: string) => {
-        navigate(`/proposal?proposalId=${id}`);
+        const isStaff = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'supervisor';
+        const basePath = isStaff ? '/admin' : '/briefing';
+        navigate(`${basePath}/proposal?proposalId=${id}`);
     };
 
     const handleDeleteProposal = async (id: string) => {

@@ -30,34 +30,39 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     const [isImportProposalModalOpen, setIsImportProposalModalOpen] = useState(false); 
     const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null); 
 
+    // Warranty State
+    const [workmanshipWarrantyMonths, setWorkmanshipWarrantyMonths] = useState<number>(0);
+    const [partsWarrantyMonths, setPartsWarrantyMonths] = useState<number>(0);
+    const [warrantyNotes, setWarrantyNotes] = useState<string>('');
+    const [warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed] = useState<boolean>(false);
+
     const sigPadRef = useRef<SignaturePadHandle>(null);
 
     useEffect(() => {
         const loadJob = async () => {
             if (!jobId) return;
-            console.log('Hook useEffect: Loading job with ID:', jobId);
             const jobDoc = await db.collection('jobs').doc(jobId).get();
             if (jobDoc.exists) {
                 const job = { ...jobDoc.data(), id: jobDoc.id } as Job;
-                console.log('Hook useEffect: Job data loaded:', job);
                 setCurrentJob(job);
                 setLineItems(job.invoice?.items || []);
                 setTaxRate(job.invoice?.taxRate ? job.invoice.taxRate * 100 : (currentOrganization?.taxRate || 8.25));
                 setCustomerName(job.customerName);
                 setAddress(formatAddress(job.address));
+                // Load warranty fields
+                setWorkmanshipWarrantyMonths((job.invoice as any)?.workmanshipWarrantyMonths || 0);
+                setPartsWarrantyMonths((job.invoice as any)?.partsWarrantyMonths || 0);
+                setWarrantyNotes((job.invoice as any)?.warrantyNotes || '');
+                setWarrantyDisclaimerAgreed((job.invoice as any)?.warrantyDisclaimerAgreed || false);
 
                 if (job.source === 'PlatformAdmin') {
                     db.collection('organizations').doc('platform').get().then(doc => {
                          if(doc.exists) setOverrideOrg({ ...doc.data(), id: doc.id } as Organization);
                     });
                 }
-            } else {
-                console.error('Hook useEffect: Job not found with ID:', jobId);
             }
         };
-        if (isOpen) {
-            loadJob();
-        }
+        if (isOpen) loadJob();
     }, [jobId, isOpen, currentOrganization?.taxRate]);
 
     const totals = useMemo(() => {
@@ -94,14 +99,9 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             if (scope === 'All') shouldApply = true;
             else if (scope === 'Labor' && item.type === 'Labor') shouldApply = true;
             else if (scope === 'Part' && item.type === 'Part') shouldApply = true;
-
             if (shouldApply) {
                 const discountedPrice = item.unitPrice * (1 - (discountPct / 100));
-                return { 
-                    ...item, 
-                    unitPrice: parseFloat(discountedPrice.toFixed(2)), 
-                    total: parseFloat((item.quantity * discountedPrice).toFixed(2)) 
-                };
+                return { ...item, unitPrice: parseFloat(discountedPrice.toFixed(2)), total: parseFloat((item.quantity * discountedPrice).toFixed(2)) };
             }
             return item;
         }));
@@ -109,7 +109,6 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
 
     const handleManualDiscount = () => {
         if (discountConfig.value <= 0) return;
-
         if (discountConfig.type === 'Percentage') {
             applyPercentageDiscountToItems(discountConfig.value, discountConfig.scope);
         } else { 
@@ -135,20 +134,16 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         if (currentJob?.customerId && proposal.customerId && proposal.customerId !== currentJob.customerId) { 
             if(!await globalConfirm("Warning: This proposal appears to be for a different customer. Import anyway?")) return; 
         }
-
-        // Map name to name, description to description
-        const newItems: InvoiceLineItem[] = proposal.items.map(pItem => {
-            return {
-                id: `prop-${pItem.id}-${Date.now()}`,
-                name: pItem.name || 'Proposal Item',
-                description: pItem.description || '',
-                quantity: pItem.quantity,
-                unitPrice: pItem.price,
-                total: pItem.total,
-                type: pItem.type as any, // Mapped correctly
-                taxable: true 
-            };
-        });
+        const newItems: InvoiceLineItem[] = proposal.items.map(pItem => ({
+            id: `prop-${pItem.id}-${Date.now()}`,
+            name: pItem.name || 'Proposal Item',
+            description: pItem.description || '',
+            quantity: pItem.quantity,
+            unitPrice: pItem.price,
+            total: pItem.total,
+            type: pItem.type as any,
+            taxable: true 
+        }));
         setLineItems(prev => [...prev, ...newItems]);
         setIsImportProposalModalOpen(false);
         setSelectedProposalId(null);
@@ -168,6 +163,11 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 taxAmount: totals.tax,
                 totalAmount: totals.total,
                 amount: totals.total,
+                workmanshipWarrantyMonths,
+                partsWarrantyMonths,
+                warrantyNotes,
+                warrantyDisclaimerAgreed,
+                warrantyIssuedDate: (currentJob.invoice as any)?.warrantyIssuedDate || (workmanshipWarrantyMonths > 0 || partsWarrantyMonths > 0 ? new Date().toISOString() : null),
             },
             updatedAt: new Date().toISOString(),
             updatedById: currentUser?.id,
@@ -233,33 +233,25 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     };
 
     const handleSendInvoice = async () => {
-        if (!currentJob || !await globalConfirm(`Send invoice #${currentJob.invoice.id} to ${currentJob.customerEmail}?`)) return;
-        const email = currentJob.customerEmail;
-        if (!email) { alert("Customer email missing."); return; }
+        let email = currentJob?.customerEmail;
+        if (!email && currentJob?.customerId) {
+            const custDoc = await db.collection('customers').doc(currentJob.customerId).get();
+            if (custDoc.exists) email = custDoc.data()?.email;
+        }
 
+        if (!currentJob || !await globalConfirm(`Send invoice #${currentJob.invoice.id} to ${email || 'this customer'}?`)) return;
+        if (!email) { alert("Customer email missing. Please update the customer profile with a valid email address."); return; }
         setIsSaving(true);
         try {
             const updatedJob = getPreviewJob();
             if (!updatedJob) throw new Error("Could not prepare invoice for sending.");
-
             const link = `${window.location.origin}/#/invoice/${currentJob.id}`;
             const orgName = currentOrganization?.name || 'Service Provider';
-            
             await db.collection('mail').add({
                 to: [email],
                 message: {
                     subject: `Invoice #${updatedJob.invoice.id} from ${orgName}`,
-                    html: `
-                        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
-                            <h2 style="color: #0284c7;">Invoice Ready</h2>
-                            <p>Hi ${customerName},</p>
-                            <p>Your invoice <strong>#${updatedJob.invoice.id}</strong> for <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> is ready for review.</p>
-                            <div style="margin: 20px 0;">
-                                <a href="${link}" style="background-color: #0284c7; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">View, Sign & Pay</a>
-                            </div>
-                            <p style="font-size: 12px; color: #666;">Link: ${link}</p>
-                        </div>
-                    `,
+                    html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #eee;border-radius:8px;"><h2 style="color:#0284c7;">Invoice Ready</h2><p>Hi ${customerName},</p><p>Your invoice <strong>#${updatedJob.invoice.id}</strong> for <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> is ready for review.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View, Sign &amp; Pay</a></div><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
                     text: `Invoice #${updatedJob.invoice.id} for $${updatedJob.invoice.totalAmount?.toFixed(2)} is ready. Pay here: ${link}`
                 },
                 organizationId: currentOrganization?.id,
@@ -273,35 +265,24 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     };
 
     const handleSendReceipt = async () => {
-        if (!currentJob || !await globalConfirm(`Send receipt for invoice #${currentJob.invoice.id} to ${currentJob.customerEmail}?`)) return;
-        const email = currentJob.customerEmail;
-        if (!email) { alert("Customer email missing."); return; }
+        let email = currentJob?.customerEmail;
+        if (!email && currentJob?.customerId) {
+            const custDoc = await db.collection('customers').doc(currentJob.customerId).get();
+            if (custDoc.exists) email = custDoc.data()?.email;
+        }
 
+        if (!currentJob || !await globalConfirm(`Send receipt for invoice #${currentJob.invoice.id} to ${email || 'this customer'}?`)) return;
+        if (!email) { alert("Customer email missing. Please update the customer profile with a valid email address."); return; }
         setIsSaving(true);
         try {
             const updatedJob = getPreviewJob();
             if (!updatedJob) throw new Error("Could not prepare receipt for sending.");
-
             const orgName = currentOrganization?.name || 'Service Provider';
-            
             await db.collection('mail').add({
                 to: [email],
                 message: {
                     subject: `Payment Receipt: Invoice #${updatedJob.invoice.id}`,
-                    html: `
-                        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
-                            <h2 style="color: #059669;">Payment Receipt</h2>
-                            <p>Hi ${customerName},</p>
-                            <p>Thank you for your payment of <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> to <strong>${orgName}</strong>.</p>
-                            <div style="margin: 20px 0;">
-                                <p style="margin: 5px 0;"><strong>Invoice:</strong> #${updatedJob.invoice.id}</p>
-                                <p style="margin: 5px 0;"><strong>Amount Paid:</strong> $${updatedJob.invoice.totalAmount?.toFixed(2)}</p>
-                                <p style="margin: 5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-                                <p style="margin: 5px 0;"><strong>Status:</strong> PAID</p>
-                            </div>
-                            <p style="font-size: 12px; color: #666;">This email serves as your official receipt. Please retain it for your records.</p>
-                        </div>
-                    `,
+                    html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #eee;border-radius:8px;"><h2 style="color:#059669;">Payment Receipt</h2><p>Hi ${customerName},</p><p>Thank you for your payment of <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> to <strong>${orgName}</strong>.</p><div style="margin:20px 0;"><p style="margin:5px 0;"><strong>Invoice:</strong> #${updatedJob.invoice.id}</p><p style="margin:5px 0;"><strong>Amount Paid:</strong> $${updatedJob.invoice.totalAmount?.toFixed(2)}</p><p style="margin:5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p><p style="margin:5px 0;"><strong>Status:</strong> PAID</p></div><p style="font-size:12px;color:#666;">This email serves as your official receipt. Please retain it for your records.</p></div>`,
                     text: `Payment Receipt for Invoice #${updatedJob.invoice.id}. Amount: $${updatedJob.invoice.totalAmount?.toFixed(2)}. Status: PAID.`
                 },
                 organizationId: currentOrganization?.id,
@@ -314,16 +295,9 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     };
 
     const relevantProposals = useMemo(() => {
-        if (!currentJob || !currentJob.customerId) {
-            return [];
-        }
-        
-        // Find ALL proposals for this specific customer, regardless of the job ID they were created under
-        const filteredProposals = state.proposals.filter(p => p.customerId === currentJob.customerId);
-
-        return filteredProposals;
+        if (!currentJob || !currentJob.customerId) return [];
+        return state.proposals.filter(p => p.customerId === currentJob.customerId);
     }, [state.proposals, currentJob]);
-
 
     return {
         currentJob,
@@ -341,17 +315,20 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         getPreviewJob,
         handleSaveSignature,
         sigPadRef,
-        // UI states for modals
         isPreviewOpen, setIsPreviewOpen,
         isSigningOpen, setIsSigningOpen,
         isDiscountModalOpen, setIsDiscountModalOpen,
         discountConfig, setDiscountConfig,
         handleManualDiscount,
-        // Proposal import
         isImportProposalModalOpen, setIsImportProposalModalOpen,
         selectedProposalId, setSelectedProposalId,
         handleImportFromProposal,
         relevantProposals,
-        overrideOrg
+        overrideOrg,
+        // Warranty
+        workmanshipWarrantyMonths, setWorkmanshipWarrantyMonths,
+        partsWarrantyMonths, setPartsWarrantyMonths,
+        warrantyNotes, setWarrantyNotes,
+        warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed,
     };
 };

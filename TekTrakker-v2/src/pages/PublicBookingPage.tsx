@@ -109,8 +109,16 @@ const PublicBookingPage: React.FC = () => {
 
             const subject = orgId ? `New Booking Request: ${formData.name}` : `[Find a Pro] New Lead: ${formData.name}`;
 
+            const { notifyAdmins } = await import('lib/notificationService');
+            await notifyAdmins(targetOrgId || 'platform', {
+                title: "New Appointment Request",
+                body: `${formData.name} requested a ${formData.serviceType} appointment.`,
+                type: 'booking'
+            });
+
             await db.collection('mail').add({
                 to: toAddresses,
+                cc: org?.email ? [org.email] : [], // Ensure the primary org email always gets a CC if not already in TO
                 message: {
                     subject: subject,
                     text: `New booking request.\n\nCustomer: ${formData.name}\nPhone: ${formData.phone}\nService: ${formData.serviceType} (${formData.businessType})\nDate Requested: ${formData.preferredDate}\nAddress: ${formData.address}\n\nLog in to assign this customer.`,
@@ -135,12 +143,15 @@ const PublicBookingPage: React.FC = () => {
                 organizationId: targetOrgId || 'platform',
                 type: 'BookingNotification',
                 createdAt: new Date().toISOString(),
-                transport: smtp ? {
-                    host: smtp.host,
-                    port: smtp.port,
-                    auth: { user: smtp.user, pass: smtp.pass },
-                    from: `"${smtp.fromName}" <${smtp.fromEmail}>`
-                } : null
+                // Only send transport if it is valid and fully configured
+                ...(smtp?.host && smtp?.user ? {
+                    transport: {
+                        host: smtp.host,
+                        port: Number(smtp.port),
+                        auth: { user: smtp.user, pass: smtp.pass },
+                        from: `"${smtp.fromName || org?.name}" <${smtp.fromEmail || org?.email || 'no-reply@tektrakker.com'}>`
+                    }
+                } : {})
             });
 
             setSuccess(true);

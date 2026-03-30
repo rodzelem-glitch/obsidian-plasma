@@ -181,6 +181,7 @@ const Financials: React.FC = () => {
     const confirmDeleteInvoice = async () => {
         if (invoiceToDelete) {
             await db.collection('jobs').doc(invoiceToDelete).delete();
+            dispatch({ type: 'DELETE_JOB', payload: invoiceToDelete });
             setInvoiceToDelete(null);
         }
     };
@@ -228,7 +229,7 @@ const Financials: React.FC = () => {
                     <p className="text-slate-500 dark:text-slate-400 font-medium">Real-time revenue, spend tracking, and profitability.</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button onClick={() => navigate('/proposal')} className="bg-purple-600 shadow-lg text-xs font-black uppercase">+ Proposal</Button>
+                    <Button onClick={() => navigate('/admin/proposal')} className="bg-purple-600 shadow-lg text-xs font-black uppercase">+ Proposal</Button>
                     <Button onClick={() => setIsCustomerSelectOpen(true)} className="bg-emerald-600 shadow-lg text-xs font-black uppercase">+ Invoice</Button>
                     <Button onClick={() => { setEditingExpense(null); setIsExpenseModalOpen(true); }} className="bg-blue-600 shadow-lg text-xs font-black uppercase">+ Expense</Button>
                 </div>
@@ -258,7 +259,7 @@ const Financials: React.FC = () => {
                 {view === 'sales' && <SalesPipeline />}
                 {view === 'pnl' && <PnLTab financialData={financialData} setIsReportModalOpen={setIsReportModalOpen} />}
                 {view === 'invoices' && <InvoicesTab jobs={state.jobs} setEditingInvoiceId={setEditingInvoiceId} handleDeleteInvoice={setInvoiceToDelete} />}
-                {view === 'expenses' && <ExpensesTab allExpenses={allExpenses} handleEditExpense={(exp) => { setEditingExpense(exp); setIsExpenseModalOpen(true); }} handleDeleteExpense={async (id, type) => { await db.collection(type === 'vehicleLog' ? 'vehicleLogs' : 'expenses').doc(id).delete(); }} setViewingReceipt={setViewingReceipt} setIsExpenseModalOpen={setIsExpenseModalOpen} setNewExpense={setNewExpense} currentUser={state.currentUser} />}
+                {view === 'expenses' && <ExpensesTab allExpenses={allExpenses} handleEditExpense={(exp) => { setEditingExpense(exp); setIsExpenseModalOpen(true); }} handleDeleteExpense={async (id, type) => { await db.collection(type === 'vehicleLog' ? 'vehicleLogs' : 'expenses').doc(id).delete(); }} handleDeleteReceipt={async (id, type) => { await db.collection(type === 'vehicleLog' ? 'vehicleLogs' : 'expenses').doc(id).update({ receiptData: null, receiptUrl: null }); }} setViewingReceipt={setViewingReceipt} setIsExpenseModalOpen={setIsExpenseModalOpen} setNewExpense={setNewExpense} currentUser={state.currentUser} />}
                 {view === 'payables' && <Payables />}
             </div>
 

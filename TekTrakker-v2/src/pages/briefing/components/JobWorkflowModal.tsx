@@ -463,7 +463,11 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
     const handleBuildProposal = async () => {
         await saveCurrentState();
         dispatch({ type: 'SET_ACTIVE_JOB_ID_FOR_WORKFLOW', payload: job.id });
-        navigate(`/proposal?jobId=${job.id}&source=workflow`);
+        
+        const isStaff = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'supervisor';
+        const basePath = isStaff ? '/admin' : '/briefing';
+        
+        navigate(`${basePath}/proposal?jobId=${job.id}&source=workflow`);
         onClose();
     };
 

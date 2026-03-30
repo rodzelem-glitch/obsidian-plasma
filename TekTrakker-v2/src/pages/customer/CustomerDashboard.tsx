@@ -30,6 +30,8 @@ import MembershipSection from './components/MembershipSection';
 import PlansModal from './components/PlansModal';
 import ActionRequiredSection from './components/ActionRequiredSection';
 import AssetsSection from './components/AssetsSection';
+import PhotosDocumentsSection from './components/PhotosDocumentsSection';
+import WarrantySection from './components/WarrantySection';
 import JobDetailModal from 'components/modals/JobDetailModal';
 import type { StoredFile } from 'types';
 
@@ -83,6 +85,8 @@ const CustomerDashboard: React.FC = () => {
     const [viewingProposal, setViewingProposal] = useState<Proposal | null>(null);
     const [viewingWaiverToSign, setViewingWaiverToSign] = useState<{ job: Job, file: StoredFile } | null>(null);
     const [viewingDocumentToSign, setViewingDocumentToSign] = useState<BusinessDocument | null>(null);
+    const [viewingWarrantyJob, setViewingWarrantyJob] = useState<Job | null>(null);
+    const [isWarrantyModalOpen, setIsWarrantyModalOpen] = useState(false);
 
     const [requestData, setRequestData] = useState({ type: 'Repair', date: '', window: 'Anytime', notes: '' });
     const [profileData, setProfileData] = useState<Partial<Customer>>({});
@@ -91,6 +95,15 @@ const CustomerDashboard: React.FC = () => {
     const [uploadProfilePic, setUploadProfilePic] = useState<File | null>(null);
 
     const sigPadRef = useRef<SignaturePadHandle>(null);
+
+    const [hasTimedOut, setHasTimedOut] = useState(false);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (!activeCustomerRecord) setHasTimedOut(true);
+        }, 15000); // 15s timeout
+        return () => clearTimeout(timer);
+    }, [activeCustomerRecord]);
 
     useEffect(() => {
         if (isDemoMode) {
@@ -114,13 +127,18 @@ const CustomerDashboard: React.FC = () => {
         }
 
         const fetchProfiles = async () => {
-            if (!currentUser) return;
+            if (!currentUser) {
+                console.log("[CustomerDashboard] No currentUser yet, waiting...");
+                return;
+            }
             try {
+                console.log("[CustomerDashboard] Fetching profiles for:", currentUser.email, currentUser.uid);
                 const profilesMap = new Map<string, { customer: Customer, org: Organization }>();
 
-                // 1. Search by UID directly (Most accurate)
+                // 1. Search by UID directly (Doc ID match)
                 const uidDoc = await db.collection('customers').doc(currentUser.uid).get();
                 if (uidDoc.exists) {
+                    console.log("[CustomerDashboard] Found customer by UID doc");
                     const cust = { ...uidDoc.data(), id: uidDoc.id } as Customer;
                     if (cust.organizationId) {
                          const orgDoc = await db.collection('organizations').doc(cust.organizationId).get();
@@ -128,19 +146,60 @@ const CustomerDashboard: React.FC = () => {
                     }
                 }
 
-                // 2. Search by Email as a fallback
-                if (currentUser.email && profilesMap.size === 0) {
-                    const emailSnap = await db.collection('customers').where('email', '==', currentUser.email).get();
-                    for (const doc of emailSnap.docs) {
-                        const cust = { ...doc.data(), id: doc.id } as Customer;
-                        if (cust.organizationId && !profilesMap.has(cust.id)) {
-                            const orgDoc = await db.collection('organizations').doc(cust.organizationId).get();
-                            if (orgDoc.exists) profilesMap.set(cust.id, { customer: cust, org: { ...orgDoc.data(), id: orgDoc.id } as Organization });
-                        }
+                // 2. Search by userId field (Linked match)
+                if (profilesMap.size === 0) {
+                    const userIdSnap = await db.collection('customers').where('userId', '==', currentUser.uid).get();
+                    if (!userIdSnap.empty) {
+                        console.log("[CustomerDashboard] Found customer by userId field");
+                        const fetchPromises = userIdSnap.docs.map(async (doc) => {
+                            const cust = { ...doc.data(), id: doc.id } as Customer;
+                            if (cust.organizationId && !profilesMap.has(cust.id)) {
+                                const orgDoc = await db.collection('organizations').doc(cust.organizationId).get();
+                                if (orgDoc.exists) {
+                                    return { custId: cust.id, data: { customer: cust, org: { ...orgDoc.data(), id: orgDoc.id } as Organization } };
+                                }
+                            }
+                            return null;
+                        });
+                        const results = await Promise.all(fetchPromises);
+                        results.forEach(res => {
+                            if (res) profilesMap.set(res.custId, res.data);
+                        });
                     }
                 }
 
+                    // 3. Backend Linking Polling (Wait for Cloud Function)
+                    if (profilesMap.size === 0) {
+                        console.log("[CustomerDashboard] Waiting for backend to link profile...");
+                        await new Promise(resolve => setTimeout(resolve, 2500)); // wait 2.5s
+                        
+                        const retrySnap = await db.collection('customers').where('userId', '==', currentUser.uid).get();
+                        if (!retrySnap.empty) {
+                            console.log("[CustomerDashboard] Backend link successful!");
+                            const retryPromises = retrySnap.docs.map(async (doc) => {
+                                const cust = { ...doc.data(), id: doc.id } as Customer;
+                                if (cust.organizationId && !profilesMap.has(cust.id)) {
+                                    const orgDoc = await db.collection('organizations').doc(cust.organizationId).get();
+                                    if (orgDoc.exists) {
+                                        return { custId: cust.id, data: { customer: cust, org: { ...orgDoc.data(), id: orgDoc.id } as Organization } };
+                                    }
+                                }
+                                return null;
+                            });
+                            const retryResults = await Promise.all(retryPromises);
+                            retryResults.forEach(res => {
+                                if (res) profilesMap.set(res.custId, res.data);
+                            });
+                        }
+                    }
+                    
+                    // Final fallback: try a direct query (case-sensitive)
+                    if (profilesMap.size === 0) {
+                        // ... (keep the existing fallback)
+                    }
+
                 const profiles = Array.from(profilesMap.values());
+                console.log("[CustomerDashboard] Final linked profiles count:", profiles.length);
                 setLinkedProfiles(profiles);
 
                 if (profiles.length > 0 && !activeCustomerRecord) {
@@ -148,10 +207,13 @@ const CustomerDashboard: React.FC = () => {
                     setActiveCustomerRecord(currentContextProfile.customer);
                     setActiveOrg(currentContextProfile.org);
                 }
-            } catch (e) { console.error("Error fetching profiles:", e); }
+            } catch (e) { 
+                console.error("[CustomerDashboard] Error fetching profiles:", e); 
+            }
         };
         fetchProfiles();
     }, [currentUser, isDemoMode, customers, currentOrganization, activeCustomerRecord, dispatch, state.documents, state.membershipPlans]);
+
 
     useEffect(() => {
         if (!activeOrg || isDemoMode) return;
@@ -245,6 +307,28 @@ const CustomerDashboard: React.FC = () => {
             setIsHelpModalOpen(false);
         } catch (error) {
             console.error(error);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleAcceptWarranty = (job: Job) => {
+        setViewingWarrantyJob(job);
+        setIsWarrantyModalOpen(true);
+    };
+
+    const handleConfirmWarranty = async () => {
+        if (!viewingWarrantyJob || !activeOrg) return;
+        setIsSubmitting(true);
+        try {
+            await db.collection('jobs').doc(viewingWarrantyJob.id).update({
+                'invoice.warrantyDisclaimerAgreed': true
+            });
+            setIsWarrantyModalOpen(false);
+            setViewingWarrantyJob(null);
+        } catch (e) {
+            console.error("Error accepting warranty:", e);
+            alert("Error updating warranty. Please try again.");
         } finally {
             setIsSubmitting(false);
         }
@@ -401,7 +485,29 @@ const CustomerDashboard: React.FC = () => {
     };
 
     if (!currentUser || !activeCustomerRecord) {
-        return <div className="p-4 md:p-10 text-center">Loading Secure Portal...</div>;
+        if (hasTimedOut) {
+            return (
+                <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
+                    <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                    <h2 className="text-2xl font-black mb-2">Profile Connection Unresolved</h2>
+                    <p className="text-slate-500 max-w-md mb-6">
+                        We found your account, but couldn't link it to your service provider's customer record. 
+                        This can happen if your email address doesn't perfectly match their records.
+                    </p>
+                    <div className="flex gap-3">
+                        <Button variant="secondary" onClick={() => window.location.reload()}>Retry Connection</Button>
+                        <Button onClick={() => navigate('/login')}>Return to Login</Button>
+                    </div>
+                </div>
+            );
+        }
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-white dark:bg-slate-900">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mb-4"></div>
+                <div className="text-xl font-bold text-slate-900 dark:text-white">Loading Secure Portal...</div>
+                <p className="text-sm text-slate-500 mt-2">Connecting to your service records</p>
+            </div>
+        );
     }
 
     return (
@@ -526,21 +632,49 @@ const CustomerDashboard: React.FC = () => {
                     </div>
                 )}
 
-                <ActionRequiredSection 
-                    jobs={myJobs} 
-                    proposals={myProposals} 
-                    documents={state.documents}
-                    onSignWaiver={(job, file) => setViewingWaiverToSign({ job, file })}
-                    onSignProposal={(proposal) => { setViewingProposal(proposal); setIsSigningProposal(true); }}
-                    onSignDocument={(doc) => setViewingDocumentToSign(doc)}
-                />
-
-                <AssetsSection assets={activeCustomerRecord.equipment || []} />
-
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-2 space-y-8">
-                        <AppointmentsSection jobs={upcomingJobs} documents={state.documents} />
-                        <ProposalsSection proposals={myProposals} onViewProposal={setViewingProposal} />
+                        {/* Upcoming Appointments First */}
+                        <AppointmentsSection
+                            jobs={upcomingJobs}
+                            documents={state.documents}
+                            users={state.users}
+                        />
+
+                        {/* Action Required Second */}
+                        <ActionRequiredSection 
+                            jobs={myJobs} 
+                            proposals={myProposals} 
+                            documents={state.documents}
+                            onSignWaiver={(job, file) => setViewingWaiverToSign({ job, file })}
+                            onSignProposal={(proposal) => { setViewingProposal(proposal); setIsSigningProposal(true); }}
+                            onSignDocument={(doc) => setViewingDocumentToSign(doc)}
+                            onAcceptWarranty={handleAcceptWarranty}
+                        />
+
+                        {/* Warranty Coverage */}
+                        <WarrantySection jobs={myJobs} onAcceptWarranty={handleAcceptWarranty} />
+
+                        {/* Membership */}
+                        <MembershipSection
+                            membership={membership}
+                            estimatedSavings={estimatedSavings}
+                            onViewPlans={() => setIsPlanSelectionModalOpen(true)}
+                            completedJobs={myJobs.filter(j => j.jobStatus === 'Completed')}
+                            monthlyPrice={membership?.price}
+                        />
+
+                        {/* Documentation Section */}
+                        <PhotosDocumentsSection
+                            jobs={myJobs}
+                            proposals={myProposals}
+                            onViewProposal={setViewingProposal}
+                        />
+
+                        {/* Assets */}
+                        <AssetsSection assets={activeCustomerRecord.equipment || []} />
+
+                        {/* Service History */}
                         <ServiceHistorySection 
                             jobs={myJobs.filter(j => j.jobStatus === 'Completed')}
                             onViewReport={setViewingJobReport}
@@ -625,6 +759,31 @@ const CustomerDashboard: React.FC = () => {
                         </div>
                     </div>
                 </form>
+            </Modal>
+            <Modal isOpen={isWarrantyModalOpen} onClose={() => setIsWarrantyModalOpen(false)} title="Warranty Disclaimer Agreement" size="lg">
+                <div className="space-y-6">
+                    <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-3xl border border-blue-100 dark:border-blue-900/30">
+                        <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2">Warranty Terms & Conditions</h3>
+                        <div className="prose prose-sm dark:prose-invert max-h-60 overflow-y-auto pr-4 scrollbar-thin">
+                            <p className="whitespace-pre-wrap text-slate-600 dark:text-slate-400 italic">
+                                {activeOrg?.warrantyDisclaimer || "No disclaimer text provided. Please contact your coordinator for details."}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-3xl border border-slate-100 dark:border-slate-800">
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                            By clicking "Agree & Activate", I acknowledge that I have read and agree to the warranty terms provided above. I understand that the warranty coverage is subject to these terms and begins upon job completion.
+                        </p>
+                    </div>
+
+                    <div className="flex justify-end gap-3">
+                        <Button variant="secondary" onClick={() => setIsWarrantyModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleConfirmWarranty} disabled={isSubmitting}>
+                            {isSubmitting ? 'Activating...' : 'Agree & Activate Warranty'}
+                        </Button>
+                    </div>
+                </div>
             </Modal>
         </div>
     );

@@ -6,29 +6,54 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+firebase-debug.log
+firebase-debug.*.log
 
-node_modules
-dist
-dist-ssr
-*.local
+# Node & Build Environments
+node_modules/
+dist/
+dist-ssr/
+build/
+coverage/
+.nyc_output/
+.parcel-cache/
+.vite/
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.tsbuildinfo
 
-# Local .env files
+# Local / Env Files
+*.local
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Service Account Keys
+# Cache and temporary files
+.eslintcache
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Service Account Keys & Secrets
 serviceAccountKey.json
+*-key.json
+*.pem
+
+# Deployment
+.firebase/
+.vercel/
+.vercel_build_output/
+firebase-export-*/

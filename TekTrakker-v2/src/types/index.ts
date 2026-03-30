@@ -8,3 +8,4 @@ export * from './miscellaneous';
 export * from './organization';
 export * from './tool';
 export * from './user';
+export * from './integration';

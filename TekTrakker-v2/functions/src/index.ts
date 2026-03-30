@@ -1,15 +1,17 @@
-
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { BudgetServiceClient } from '@google-cloud/billing-budgets';
 import { MetricServiceClient } from '@google-cloud/monitoring';
 import { CloudBillingClient } from '@google-cloud/billing';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { syncOrganizationShiftsToSquare } from "./squareUtils";
 import { CommissionSettings, PlatformSettings } from "./types";
 
-if (admin.apps.length === 0) {
-  admin.initializeApp();
-}
+try {
+  if (admin.apps.length === 0) {
+    admin.initializeApp();
+  }
+} catch (e) {}
 
 const auth = admin.auth();
 const db = admin.firestore();
@@ -24,8 +26,8 @@ const DEFAULT_COMMISSION_RULES: CommissionSettings = {
 
 const BID_HELPER_COST_USD = 2.00;
 
-const GEMINI_FLASH_MODEL = "gemini-3-flash-preview"; 
-const GEMINI_PRO_MODEL = "gemini-3.1-pro-preview";
+const GEMINI_FLASH_MODEL = "gemini-2.5-flash"; 
+const GEMINI_PRO_MODEL = "gemini-3.1-flash";
 
 // --- NEW COMMISSION LOGIC ---
 export const generateCommissionOnSubscriptionPayment = functions.firestore
@@ -267,14 +269,23 @@ export const sendSms = functions.firestore.document('messages/{msgId}').onCreate
     if (!msg || msg.type !== 'sms' || !msg.receiverId) return;
 
     try {
-        const orgDoc = await db.collection('organizations').doc(msg.organizationId).get();
-        const orgData = orgDoc.data();
-        const accountSid = orgData?.twilioConfig?.accountSid || process.env.TWILIO_ACCOUNT_SID;
-        const authToken = orgData?.twilioConfig?.authToken || process.env.TWILIO_AUTH_TOKEN;
-        const fromNumber = orgData?.twilioConfig?.phoneNumber || process.env.TWILIO_PHONE_NUMBER;
+        const secretDoc = await db.collection('organizations').doc(msg.organizationId).collection('secrets').doc('config').get();
+        const secrets = secretDoc.data() || {};
+        const accountSid = secrets.twilioConfig?.accountSid || process.env.TWILIO_ACCOUNT_SID;
+        const authToken = secrets.twilioConfig?.authToken || process.env.TWILIO_AUTH_TOKEN;
+        const fromNumber = secrets.twilioConfig?.phoneNumber || process.env.TWILIO_PHONE_NUMBER;
 
         if (!accountSid || !authToken) {
-             await snap.ref.update({ deliveryStatus: 'failed', deliveryError: 'Missing Twilio Config' });
+             // Fallback routing: Send as native 1-Way Push Notification to Customer Portal
+             await db.collection('customers').doc(msg.receiverId).collection('notifications').add({
+                 title: 'New Message',
+                 message: msg.content,
+                 createdAt: new Date().toISOString(),
+                 read: false,
+                 type: 'message',
+                 senderId: msg.senderId || 'Platform'
+             });
+             await snap.ref.update({ deliveryStatus: 'fallback-push', deliveryError: 'No Twilio Config - Routed as Portal Push Notification' });
              return;
         }
 
@@ -320,7 +331,95 @@ export const deleteAuthUser = functions.firestore.document('users/{userId}').onD
     }
 });
 
+export const linkCustomerOnUserCreate = functions.firestore.document('users/{userId}').onCreate(async (snap, context) => {
+    const userData = snap.data();
+    const userId = context.params.userId;
+    const email = userData.email?.toLowerCase().trim();
+    let orgId = userData.organizationId;
+    
+    if (!email) return;
+    
+    try {
+        // If user registered without an invite link, find their organization globally
+        if (!orgId || orgId === 'unaffiliated') {
+            const globalSnap = await db.collection('customers').where('email', '==', email).get();
+            let matchDoc = globalSnap.docs[0];
+            
+            // Try common case-variations if exact match fails
+            if (!matchDoc) {
+                 const capEmail = email.charAt(0).toUpperCase() + email.slice(1);
+                 const capSnap = await db.collection('customers').where('email', '==', capEmail).get();
+                 matchDoc = capSnap.docs[0];
+            }
+            if (!matchDoc) {
+                 const upperEmail = email.toUpperCase();
+                 const upperSnap = await db.collection('customers').where('email', '==', upperEmail).get();
+                 matchDoc = upperSnap.docs[0];
+            }
+            
+            if (matchDoc) {
+                orgId = matchDoc.data().organizationId;
+                await snap.ref.update({ organizationId: orgId });
+                functions.logger.info(`Auto-assigned user ${userId} to org ${orgId}`);
+                
+                // Link immediately
+                if (matchDoc.data().userId !== userId) {
+                    await db.collection('customers').doc(matchDoc.id).update({ userId: userId });
+                    functions.logger.info(`Successfully linked orphaned customer ${matchDoc.id} to user ${userId}`);
+                }
+                return; // Done processing
+            }
+            
+            // If still no orgId, we can't do anything else
+            if (!orgId || orgId === 'unaffiliated') return;
+        }
+        
+        // Scope search to orgId if it was already provided
+        const orgSnap = await db.collection('customers').where('organizationId', '==', orgId).get();
+        const match = orgSnap.docs.find(d => (d.data().email || '').toLowerCase().trim() === email);
+        
+        if (match && match.data().userId !== userId) {
+            await db.collection('customers').doc(match.id).update({ userId: userId });
+            functions.logger.info(`Successfully linked customer ${match.id} to user ${userId}`);
+        }
+    } catch (e) {
+        functions.logger.error(`Error linking customer for user ${userId}:`, e);
+    }
+});
+
 // --- AI UTILS ---
+export const generateReviewResponse = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+    
+    const apiKey = process.env.GEMINI_API_KEY; 
+    if (!apiKey) throw new functions.https.HttpsError("internal", "AI service configuration error.");
+
+    const { review } = data;
+    if (!review) throw new functions.https.HttpsError("invalid-argument", "Review object missing.");
+
+    const prompt = `
+        You are an expert customer service representative for a service company.
+        A customer named ${review.customerName || 'a customer'} left a ${review.rating || 5}-star review on ${review.source || 'our platform'}.
+        Review text: "${review.content || 'Great service!'}"
+        
+        Write a professional, highly empathetic, and polite response from the business addressing this review directly. 
+        If the review is positive, express gratitude and encourage them to return or refer friends.
+        If the review is negative, apologize for the experience, offer to make things right, and ask them to contact support.
+        Do NOT put generic brackets like [Company Name]. Make it sound natural and finalized.
+        Keep it under 3-4 sentences.
+    `;
+
+    try {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        return { text: response.text() };
+    } catch (error: any) {
+        functions.logger.error("Review GenAI Error:", error);
+        throw new functions.https.HttpsError("internal", error.message || "Failed to generate review response.");
+    }
+});
 
 export const callLandingChatbot = functions.https.onCall(async (data, context) => {
     const apiKey = process.env.GEMINI_API_KEY; 
@@ -791,7 +890,456 @@ export const manageHandshake = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('invalid-argument', 'Invalid action.');
 });
 
+export const processMailQueue = functions.firestore.document('mail_queue/{docId}').onCreate(async (snap, context) => {
+    const payload = snap.data();
+    const orgId = payload.organizationId;
+    
+    try {
+        if (orgId && orgId !== 'unaffiliated') {
+            const secretDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
+            if (secretDoc.exists) {
+                const secrets = secretDoc.data() || {};
+                const smtp = secrets.smtpConfig;
+                
+                if (smtp && smtp.host && smtp.user && smtp.pass) {
+                    payload.transport = {
+                        host: smtp.host,
+                        port: smtp.port || 587,
+                        auth: {
+                            user: smtp.user,
+                            pass: smtp.pass
+                        }
+                    };
+                    
+                    if (smtp.fromName && smtp.fromEmail) {
+                        if (!payload.message) payload.message = {};
+                        payload.message.from = `"${smtp.fromName}" <${smtp.fromEmail}>`;
+                    }
+                }
+            } else {
+                // Backward compatibility during migration window: Try reading from main org document if secrets don't exist yet
+                const orgDoc = await db.collection('organizations').doc(orgId).get();
+                if (orgDoc.exists) {
+                    const orgData = orgDoc.data() || {};
+                    const smtp = orgData.smtpConfig;
+                    if (smtp && smtp.host && smtp.user && smtp.pass) {
+                        payload.transport = {
+                            host: smtp.host,
+                            port: smtp.port || 587,
+                            auth: { user: smtp.user, pass: smtp.pass }
+                        };
+                        if (smtp.fromName && smtp.fromEmail) {
+                            if (!payload.message) payload.message = {};
+                            payload.message.from = `"${smtp.fromName}" <${smtp.fromEmail}>`;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Forward the securely populated payload to the final 'mail' collection for delivery
+        await db.collection('mail').add(payload);
+        
+        // Clean up the queue
+        await snap.ref.delete();
+    } catch (error) {
+        functions.logger.error(`Failed to process mail queue for org ${orgId}`, error);
+    }
+});
+
+export const measureQuickWebhook = functions.https.onRequest(async (req, res) => {
+    // Only accept POST requests for incoming webhooks
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+
+    try {
+        const payload = req.body;
+        // NOTE: In production with live API keys, we would verify the measureQuick HMAC signature here.
+        
+        // Extract routing details
+        const jobId = payload.jobId || req.query.jobId;
+        const orgId = payload.organizationId || req.query.orgId;
+        
+        if (!jobId || !orgId) {
+            res.status(400).send('Missing required routing parameters: jobId or organizationId');
+            return;
+        }
+
+        // Construct the strictly-typed DiagnosticReport record
+        const reportId = `mq_${Date.now()}`;
+        const report = {
+            id: reportId,
+            jobId: jobId as string,
+            organizationId: orgId as string,
+            source: 'measureQuick',
+            healthScore: payload.healthScore || null,
+            systemType: payload.systemType || null,
+            pdfReportUrl: payload.pdfReportUrl || null,
+            measurements: payload.measurements || {},
+            diagnostics: payload.diagnostics || [],
+            createdAt: new Date().toISOString()
+        };
+
+        // Save it to the specific Job's sub-collection
+        await db.collection('jobs').doc(jobId as string).collection('diagnostics').doc(reportId).set(report);
+        
+        functions.logger.info(`Successfully parsed measureQuick report for job ${jobId}`);
+        res.status(200).send({ success: true, reportId });
+
+    } catch (error) {
+        functions.logger.error('Error processing measureQuick webhook payload', error);
+        res.status(500).send('Internal Server Error');
+    }
+});
+
+// --- APIFY REVIEW AGGREGATION ---
+export const syncExternalReviews = functions.runWith({ timeoutSeconds: 300, memory: '1GB' }).https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Not logged in');
+    const orgId = data.organizationId;
+    if (!orgId) throw new functions.https.HttpsError('invalid-argument', 'Missing organizationId');
+
+    try {
+        const [orgDoc, secretsDoc] = await Promise.all([
+            db.collection('organizations').doc(orgId).get(),
+            db.collection('platformSettings').doc('secrets').get() 
+        ]);
+        
+        const orgData = orgDoc.data();
+        const masterSecrets = secretsDoc.data();
+        if (!orgData) throw new functions.https.HttpsError('not-found', 'Organization not found.');
+        
+        if (!masterSecrets || !masterSecrets.apifyMasterKey) {
+            throw new functions.https.HttpsError('failed-precondition', 'Platform Apify Key is not configured in backend secrets vault. Plase establish the Master Key.');
+        }
+
+        const reviewLinks = orgData.reviewLinks || {};
+        const apifyToken = masterSecrets.apifyMasterKey;
+
+        // Configuration mapping for Apify parallel tasks
+        const tasks = [];
+        if (reviewLinks.google) {
+            tasks.push({
+                source: 'google',
+                actorId: 'compass~google-maps-reviews-scraper',
+                url: reviewLinks.google
+            });
+        }
+        if (reviewLinks.yelp) {
+            tasks.push({
+                source: 'yelp',
+                actorId: 'jupri~yelp-reviews-scraper',
+                url: reviewLinks.yelp
+            });
+        }
+        if (reviewLinks.trustpilot) {
+            tasks.push({
+                source: 'trustpilot',
+                actorId: 'mistic~trustpilot-reviews-scraper',
+                url: reviewLinks.trustpilot
+            });
+        }
+        if (reviewLinks.angi) {
+            tasks.push({
+                source: 'angi',
+                actorId: 'epctex~angi-scraper',
+                url: reviewLinks.angi
+            });
+        }
+        if (reviewLinks.thumbtack) {
+            tasks.push({
+                source: 'thumbtack',
+                actorId: 'epctex~thumbtack-scraper',
+                url: reviewLinks.thumbtack
+            });
+        }
+        if (reviewLinks.nextdoor) {
+            tasks.push({
+                source: 'nextdoor',
+                actorId: 'jupri~nextdoor-scraper',
+                url: reviewLinks.nextdoor
+            });
+        }
+
+        if (tasks.length === 0) {
+            throw new functions.https.HttpsError('failed-precondition', 'No external review URLs provided in Settings.');
+        }
+
+        // Fire all Scraper Actors in parallel
+        const fetchPromises = tasks.map(async (task) => {
+            const apifyUrl = `https://api.apify.com/v2/acts/${task.actorId}/run-sync-get-dataset-items?token=${apifyToken}`;
+            try {
+                const response = await fetch(apifyUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        startUrls: [{ url: task.url }],
+                        maxReviews: 20,
+                        sort: 'newest'
+                    })
+                });
+                
+                if (!response.ok) return { source: task.source, items: [] }; 
+                const items = await response.json();
+                return { source: task.source, items: Array.isArray(items) ? items : [] };
+            } catch (err) {
+                functions.logger.error(`Failed to execute Apify actor ${task.actorId}:`, err);
+                return { source: task.source, items: [] };
+            }
+        });
+
+        const results = await Promise.all(fetchPromises);
+
+        let ingestedCount = 0;
+        const batch = db.batch();
+
+        for (const resultSet of results) {
+            for (const review of resultSet.items) {
+                // Generously normalize properties because different Apify actors return different schemas
+                const rawId = review.reviewId || review.id || Math.random().toString(36).substring(7);
+                const reviewId = `ext_${resultSet.source}_${rawId}`;
+                const ref = db.collection('reviews').doc(reviewId);
+                
+                const existing = await ref.get();
+                if (!existing.exists) {
+                    const content = review.text || review.content || review.comment || review.reviewText || '';
+                    const rating = review.stars || review.rating || review.score || 5;
+                    const customerName = review.name || review.reviewerName || review.author || review.consumerName || review?.user?.name || `${resultSet.source} User`;
+                    const dateStr = review.publishedAtDate || review.date || review.createdAt || review.time || new Date().toISOString();
+                    const responseText = review.responseFromOwnerText || review.ownerResponse || null;
+
+                    batch.set(ref, {
+                        id: reviewId,
+                        organizationId: orgId,
+                        customerName,
+                        rating,
+                        content,
+                        source: resultSet.source, 
+                        date: dateStr,
+                        responded: !!responseText,
+                        responseContent: responseText || null,
+                        aiDraft: null,
+                        externalUrl: review.reviewUrl || review.url || ''
+                    });
+                    ingestedCount++;
+                }
+            }
+        }
+
+        await batch.commit();
+        return { success: true, ingested: ingestedCount };
+
+    } catch (e: any) {
+        if (e instanceof functions.https.HttpsError) {
+            throw e;
+        }
+        functions.logger.error("Error syncing Apify reviews", e);
+        throw new functions.https.HttpsError('internal', e.message);
+    }
+});
+
+// --- ADMIN PROVISIONING ---
+export const createUserAuth = functions.https.onCall(async (data, context) => {
+    if (!context.auth || context.auth.token.role !== 'master_admin') {
+        throw new functions.https.HttpsError("permission-denied", "Only Master Admins can explicitly create Auth layers.");
+    }
+    const { email, password, displayName, role, organizationId } = data;
+    
+    if (!email || !password) throw new functions.https.HttpsError("invalid-argument", "Missing email or temporary password.");
+
+    try {
+        const userRecord = await auth.createUser({
+            email,
+            password,
+            displayName: displayName || email,
+        });
+
+        if (role || organizationId) {
+            await auth.setCustomUserClaims(userRecord.uid, { 
+                role: role || 'user',
+                organizationId: organizationId || 'unaffiliated'
+            });
+        }
+        return { uid: userRecord.uid };
+    } catch (error: any) {
+        functions.logger.error("Admin Auth provisioning failed:", error);
+        throw new functions.https.HttpsError("internal", error.message);
+    }
+});
 
 export * from "./widgets";
 export * from "./promotions";
 export * from "./quickbooks";
+
+// --- EXPANDED ANALYTICS MODULE ---
+export const trackEmailOpen = functions.https.onRequest(async (req, res) => {
+    // Permit any email client (Gmail, Outlook, etc) to render the image
+    res.set('Access-Control-Allow-Origin', '*');
+
+    const campaignId = req.query.campaignId as string;
+    const customerId = req.query.customerId as string;
+    
+    if (campaignId) {
+        const campaignRef = db.collection('marketingCampaigns').doc(campaignId);
+        try {
+            await db.runTransaction(async (transaction) => {
+                const doc = await transaction.get(campaignRef);
+                if (doc.exists) {
+                    const data = doc.data() || {};
+                    const openedBy = data.openedBy || [];
+                    
+                    // Conditionally record the specific Customer ID natively
+                    if (customerId && !openedBy.includes(customerId)) {
+                        transaction.update(campaignRef, {
+                            readCount: admin.firestore.FieldValue.increment(1),
+                            openedBy: admin.firestore.FieldValue.arrayUnion(customerId)
+                        });
+                    } else if (!customerId) {
+                        transaction.update(campaignRef, {
+                            readCount: admin.firestore.FieldValue.increment(1)
+                        });
+                    }
+                }
+            });
+        } catch (err) {
+            functions.logger.error("Pixel Execution Dump:", err);
+        }
+    }
+    try {
+        const orgsSnap = await db.collection('organizations').where('status', '==', 'active').get();
+        for (const org of orgsSnap.docs) {
+            try {
+                const result = await syncOrganizationShiftsToSquare(org.id);
+                if (result.processed > 0) {
+                    functions.logger.log(`Successfully synced ${result.processed} shifts to Square for Org ${org.id}`);
+                }
+            } catch (err) {
+                functions.logger.warn(`Skipped Square Sync for Org ${org.id}:`, err);
+            }
+        }
+        let totalPayoutsProcessed = 0;
+
+        for (const org of orgsSnap.docs) {
+            const orgId = org.id;
+            
+            // Query for completed jobs needing flat-rate payouts
+            const jobsSnap = await db.collection('jobs')
+                .where('organizationId', '==', orgId)
+                .where('jobStatus', '==', 'Completed')
+                .where('payoutStatus', '==', 'pending')
+                .get();
+
+            if (jobsSnap.empty) continue;
+
+            for (const jobDoc of jobsSnap.docs) {
+                const job = jobDoc.data();
+                
+                if (job.assignedTechnicianId && job.subcontractorFlatRate) {
+                    const techDoc = await db.collection('users').doc(job.assignedTechnicianId).get();
+                    if (techDoc.exists && techDoc.data()?.role === 'Subcontractor') {
+                        // Natively route flat-rate splits to external partners
+                        const payoutRef = db.collection('payouts').doc();
+                        await payoutRef.set({
+                            id: payoutRef.id,
+                            organizationId: orgId,
+                            subcontractorId: techDoc.id,
+                            jobId: job.id,
+                            amount: job.subcontractorFlatRate,
+                            status: 'processing',
+                            initiatedAt: new Date().toISOString()
+                        });
+
+                        await jobDoc.ref.update({
+                            payoutStatus: 'processing',
+                            payoutId: payoutRef.id
+                        });
+
+                        totalPayoutsProcessed++;
+                    }
+                }
+            }
+        }
+        functions.logger.info(`Successfully processed ${totalPayoutsProcessed} subcontractor payout splits natively.`);
+    } catch (e) {
+        functions.logger.error("Global Subcontractor Payout Sync Failed:", e);
+    }
+});
+
+// ==========================================
+// UNIVERSAL LEAD WEBHOOK (GOOGLE ADS, ZAPIER)
+// ==========================================
+export const incomingLeadWebhook = functions.runWith({
+    timeoutSeconds: 30,
+    memory: "256MB"
+// @ts-ignore
+}).https.onRequest(async (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+    if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
+
+    try {
+        const orgId = req.query.orgId as string || req.body.orgId || req.body.organizationId;
+        if (!orgId) { res.status(400).send('Missing orgId (Query Parameter or JSON Body required)'); return; }
+
+        const secretDoc = await admin.firestore().collection('organizations').doc(orgId).collection('secrets').doc('config').get();
+        if (!secretDoc.exists) { res.status(403).send("Organization not configured for webhooks."); return; }
+
+        const configuredKey = secretDoc.data()?.webhookSecretKey;
+        if (!configuredKey) { res.status(403).send("Webhook secret key not generated for this organization."); return; }
+
+        const providedKey = req.query.apiKey || req.headers.authorization?.replace('Bearer ', '') || req.body.google_key || req.body.googleKey || req.body.apiKey;
+        if (providedKey !== configuredKey) { res.status(401).send("Unauthorized Webhook Key."); return; }
+
+        let firstName = req.body.firstName || req.body.customerName || req.body.name || 'Unknown';
+        let lastName = req.body.lastName || '';
+        let phone = req.body.phone || req.body.phoneNumber || '';
+        let email = req.body.email || req.body.emailAddress || '';
+        let notes = req.body.notes || req.body.description || req.body.issue || 'Lead ingested via Webhook.';
+
+        // Google Ads Form Payload Format
+        if (req.body.user_column_data && Array.isArray(req.body.user_column_data)) {
+            req.body.user_column_data.forEach((col: any) => {
+                if (col.column_id === 'FIRST_NAME') firstName = col.string_value;
+                if (col.column_id === 'LAST_NAME') lastName = col.string_value;
+                if (col.column_id === 'PHONE_NUMBER') phone = col.string_value;
+                if (col.column_id === 'EMAIL') email = col.string_value;
+            });
+            notes = 'Lead ingested via Google Ads Campaign.';
+        }
+
+        const customerName = `${firstName} ${lastName}`.trim();
+        const db = admin.firestore();
+
+        let customerId = '';
+        const emailQuery = await db.collection('customers').where('organizationId', '==', orgId).where('email', '==', email).limit(1).get();
+        if (email && !emailQuery.empty) customerId = emailQuery.docs[0].id;
+        else {
+            const phoneQuery = await db.collection('customers').where('organizationId', '==', orgId).where('phone', '==', phone).limit(1).get();
+            if (phone && !phoneQuery.empty) customerId = phoneQuery.docs[0].id;
+            else {
+                const newCustomerRef = db.collection('customers').doc();
+                await newCustomerRef.set({
+                    organizationId: orgId, name: customerName, email, phone, status: 'active', tags: ['webhook-lead'],
+                    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+                });
+                customerId = newCustomerRef.id;
+            }
+        }
+
+        const jobId = `job-${Date.now()}`;
+        await db.collection('jobs').doc(jobId).set({
+            id: jobId, organizationId: orgId, customerId, title: 'New Webhook Lead', status: 'Unassigned', priority: 'Medium',
+            description: notes, customerName, createdAt: new Date().toISOString()
+        });
+
+        functions.logger.info(`Successfully ingested lead job ${jobId} for Org ${orgId}`);
+        res.status(200).send({ success: true, message: "Lead processed successfully." });
+    } catch (error: any) {
+        functions.logger.error("Webhook Error:", error);
+        res.status(500).send({ error: "Internal Server Error processing webhook.", message: error.message });
+    }
+});

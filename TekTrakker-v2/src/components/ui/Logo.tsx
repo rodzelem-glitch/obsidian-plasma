@@ -2,14 +2,16 @@
 import React from 'react';
 
 // IMPORTANT: Ensure the uploaded image files are saved in your 'public' folder with these names:
-const HORIZONTAL_LOGO_PATH = "/tektrakker-logo-full.png";
+const HORIZONTAL_LOGO_PATH = "/tektrakker-logo-web.png";
 const SQUARE_LOGO_PATH = "/tektrakker-icon.png";
 
 export const Logo: React.FC<{ className?: string }> = ({ className }) => (
     <img 
         src={HORIZONTAL_LOGO_PATH} 
         alt="TekTrakker" 
-        className={`object-contain ${className}`}
+        width="1696"
+        height="608"
+        className={`object-contain w-auto ${className}`}
         onError={(e) => {
             // Fallback if image isn't found yet
             e.currentTarget.style.display = 'none';

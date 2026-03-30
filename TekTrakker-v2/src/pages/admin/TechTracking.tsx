@@ -13,18 +13,20 @@ const TechTracking: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { currentUser } = state;
     
+    const WORKFORCE_ROLES = new Set(['employee', 'both', 'supervisor', 'technician', 'subcontractor', 'admin']);
+
     const allTechs = useMemo(() => {
         return (state.users as User[])
             .filter((u: User) => 
                 u.organizationId === state.currentOrganization?.id && 
-                (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor') &&
+                WORKFORCE_ROLES.has((u.role || '').toLowerCase()) &&
                 (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id)
             )
             .map((u: User) => {
                 const hasLocation = !!u.location;
                 let isOnline = false;
                 let diffMins = 0;
-                if (hasLocation && u.location) { // Add null check for u.location
+                if (hasLocation && u.location) {
                     diffMins = (new Date().getTime() - new Date(u.location.timestamp).getTime()) / 60000;
                     isOnline = diffMins < 60; 
                 }

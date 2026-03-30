@@ -40,6 +40,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
     { path: '/admin/workforce', label: 'Workforce', icon: UsersIcon, roles: ['admin', 'both', 'supervisor'] },
     { path: '/admin/projects', label: 'Project Management', icon: FolderKanban, roles: ['admin', 'both', 'supervisor'] },
     { path: '/admin/messages', label: 'Messages', icon: ChatBubbleLeftRightIcon, roles: ['admin', 'both', 'supervisor'] },
+    { path: '/admin/campaigns', label: 'Marketing Campaigns', icon: MegaphoneIcon, roles: ['admin', 'both'] },
     { path: '/admin/records', label: 'Records and assets', icon: BoxIcon, roles: ['admin', 'both'] },
     { path: '/admin/compliance', label: 'Compliance and safety', icon: Shield, roles: ['admin', 'both', 'supervisor'] },
     { path: '/admin/hiring', label: 'ATS', icon: BriefcaseIcon, roles: ['admin', 'both'] },

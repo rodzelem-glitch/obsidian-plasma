@@ -3,19 +3,20 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 // Landing Pages
-import SplitHome from '../pages/landing/SplitHome';
-import SaaSMarketing from '../pages/landing/SaaSMarketing';
-import OrganizationPublicSite from '../pages/landing/OrganizationPublicSite';
-import ComplianceReport from '../pages/landing/ComplianceReport';
-import PrivacyPolicy from '../pages/landing/PrivacyPolicy';
-import TermsOfService from '../pages/landing/TermsOfService';
-import EULA from '../pages/landing/EULA';
+// Deprecated: const SplitHome = lazy(() => import('../pages/landing/SplitHome'));
+const SaaSMarketing = lazy(() => import('../pages/landing/SaaSMarketing'));
+const PropertyOwnerMarketing = lazy(() => import('../pages/landing/PropertyOwnerMarketing'));
+const OrganizationPublicSite = lazy(() => import('../pages/landing/OrganizationPublicSite'));
+const ComplianceReport = lazy(() => import('../pages/landing/ComplianceReport'));
+const PrivacyPolicy = lazy(() => import('../pages/landing/PrivacyPolicy'));
+const TermsOfService = lazy(() => import('../pages/landing/TermsOfService'));
+const EULA = lazy(() => import('../pages/landing/EULA'));
 
 // Page Components
-import LoginPage from '../pages/Login';
-import PublicProposal from '../pages/PublicProposal';
-import PublicBookingPage from '../pages/PublicBookingPage';
-import PublicCareerPage from '../pages/PublicCareerPage';
+const LoginPage = lazy(() => import('../pages/Login'));
+const PublicProposal = lazy(() => import('../pages/PublicProposal'));
+const PublicBookingPage = lazy(() => import('../pages/PublicBookingPage'));
+const PublicCareerPage = lazy(() => import('../pages/PublicCareerPage'));
 
 // Lazy Load Payment Page
 const CustomerPayment = lazy(() => import('../pages/CustomerPayment'));
@@ -23,8 +24,8 @@ const ApexDemo = lazy(() => import('../pages/Pro/ApexDemo'));
 
 const PublicRoutes: React.FC<{ user: any, getRedirectPath: () => string }> = ({ user, getRedirectPath }) => (
   <Routes>
-    <Route path="/" element={user ? <Navigate to={getRedirectPath()} replace /> : <SplitHome />} />
-    <Route path="/pro" element={<SaaSMarketing />} />
+    <Route path="/" element={user ? <Navigate to={getRedirectPath()} replace /> : <SaaSMarketing />} />
+    <Route path="/homeowners" element={<PropertyOwnerMarketing />} />
     <Route path="/pro/apex" element={
         <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-900 text-white">Loading Demo...</div>}>
             <ApexDemo />
@@ -39,7 +40,9 @@ const PublicRoutes: React.FC<{ user: any, getRedirectPath: () => string }> = ({ 
     <Route path="/terms" element={<TermsOfService />} />
     <Route path="/eula" element={<EULA />} />
     
-    <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={getRedirectPath()} replace />} />
+    <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={`${getRedirectPath()}${window.location.search}`} replace />} />
+    <Route path="/register" element={!user ? <LoginPage /> : <Navigate to={`${getRedirectPath()}${window.location.search}`} replace />} />
+    <Route path="*" element={<Navigate to={`/login${window.location.search}`} replace />} />
   </Routes>
 );
 

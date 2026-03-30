@@ -10,7 +10,8 @@ import Textarea from 'components/ui/Textarea';
 import Input from 'components/ui/Input';
 import { 
     MapPin, Star, Phone, Globe, ShieldCheck, 
-    MessageSquare, Link as LinkIcon, AlertTriangle, ArrowLeft, Wrench, Calendar
+    MessageSquare, Link as LinkIcon, AlertTriangle, ArrowLeft, Wrench, Calendar, BadgeCheck,
+    Facebook, Instagram, Linkedin, Twitter, Youtube
 } from 'lucide-react';
 import { formatAddress } from 'lib/utils';
 import { useAppContext } from 'context/AppContext';
@@ -363,11 +364,34 @@ const ProviderProfile: React.FC = () => {
                         </div>
                         <div className="flex-1 space-y-4">
                             <div>
-                                <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{org.name}</h1>
-                                <div className="flex flex-wrap gap-x-6 gap-y-2 mt-2 text-sm text-slate-500 font-medium">
+                                <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight flex items-center flex-wrap gap-3">
+                                    {org.name}
+                                    {org.isLeadingPro && (
+                                        <div className="flex items-center bg-gradient-to-r from-amber-400 to-amber-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md uppercase tracking-wide">
+                                            <Star size={14} className="mr-1.5 fill-current" />
+                                            <span>Leading Pro</span>
+                                        </div>
+                                    )}
+                                    {org.isVerified && !org.isLeadingPro && (
+                                        <div className="flex items-center bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">
+                                            <BadgeCheck size={14} className="mr-1.5" />
+                                            <span>Verified</span>
+                                        </div>
+                                    )}
+                                </h1>
+                                <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3 text-sm text-slate-500 font-medium">
                                     {org.address && <span className="flex items-center gap-1.5"><MapPin size={14} /> {formatAddress(org.address)}</span>}
                                     {org.website && <span className="flex items-center gap-1.5"><Globe size={14} /> <a href={org.website} target="_blank" rel="noreferrer" className="hover:underline">Website</a></span>}
                                 </div>
+                                {(org.socialLinks?.facebook || org.socialLinks?.instagram || org.socialLinks?.linkedin || org.socialLinks?.youtube || org.socialLinks?.x) && (
+                                     <div className="flex flex-wrap gap-3 mt-3 text-slate-400">
+                                         {org.socialLinks.facebook && <a href={org.socialLinks.facebook} target="_blank" rel="noreferrer" className="hover:text-blue-600 transition-colors" title="Facebook"><Facebook size={18}/></a>}
+                                         {org.socialLinks.instagram && <a href={org.socialLinks.instagram} target="_blank" rel="noreferrer" className="hover:text-pink-600 transition-colors" title="Instagram"><Instagram size={18}/></a>}
+                                         {org.socialLinks.linkedin && <a href={org.socialLinks.linkedin} target="_blank" rel="noreferrer" className="hover:text-blue-500 transition-colors" title="LinkedIn"><Linkedin size={18}/></a>}
+                                         {org.socialLinks.x && <a href={org.socialLinks.x} target="_blank" rel="noreferrer" className="hover:text-slate-900 dark:hover:text-white transition-colors" title="X (Twitter)"><Twitter size={18}/></a>}
+                                         {org.socialLinks.youtube && <a href={org.socialLinks.youtube} target="_blank" rel="noreferrer" className="hover:text-red-600 transition-colors" title="YouTube"><Youtube size={18}/></a>}
+                                     </div>
+                                )}
                             </div>
                             <div className="flex flex-col sm:flex-row gap-3 pt-2">
                                 <Button 

@@ -17,6 +17,7 @@ import {
     Clipboard, File as FileIcon, User as UserIcon, DollarSign, Mail, BookOpen, Layers, Archive
 } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
+import DOMPurify from 'dompurify';
 
 const DocumentCreator: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -373,7 +374,7 @@ const DocumentCreator: React.FC = () => {
                                 className="w-full min-h-[500px] bg-white dark:bg-gray-800 text-black dark:text-white p-6 md:p-12 shadow-md rounded-lg outline-none max-w-4xl mx-auto prose dark:prose-invert"
                                 contentEditable
                                 ref={contentEditableRef}
-                                dangerouslySetInnerHTML={{ __html: editingDoc.content || '' }}
+                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(editingDoc.content || '') }}
                             />
                         </div>
                     </div>
@@ -414,7 +415,7 @@ const DocumentCreator: React.FC = () => {
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                         >
                             <option value="">-- Select a User --</option>
-                            {state.users.filter(u => u.role === 'Technician' || u.role === 'Subcontractor').map(user => (
+                            {state.users.filter(u => ['employee', 'both', 'supervisor', 'admin', 'master_admin', 'Technician', 'Subcontractor'].includes(u.role)).map(user => (
                                 <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>
                             ))}
                         </select>

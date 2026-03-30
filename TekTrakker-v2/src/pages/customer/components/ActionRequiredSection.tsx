@@ -11,9 +11,13 @@ interface ActionRequiredSectionProps {
     onSignWaiver: (job: Job, file: StoredFile) => void;
     onSignProposal: (proposal: Proposal) => void;
     onSignDocument: (doc: BusinessDocument) => void;
+    onAcceptWarranty: (job: Job) => void;
 }
 
-const ActionRequiredSection: React.FC<ActionRequiredSectionProps> = ({ jobs, proposals, documents, onSignWaiver, onSignProposal, onSignDocument }) => {
+const ActionRequiredSection: React.FC<ActionRequiredSectionProps> = ({ 
+    jobs, proposals, documents, 
+    onSignWaiver, onSignProposal, onSignDocument, onAcceptWarranty 
+}) => {
     // 1. Found pending waivers in jobs (Directly attached files)
     const pendingJobFiles = jobs.flatMap(job => 
         (job.files || [])
@@ -37,7 +41,16 @@ const ActionRequiredSection: React.FC<ActionRequiredSectionProps> = ({ jobs, pro
 
     const pendingProposals = proposals.filter(p => p.status === 'Sent' || p.status === 'sent');
 
-    const totalActions = pendingJobFiles.length + pendingDocs.length + pendingProposals.length;
+    // 4. Found jobs with pending warranty acceptance
+    const pendingWarranties = jobs.filter(job => {
+        const inv = job.invoice as any;
+        if (!inv) return false;
+        const hasWarranty = (inv.workmanshipWarrantyMonths > 0 || inv.partsWarrantyMonths > 0);
+        const isNotAgreed = !inv.warrantyDisclaimerAgreed;
+        return hasWarranty && isNotAgreed;
+    });
+
+    const totalActions = pendingJobFiles.length + pendingDocs.length + pendingProposals.length + pendingWarranties.length;
 
 
     if (totalActions === 0) return null;
@@ -107,6 +120,26 @@ const ActionRequiredSection: React.FC<ActionRequiredSectionProps> = ({ jobs, pro
                             </div>
                             <Button size="sm" onClick={() => onSignProposal(proposal)} className="text-xs">
                                 Review & Sign
+                            </Button>
+                        </div>
+                    </Card>
+                ))}
+
+                {pendingWarranties.map((job) => (
+                    <Card key={`warranty-${job.id}`} className="p-5 border-2 border-blue-200 dark:border-blue-900/30 bg-blue-50/30 dark:bg-blue-950/10">
+                        <div className="flex justify-between items-start">
+                            <div className="flex gap-3">
+                                <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-xl text-blue-600">
+                                    <ShieldCheck size={20} />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-slate-900 dark:text-white">Warranty Activation Required</p>
+                                    <p className="text-xs text-slate-500 mt-0.5">Job: {job.tasks.join(', ')}</p>
+                                    <p className="text-[10px] font-bold text-blue-600 uppercase mt-1">Review & Agree to Terms</p>
+                                </div>
+                            </div>
+                            <Button size="sm" onClick={() => onAcceptWarranty(job)} className="bg-blue-600 hover:bg-blue-700 text-xs">
+                                Review & Accept
                             </Button>
                         </div>
                     </Card>

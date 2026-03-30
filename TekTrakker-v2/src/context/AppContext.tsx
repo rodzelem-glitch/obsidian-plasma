@@ -69,12 +69,21 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         if (isMasterAdmin) return '/master/dashboard';
         if (user.role === 'platform_sales') return '/sales/dashboard';
         if (user.role === 'admin' || user.role === 'both' || user.role === 'supervisor') return '/admin/dashboard';
-        if (user.role === 'customer') return '/portal';
+        if (user.role === 'customer') {
+            if (!user.organizationId || user.organizationId === 'unaffiliated') {
+                return '/marketplace';
+            }
+            return '/portal';
+        }
         if (user.role === 'employee') return '/briefing';
-        return '/briefing';
+        
+        const path = (!user.organizationId || user.organizationId === 'unaffiliated' || !user.role) ? '/marketplace' : '/login';
+        console.log(`[Navigation-Context] User: ${user.email}, Role: ${user.role}, Org: ${user.organizationId} -> Path: ${path}`);
+        return path;
     }, []);
 
     const startDemo = useCallback((role: 'admin' | 'employee' | 'customer' | 'sales') => {
+        sessionStorage.setItem('preDemoPath', window.location.pathname + window.location.search + window.location.hash);
         unsubscribeData();
         
         let mockUser: User | undefined;
@@ -126,18 +135,24 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
     const exitDemo = useCallback(() => {
         const isSales = state.currentUser?.role === 'platform_sales';
-        dispatch({ type: 'EXIT_DEMO' });
+        const preDemoPath = sessionStorage.getItem('preDemoPath');
 
-        if (isSales) {
-            navigate('/sales/dashboard');
+        sessionStorage.removeItem('preDemoPath');
+
+        const currentPath = window.location.pathname + window.location.search + window.location.hash;
+
+        if (preDemoPath) {
+            if (preDemoPath === currentPath) {
+                window.location.reload();
+            } else {
+                window.location.href = preDemoPath;
+            }
+        } else if (isSales) {
+            window.location.href = '/sales/dashboard';
         } else {
-            navigate('/pro');
+            window.location.href = '/pro';
         }
-        
-        setTimeout(() => {
-            window.location.reload();
-        }, 100);
-    }, [navigate, state.currentUser?.role]);
+    }, [state.currentUser?.role]);
 
     useEffect(() => {
         if (state.isDemoMode) {
@@ -149,25 +164,55 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             if (user) {
                 dispatch({ type: 'SET_LOADING', payload: true });
                 try {
-                    const userDoc = await db.collection('users').doc(user.uid).get();
-                    if (userDoc.exists) {
-                        const userData = { id: user.uid, ...userDoc.data() } as User;
-                        const isMasterAdmin = userData.role === 'master_admin';
-                        const isSales = userData.role === 'platform_sales';
-                        let orgData: Organization | undefined = undefined;
-
-                        if (userData.organizationId) {
-                            const orgDoc = await db.collection('organizations').doc(userData.organizationId).get();
-                            if (orgDoc.exists) orgData = { id: userData.organizationId, ...orgDoc.data() } as Organization;
-                        } else if (isMasterAdmin || isSales) {
-                            orgData = PLATFORM_ORGANIZATION;
+                    // Profile Fetch with Timeout
+                    const fetchProfile = async () => {
+                        // Check UID first, then Email (normalized)
+                        let userDoc = await db.collection('users').doc(user.uid).get();
+                        
+                        if (!userDoc.exists && user.email) {
+                            const normalizedEmail = user.email.toLowerCase().trim();
+                            const emailDoc = await db.collection('users').doc(normalizedEmail).get();
+                            if (emailDoc.exists) {
+                                userDoc = emailDoc;
+                                // Automatically link UID to the email-keyed doc if not present
+                                if (emailDoc.data()?.uid !== user.uid) {
+                                    await db.collection('users').doc(normalizedEmail).update({ uid: user.uid });
+                                }
+                            }
                         }
 
-                        dispatch({ type: 'LOGIN_SUCCESS', payload: { user: userData, organization: orgData, isMasterAdmin } });
-                    } else {
-                        // User exists in Auth but not in Firestore
+                        if (userDoc.exists) {
+                            const userData = { id: user.uid, ...userDoc.data() } as User;
+                            const isMasterAdmin = userData.role === 'master_admin';
+                            const isSales = userData.role === 'platform_sales';
+                            let orgData: Organization | undefined = undefined;
+
+                            if (userData.organizationId) {
+                                const orgDoc = await db.collection('organizations').doc(userData.organizationId).get();
+                                if (orgDoc.exists) orgData = { id: userData.organizationId, ...orgDoc.data() } as Organization;
+                            } else if (isMasterAdmin || isSales) {
+                                orgData = PLATFORM_ORGANIZATION;
+                            }
+
+                            dispatch({ type: 'LOGIN_SUCCESS', payload: { user: userData, organization: orgData, isMasterAdmin } });
+                        } else {
+                            // User exists in Auth but not in Firestore - likely a brand new registration
+                            // We don't log out yet, wait for Login.tsx to handle the redirect part
+                            dispatch({ type: 'SET_LOADING', payload: false });
+                        }
+                    };
+
+                    // Race between fetch and 5s timeout
+                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
+                    try {
+                        await Promise.race([fetchProfile(), timeoutPromise]);
+                    } catch (raceErr) {
+                        console.error("Auth initialization timed out or failed:", raceErr);
                         dispatch({ type: 'SET_LOADING', payload: false });
-                        dispatch({ type: 'LOGOUT' });
+                        // If it's a real account (not just registered), log out to clear the hang
+                        if (new Date().getTime() - new Date(user.metadata.creationTime || 0).getTime() > 30000) {
+                             dispatch({ type: 'LOGOUT' });
+                        }
                     }
                 } catch (error) {
                     console.error("Error fetching user data:", error);
@@ -248,15 +293,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 let query;
                 
                 if (isCustomer && customerPersonalData.includes(collection)) {
-                    const emails = [currentUser.email];
-                    if (currentUser.email?.toLowerCase() !== currentUser.email) {
-                        emails.push(currentUser.email?.toLowerCase());
-                    }
-                    
-                    query = db.collection(collection).where('customerEmail', 'in', emails);
+                    // Statically valid queries for Firestore security rules (exact == match)
+                    query = db.collection(collection).where('customerEmail', '==', currentUser.email);
                     
                     if (collection === 'customers') {
-                        query = db.collection(collection).where('email', 'in', emails);
+                        query = db.collection(collection).where('email', '==', currentUser.email);
                     }
                 } else if (orgIdForCollections) {
                     query = db.collection(collection).where('organizationId', '==', orgIdForCollections);
@@ -281,23 +322,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     console.error(`Subscription failed for ${collection}:`, error);
                 }));
 
-                // Fallback: Also subscribe by name for jobs and proposals (legacy data)
-                if (isCustomer && ['jobs', 'proposals'].includes(collection)) {
-                    const fullName = (state.currentUser?.firstName + " " + state.currentUser?.lastName).trim();
-                    if (fullName && fullName.length > 3) { // Avoid subscribing to empty names
-                        const nameQuery = db.collection(collection).where('customerName', '==', fullName);
-                        const mergeType = collection === 'jobs' ? 'MERGE_JOBS' : 'MERGE_PROPOSALS';
-                        
-                        newSubscriptions.push(nameQuery.onSnapshot(s => {
-                            const payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
-                            dispatch({ type: mergeType as any, payload });
-                        }, console.error));
-                    }
-                }
+                // Fallback by name is disabled for customers because it violates Firestore security rules (isCustomerOwner does not allow reading by customerName)
             });
 
             // NEW: Fetch external jobs assigned to this organization
-            if (orgIdForCollections) {
+            if (orgIdForCollections && !isCustomer) {
                 newSubscriptions.push(db.collection('jobs')
                     .where('assignedPartnerId', '==', orgIdForCollections)
                     .onSnapshot(s => {

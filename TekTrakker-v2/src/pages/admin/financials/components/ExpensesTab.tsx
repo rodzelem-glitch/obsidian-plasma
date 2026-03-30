@@ -11,6 +11,7 @@ interface ExpensesTabProps {
     allExpenses: any[];
     handleEditExpense: (exp: any) => void;
     handleDeleteExpense: (id: string, type: string) => void;
+    handleDeleteReceipt: (id: string, type: string) => void;
     setViewingReceipt: (url: string) => void;
     setIsExpenseModalOpen: (val: boolean) => void;
     setNewExpense: (val: any) => void;
@@ -21,6 +22,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
     allExpenses,
     handleEditExpense,
     handleDeleteExpense,
+    handleDeleteReceipt,
     setViewingReceipt,
     setIsExpenseModalOpen,
     setNewExpense,
@@ -69,9 +71,14 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                         <td className="px-6 py-4 text-center group">
                             <div className="flex items-center justify-center gap-2">
                                 {(exp.receiptData || exp.receiptUrl) ? (
-                                    <button onClick={() => setViewingReceipt(exp.receiptData || exp.receiptUrl)} className="text-blue-500 hover:text-blue-700">
-                                        <Paperclip size={18} />
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => setViewingReceipt(exp.receiptData || exp.receiptUrl)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
+                                            <Paperclip size={18} />
+                                        </button>
+                                        <button onClick={() => handleDeleteReceipt(exp.id, exp.type)} className="text-red-500 hover:text-red-700" title="Delete Receipt">
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
                                 ) : (
                                     <div className="flex gap-3">
                                         <button 

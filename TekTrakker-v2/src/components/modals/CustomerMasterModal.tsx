@@ -11,6 +11,7 @@ import type { Customer, EquipmentAsset, ServiceAgreement, MembershipPlan, Job, S
 import { MapPinIcon, TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Mail, QrCode, Printer, Sparkles, ShieldCheck, Ban, MessageSquare, CheckCircle, Edit } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { globalConfirm } from "lib/globalConfirm";
+import { sendEmail } from 'lib/notificationService';
 
 interface CustomerMasterModalProps {
     isOpen: boolean;
@@ -281,44 +282,60 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         setIsSendingInvite(true);
         const org = state.currentOrganization;
         const orgName = org?.name || 'Service Provider';
-        const portalLink = `${window.location.origin}/#/portal`;
+        const normalizedEmail = customer.email.trim().toLowerCase();
+        const portalLink = `${window.location.origin}/#/register?view=register_user&userType=customer&email=${encodeURIComponent(normalizedEmail)}&name=${encodeURIComponent(customer.name)}&oid=${customer.organizationId}`;
         const smtp = org?.smtpConfig;
 
         try {
-            const mailPayload: any = {
-                to: [customer.email],
+            // 1. Create a root user document (Acts as an INVITE for registration)
+            const inviteDoc: any = {
+                email: normalizedEmail,
+                organizationId: org?.id || 'unaffiliated',
+                role: 'customer',
+                status: 'invited',
+                firstName: customer.firstName || customer.name.split(' ')[0],
+                lastName: customer.lastName || customer.name.split(' ').slice(1).join(' ') || '',
+                phone: customer.phone || '',
+                address: {
+                    street: customer.address || '',
+                    city: customer.city || '',
+                    state: customer.state || '',
+                    zip: customer.zip || ''
+                },
+                createdAt: new Date().toISOString(),
+                preferences: { theme: 'dark' }
+            };
+
+            await db.collection('users').doc(normalizedEmail).set(inviteDoc, { merge: true });
+            
+            // 2. Prepare Email Payload
+            const mailPayload = {
+                to: [normalizedEmail],
                 message: {
                     subject: `Portal Invitation: ${orgName}`,
                     html: `
-                        <h2>Welcome to the ${orgName} Customer Portal</h2>
-                        <p>Hi ${customer.firstName || customer.name},</p>
-                        <p>We've created a secure portal for you to view your service history, upcoming appointments, and invoices.</p>
-                        <p><strong>Link:</strong> <a href="${portalLink}">${portalLink}</a></p>
-                        <p>Please log in using this email address: ${customer.email}</p>
-                        <br/>
-                        <p>Thanks,<br/>${orgName}</p>
+                        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                            <h2 style="color: #2563eb;">Welcome to the ${orgName} Customer Portal</h2>
+                            <p>Hi ${customer.firstName || customer.name},</p>
+                            <p>We've created a secure portal for you to view your service history, upcoming appointments, and invoices.</p>
+                            <p style="margin: 30px 0;">
+                                <a href="${portalLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Setup Your Account</a>
+                            </p>
+                            <p style="font-size: 12px; color: #666;">If the button above doesn't work, copy and paste this link into your browser:<br/>
+                            <a href="${portalLink}">${portalLink}</a></p>
+                            <p>Please use this email address to register: <strong>${normalizedEmail}</strong></p>
+                            <br/>
+                            <p>Thanks,<br/>${orgName}</p>
+                        </div>
                     `,
-                    text: `Welcome to the ${orgName} Portal. Access here: ${portalLink}`,
+                    text: `Welcome to the ${orgName} Portal. Setup your account here: ${portalLink}`,
                     replyTo: org?.email,
                 },
-                organizationId: org?.id,
-                type: 'PortalInvite',
-                createdAt: new Date().toISOString()
+                type: 'PortalInvite'
             };
 
-            if (smtp) {
-                mailPayload.transport = {
-                    host: smtp.host,
-                    port: smtp.port,
-                    auth: { user: smtp.user, pass: smtp.pass },
-                    from: `"${smtp.fromName}" <${smtp.fromEmail}>`
-                };
-            } else {
-                mailPayload.message.from = `${orgName} <info@tektrakker.com>`;
-            }
-
-            await db.collection('mail').add(mailPayload);
-            alert(`Invitation sent to ${customer.email}`);
+            await sendEmail(org, mailPayload);
+            alert(`Invitation sent to ${normalizedEmail}`);
         } catch (error) {
             console.error(error);
             alert("Failed to send invitation.");

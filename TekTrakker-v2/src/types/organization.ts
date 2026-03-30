@@ -13,6 +13,7 @@ export interface Organization {
     name: string;
     phone: string;
     email: string;
+    isLeadingPro?: boolean;
     industry?: IndustryVertical;
     logoUrl?: string;
     website?: string;
@@ -44,6 +45,7 @@ export interface Organization {
     stripeAccountId?: string | null;
     squareApplicationId?: string | null;
     squareLocationId?: string | null;
+    squareToken?: string | null;
     enabledPanels?: {
         inventory?: boolean;
         marketing?: boolean;
@@ -98,4 +100,5 @@ export interface Organization {
     aiPricebookEnabled?: boolean;
     salesRepId?: string;
     promoCode?: string | null;
+    measureQuickApiKey?: string;
 }

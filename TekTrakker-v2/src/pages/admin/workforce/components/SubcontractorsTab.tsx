@@ -8,6 +8,7 @@ import SubcontractorModal from '../../../../components/modals/AddSubcontractorMo
 import Card from '../../../../components/ui/Card';
 import { PlusCircle, Copy, Link2, Mail, CheckCircle2, XCircle, Trash2, RefreshCw } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
+import { sendEmail } from 'lib/notificationService';
 
 const SubcontractorsTab: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -172,20 +173,50 @@ const SubcontractorsTab: React.FC = () => {
 
     const handleSendInvite = async (email: string, withDiscount: boolean) => {
         const { name: orgName, id: orgId } = state.currentOrganization || {};
-        if (!orgName || !orgId) return;
+        const normalizedEmail = email.toLowerCase().trim();
+        if (!orgName || !orgId || !normalizedEmail) return;
 
-        const inviteLink = `${window.location.origin}/register?invitedBy=${orgId}${withDiscount ? '&promo=true' : ''}`;
+        const inviteLink = `${window.location.origin}/#/register?view=register_business&email=${encodeURIComponent(normalizedEmail)}&oid=${orgId}${withDiscount ? '&promo=true' : ''}`;
         const subject = withDiscount ? `10% Discount: Join ${orgName} on TekTrakker` : `Join ${orgName} on TekTrakker`;
 
-        const htmlBody = `...`; // (Same as before)
+        const htmlBody = `
+            <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #4f46e5;">Invitation from ${orgName}</h2>
+                <p>Hi,</p>
+                <p>${orgName} has invited you to join their service network on <strong>TekTrakker</strong>.</p>
+                ${withDiscount ? '<p style="color: #059669; font-weight: bold;">Good news! You\'ve been granted a 10% discount on your subscription.</p>' : ''}
+                <p style="margin: 30px 0;">
+                    <a href="${inviteLink}" style="background-color: #4f46e5; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Accept Invitation & Register</a>
+                </p>
+                <p style="font-size: 12px; color: #666;">If the button above doesn't work, copy and paste this link into your browser:<br/>
+                <a href="${inviteLink}">${inviteLink}</a></p>
+                <br/>
+                <p>Thanks,<br/>The TekTrakker Team</p>
+            </div>
+        `;
 
         try {
-            await db.collection('mail').add({
-                to: [email],
-                message: { subject, html: htmlBody },
+            // 1. Create a root user document (Acts as an INVITE for registration)
+            const inviteDoc: any = {
+                email: normalizedEmail,
                 organizationId: orgId,
+                role: 'employee',
+                status: 'invited',
+                createdAt: new Date().toISOString(),
+                preferences: { theme: 'dark' },
+                hireDate: new Date().toISOString(),
+                payRate: 0,
+                ptoAccrued: 0
+            };
+
+            await db.collection('users').doc(normalizedEmail).set(inviteDoc, { merge: true });
+
+            // 2. Send Invitation Email
+            await sendEmail(state.currentOrganization, {
+                to: [normalizedEmail],
+                message: { subject, html: htmlBody },
                 type: 'Invite',
-                referralMeta: withDiscount ? { referringOrgId: orgId, referredEmail: email } : null
+                referralMeta: withDiscount ? { referringOrgId: orgId, referredEmail: normalizedEmail } : null
             });
             alert("Invitation sent successfully!");
         } catch (e) { alert("Failed to send invite."); }

@@ -42,9 +42,6 @@ const admin = __importStar(require("firebase-admin"));
 const cors_1 = __importDefault(require("cors"));
 const uuid_1 = require("uuid");
 const corsHandler = (0, cors_1.default)({ origin: true });
-if (admin.apps.length === 0) {
-    admin.initializeApp();
-}
 const db = admin.firestore();
 const storage = admin.storage();
 exports.submitWidgetForm = functions.https.onRequest((req, res) => {

@@ -5,6 +5,7 @@ import { useAppContext } from '../../context/AppContext';
 import { Organization } from '../../types/types';
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot, doc, addDoc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
@@ -98,7 +99,17 @@ const MasterOrganizations: React.FC = () => {
                 ptoAccrued: 0
             });
 
-            toast.success('Organization and Admin invite created! User must now register with this email to set their password.');
+            // 4. Create proper Auth record via Server-Side Admin SDK
+            const createAuth = httpsCallable(getFunctions(), 'createUserAuth');
+            await createAuth({
+                email: orgForm.email.toLowerCase(),
+                password: orgForm.adminPassword,
+                displayName: `${orgForm.name} Admin`,
+                role: 'admin',
+                organizationId: orgRef.id
+            });
+
+            toast.success('Organization and Admin account created successfully! The Organization can now log in.');
             setCreatingOrg(false);
             setOrgForm({
                 name: '', email: '', phone: '', plan: 'starter', subscriptionStatus: 'active',
@@ -182,9 +193,19 @@ const MasterOrganizations: React.FC = () => {
         const orgRef = doc(db, 'organizations', org.id);
         try {
             await updateDoc(orgRef, { isVerified: !org.isVerified });
-            toast.success(`Status updated for ${org.name}`);
+            toast.success(`Verification status updated for ${org.name}`);
         } catch (error) {
             toast.error("Failed to update verification status.");
+        }
+    };
+
+    const handleToggleLeadingPro = async (org: Organization) => {
+        const orgRef = doc(db, 'organizations', org.id);
+        try {
+            await updateDoc(orgRef, { isLeadingPro: !org.isLeadingPro });
+            toast.success(`Leading Pro status updated for ${org.name}`);
+        } catch (error) {
+            toast.error("Failed to update Leading Pro status.");
         }
     };
 
@@ -213,6 +234,9 @@ const MasterOrganizations: React.FC = () => {
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{org.subscriptionStatus}</td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                 <Toggle label="Verified" enabled={!!org.isVerified} onChange={() => handleToggleVerified(org)} />
+                                <div className="mt-2 text-xs">
+                                     <Toggle label="Leading Pro" enabled={!!org.isLeadingPro} onChange={() => handleToggleLeadingPro(org)} />
+                                </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                 <div className="flex space-x-1">
@@ -243,7 +267,7 @@ const MasterOrganizations: React.FC = () => {
                         <Input label="Phone Number" value={orgForm.phone} onChange={e => setOrgForm({...orgForm, phone: e.target.value})} />
                         {!editingOrg && (
                             <div className="relative">
-                                <Input label="Initial Password (Not yet used - User must Register)" type={showOrgAdminPassword ? "text" : "password"} value={orgForm.adminPassword} onChange={e => setOrgForm({ ...orgForm, adminPassword: e.target.value })} disabled />
+                                <Input label="Initial Admin Password" type={showOrgAdminPassword ? "text" : "password"} value={orgForm.adminPassword} onChange={e => setOrgForm({ ...orgForm, adminPassword: e.target.value })} required />
                                 <button type="button" onClick={() => setShowOrgAdminPassword(!showOrgAdminPassword)} className="absolute bottom-2 right-3 text-gray-500">
                                     <Eye size={18} />
                                 </button>

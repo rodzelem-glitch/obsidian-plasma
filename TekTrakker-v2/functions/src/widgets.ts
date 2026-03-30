@@ -7,9 +7,7 @@ import type { Organization } from './types';
 
 const corsHandler = cors({ origin: true });
 
-if (admin.apps.length === 0) {
-  admin.initializeApp();
-}
+
 
 const db = admin.firestore();
 const storage = admin.storage();

@@ -42,6 +42,15 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
             // will pick this up and update the UI automatically.
             await db.collection('customers').doc(newCustomer.id).set(newCustomer);
 
+            // Notify Admins of the new customer
+            const { notifyAdmins } = await import('../../../../lib/notificationService');
+            await notifyAdmins(state.currentOrganization.id, {
+                title: "New Customer Added",
+                body: `${name} has been added to the database.`,
+                type: 'new_customer',
+                data: { customerId: newCustomer.id }
+            });
+
             onCustomerCreated(newCustomer.id);
             
             setName('');

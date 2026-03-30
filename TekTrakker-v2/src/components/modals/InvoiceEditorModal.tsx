@@ -46,7 +46,12 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         selectedProposalId, setSelectedProposalId,
         handleImportFromProposal,
         relevantProposals,
-        overrideOrg
+        overrideOrg,
+        // Warranty
+        workmanshipWarrantyMonths, setWorkmanshipWarrantyMonths,
+        partsWarrantyMonths, setPartsWarrantyMonths,
+        warrantyNotes, setWarrantyNotes,
+        warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed,
     } = useInvoiceLogic(jobId, isOpen, onClose);
 
     if (!currentJob) return null;
@@ -97,6 +102,48 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     >
                         Import from Proposal ({relevantProposals.length})
                     </Button>
+                </div>
+
+                {/* Warranty Section */}
+                <div className="mt-6 border-t border-slate-100 dark:border-slate-800 pt-6">
+                    <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                        🛡️ Warranty Coverage
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4 mb-3">
+                        <Input
+                            label="Workmanship Warranty (months)"
+                            type="number"
+                            min={0}
+                            value={workmanshipWarrantyMonths}
+                            onChange={e => setWorkmanshipWarrantyMonths(parseInt(e.target.value) || 0)}
+                        />
+                        <Input
+                            label="Parts Warranty (months)"
+                            type="number"
+                            min={0}
+                            value={partsWarrantyMonths}
+                            onChange={e => setPartsWarrantyMonths(parseInt(e.target.value) || 0)}
+                        />
+                    </div>
+                    <Input
+                        label="Warranty Notes / Coverage Details"
+                        value={warrantyNotes}
+                        onChange={e => setWarrantyNotes(e.target.value)}
+                        placeholder="e.g. Covers compressor replacement, excludes refrigerant refills..."
+                    />
+                    {(workmanshipWarrantyMonths > 0 || partsWarrantyMonths > 0) && (
+                        <label className="flex items-start gap-3 mt-3 cursor-pointer p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-xl">
+                            <input
+                                type="checkbox"
+                                checked={warrantyDisclaimerAgreed}
+                                onChange={e => setWarrantyDisclaimerAgreed(e.target.checked)}
+                                className="mt-0.5 h-4 w-4 rounded"
+                            />
+                            <span className="text-xs text-amber-800 dark:text-amber-400 font-bold">
+                                Customer has agreed to the warranty terms and disclaimers on file. Warranty will be <span className={warrantyDisclaimerAgreed ? 'text-emerald-600' : 'text-red-500'}>{warrantyDisclaimerAgreed ? 'ACTIVE' : 'INACTIVE until agreed'}</span>.
+                            </span>
+                        </label>
+                    )}
                 </div>
             </div>
             

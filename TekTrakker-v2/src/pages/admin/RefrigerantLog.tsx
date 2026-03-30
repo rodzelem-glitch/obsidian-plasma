@@ -182,7 +182,9 @@ const RefrigerantLog: React.FC = () => {
 
     const handleDelete = async (id: string) => {
         if (!id.startsWith('reftx-')) {
-            alert("Cannot delete automated job logs from here. Edit the job instead.");
+            if (!await globalConfirm("This log is linked to a job. Deleting here won't affect the job record. Delete anyway?")) return;
+            // Job-linked logs don't have their own Firestore document - inform user
+            alert("Job-linked refrigerant logs cannot be deleted from here. To remove this, edit the job and delete it from its refrigerant log.");
             return;
         }
         if (!await globalConfirm("Delete this refrigerant record?")) return;
@@ -200,12 +202,16 @@ const RefrigerantLog: React.FC = () => {
 
     const handleSaveCylinder = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!state.currentOrganization?.id) {
+            alert('Cannot save: organization not loaded.');
+            return;
+        }
         const data = editingCylinder;
         const id = data.id || `cyl-${Date.now()}`;
         const cylinder = {
             ...data,
             id,
-            organizationId: state.currentOrganization?.id,
+            organizationId: state.currentOrganization.id,
             updatedAt: new Date().toISOString()
         };
 
@@ -214,7 +220,7 @@ const RefrigerantLog: React.FC = () => {
             setIsCylinderModalOpen(false);
             setEditingCylinder(null);
         } catch (err) {
-            alert("Failed to save cylinder");
+            alert('Failed to save cylinder: ' + (err as any)?.message);
         }
     };
 

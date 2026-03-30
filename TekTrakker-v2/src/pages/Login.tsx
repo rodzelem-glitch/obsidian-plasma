@@ -12,7 +12,7 @@ import { UserRegistrationForm } from 'components/auth/UserRegistrationForm';
 import { BusinessRegistrationForm } from 'components/auth/BusinessRegistrationForm';
 
 const LoginPage: React.FC = () => {
-  const { state, dispatch } = useAppContext();
+  const { state, dispatch, getRedirectPath } = useAppContext();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [view, setView] = useState<'login' | 'register_business' | 'register_user' | 'forgot_password'>('login');
@@ -105,11 +105,22 @@ const LoginPage: React.FC = () => {
   }, [state.loading]);
 
   useEffect(() => {
-      // 1. Check for 'view' param
+      // 1. Check for registration/invite params
       const viewParam = searchParams.get('view');
-      if (viewParam === 'register_business' || viewParam === 'register_user' || viewParam === 'login') {
+      const paramEmail = searchParams.get('email');
+      const paramName = searchParams.get('name');
+      const paramUserType = searchParams.get('userType');
+
+      // If landing on /register or explicitly passed, show registration
+      if (viewParam === 'register_user' || window.location.hash.includes('/register')) {
+          setView('register_user');
+      } else if (viewParam === 'register_business' || viewParam === 'login') {
           setView(viewParam as any);
       }
+
+      if (paramEmail) setEmail(paramEmail);
+      if (paramName) setUserName(paramName);
+      if (paramUserType === 'customer' || paramUserType === 'staff') setUserType(paramUserType as any);
 
       // 2. Fetch platform settings for public pages
       if (!state.platformSettings) {
@@ -171,14 +182,46 @@ const LoginPage: React.FC = () => {
                          console.warn("Failed to update lastLoginAt", updateErr);
                      }
                      
+                      // 1. SELF-HEALING: Normalize Email Casing
+                      if (userData.email && userData.email !== userData.email.toLowerCase()) {
+                          const lcEmail = userData.email.toLowerCase().trim();
+                          await db.collection('users').doc(uid).update({ email: lcEmail });
+                      }
+
+                      // 2. SELF-HEALING: Link Customer Record if missing
+                      if (userData.role === 'customer' && userData.organizationId && userData.organizationId !== 'unaffiliated') {
+                          try {
+                              const searchEmail = (userData.email || trimmedEmail).toLowerCase().trim();
+                              // Check if already linked via UID doc
+                              const uidDoc = await db.collection('customers').doc(uid).get();
+                              if (!uidDoc.exists) {
+                                  // Check if already linked via userId field
+                                  const linkedSnap = await db.collection('customers').where('userId', '==', uid).get();
+                                  if (linkedSnap.empty) {
+                                      // Not linked! Try to find by email (case-insensitive search in org)
+                                      const orgId = userData.organizationId;
+                                      const orgSnap = await db.collection('customers').where('organizationId', '==', orgId).get();
+                                      const match = orgSnap.docs.find(d => (d.data().email || '').toLowerCase().trim() === searchEmail);
+                                      if (match) {
+                                          console.log("Self-healing link during login for:", searchEmail);
+                                          await db.collection('customers').doc(match.id).update({ userId: uid });
+                                      }
+                                  }
+                              }
+                          } catch (cErr) {
+                              console.warn("Customer self-heal link failed", cErr);
+                          }
+                      }
+
                      if (userData.role === 'platform_sales') {
                          window.location.href = '/#/sales/dashboard';
                          window.location.reload();
                          return;
                      }
 
-                     // Account repair check for existing users
-                     if (userData.role === 'employee' || !userData.organizationId || userData.organizationId === 'unaffiliated') {
+                     // Account repair check for existing users (Staff/Invite flow)
+                     // Only run if user is NOT yet a fully set up customer or admin
+                     if (userData.role !== 'customer' && (userData.role === 'employee' || !userData.organizationId || userData.organizationId === 'unaffiliated')) {
                           try {
                               let inviteDoc = await db.collection('users').doc(trimmedEmail).get();
                               
@@ -192,16 +235,20 @@ const LoginPage: React.FC = () => {
 
                               if (inviteDoc.exists && inviteDoc.id !== uid) {
                                   const inviteData = inviteDoc.data();
-                                  if (inviteData && (inviteData.role !== userData.role || (inviteData.organizationId && inviteData.organizationId !== userData.organizationId))) {
-                                      await db.collection('users').doc(uid).update({
-                                          role: inviteData.role || 'employee',
-                                          organizationId: inviteData.organizationId || 'unaffiliated',
-                                          firstName: inviteData.firstName || userData.firstName,
-                                          lastName: inviteData.lastName || userData.lastName
-                                      });
-                                      await db.collection('users').doc(inviteDoc.id).delete();
-                                      window.location.reload(); 
-                                      return;
+                                  // CRITICAL: Only repair Staff roles. NEVER downgrade a customer to an employee via a stale invite.
+                                  if (inviteData && (inviteData.role === 'employee' || inviteData.role === 'admin' || inviteData.role === 'supervisor')) {
+                                      if (inviteData.organizationId && inviteData.organizationId !== userData.organizationId) {
+                                          console.log("Repairing staff/admin account from invite:", inviteDoc.id);
+                                          await db.collection('users').doc(uid).update({
+                                              role: inviteData.role || userData.role,
+                                              organizationId: inviteData.organizationId,
+                                              firstName: inviteData.firstName || userData.firstName,
+                                              lastName: inviteData.lastName || userData.lastName
+                                          });
+                                          await db.collection('users').doc(inviteDoc.id).delete();
+                                          window.location.reload(); 
+                                          return;
+                                      }
                                   }
                               }
                           } catch (repairErr) {
@@ -213,10 +260,7 @@ const LoginPage: React.FC = () => {
                  console.error("Profile Fetch Error:", fetchErr);
              }
         }
-        
-        setTimeout(() => {
-            if (isLoading) setIsLoading(false);
-        }, 12000);
+        setIsLoading(false);
     } catch (authError: any) {
         console.error("Login Error:", authError);
         setError(authError.message || "Invalid credentials. Please try again.");
@@ -269,10 +313,6 @@ const LoginPage: React.FC = () => {
           if (user) {
               let existingData: any = null;
               let foundInviteId = '';
-              
-              // Wait for auth propagation to ensure rules allow reading invite
-              await new Promise(r => setTimeout(r, 4000));
-
               // 1. Try direct fetch by Email ID
               try {
                   // Try explicit lowercase ID first (standard)
@@ -332,7 +372,7 @@ const LoginPage: React.FC = () => {
                   firstName: nameParts[0] || existingData?.firstName || (normalizedEmail.split('@')[0]),
                   lastName: nameParts.slice(1).join(' ') || existingData?.lastName || '',
                   phone: userPhone || existingData?.phone || '',
-                  role: (existingData?.role || (userType === 'customer' ? 'customer' : 'employee')) as User['role'],
+                   role: (userType === 'customer' ? 'customer' : (existingData?.role || (userType === 'staff' ? 'employee' : 'employee'))) as User['role'],
                   status: 'active',
                   username: normalizedEmail.split('@')[0],
                   preferences: { theme: 'dark' },
@@ -360,23 +400,83 @@ const LoginPage: React.FC = () => {
               }
               
               if (userType === 'customer') {
-                  const custRef = db.collection('customers').doc(user.uid);
-                  await custRef.set({
-                      id: user.uid,
-                      organizationId: newUserProfile.organizationId,
-                      name: newUserProfile.firstName + (newUserProfile.lastName ? ' ' + newUserProfile.lastName : ''),
-                      email: normalizedEmail,
-                      customerType: 'Residential',
-                      phone: userPhone || '',
-                      address: userAddress || '',
-                      city: userCity || '',
-                      state: userState || '',
-                      zip: userZip || '',
-                      hvacSystem: { brand: '', type: 'Unknown' },
-                      serviceHistory: [],
-                      notes: `Joined via Portal. Interest: ${userServiceNeed}`,
-                      marketingConsent: marketingConsent as any
-                  }, { merge: true });
+                  // NEW: Merge logic to prevent duplicate customers
+                  try {
+                      const orgId = newUserProfile.organizationId;
+                      let existingDoc: any = null;
+                      
+                      // 1. Try matching by Email
+                      const emailQuery = await db.collection('customers')
+                          .where('email', '==', normalizedEmail)
+                          .where('organizationId', '==', orgId)
+                          .get();
+                      
+                      if (!emailQuery.empty) {
+                          existingDoc = emailQuery.docs[0];
+                      } 
+                      
+                      // 1. Try case-insensitive matching by searching all customers in this Org
+                      // This avoids issues with Admin-entered casing (e.g. User@Ex.Com vs user@ex.com)
+                      const orgSnap = await db.collection('customers')
+                          .where('organizationId', '==', orgId)
+                          .get();
+                      
+                      existingDoc = orgSnap.docs.find(d => 
+                          (d.data().email || '').toLowerCase().trim() === normalizedEmail
+                      );
+
+                      // 2. Fallback: Try matching by Phone if email match failed
+                      if (!existingDoc && userPhone) {
+                          const cleanPhone = userPhone.replace(/\D/g, '');
+                          existingDoc = orgSnap.docs.find(d => {
+                              const dPhone = (d.data().phone || '').replace(/\D/g, '');
+                              return dPhone && dPhone === cleanPhone;
+                          });
+                      }
+                      
+                      if (existingDoc) {
+                          // Found an existing record (e.g. from an manual entry or invite)
+                          await existingDoc.ref.update({
+                              userId: user.uid, // Link the customer record to this Auth user
+                              firstName: newUserProfile.firstName,
+                              lastName: newUserProfile.lastName,
+                              name: `${newUserProfile.firstName} ${newUserProfile.lastName}`.trim(),
+                              phone: userPhone || existingDoc.data().phone || '',
+                              address: userAddress || existingDoc.data().address || '',
+                              city: userCity || existingDoc.data().city || '',
+                              state: userState || existingDoc.data().state || '',
+                              zip: userZip || existingDoc.data().zip || '',
+                              marketingConsent: marketingConsent as any,
+                              lastLoginAt: new Date().toISOString()
+                          });
+                          console.log("Merged with existing customer profile:", existingDoc.id);
+                      } else {
+                          // No existing record, create a new one using UID as ID
+                          const custRef = db.collection('customers').doc(user.uid);
+                          await custRef.set({
+                              id: user.uid,
+                              userId: user.uid,
+                              organizationId: orgId,
+                              name: `${newUserProfile.firstName} ${newUserProfile.lastName}`.trim(),
+                              firstName: newUserProfile.firstName,
+                              lastName: newUserProfile.lastName,
+                              email: normalizedEmail,
+                              customerType: 'Residential',
+                              phone: userPhone || '',
+                              address: userAddress || '',
+                              city: userCity || '',
+                              state: userState || '',
+                              zip: userZip || '',
+                              hvacSystem: { brand: '', type: 'Unknown' },
+                              serviceHistory: [],
+                              notes: `Joined via Portal. Interest: ${userServiceNeed}`,
+                              marketingConsent: marketingConsent as any
+                          }, { merge: true });
+                      }
+                  } catch (custErr) {
+                      console.error("Error during customer link/create:", custErr);
+                      // Fallback: Continue with user creation even if customer record fails
+                  }
               }
 
               // EMAIL NOTIFICATION
@@ -401,11 +501,21 @@ const LoginPage: React.FC = () => {
                   }
               } catch(e) {}
               
-              dispatch({ type: 'LOGIN', payload: { user: newUserProfile, currentOrganization: orgData } });
+              // SUCCESS - Redirect to Login (User's preferred flow)
+              // SIGN OUT to ensure clean login
+              await auth.signOut();
+              dispatch({ type: 'LOGOUT' });
+              
+              setSuccessMsg("Registration successful! You can now log in with your new credentials.");
+              setIsLoading(false);
+              
+              // Move to login view via internal state AND clean URL
+              setView('login');
+              navigate('/login', { replace: true });
           }
       } catch (err: any) {
-          console.error(err);
-          setError(err.message || "Registration failed.");
+          console.error("Registration failed:", err);
+          setError(err.message || "Registration failed. Please try again.");
           setIsLoading(false);
       }
   };
@@ -521,7 +631,16 @@ const LoginPage: React.FC = () => {
                   createdAt: new Date().toISOString()
               });
 
-              dispatch({ type: 'LOGIN', payload: { user: newUserProfile, currentOrganization: newOrgData } });
+              // SUCCESS - Redirect to Login (User's preferred flow)
+              await auth.signOut();
+              dispatch({ type: 'LOGOUT' });
+              
+              setSuccessMsg("Business registered successfully! Please sign in to access your dashboard.");
+              setIsLoading(false);
+              
+              // Move to login view via internal state AND clean URL
+              setView('login');
+              navigate('/login', { replace: true });
           }
       } catch (regError: any) {
           setError(`${regError.message}`);
@@ -609,17 +728,7 @@ const LoginPage: React.FC = () => {
 
         </div>
 
-        <div className="mt-8 flex justify-center">
-            <a href="/tektrakker.zip" className="flex items-center gap-3 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all text-slate-300 hover:text-white" download>
-                <div className="p-2 bg-blue-500/20 rounded-lg">
-                    <Smartphone size={20} className="text-blue-400"/>
-                </div>
-                <div className="text-left">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-blue-400">Direct Download</p>
-                    <p className="text-sm font-bold">TekTrakker Android APK</p>
-                </div>
-            </a>
-        </div>
+
       </div>
     </div>
   );

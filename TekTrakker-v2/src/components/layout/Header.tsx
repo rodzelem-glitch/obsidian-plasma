@@ -132,10 +132,11 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
 
                         if (!matched) {
                             // 4. Asset Direct Check (Serial or ID)
+                            const cleanTextLower = cleanText.toLowerCase();
                             for (const customer of state.customers) {
                                 if (customer.equipment) {
                                     const asset = customer.equipment.find(e => 
-                                        e.id === cleanText || e.serial.toLowerCase() === cleanText.toLowerCase()
+                                        e.id === cleanText || e.serial.toLowerCase() === cleanTextLower
                                     );
                                     if (asset) {
                                         navigate(`/asset/${customer.id}?assetId=${asset.id}`);

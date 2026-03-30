@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import type { Lead, Job } from 'types';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import DOMPurify from 'dompurify';
 
 const MarketingROI: React.FC = () => {
     const { state } = useAppContext();
@@ -181,7 +182,7 @@ const MarketingROI: React.FC = () => {
                         </div>
                         
                         {aiInsights ? (
-                            <div className="prose dark:prose-invert prose-sm max-w-none animate-fade-in" dangerouslySetInnerHTML={{ __html: aiInsights }} />
+                            <div className="prose dark:prose-invert prose-sm max-w-none animate-fade-in" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(aiInsights) }} />
                         ) : (
                             <div className="text-center py-10 text-slate-400">
                                 <Layers size={40} className="mx-auto mb-3 opacity-20" />

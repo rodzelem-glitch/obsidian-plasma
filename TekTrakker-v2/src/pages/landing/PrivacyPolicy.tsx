@@ -15,34 +15,111 @@ const PrivacyPolicy: React.FC = () => {
         <div className="prose prose-slate max-w-none">
             <p className="text-sm text-slate-500 mb-6">Last updated: {new Date().toLocaleDateString()}</p>
             
+            <h3 className="text-xl font-bold mt-8 mb-2 italic text-primary-600">Google Play Store & Mobile App Disclosure</h3>
+            <p className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-sm mb-6">
+                This section specifically addresses requirements for users of our mobile application available on the Google Play Store. We are committed to transparency regarding the tracking and usage of sensitive data.
+            </p>
+
             <h3 className="text-xl font-bold mt-6 mb-2">1. Introduction</h3>
-            <p>Welcome to TekTrakker. We respect your privacy and are committed to protecting your personal data. This privacy policy will inform you as to how we look after your personal data when you visit our website (regardless of where you visit it from) and tell you about your privacy rights and how the law protects you.</p>
+            <p>Welcome to TekTrakker. We respect your privacy and are committed to protecting your personal data. This privacy policy informs you how we handle your personal data across our web and mobile applications.</p>
             
             <h3 className="text-xl font-bold mt-6 mb-2">2. Data We Collect</h3>
-            <p>We may collect, use, store and transfer different kinds of personal data about you which we have grouped together follows:</p>
-            <ul className="list-disc pl-5 mt-2 space-y-1">
-                <li><strong>Identity Data</strong> includes first name, last name, username or similar identifier.</li>
-                <li><strong>Contact Data</strong> includes billing address, delivery address, email address and telephone numbers.</li>
-                <li><strong>Transaction Data</strong> includes details about payments to and from you and other details of products and services you have purchased from us.</li>
-                <li><strong>Technical Data</strong> includes internet protocol (IP) address, your login data, browser type and version, time zone setting and location, browser plug-in types and versions, operating system and platform and other technology on the devices you use to access this website.</li>
+            <p>We collect and process the following categories of data to provide our services:</p>
+            <ul className="list-disc pl-5 mt-2 space-y-2">
+                <li><strong>Identity & Contact Data:</strong> Includes your name, email address, telephone number, and business address. This is used for account management and service delivery.</li>
+                <li><strong>Location Data (Precise & Background):</strong> 
+                    <p className="text-sm mt-1">Our mobile application handles precise location data to enable field service features. We collect GPS coordinates for: </p>
+                    <ul className="list-circle pl-5 mt-1 text-sm space-y-1">
+                        <li>Tracking technician arrival at job sites.</li>
+                        <li>Automated mileage tracking for accurate billing and payroll.</li>
+                        <li>Fleet dispatching and safety monitoring.</li>
+                    </ul>
+                    <p className="text-sm mt-1 font-bold text-primary-700 italic">Notice on Background Location: Location data may be collected even when the app is closed or not in use, if permission is granted, to maintain accurate "Clock In" status and safety tracking during active work shifts.</p>
+                </li>
+                <li><strong>Camera & Media Access:</strong> We request access to your device camera and photo gallery to allow you to:
+                    <ul className="list-circle pl-5 mt-1 text-sm space-y-1">
+                        <li>Document job site conditions and completed work.</li>
+                        <li>Upload profile pictures.</li>
+                        <li>Upload receipts for expense management.</li>
+                    </ul>
+                </li>
+                <li><strong>ATS & Recruitment Data:</strong> We collect applicant resumes, work history, and contact metadata submitted through our integrated Career Pages for hiring validation.</li>
+                <li><strong>AI Chatbot & Automation Data:</strong> Transcripts of interactions with our embedded public widgets and AI assistants are stored to refine generative output and resolve service inquiries.</li>
+                <li><strong>SMS & Communication Records:</strong> Metadata related to automated transactional SMS, including timestamps and A2P 10DLC routing verifications, are logged for compliance and analytics.</li>
+                <li><strong>Technical Data:</strong> Includes IP address, login data, device type, operating system, and unique device identifiers used for security and push notifications.</li>
             </ul>
-
+            
             <h3 className="text-xl font-bold mt-6 mb-2">3. How We Use Your Data</h3>
-            <p>We will only use your personal data when the law allows us to. Most commonly, we will use your personal data in the following circumstances:</p>
+            <p>We use your data strictly for legitimate business purposes:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
-                <li>Where we need to perform the contract we are about to enter into or have entered into with you.</li>
-                <li>Where it is necessary for our legitimate interests (or those of a third party) and your interests and fundamental rights do not override those interests.</li>
-                <li>Where we need to comply with a legal or regulatory obligation.</li>
+                <li><strong>Service Performance:</strong> Managing appointments, invoices, public marketplace requests, and job history.</li>
+                <li><strong>Communication:</strong> Sending service updates via Email/SMS and push notifications.</li>
+                <li><strong>Machine Learning:</strong> Non-personally identifiable aggregate data may be used to train our AI estimators and predictive dispatch models.</li>
+                <li><strong>Legal Compliance:</strong> Meeting tax and regulatory requirements for field service documentation and recruitment.</li>
             </ul>
 
-            <h3 className="text-xl font-bold mt-6 mb-2">4. Data Security</h3>
-            <p>We have put in place appropriate security measures to prevent your personal data from being accidentally lost, used or accessed in an unauthorized way, altered or disclosed.</p>
+            <h3 className="text-xl font-bold mt-6 mb-2">4. Third-Party Service Providers</h3>
+            <p>We share data with trusted third-party providers to maintain our infrastructure:</p>
+            <ul className="list-disc pl-5 mt-2 space-y-1">
+                <li><strong>Google Cloud/Firebase:</strong> Secure data storage and authentication.</li>
+                <li><strong>OpenAI/Anthropic:</strong> Processing of de-identified inputs for our pricing and chatbot engines.</li>
+                <li><strong>Google Maps API:</strong> Mapping and location services.</li>
+                <li><strong>Payment Processors (Stripe/PayPal):</strong> Transaction handling.</li>
+                <li><strong>Communication APIs (Twilio):</strong> SMS and telephony services.</li>
+            </ul>
 
-            <h3 className="text-xl font-bold mt-6 mb-2">5. Third-Party Links</h3>
-            <p>This website may include links to third-party websites, plug-ins and applications. Clicking on those links or enabling those connections may allow third parties to collect or share data about you. We do not control these third-party websites and are not responsible for their privacy statements.</p>
+            <h3 className="text-xl font-bold mt-6 mb-2">5. Data Retention & Deletion</h3>
+            <p>We retain your personal data only as long as necessary to fulfill the purposes we collected it for, including for the purposes of satisfying any legal, accounting, or reporting requirements.</p>
+            <p className="mt-2 font-bold">Account Deletion Request:</p>
+            <p>Users may request the deletion of their account and all associated personal data at any time. To request deletion, please email us directly at <a href="mailto:privacy@tektrakker.com" className="text-blue-600 hover:underline">privacy@tektrakker.com</a>. We will process your request within 30 days, subject to legal retention requirements.</p>
 
-            <h3 className="text-xl font-bold mt-6 mb-2">6. Contact Details</h3>
-            <p>If you have any questions about this privacy policy or our privacy practices, please contact us at: <a href="mailto:privacy@tektrakker.com" className="text-blue-600 hover:underline">privacy@tektrakker.com</a>.</p>
+            <h3 className="text-xl font-bold mt-6 mb-2">6. Children's Privacy</h3>
+            <p>Our platform is NOT intended for children under the age of 13. We do not knowingly collect personal data from children. If we learn we have collected data from a child under 13, we will delete it immediately.</p>
+
+            <h3 className="text-xl font-bold mt-6 mb-2">7. Data Security</h3>
+            <p>We have implemented industry-standard encryption and security measures to prevent your personal data from being accidentally lost, used, or accessed in an unauthorized way.</p>
+
+            <h3 className="text-xl font-bold mt-6 mb-2">8. Contact Details</h3>
+            <p>If you have any questions about this privacy policy or our privacy practices, please contact us at:</p>
+            <p className="font-bold">TekTrakker Privacy Team</p>
+            <a href="mailto:privacy@tektrakker.com" className="text-blue-600 hover:underline">privacy@tektrakker.com</a>
+
+            <div className="mt-12 bg-blue-50 dark:bg-blue-900/10 p-8 rounded-3xl border border-blue-100 dark:border-blue-900/30">
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Google Play Data Safety Summary</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
+                    To help you understand our data practices at a glance, we provide this summary which corresponds to the Data Safety labels you see in the Google Play Store.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                        <div>
+                            <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <span className="w-2 h-2 bg-blue-500 rounded-full"></span> Data Collected
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-1">Approximate Location, Precise Location, Name, Email, Phone Number, Photos/Videos, File Metadata, Device IDs.</p>
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <span className="w-2 h-2 bg-green-500 rounded-full"></span> Data Shared
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-1">We do not sell your data. We share only necessary data with service providers (Firebase, Google Maps) to keep the app functional.</p>
+                        </div>
+                    </div>
+                    <div className="space-y-4">
+                        <div>
+                            <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <span className="w-2 h-2 bg-purple-500 rounded-full"></span> Security Practices
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-1">Data is encrypted in transit. Your data is stored in secure Google Cloud data centers.</p>
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <span className="w-2 h-2 bg-orange-500 rounded-full"></span> User Rights
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-1">You can request data deletion at any time by contacting us.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
       </div>
       <footer className="bg-slate-50 border-t border-slate-200 py-12 px-6 mt-12">

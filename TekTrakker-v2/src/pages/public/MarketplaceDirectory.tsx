@@ -85,7 +85,7 @@ const MarketplaceDirectory: React.FC = () => {
             <div className="container mx-auto px-4 py-4 md:py-8">
                 <header className="bg-primary-600 dark:bg-primary-700 rounded-xl shadow-lg p-4 md:p-8 md:p-12 mb-12 text-center text-white relative overflow-hidden">
                     <div className="relative z-10">
-                        <img src="/tektrakker-logo-full.png" alt="TekTrakker Logo" className="h-16 mx-auto mb-4" />
+                        <img src="/tektrakker-logo-web.png" alt="TekTrakker Logo" width="1696" height="608" className="h-16 w-auto mx-auto mb-4" />
                         <h1 className="text-4xl md:text-5xl font-black tracking-tight">Contractor Marketplace</h1>
                         <p className="mt-4 text-lg text-primary-100 max-w-2xl mx-auto">Find trusted, high-quality local service professionals for any job.</p>
                     </div>

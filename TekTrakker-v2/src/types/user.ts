@@ -62,4 +62,7 @@ export interface User {
   w4OtherIncome?: number;
   w4Deductions?: number;
   w4ExtraWithholding?: number;
+  squareTeamMemberId?: string | null;
+  hasAppAccess?: boolean;
+  kioskPin?: string;
 }

@@ -8,6 +8,7 @@ import Modal from 'components/ui/Modal';
 import { db } from 'lib/firebase';
 import { BusinessDocument } from 'types';
 import { FileText, CheckCircle } from 'lucide-react';
+import DOMPurify from 'dompurify';
 
 const HRHandbookView: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -62,7 +63,7 @@ const HRHandbookView: React.FC = () => {
                                     <a href={viewDoc.context} download={viewDoc.title} className="text-blue-600 hover:underline font-bold" target="_blank" rel="noreferrer">Open/Download to Read</a>
                                 </div>
                             ) : (
-                                <div className="prose dark:prose-invert max-w-none text-sm" dangerouslySetInnerHTML={{__html: viewDoc.content}} />
+                                <div className="prose dark:prose-invert max-w-none text-sm" dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(viewDoc.content)}} />
                             )}
                         </div>
                         

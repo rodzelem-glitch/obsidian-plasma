@@ -20,11 +20,15 @@ import Settings from '../pages/admin/Settings';
 import ApplicantTracking from '../pages/admin/ApplicantTracking';
 import AnalyticsMaster from '../pages/admin/AnalyticsMaster';
 import MarketingROI from '../pages/admin/MarketingROI';
+import MarketingCampaigns from '../pages/admin/MarketingCampaigns';
+import SocialMediaHub from '../pages/admin/SocialMediaHub';
 import SalesPipeline from '../pages/admin/SalesPipeline';
 import ReviewHub from '../pages/admin/ReviewHub';
 import GovBidHelper from '../pages/admin/GovBidHelper';
 import ProjectManagement from '../pages/admin/ProjectManagement';
 import Messages from '../pages/Messages';
+import FieldProposal from '../pages/FieldProposal';
+import KioskMode from '../pages/admin/KioskMode';
 
 const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: boolean }> = ({ user, handleLogout, isDemoMode }) => (
   <ProtectedRoute isAllowed={!!user && (user.role === 'master_admin' || user.role === 'admin' || user.role === 'both' || user.role === 'supervisor' || isDemoMode)}>
@@ -38,6 +42,8 @@ const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: 
           <Route path="dashboard/unpaid-invoices" element={<UnpaidInvoicesView />} />
           <Route path="analytics" element={<AnalyticsMaster />} />
           <Route path="marketing" element={<MarketingROI />} />
+          <Route path="campaigns" element={<MarketingCampaigns />} />
+          <Route path="social" element={<SocialMediaHub />} />
           <Route path="sales" element={<SalesPipeline />} />
           <Route path="operations" element={<OperationsView />} />
           <Route path="customers" element={<CustomerCenterView />} />
@@ -52,6 +58,8 @@ const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: 
           <Route path="messages" element={<Messages />} />
           <Route path="contracts" element={<GovBidHelper />} />
           <Route path="projects" element={<ProjectManagement />} />
+          <Route path="proposal" element={<FieldProposal />} />
+          <Route path="kiosk" element={<KioskMode />} />
           <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Routes>
       </AdminLayout>

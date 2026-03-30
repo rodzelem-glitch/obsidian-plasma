@@ -428,9 +428,21 @@ const ProviderDirectory: React.FC = () => {
                                                 </div>
                                             </div>
                                             
-                                            {org.settings?.publicCredentials && org.settings.publicCredentials.length > 0 && (
+                                            {((org.settings?.publicCredentials && org.settings.publicCredentials.length > 0) || org.isVerified || org.isLeadingPro) && (
                                                 <div className="mt-4 flex flex-wrap gap-2">
-                                                    {org.settings.publicCredentials.map((cred, index) => (
+                                                    {org.isVerified && (
+                                                        <div className="flex items-center bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 text-xs font-semibold px-2 py-1 rounded-full">
+                                                            <BadgeCheck size={14} className="mr-1.5" />
+                                                            <span>Verified Pro</span>
+                                                        </div>
+                                                    )}
+                                                    {org.isLeadingPro && (
+                                                        <div className="flex items-center bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 text-xs font-bold px-2 py-1 rounded-full border border-amber-300 dark:border-amber-700 shadow-sm">
+                                                            <Star size={14} className="mr-1 drop-shadow-sm fill-current" />
+                                                            <span>Leading Pro</span>
+                                                        </div>
+                                                    )}
+                                                    {org.settings?.publicCredentials?.map((cred, index) => (
                                                         <div key={index} className="flex items-center bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300 text-xs font-semibold px-2 py-1 rounded-full">
                                                             <BadgeCheck size={14} className="mr-1.5" />
                                                             <span>{cred}</span>

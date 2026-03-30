@@ -16,6 +16,7 @@ export interface Organization {
     name: string;
     phone: string;
     email: string;
+    isLeadingPro?: boolean;
     industry?: IndustryVertical;
     industries?: IndustryVertical[];
     logoUrl?: string;
@@ -122,6 +123,9 @@ export interface Organization {
     avgRating?: number; // Added
     reviewCount?: number; // Added
     promoCode?: string | null;
+    warrantyDisclaimer?: string;
+    defaultWorkmanshipMonths?: number;
+    defaultPartsMonths?: number;
 }
 
 // --- User & Employee ---
@@ -188,6 +192,8 @@ export interface User {
   w4ExtraWithholding?: number;
   commissionRate?: number; 
   customCommissionSettings?: CommissionSettings;
+  hasAppAccess?: boolean;
+  kioskPin?: string;
 }
 
 // --- Customer & Assets ---

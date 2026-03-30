@@ -10,6 +10,7 @@ import Select from 'components/ui/Select';
 import Textarea from 'components/ui/Textarea';
 import { db } from 'lib/firebase';
 import type { User, CommissionSettings, PlatformCommission, PlatformLead } from 'types';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Users, FileText, Settings, DollarSign, PlusCircle, LayoutDashboard, TrendingUp, Download, Edit, Trash2, Save, Eye, GitMerge, HandCoins, Printer } from 'lucide-react';
 
 // Modular Components
@@ -90,10 +91,20 @@ const MasterSalesTeam: React.FC = () => {
         e.preventDefault();
         const userId = newRepData.email.toLowerCase().trim();
         try {
+            const createAuth = httpsCallable(getFunctions(), 'createUserAuth');
+            await createAuth({
+                email: userId,
+                password: newRepData.tempPassword,
+                displayName: `${newRepData.firstName} ${newRepData.lastName}`,
+                role: 'platform_sales',
+                organizationId: 'platform'
+            });
+
             await db.collection('organizations').doc('platform').set({ id: 'platform', name: 'TekTrakker Platform', subscriptionStatus: 'active', plan: 'enterprise', email: 'platform@tektrakker.com', phone: '555-000-0000', createdAt: new Date().toISOString() }, { merge: true });
-            const user: User = { id: userId, uid: userId, organizationId: 'platform', role: 'platform_sales', firstName: newRepData.firstName, lastName: newRepData.lastName, email: userId, username: userId.split('@')[0], status: 'active', payRate: 0, ptoAccrued: 0, salesContractSigned: false, hireDate: new Date().toISOString(), notes: `Temp: ${newRepData.tempPassword}` };
+            const user: User = { id: userId, uid: userId, organizationId: 'platform', role: 'platform_sales', firstName: newRepData.firstName, lastName: newRepData.lastName, email: userId, username: userId.split('@')[0], status: 'active', payRate: 0, ptoAccrued: 0, salesContractSigned: false, hireDate: new Date().toISOString(), notes: '' };
             await db.collection('users').doc(userId).set(user);
             setIsAddRepModalOpen(false);
+            alert(`Sales Rep Created Successfully! Instruct them to login using the credentials you just assigned.`);
             setNewRepData({ firstName: '', lastName: '', email: '', tempPassword: '', useCustomRules: false, customRules: DEFAULT_COMMISSION_RULES });
         } catch (e: any) { alert(e.message); }
     };
@@ -214,7 +225,7 @@ const MasterSalesTeam: React.FC = () => {
                         <Input label="First Name" value={newRepData.firstName} onChange={e => setNewRepData({...newRepData, firstName: e.target.value})} required/>
                         <Input label="Last Name" value={newRepData.lastName} onChange={e => setNewRepData({...newRepData, lastName: e.target.value})} required/>
                         <Input label="Email" value={newRepData.email} onChange={e => setNewRepData({...newRepData, email: e.target.value})} required/>
-                        {!isEditingRep && <Input label="Temporary Password" value={newRepData.tempPassword} onChange={e => setNewRepData({...newRepData, tempPassword: e.target.value})} required/>}
+                        {!isEditingRep && <Input label="Temporary Password" type="password" value={newRepData.tempPassword} onChange={e => setNewRepData({...newRepData, tempPassword: e.target.value})} required/>}
                         
                         {isEditingRep && (
                             <div className="pt-4 border-t border-slate-200 dark:border-slate-700">

@@ -5,16 +5,20 @@ import type { ShiftLog, ShiftEdit, User } from 'types';
 import EmployeeSelector from './timesheets/components/EmployeeSelector';
 import TimesheetTable from './timesheets/components/TimesheetTable';
 import EditShiftModal from './timesheets/components/EditShiftModal';
+import { useNavigate } from 'react-router-dom';
+import { Monitor } from 'lucide-react';
 
 const TimeSheetReview: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
     const [editingLog, setEditingLog] = useState<ShiftLog | null>(null);
     const currentUser = state.currentUser;
+    const navigate = useNavigate();
 
+    const WORKFORCE_ROLES = new Set(['employee', 'both', 'supervisor', 'technician', 'subcontractor', 'admin']);
     const employees = useMemo(() => (state.users as User[]).filter(u => 
         u.organizationId === state.currentOrganization?.id &&
-        (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor') &&
+        WORKFORCE_ROLES.has((u.role || '').toLowerCase()) &&
         (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id)
     ), [state.users, state.currentOrganization, currentUser]);
     
@@ -35,9 +39,17 @@ const TimeSheetReview: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <header>
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Time Sheet Review</h2>
-                <p className="text-gray-600 dark:text-gray-400">Adjust employee hours and view shift history.</p>
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Time Sheet Review</h2>
+                    <p className="text-gray-600 dark:text-gray-400">Adjust employee hours, view shift history, or launch Office Kiosk.</p>
+                </div>
+                <button 
+                    onClick={() => navigate('/admin/kiosk')} 
+                    className="w-full md:w-auto justify-center bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-md border-b-4 border-primary-800 active:translate-y-1 active:border-b-0"
+                >
+                    <Monitor size={20} /> Launch Front-Desk Kiosk
+                </button>
             </header>
 
             <EditShiftModal 

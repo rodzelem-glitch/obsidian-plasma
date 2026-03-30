@@ -20,6 +20,15 @@ if (!firebase.apps.length) {
 }
 
 const db = firebase.firestore();
+
+// Activate Physical IndexDB Persistence for Offline Technicians
+db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+    if (err.code === 'failed-precondition') {
+        console.warn('Persistence failed: Multiple identical tabs open.');
+    } else if (err.code === 'unimplemented') {
+        console.warn('Persistence failed: Browser does not support IndexDB.');
+    }
+});
 const auth = firebase.auth();
 const functions = firebase.functions();
 const storage = firebase.storage();

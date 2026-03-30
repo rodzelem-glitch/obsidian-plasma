@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import EmployeeProfileModal from '../../components/modals/EmployeeProfileModal';
 import SignaturePad, { SignaturePadHandle } from '../../components/ui/SignaturePad';
 import { MOCK_DEMO_LEADS } from '../../lib/mockDemoData';
+import DOMPurify from 'dompurify';
 
 const DEFAULT_COMMISSION_RULES: CommissionSettings = {
     baseRate: 0.25,
@@ -222,7 +223,7 @@ const SalesOverview: React.FC = () => {
             <Modal isOpen={viewContract} onClose={() => setViewContract(false)} title="My Sales Agreement" size="lg">
                 <div className="space-y-6 flex flex-col h-[80vh]">
                     <div className="bg-white border p-4 md:p-8 shadow-sm flex-1 overflow-y-auto text-sm text-slate-800 font-serif leading-relaxed custom-scrollbar">
-                        {currentUser && commissionRules ? <div dangerouslySetInnerHTML={{ __html: currentUser.salesContractContent || generateContractHtml(currentUser, commissionRules) }} /> : <div className="text-center p-4 md:p-8 text-gray-500">Loading...</div>}
+                        {currentUser && commissionRules ? <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentUser.salesContractContent || generateContractHtml(currentUser, commissionRules)) }} /> : <div className="text-center p-4 md:p-8 text-gray-500">Loading...</div>}
                     </div>
                     {!currentUser?.salesContractSigned && <div className="p-4 bg-slate-50 border rounded-lg"><p className="text-sm font-bold mb-2">Sign Here:</p><SignaturePad ref={sigPadRef} className="h-32 bg-white" /></div>}
                     <div className="flex justify-end gap-2 pt-4 border-t">

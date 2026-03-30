@@ -449,6 +449,7 @@ const TimeAndMileage: React.FC = () => {
                                 value={newVehicleLog.startMiles} 
                                 onChange={e => setNewVehicleLog({...newVehicleLog, startMiles: e.target.value})} 
                                 required 
+                                isBlock
                             />
                             <Input 
                                 label="Ending Odometer" 
@@ -457,16 +458,17 @@ const TimeAndMileage: React.FC = () => {
                                 value={newVehicleLog.endMiles} 
                                 onChange={e => setNewVehicleLog({...newVehicleLog, endMiles: e.target.value})} 
                                 required 
+                                isBlock
                             />
-                            <div className="col-span-2 text-right text-sm text-gray-500">
+                            <div className="col-span-1 md:col-span-2 text-right text-sm text-gray-500">
                                 Total Trip: <span className="font-bold text-gray-900 dark:text-white">{newVehicleLog.miles || 0} miles</span>
                             </div>
                         </div>
                     ) : (
-                        <Input label="Cost ($)" type="number" step="0.01" value={newVehicleLog.cost} onChange={e => setNewVehicleLog({...newVehicleLog, cost: e.target.value})} required />
+                        <Input label="Cost ($)" type="number" step="0.01" value={newVehicleLog.cost} onChange={e => setNewVehicleLog({...newVehicleLog, cost: e.target.value})} required isBlock />
                     )}
                     
-                    <Input label="Notes" type="text" value={newVehicleLog.notes} onChange={e => setNewVehicleLog({...newVehicleLog, notes: e.target.value})} required />
+                    <Input label="Notes" type="text" value={newVehicleLog.notes} onChange={e => setNewVehicleLog({...newVehicleLog, notes: e.target.value})} required isBlock />
                     
                     {newVehicleLog.type !== 'Mileage' && (
                         <div className="space-y-4">
@@ -538,7 +540,14 @@ const TimeAndMileage: React.FC = () => {
                                     {log.isCompanyVehicle ? 'Company' : 'Personal'}
                                 </span>
                              </div>
-                             <p className="text-xs text-gray-500 dark:text-gray-400">{log.date}</p>
+                             <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
+                                {log.date}
+                                {log.location && (
+                                    <a href={`https://maps.google.com/?q=${log.location.lat},${log.location.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline ml-2">
+                                        <MapPinIcon className="w-3 h-3"/> GPS Logged
+                                    </a>
+                                )}
+                             </p>
                            </div>
                            <div className="flex flex-col items-end gap-1">
                                {log.type === 'Mileage' ? (
@@ -567,6 +576,7 @@ const TimeAndMileage: React.FC = () => {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Start</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">End</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Total</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Location</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800/50 divide-y divide-gray-200 dark:divide-gray-700">
@@ -580,6 +590,20 @@ const TimeAndMileage: React.FC = () => {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{end ? end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '-'}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-primary-600">{duration}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="flex gap-2">
+                                                {log.startLocation ? (
+                                                    <a href={`https://maps.google.com/?q=${log.startLocation.lat},${log.startLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline" title="View Clock-In Location">
+                                                        <MapPinIcon className="w-3 h-3"/> In
+                                                    </a>
+                                                ) : <span className="text-xs text-gray-400">No Location</span>}
+                                                {log.endLocation && (
+                                                    <a href={`https://maps.google.com/?q=${log.endLocation.lat},${log.endLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-emerald-600 hover:underline" title="View Clock-Out Location">
+                                                        <MapPinIcon className="w-3 h-3"/> Out
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </td>
                                     </tr>
                                 );
                             })}

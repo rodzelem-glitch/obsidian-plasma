@@ -12,6 +12,7 @@ import { db } from '../../../../lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { TEKTRAKKER_CAPABILITIES } from '../../SalesResources';
 import { globalConfirm } from "lib/globalConfirm";
+import DOMPurify from 'dompurify';
 
 export interface Template {
     id: string;
@@ -199,7 +200,7 @@ const TemplateDesigner: React.FC = () => {
                     ) : (
                         <div className="border rounded-2xl p-6 bg-white min-h-[300px]">
                             <div className="prose prose-sm max-w-none">
-                                {editingTemplate?.isHtml ? <div dangerouslySetInnerHTML={{ __html: editingTemplate.content || '' }} /> : <p className="whitespace-pre-wrap">{editingTemplate?.content}</p>}
+                                {editingTemplate?.isHtml ? <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(editingTemplate.content || '') }} /> : <p className="whitespace-pre-wrap">{editingTemplate?.content}</p>}
                             </div>
                         </div>
                     )}
