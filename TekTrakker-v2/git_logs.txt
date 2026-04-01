@@ -1,0 +1,29 @@
+﻿commit 37e46b9597fb98028bb1d633b5d1b75947c020ba
+Author: Roderick Macdonell <rodzelem@gmail.com>
+Date:   Wed Mar 25 08:42:08 2026 -0500
+
+    Absolute Restoration Master: Role-safe navigation, non-recursive rules, and immediate state sync
+
+commit eac2dbd2771da9404dba2743bd1d569bb81e432d
+Author: Roderick Macdonell <rodzelem@gmail.com>
+Date:   Wed Mar 25 08:26:44 2026 -0500
+
+    Final master fix: Robust navigation fallbacks and non-recursive security rules
+
+commit 74d5eec2f930798f37fa33eb920c359662d75d29
+Author: Roderick Macdonell <rodzelem@gmail.com>
+Date:   Wed Mar 25 08:12:00 2026 -0500
+
+    Robust Firestore rules: Case-insensitive email checks for seamless self-healing
+
+commit e959f9e2f9689ef2e7d9d96f1c6bda9d32805a02
+Author: Roderick Macdonell <rodzelem@gmail.com>
+Date:   Wed Mar 25 08:06:40 2026 -0500
+
+    Hardened Firestore rules: Allow email-based self-healing queries for users and customers
+
+commit ecc30448df82cfa7e7dae265cfa62508fe7cc539
+Author: Roderick Macdonell <rodzelem@gmail.com>
+Date:   Wed Mar 25 07:57:36 2026 -0500
+
+    Final master fix for customer portal: Role-safe logic, enhanced loading UI, and hardened security

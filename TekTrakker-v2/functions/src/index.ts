@@ -387,10 +387,40 @@ export const linkCustomerOnUserCreate = functions.firestore.document('users/{use
     }
 });
 
+// --- AI USAGE TRACKING ---
+
+async function trackAiUsage(orgId: string, taskName: string, modelName: string, tokenCount: number) {
+    if (!orgId || orgId === 'unauthenticated' || tokenCount <= 0) return;
+
+    try {
+        const orgUsageRef = db.collection('aiUsage').doc(orgId);
+        
+        await orgUsageRef.set({
+            organizationId: orgId,
+            totalTokensUsed: admin.firestore.FieldValue.increment(tokenCount),
+            [`tasks.${taskName}`]: admin.firestore.FieldValue.increment(tokenCount),
+            [`models.${modelName.replace(/\./g, '_')}`]: admin.firestore.FieldValue.increment(tokenCount),
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
+        // Check if limit hit
+        const docSnap = await orgUsageRef.get();
+        if (docSnap.exists) {
+            const data = docSnap.data();
+            if (data?.limitTokens && data.totalTokensUsed > data.limitTokens) {
+                functions.logger.warn(`Org ${orgId} has exceeded their AI token limit (${data.totalTokensUsed} / ${data.limitTokens})`);
+            }
+        }
+    } catch (e) {
+        functions.logger.error("Failed to track AI usage:", e);
+    }
+}
+
 // --- AI UTILS ---
 export const generateReviewResponse = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
     
+    const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId || 'unauthenticated';
     const apiKey = process.env.GEMINI_API_KEY; 
     if (!apiKey) throw new functions.https.HttpsError("internal", "AI service configuration error.");
 
@@ -414,6 +444,10 @@ export const generateReviewResponse = functions.https.onCall(async (data, contex
         const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
         const result = await model.generateContent(prompt);
         const response = await result.response;
+        
+        const tokens = response.usageMetadata?.totalTokenCount || 0;
+        await trackAiUsage(orgId, 'Review Response', GEMINI_FLASH_MODEL, tokens);
+        
         return { text: response.text() };
     } catch (error: any) {
         functions.logger.error("Review GenAI Error:", error);
@@ -422,6 +456,7 @@ export const generateReviewResponse = functions.https.onCall(async (data, contex
 });
 
 export const callLandingChatbot = functions.https.onCall(async (data, context) => {
+    const orgId = context.auth?.token.organizationId || 'unauthenticated';
     const apiKey = process.env.GEMINI_API_KEY; 
     if (!apiKey) throw new functions.https.HttpsError("internal", "AI service config error.");
 
@@ -431,6 +466,10 @@ export const callLandingChatbot = functions.https.onCall(async (data, context) =
         const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL, systemInstruction });
         const result = await model.generateContent(prompt);
         const response = await result.response;
+        
+        const tokens = response.usageMetadata?.totalTokenCount || 0;
+        await trackAiUsage(orgId, 'Landing Chatbot', GEMINI_FLASH_MODEL, tokens);
+        
         return { text: response.text() };
     } catch (error: any) {
         throw new functions.https.HttpsError("internal", error.message);
@@ -441,6 +480,7 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
     }
+    const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId || 'unauthenticated';
 
     const apiKey = process.env.GEMINI_API_KEY; 
     if (!apiKey) {
@@ -479,6 +519,10 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
 
         result = await model.generateContent(parts);
         const response = await result.response;
+        
+        const tokens = response.usageMetadata?.totalTokenCount || 0;
+        await trackAiUsage(orgId, 'General AI Content', modelName, tokens);
+        
         return { text: response.text() };
 
     } catch (error: any) {
@@ -491,6 +535,7 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
 
 export const analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+    const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId || 'unauthenticated';
     
     const { files } = data;
     if (!files || !Array.isArray(files) || files.length === 0) {
@@ -530,6 +575,8 @@ export const analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB'
             ]);
 
             const response = await result.response;
+            const tokens = response.usageMetadata?.totalTokenCount || 0;
+            await trackAiUsage(orgId, 'Analyze RFP', GEMINI_PRO_MODEL, tokens);
             let text = response.text();
             
             text = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -552,6 +599,7 @@ export const analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB'
 
 export const searchHistoricalBidData = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+    const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId || 'unauthenticated';
     
     const { bid } = data;
     if (!bid) throw new functions.https.HttpsError("invalid-argument", "No bid data provided.");
@@ -569,6 +617,10 @@ export const searchHistoricalBidData = functions.https.onCall(async (data, conte
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
+        
+        const tokens = response.usageMetadata?.totalTokenCount || 0;
+        await trackAiUsage(orgId, 'Historical Bid Search', GEMINI_PRO_MODEL, tokens);
+        
         return { content: response.text() };
     } catch (error: any) {
         functions.logger.error("Historical Search Error:", error);
@@ -685,6 +737,10 @@ export const generateBidDocument = functions.runWith({ timeoutSeconds: 540, memo
         
         const result = await model.generateContent(fullPrompt);
         const response = await result.response;
+        
+        const tokens = response.usageMetadata?.totalTokenCount || 0;
+        await trackAiUsage(orgId, 'Generate Bid Document', GEMINI_PRO_MODEL, tokens);
+        
         let text = response.text();
         
         if (isGlobalEdit || docIndex === undefined) {

@@ -35,6 +35,7 @@ const RefrigerantLog: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'logs' | 'cylinders'>('logs');
     const [isEditing, setIsEditing] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
     
     // Custom Transactions from DB
     const [transactions, setTransactions] = useState<RefrigerantTransaction[]>([]);
@@ -121,27 +122,28 @@ const RefrigerantLog: React.FC = () => {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!entry.amount) return;
+        if (!entry.amount || isSaving) return;
+        setIsSaving(true);
 
         let customerName = '';
         if (entry.action === 'Usage' && entry.customerId) {
             const cust = customers.find(c => c.id === entry.customerId);
-            if (cust) customerName = cust.name || `${cust.firstName} ${cust.lastName}`;
+            if (cust) customerName = cust.name || `${cust.firstName || ''} ${cust.lastName || ''}`.trim();
         }
 
         const tx: RefrigerantTransaction = {
             id: `reftx-${Date.now()}`,
             organizationId: state.currentOrganization?.id || '',
-            date: entry.date,
-            action: entry.action,
-            type: entry.refType,
-            amount: entry.amount,
-            cylinderId: entry.cylinderNo,
-            customerId: entry.customerId,
-            customerName: customerName,
-            technicianId: state.currentUser?.id,
-            technicianName: state.currentUser?.firstName + ' ' + state.currentUser?.lastName,
-            notes: entry.action === 'Purchase' ? entry.vendor : entry.notes,
+            date: entry.date || new Date().toISOString().split('T')[0],
+            action: entry.action || 'Purchase',
+            type: entry.refType || 'R410A',
+            amount: entry.amount || 0,
+            cylinderId: entry.cylinderNo || '',
+            customerId: entry.customerId || '',
+            customerName: customerName || '',
+            technicianId: state.currentUser?.id || '',
+            technicianName: `${state.currentUser?.firstName || ''} ${state.currentUser?.lastName || ''}`.trim(),
+            notes: (entry.action === 'Purchase' ? entry.vendor : entry.notes) || '',
             createdAt: new Date().toISOString()
         };
 
@@ -158,6 +160,8 @@ const RefrigerantLog: React.FC = () => {
         } catch (err) {
             console.error(err);
             alert("Failed to save log entry.");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -206,12 +210,19 @@ const RefrigerantLog: React.FC = () => {
             alert('Cannot save: organization not loaded.');
             return;
         }
+        if (isSaving) return;
+        setIsSaving(true);
+
         const data = editingCylinder;
         const id = data.id || `cyl-${Date.now()}`;
         const cylinder = {
-            ...data,
             id,
             organizationId: state.currentOrganization.id,
+            cylinderNo: data.cylinderNo || '',
+            type: data.type || 'R410A',
+            status: data.status || 'In Service',
+            currentWeight: Number(data.currentWeight) || 0,
+            tareWeight: Number(data.tareWeight) || 0,
             updatedAt: new Date().toISOString()
         };
 
@@ -221,6 +232,8 @@ const RefrigerantLog: React.FC = () => {
             setEditingCylinder(null);
         } catch (err) {
             alert('Failed to save cylinder: ' + (err as any)?.message);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -390,8 +403,8 @@ const RefrigerantLog: React.FC = () => {
                     )}
                     
                     <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800 mt-4">
-                        <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                        <Button type="submit">Save Record</Button>
+                        <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)} disabled={isSaving}>Cancel</Button>
+                        <Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Record'}</Button>
                     </div>
                 </form>
             </Modal>
@@ -416,8 +429,8 @@ const RefrigerantLog: React.FC = () => {
                             <Input label="Tare Weight (lbs)" type="number" step="0.01" value={editingCylinder.tareWeight} onChange={e => setEditingCylinder({...editingCylinder, tareWeight: parseFloat(e.target.value)})} required />
                         </div>
                         <div className="flex justify-end gap-2 pt-4">
-                            <Button variant="secondary" type="button" onClick={() => setIsCylinderModalOpen(false)}>Cancel</Button>
-                            <Button type="submit">Save Cylinder</Button>
+                            <Button variant="secondary" type="button" onClick={() => setIsCylinderModalOpen(false)} disabled={isSaving}>Cancel</Button>
+                            <Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Cylinder'}</Button>
                         </div>
                     </form>
                 )}

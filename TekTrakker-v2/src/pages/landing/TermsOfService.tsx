@@ -26,6 +26,7 @@ const TermsOfService: React.FC = () => {
 
             <h3 className="text-xl font-bold mt-6 mb-2">4. AI and Automated Bidding</h3>
             <p>Our platform employs artificial intelligence, including autonomous pricing algorithms and chatbots, to assist in business operations. While we strive for accuracy, TekTrakker is not liable for misquotes, algorithmic errors, or business losses resulting from AI-generated actions.</p>
+            <p className="mt-2 font-medium">TekTrakker provides access to these Artificial Intelligence (AI) features subject to usage limits. We monitor and track AI usage to prevent abuse and manage platform stability. TekTrakker reserves the right to restrict, limit, or revoke access to AI functions at any time, in its sole discretion. We may implement rate limits, token quotas, or introduce additional fees for excessive usage without prior notice.</p>
 
             <h3 className="text-xl font-bold mt-6 mb-2">5. Applicant Tracking System (ATS)</h3>
             <p>By using our ATS and Career Pages, you agree to comply with all applicable local and federal employment laws. TekTrakker acts solely as a data processor for recruitment materials submitted through our platform.</p>

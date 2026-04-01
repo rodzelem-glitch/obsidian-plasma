@@ -46,12 +46,17 @@ const EULA: React.FC = () => {
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-3">6. Termination</h2>
+                        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-3">6. Artificial Intelligence Services</h2>
+                        <p>The Software includes generative artificial intelligence (AI) features. TekTrakker reserves the complete and unconditional right to restrict, rate-limit, monitor, suspend, or revoke access to any AI functionalities at any time, with or without prior notice, at our sole discretion, in order to manage platform costs or prevent abuse.</p>
+                    </section>
+
+                    <section>
+                        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-3">7. Termination</h2>
                         <p>This Agreement shall remain in effect until terminated by you or TekTrakker. TekTrakker may, in its sole discretion, at any time and for any or no reason, suspend or terminate this Agreement with or without prior notice.</p>
                     </section>
 
                     <section>
-                        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-3">7. Limitation of Liability</h2>
+                        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-3">8. Limitation of Liability</h2>
                         <p>In no event shall TekTrakker be liable for any special, incidental, indirect, or consequential damages whatsoever (including, but not limited to, damages for loss of profits, for loss of data or other information, for business interruption, for personal injury, for loss of privacy arising out of or in any way related to the use of or inability to use the Software).</p>
                     </section>
 

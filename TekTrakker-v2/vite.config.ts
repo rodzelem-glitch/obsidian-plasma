@@ -78,12 +78,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      port: 9000,
-      hmr: {
-        protocol: 'wss',
-        host: '9000-firebase-tektrakker-v2git-1765277578559.cluster-44kx2eiocbhe2tyk3zoyo3ryuo.cloudworkstations.dev',
-        clientPort: 443
-      }
+      port: 9000
     },
     preview: {
       port: 8080,

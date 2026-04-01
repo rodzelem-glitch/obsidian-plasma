@@ -198,15 +198,21 @@ const TimeAndMileage: React.FC = () => {
             return;
         }
 
+        if (newVehicleLog.type === 'Mileage' && !newVehicleLog.startMiles && !newVehicleLog.endMiles) {
+            alert("Please enter at least a starting or ending odometer reading.");
+            return;
+        }
+
         setUploading(true);
 
         try {
             const loc = await getCurrentLocation();
             const logId = newVehicleLog.id || `vl-${Date.now()}`;
             let receiptDataValue: string | null = null;
+            let existingLog: VehicleLog | undefined;
             if (isEditMode) {
-                const existing = state.vehicleLogs.find(l => l.id === logId);
-                receiptDataValue = existing?.receiptData || null;
+                existingLog = state.vehicleLogs.find(l => l.id === logId);
+                receiptDataValue = existingLog?.receiptData || null;
             }
 
             if (capturedReceiptData) {
@@ -219,13 +225,43 @@ const TimeAndMileage: React.FC = () => {
                     return;
                 }
             }
+            
+            let finalStartTime = existingLog?.startTime;
+            let finalStartLocation = existingLog?.startLocation;
+            let finalEndTime = existingLog?.endTime;
+            let finalEndLocation = existingLog?.endLocation;
+
+            const nowIso = new Date().toISOString();
+            const mappedLoc = loc ? { lat: loc.latitude, lng: loc.longitude } : undefined;
+
+            if (!isEditMode) {
+                if (newVehicleLog.startMiles) {
+                    finalStartTime = nowIso;
+                    finalStartLocation = mappedLoc;
+                }
+                if (newVehicleLog.endMiles) {
+                    finalEndTime = nowIso;
+                    finalEndLocation = mappedLoc;
+                }
+            } else {
+                if (newVehicleLog.startMiles && !existingLog?.startMileage) {
+                    finalStartTime = nowIso;
+                    finalStartLocation = mappedLoc;
+                }
+                if (newVehicleLog.endMiles && !existingLog?.endMileage) {
+                    finalEndTime = nowIso;
+                    finalEndLocation = mappedLoc;
+                }
+            }
 
             const log: VehicleLog = {
                 id: logId,
                 organizationId: activeOrgId,
                 vehicleId: isCompanyVehicle ? `v-${user.id}` : 'personal',
                 userId: user.id,
-                date: new Date().toISOString().split('T')[0],
+                date: isEditMode && existingLog ? existingLog.date : nowIso.split('T')[0],
+                startTime: finalStartTime,
+                endTime: finalEndTime,
                 type: newVehicleLog.type,
                 cost: parseFloat(newVehicleLog.cost) || 0,
                 mileage: parseFloat(newVehicleLog.miles) || 0,
@@ -235,7 +271,9 @@ const TimeAndMileage: React.FC = () => {
                 notes: newVehicleLog.notes,
                 receiptData: receiptDataValue, 
                 receiptUrl: receiptDataValue ? 'embedded' : null,
-                location: loc ? { lat: loc.latitude, lng: loc.longitude } : undefined
+                location: existingLog?.location || mappedLoc,
+                startLocation: finalStartLocation,
+                endLocation: finalEndLocation
             };
 
             if (isEditMode) {
@@ -448,7 +486,6 @@ const TimeAndMileage: React.FC = () => {
                                 step="0.1" 
                                 value={newVehicleLog.startMiles} 
                                 onChange={e => setNewVehicleLog({...newVehicleLog, startMiles: e.target.value})} 
-                                required 
                                 isBlock
                             />
                             <Input 
@@ -457,7 +494,6 @@ const TimeAndMileage: React.FC = () => {
                                 step="0.1" 
                                 value={newVehicleLog.endMiles} 
                                 onChange={e => setNewVehicleLog({...newVehicleLog, endMiles: e.target.value})} 
-                                required 
                                 isBlock
                             />
                             <div className="col-span-1 md:col-span-2 text-right text-sm text-gray-500">
@@ -542,9 +578,19 @@ const TimeAndMileage: React.FC = () => {
                              </div>
                              <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
                                 {log.date}
-                                {log.location && (
-                                    <a href={`https://maps.google.com/?q=${log.location.lat},${log.location.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline ml-2">
-                                        <MapPinIcon className="w-3 h-3"/> GPS Logged
+                                {log.startLocation && (
+                                    <a href={`https://maps.google.com/?q=${log.startLocation.lat},${log.startLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline ml-2" title={`Start time: ${log.startTime ? new Date(log.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown'}`}>
+                                        <MapPinIcon className="w-3 h-3"/> Start
+                                    </a>
+                                )}
+                                {log.endLocation && (
+                                    <a href={`https://maps.google.com/?q=${log.endLocation.lat},${log.endLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-emerald-600 hover:underline ml-2" title={`End time: ${log.endTime ? new Date(log.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Unknown'}`}>
+                                        <MapPinIcon className="w-3 h-3"/> End
+                                    </a>
+                                )}
+                                {(!log.startLocation && !log.endLocation && log.location) && (
+                                    <a href={`https://maps.google.com/?q=${log.location.lat},${log.location.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-gray-500 hover:underline ml-2">
+                                        <MapPinIcon className="w-3 h-3"/> Location
                                     </a>
                                 )}
                              </p>

@@ -415,9 +415,16 @@ const DocumentCreator: React.FC = () => {
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                         >
                             <option value="">-- Select a User --</option>
-                            {state.users.filter(u => ['employee', 'both', 'supervisor', 'admin', 'master_admin', 'Technician', 'Subcontractor'].includes(u.role)).map(user => (
-                                <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>
-                            ))}
+                            <optgroup label="Internal Staff">
+                                {state.users.filter(u => ['employee', 'both', 'supervisor', 'admin', 'master_admin', 'Technician', 'Subcontractor'].includes(u.role)).map(user => (
+                                    <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="Subcontractors & Partners">
+                                {(state.subcontractors || []).map(sub => (
+                                    <option key={sub.id} value={sub.id}>{sub.companyName} ({sub.contactName})</option>
+                                ))}
+                            </optgroup>
                         </select>
                     </label>
                     <Input 

@@ -34,6 +34,9 @@ const LandingChatbot: React.FC = () => {
         - **Automated Pay Tracking**: Timesheets are generated instantly from Kiosk Mode punches or field technician GPS records, making running payroll flawless and automatic.
         - **Recurring Memberships**: Service companies can put clients on auto-pay for maintenance agreements.
         - **Vendor & 1099 Management**: Generate specific tax forms for your subcontractors directly within the Document Creator.
+        
+        # TROUBLESHOOTING & SUPPORT
+        - **App Crashing / Blue Screen / Won't Load**: If a user reports that their app is stuck loading, throwing errors, or showing a blue/white screen, instruct them to 'Clear App Data and Cache' in their browser or mobile device settings. This forces the offline database (IndexedDB) to wipe corrupted data.
         `;
         setTrainingData(platformFeatures);
     }, []);

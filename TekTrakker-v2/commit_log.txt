@@ -1,0 +1,9 @@
+﻿[main f1149f0] Fix isCustomerOwner case sensitive email checks in firestore.rules
+ 8 files changed, 105 insertions(+), 2 deletions(-)
+ create mode 100644 branch2.txt
+ create mode 100644 branches.txt
+ create mode 100644 git_diff.txt
+ create mode 100644 git_logs.txt
+ create mode 100644 git_status.txt
+ create mode 100644 status.txt
+ create mode 100644 status2.txt

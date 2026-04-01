@@ -16,7 +16,7 @@ const CustomerRoutes = lazy(() => import('./navigation/CustomerRoutes'));
 const EmployeeRoutes = lazy(() => import('./navigation/EmployeeRoutes'));
 const PublicRoutes = lazy(() => import('./navigation/PublicRoutes'));
 import SaaSMarketing from './pages/landing/SaaSMarketing';
-const LocationTracker = lazy(() => import('./components/common/LocationTracker'));
+import LocationTracker from './components/common/LocationTracker';
 
 const FieldProposal = lazy(() => import('./pages/FieldProposal'));
 const PublicProposal = lazy(() => import('./pages/PublicProposal'));
@@ -108,9 +108,7 @@ const App: React.FC = () => {
       <PWAInstallPrompt />
       <DemoBanner />
       <BackgroundDelayer>
-        <Suspense fallback={null}>
-          <LocationTracker />
-        </Suspense>
+        <LocationTracker />
       </BackgroundDelayer>
       
       <Suspense fallback={<LoadingSpinner />}>

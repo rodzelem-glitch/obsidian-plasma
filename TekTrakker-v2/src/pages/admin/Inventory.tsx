@@ -19,6 +19,7 @@ const Inventory: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'parts' | 'refrigerant'>('parts');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     
     const [searchTerm, setSearchTerm] = useState('');
     const [filterLocation, setFilterLocation] = useState('All');
@@ -70,24 +71,32 @@ const Inventory: React.FC = () => {
         });
     }, [state.inventory, searchTerm, filterLocation]);
 
-    const handleSave = (e: React.FormEvent) => {
+    const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        const itemToSave = { 
-            ...editingItem, 
-            organizationId: editingItem.organizationId || state.currentOrganization?.id || '',
-            id: editingItem.id || `inv-${Date.now()}`,
-            lastUpdated: new Date().toISOString()
-        };
+        if (isSaving) return;
+        setIsSaving(true);
+        try {
+            const itemToSave = { 
+                ...editingItem, 
+                organizationId: editingItem.organizationId || state.currentOrganization?.id || '',
+                id: editingItem.id || `inv-${Date.now()}`,
+                lastUpdated: new Date().toISOString()
+            };
 
-        if (editingItem.id) {
-            dispatch({ type: 'UPDATE_INVENTORY', payload: itemToSave });
-            db.collection('inventory').doc(itemToSave.id).update(itemToSave);
-        } else {
-            dispatch({ type: 'ADD_INVENTORY', payload: itemToSave });
-            db.collection('inventory').doc(itemToSave.id).set(itemToSave);
+            if (editingItem.id) {
+                dispatch({ type: 'UPDATE_INVENTORY', payload: itemToSave });
+                await db.collection('inventory').doc(itemToSave.id).update(itemToSave);
+            } else {
+                dispatch({ type: 'ADD_INVENTORY', payload: itemToSave });
+                await db.collection('inventory').doc(itemToSave.id).set(itemToSave);
+            }
+            setIsModalOpen(false);
+            setEditingItem(initialItem);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsSaving(false);
         }
-        setIsModalOpen(false);
-        setEditingItem(initialItem);
     };
 
     const handleEdit = (item: InventoryItem) => {
@@ -227,7 +236,25 @@ const Inventory: React.FC = () => {
                         </tr>
                     ))}
                     {filteredInventory.length === 0 && (
-                        <tr><td colSpan={7} className="p-4 md:p-8 text-center text-gray-500">No inventory items found.</td></tr>
+                        <tr>
+                            <td colSpan={7} className="p-8 text-center">
+                                <p className="text-gray-500 dark:text-gray-400 mb-4">No inventory items found matching "{searchTerm}".</p>
+                                {searchTerm && (
+                                    <Button 
+                                        onClick={() => {
+                                            setEditingItem({
+                                                ...initialItem,
+                                                barcode: searchTerm,
+                                                sku: searchTerm
+                                            });
+                                            setIsModalOpen(true);
+                                        }}
+                                    >
+                                        + Add "{searchTerm}" to Inventory
+                                    </Button>
+                                )}
+                            </td>
+                        </tr>
                     )}
                 </Table>
             </Card>
@@ -259,8 +286,8 @@ const Inventory: React.FC = () => {
                         <Input label="Retail Price ($)" type="number" step="0.01" value={editingItem.price} onChange={e => setEditingItem({...editingItem, price: parseFloat(e.target.value) || 0})} required />
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
-                        <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                        <Button type="submit">Save Inventory</Button>
+                        <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)} disabled={isSaving}>Cancel</Button>
+                        <Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Inventory'}</Button>
                     </div>
                 </form>
             </Modal>
@@ -273,7 +300,7 @@ const Inventory: React.FC = () => {
                             <p className="font-bold text-gray-900 dark:text-white text-lg">{transferItem.name} ({transferItem.sku})</p>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">From: <span className="text-gray-900 dark:text-white">{transferItem.location}</span> (Avail: {transferItem.quantity})</p>
                         </div>
-                        <Select label="Destination" value={transferDest} onChange={e => setFilterLocation(e.target.value)}>
+                        <Select label="Destination" value={transferDest} onChange={e => setTransferDest(e.target.value)}>
                             {locations.filter(l => l !== transferItem.location).map(loc => (
                                 <option key={loc} value={loc}>{loc}</option>
                             ))}

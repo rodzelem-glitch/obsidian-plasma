@@ -452,6 +452,15 @@ service cloud.firestore {
       allow read: if true;
     }
 
+    match /aiUsage/{docId} {
+      // Platform Sales or Master Admin can read/list all usage
+      allow read, list: if isMaster() || isPlatformSales();
+      // Organizations can read their own usage document
+      allow read: if isOrgMember(docId);
+      // Only cloud functions can create/write to this, so no write permissions are granted to clients
+      allow write: if false; 
+    }
+
     match /marketingCampaigns/{campaignId} {
       allow read: if isMaster() || isPlatformSales() || (isOrgMember(resource.data.organizationId) && isOrgAdmin());
       allow write: if isMaster() || isPlatformSales() || (isOrgMember(resource.data.organizationId) && isOrgAdmin());

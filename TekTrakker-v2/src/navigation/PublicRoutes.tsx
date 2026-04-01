@@ -11,6 +11,7 @@ const ComplianceReport = lazy(() => import('../pages/landing/ComplianceReport'))
 const PrivacyPolicy = lazy(() => import('../pages/landing/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('../pages/landing/TermsOfService'));
 const EULA = lazy(() => import('../pages/landing/EULA'));
+const FAQ = lazy(() => import('../pages/landing/FAQ'));
 
 // Page Components
 const LoginPage = lazy(() => import('../pages/Login'));
@@ -39,6 +40,7 @@ const PublicRoutes: React.FC<{ user: any, getRedirectPath: () => string }> = ({ 
     <Route path="/privacy" element={<PrivacyPolicy />} />
     <Route path="/terms" element={<TermsOfService />} />
     <Route path="/eula" element={<EULA />} />
+    <Route path="/faq" element={<FAQ />} />
     
     <Route path="/login" element={!user ? <LoginPage /> : <Navigate to={`${getRedirectPath()}${window.location.search}`} replace />} />
     <Route path="/register" element={!user ? <LoginPage /> : <Navigate to={`${getRedirectPath()}${window.location.search}`} replace />} />

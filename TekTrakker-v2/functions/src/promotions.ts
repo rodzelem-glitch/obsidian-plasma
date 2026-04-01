@@ -30,7 +30,7 @@ const applyReferralDiscount = async (referringOrgId: string, newOrgId: string): 
     }
 };
 
-export const onusercreate = functionsV1.auth.user().onCreate(async (user: any) => {
+export const onusercreate = functions.auth.user().onCreate(async (user: any) => {
     const { email } = user;
 
     if (!email) {

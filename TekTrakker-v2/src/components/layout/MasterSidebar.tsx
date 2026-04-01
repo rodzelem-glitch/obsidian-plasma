@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit } from 'lucide-react';
 import type { User } from '../../types';
 
 interface MasterSidebarProps {
@@ -18,10 +18,11 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
   const navItems = [
     { path: '/master/dashboard', label: 'Overview', icon: LayoutDashboard },
     { path: '/master/analytics', label: 'Platform Analytics', icon: BarChart2 },
+    { path: '/master/ai-usage', label: 'AI Usage Metrics', icon: BrainCircuit },
     { path: '/master/organizations', label: 'Organizations', icon: Building2 },
     { path: '/master/members', label: 'Global Members', icon: ShieldCheck },
     { path: '/master/users', label: 'Global Users', icon: Users },
-    { path: '/master/messages', label: 'Messages', icon: MessageSquare }, // Added Messages
+    { path: '/master/messages', label: 'Messages', icon: MessageSquare },
     { path: '/master/customers', label: 'Global Customers', icon: UserCheck },
     { path: '/master/compliance', label: 'Compliance Registry', icon: FileText },
     { path: '/master/billing', label: 'Platform Billing', icon: CreditCard },

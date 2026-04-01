@@ -274,6 +274,8 @@ export interface VehicleLog {
     vehicleId: string;
     userId: string;
     date: string;
+    startTime?: string;
+    endTime?: string;
     type: 'Mileage' | 'Fuel' | 'Maintenance';
     cost: number;
     mileage: number;
@@ -283,6 +285,9 @@ export interface VehicleLog {
     notes: string;
     receiptData?: string | null;
     receiptUrl?: string | null;
+    location?: { lat: number; lng: number };
+    startLocation?: { lat: number; lng: number };
+    endLocation?: { lat: number; lng: number };
 }
 
 export interface Notification {

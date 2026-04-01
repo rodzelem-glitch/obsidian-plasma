@@ -1,0 +1,11 @@
+Error: The default Firebase app does not exist. Make sure you call initializeApp() before using any of the Firebase services.
+    at AppStore.getApp (C:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2\functions\node_modules\firebase-admin\lib\app\lifecycle.js:65:19)
+    at FirebaseNamespaceInternals.app (C:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2\functions\node_modules\firebase-admin\lib\app\firebase-namespace.js:54:35)
+    at FirebaseNamespace.app (C:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2\functions\node_modules\firebase-admin\lib\app\firebase-namespace.js:256:30)
+    at FirebaseNamespace.ensureApp (C:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2\functions\node_modules\firebase-admin\lib\app\firebase-namespace.js:266:24)
+    at FirebaseNamespace.fn (C:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2\functions\node_modules\firebase-admin\lib\app\firebase-namespace.js:136:25)
+    at Object.<anonymous> (C:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2\functions\lib\squareUtils.js:39:18)
+    at Module._compile (node:internal/modules/cjs/loader:1761:14)
+    at Object..js (node:internal/modules/cjs/loader:1893:10)
+    at Module.load (node:internal/modules/cjs/loader:1481:32)
+    at Module._load (node:internal/modules/cjs/loader:1300:12)

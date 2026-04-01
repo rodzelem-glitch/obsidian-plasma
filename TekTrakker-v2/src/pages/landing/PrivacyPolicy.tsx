@@ -54,7 +54,7 @@ const PrivacyPolicy: React.FC = () => {
             <ul className="list-disc pl-5 mt-2 space-y-1">
                 <li><strong>Service Performance:</strong> Managing appointments, invoices, public marketplace requests, and job history.</li>
                 <li><strong>Communication:</strong> Sending service updates via Email/SMS and push notifications.</li>
-                <li><strong>Machine Learning:</strong> Non-personally identifiable aggregate data may be used to train our AI estimators and predictive dispatch models.</li>
+                <li><strong>Machine Learning:</strong> Non-personally identifiable aggregate data may be used to train our AI estimators and predictive dispatch models. Additionally, we actively track AI token and resource usage across our platforms to manage stability. We expressly reserve the right to limit, restrict, or suspend access to AI features at any time based on excessive usage or cost constraints at our sole discretion.</li>
                 <li><strong>Legal Compliance:</strong> Meeting tax and regulatory requirements for field service documentation and recruitment.</li>
             </ul>
 

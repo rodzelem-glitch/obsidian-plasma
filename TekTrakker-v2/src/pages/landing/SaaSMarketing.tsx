@@ -36,21 +36,21 @@ const ROICalculator = () => {
                         <span>Technicians on the road</span>
                         <span className="text-slate-900">{techs}</span>
                     </label>
-                    <input type="range" min="1" max="50" value={techs} onChange={e => setTechs(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"/>
+                    <input type="range" min="1" max="50" value={techs} onChange={e => setTechs(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"/>
                 </div>
                 <div>
                     <label className="flex justify-between text-sm font-bold text-slate-600 mb-2">
                         <span>Avg Jobs / Day</span>
                         <span className="text-slate-900">{jobsPerDay}</span>
                     </label>
-                    <input type="range" min="1" max="8" value={jobsPerDay} onChange={e => setJobsPerDay(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"/>
+                    <input type="range" min="1" max="8" value={jobsPerDay} onChange={e => setJobsPerDay(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"/>
                 </div>
                 <div>
                     <label className="flex justify-between text-sm font-bold text-slate-600 mb-2">
                         <span>Avg Ticket Size ($)</span>
                         <span className="text-slate-900">${avgTicket}</span>
                     </label>
-                    <input type="range" min="100" max="2000" step="50" value={avgTicket} onChange={e => setAvgTicket(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"/>
+                    <input type="range" min="100" max="2000" step="50" value={avgTicket} onChange={e => setAvgTicket(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"/>
                 </div>
             </div>
 
@@ -173,8 +173,8 @@ const SaaSMarketing: React.FC = () => {
                     <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}><Logo className="h-14 w-auto text-primary-600" /></div>
                     <div className="flex gap-4 items-center">
                         <button onClick={() => navigate('/login')} className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap">Customer Portal / Login</button>
-                        <button onClick={() => setShowDemoOptions(true)} className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-105">Free Interactive Demo</button>
-                        <button onClick={() => navigate('/login?view=register_business')} className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-105">Start Your Free Trial</button>
+                        <button onClick={() => setShowDemoOptions(true)} className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Free Interactive Demo</button>
+                        <button onClick={() => navigate('/login?view=register_business')} className="bg-orange-600 hover:bg-orange-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</button>
                     </div>
                 </div>
             </nav>
@@ -217,9 +217,16 @@ const SaaSMarketing: React.FC = () => {
                         <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-8 leading-tight text-slate-900">Stop Being a Slave to <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600">Paperwork.</span></h1>
                         <p className="text-xl text-slate-600 max-w-xl mb-10 leading-relaxed font-medium">You didn't start a business to work 16 hours a day. TekTrakker eliminates the chaos of scheduling, chasing payments, and managing techs so you can finally breathe.</p>
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-primary-600 text-white font-black text-lg hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 hover:scale-105 flex items-center justify-center gap-2">Start Exploring Now <ArrowRight size={20} /></button>
+                            <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-primary-600 text-white font-black text-lg hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 hover:scale-[1.02] flex items-center justify-center gap-2">Start Exploring Now <ArrowRight size={20} /></button>
                         </div>
-                        <p className="mt-6 text-sm text-slate-500 font-medium"><span className="text-emerald-500">✓</span> 14-Day Free Trial &nbsp;<span className="text-emerald-500">✓</span> Cancel anytime</p>
+                        <div className="mt-6 flex flex-col sm:flex-row gap-4 sm:items-center">
+                            <div className="flex items-center gap-1">
+                                {[1,2,3,4,5].map(i => <Star key={i} size={16} fill="currentColor" className="text-yellow-400" />)}
+                                <span className="ml-2 text-sm font-bold text-slate-700">4.9/5</span>
+                            </div>
+                            <span className="hidden sm:inline text-slate-300">|</span>
+                            <p className="text-sm text-slate-500 font-medium"><span className="text-emerald-500 font-bold">✓</span> 14-Day Free Trial &nbsp;<span className="text-emerald-500 font-bold">✓</span> Cancel anytime</p>
+                        </div>
                     </div>
                     <div className="relative perspective-1000 hidden md:block">
                         <div className="absolute inset-0 bg-gradient-to-tr from-primary-500/10 to-indigo-500/10 transform rotate-3 rounded-[3rem] blur-xl"></div>
@@ -233,10 +240,10 @@ const SaaSMarketing: React.FC = () => {
                             <div className="flex">
                                 {/* Sidebar Mock */}
                                 <div className="w-16 md:w-20 border-r border-slate-200 p-4 flex flex-col gap-4 hidden sm:flex items-center pt-8 bg-slate-50">
-                                    <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center"><Layout className="text-primary-600" size={20}/></div>
-                                    <div className="w-10 h-10 rounded-xl hover:bg-slate-200 flex items-center justify-center"><Users className="text-slate-500" size={20}/></div>
-                                    <div className="w-10 h-10 rounded-xl hover:bg-slate-200 flex items-center justify-center"><BarChart3 className="text-slate-500" size={20}/></div>
-                                    <div className="w-10 h-10 rounded-xl hover:bg-slate-200 flex items-center justify-center"><Wrench className="text-slate-500" size={20}/></div>
+                                    <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center cursor-pointer"><Layout className="text-primary-600" size={20}/></div>
+                                    <div tabIndex={0} className="w-10 h-10 rounded-xl hover:bg-slate-200 flex items-center justify-center cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"><Users className="text-slate-500" size={20}/></div>
+                                    <div tabIndex={0} className="w-10 h-10 rounded-xl hover:bg-slate-200 flex items-center justify-center cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"><BarChart3 className="text-slate-500" size={20}/></div>
+                                    <div tabIndex={0} className="w-10 h-10 rounded-xl hover:bg-slate-200 flex items-center justify-center cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500"><Wrench className="text-slate-500" size={20}/></div>
                                 </div>
                                 {/* Main Content Mock */}
                                 <div className="p-6 flex-1 bg-white">
@@ -268,9 +275,9 @@ const SaaSMarketing: React.FC = () => {
                 <div className="max-w-7xl mx-auto text-center">
                     <h2 className="text-4xl font-black text-slate-900 mb-4">Streamline Your Entire Operation</h2>
                     <p className="text-xl text-slate-600 max-w-2xl mx-auto mb-16">TekTrakker offers an all-in-one platform to manage every aspect of your service business, from first contact to final payment.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><Zap className="text-primary-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Effortless Scheduling & Dispatch</h3><p className="text-slate-600">Drag-and-drop job scheduling, automated dispatching, and real-time technician tracking keep your team on track and your customers informed.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-indigo-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg shadow-indigo-500/10 relative overflow-hidden"><div className="absolute top-0 right-0 bg-indigo-500 text-white text-[10px] font-black uppercase px-3 py-1 rounded-bl-lg">Exclusive</div><Users className="text-indigo-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Free Premium Homeowner Leads</h3><p className="text-slate-600">Stop paying per lead. TekTrakker connects you natively with local homeowners actively requesting service through our standalone Consumer Portal, entirely for free.</p></div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg lg:col-span-2"><Zap className="text-primary-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Effortless Scheduling & Dispatch</h3><p className="text-slate-600">Drag-and-drop job scheduling, automated dispatching, and real-time technician tracking keep your team on track and your customers informed.</p></div>
+                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-indigo-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg shadow-indigo-500/10 relative overflow-hidden lg:col-span-2"><div className="absolute top-0 right-0 bg-indigo-500 text-white text-[10px] font-black uppercase px-3 py-1 rounded-bl-lg">Exclusive</div><Users className="text-indigo-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Free Premium Homeowner Leads</h3><p className="text-slate-600">Stop paying per lead. TekTrakker connects you natively with local homeowners actively requesting service through our standalone Consumer Portal, entirely for free.</p></div>
                         <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><HandCoins className="text-green-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Automated Invoicing & Payments</h3><p className="text-slate-600">Generate professional invoices, accept online payments, process credit cards directly on the field, and automate follow-ups to get paid faster.</p></div>
                         <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><MapPin className="text-orange-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Geofenced Time Tracking</h3><p className="text-slate-600">Automatically track technician arrival and departure times using precise GPS geofencing. Ensure 100% accurate payroll and eliminate time theft effortlessly.</p></div>
                         <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><Smartphone className="text-sky-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Mobile App for Technicians</h3><p className="text-slate-600">Empower your field team with a dedicated mobile app for job details, checklists, time tracking, picture taking, and full on-site sales presentations.</p></div>
@@ -361,7 +368,7 @@ const SaaSMarketing: React.FC = () => {
                 <div className="max-w-3xl mx-auto mb-20">
                     <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-6 leading-tight">Ready to Stop Drowning in Paperwork?</h2>
                     <p className="text-xl text-slate-600 mb-10">Join hundreds of service businesses who are reclaiming their time and scaling their operations with TekTrakker.</p>
-                    <button onClick={() => navigate('/login?view=register_business')} className="h-16 px-12 rounded-2xl bg-primary-600 text-white font-black text-xl hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 hover:scale-105 flex items-center justify-center gap-2 mx-auto">Start Your Free 14-Day Trial <ArrowRight size={22} /></button>
+                    <button onClick={() => navigate('/login?view=register_business')} className="h-16 px-12 rounded-2xl bg-orange-600 text-white font-black text-xl hover:bg-orange-700 transition-all shadow-lg shadow-orange-600/20 hover:scale-[1.02] flex items-center justify-center gap-2 mx-auto">Start Your Free 14-Day Trial <ArrowRight size={22} /></button>
                 </div>
 
                 {/* Property Owners Cross-Pitch */}
@@ -384,11 +391,12 @@ const SaaSMarketing: React.FC = () => {
                 <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all"><Logo className="h-8 w-auto" /></div>
                     <div className="flex gap-8 text-sm text-slate-500 font-medium">
+                        <a href="/#/faq" className="hover:text-white transition-colors">FAQ</a>
                         <a href="/#/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
                         <a href="/#/terms" className="hover:text-white transition-colors">Terms of Service</a>
                         <button onClick={() => setShowSupportModal(true)} className="hover:text-white transition-colors">Support</button>
                     </div>
-                    <div className="text-slate-600 text-xs font-medium">&copy; 2025 TekTrakker Inc. All rights reserved.</div>
+                    <div className="text-slate-600 text-xs font-medium">&copy; 2026 TekTrakker Inc. All rights reserved.</div>
                 </div>
             </footer>
 

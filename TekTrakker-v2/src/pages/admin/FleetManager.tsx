@@ -17,6 +17,7 @@ const FleetManager: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const [searchParams] = useSearchParams();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     
     useEffect(() => {
@@ -47,7 +48,8 @@ const FleetManager: React.FC = () => {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!state.currentOrganization) return;
+        if (!state.currentOrganization || isSaving) return;
+        setIsSaving(true);
 
         const vehicleToSave: Vehicle = {
             ...currentVehicle,
@@ -57,9 +59,9 @@ const FleetManager: React.FC = () => {
             model: currentVehicle.model || '',
             year: Number(currentVehicle.year),
             licensePlate: currentVehicle.licensePlate || '',
-            vin: currentVehicle.vin,
-            barcode: currentVehicle.barcode,
-            assignedUserId: currentVehicle.assignedUserId
+            vin: currentVehicle.vin || '',
+            barcode: currentVehicle.barcode || '',
+            assignedUserId: currentVehicle.assignedUserId || ''
         };
 
         try {
@@ -75,6 +77,8 @@ const FleetManager: React.FC = () => {
         } catch (error) {
             console.error(error);
             alert("Failed to save vehicle.");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -97,7 +101,10 @@ const FleetManager: React.FC = () => {
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white">Fleet Management</h3>
                     <p className="text-gray-500">Manage company vehicles and assignments.</p>
                 </div>
-                <Button onClick={() => { setCurrentVehicle({ year: new Date().getFullYear() }); setIsModalOpen(true); }} className="w-auto flex items-center gap-2">
+                <Button onClick={() => { 
+                    setCurrentVehicle({ make: '', model: '', year: new Date().getFullYear(), licensePlate: '', vin: '', barcode: '', assignedUserId: '' }); 
+                    setIsModalOpen(true); 
+                }} className="w-auto flex items-center gap-2">
                     <Plus size={16}/> Add Vehicle
                 </Button>
             </header>
@@ -155,8 +162,8 @@ const FleetManager: React.FC = () => {
                     </Select>
 
                     <div className="flex justify-end gap-2 pt-4">
-                        <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                        <Button type="submit">Save Vehicle</Button>
+                        <Button variant="secondary" type="button" onClick={() => setIsModalOpen(false)} disabled={isSaving}>Cancel</Button>
+                        <Button type="submit" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Vehicle'}</Button>
                     </div>
                 </form>
             </Modal>
