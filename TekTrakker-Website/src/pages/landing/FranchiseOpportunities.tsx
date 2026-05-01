@@ -1,6 +1,6 @@
 import showToast from "../../lib/toast";
 import React, { useState, useRef } from 'react';
-import { Network, ArrowRight, CheckCircle2, ShieldCheck, Mail, Lock, Building, Map, CreditCard, ChevronLeft, Globe, Loader2 } from 'lucide-react';
+import { Network, ArrowRight, CheckCircle2, ShieldCheck, Mail, Lock, Building, Map, CreditCard, ChevronLeft, Globe, Loader2, ArrowLeft } from 'lucide-react';
 import { db, auth } from '../../lib/firebase';
 import { Logo } from '../../components/ui/Logo';
 import { useNavigate } from 'react-router-dom';
@@ -143,7 +143,7 @@ const FranchiseOpportunities: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-            <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/80"><div className="max-w-7xl mx-auto px-6 h-24 flex justify-between items-center"><div className="flex items-center cursor-pointer" onClick={() => navigate('/')}><Logo className="h-14 w-auto text-primary-600" /></div><div className="flex gap-4 items-center"><button onClick={() => window.location.href = 'https://app.tektrakker.com/login'} className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap hidden sm:block">Customer Portal / Login</button><button onClick={() => window.location.href = `https://app.tektrakker.com/pro/apex?role=admin&source=marketing&returnUrl=${encodeURIComponent(window.location.href)}`} className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer">Free Interactive Demo</button></div></div></nav>
+            <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/80"><div className="max-w-7xl mx-auto px-6 h-24 flex justify-between items-center"><div className="flex items-center cursor-pointer" onClick={() => navigate('/')}><Logo className="h-14 w-auto text-primary-600" /></div><div className="flex gap-4 items-center"><button onClick={() => navigate('/')} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-blue-600 transition-colors hidden sm:flex"><ArrowLeft size={16} /> Back to Home</button><button onClick={() => window.location.href = 'https://app.tektrakker.com/login'} className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap hidden sm:block">Customer Portal / Login</button><button onClick={() => window.location.href = `https://app.tektrakker.com/pro/apex?role=admin&source=marketing&returnUrl=${encodeURIComponent(window.location.href)}`} className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer">Free Interactive Demo</button></div></div></nav>
 
             <main className="flex-1 flex items-center justify-center p-4 py-12 mt-24">
                 <div className="max-w-4xl w-full">

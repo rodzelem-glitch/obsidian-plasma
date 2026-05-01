@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MarketingFooter } from '../../components/layout/MarketingFooter';
-import { Bot, Sparkles, Zap, Shield, ArrowRight, CheckCircle, Infinity, Clock, DollarSign, Calendar, Package, FileText } from 'lucide-react';
+import { Bot, Sparkles, Zap, Shield, ArrowRight, CheckCircle, Infinity, Clock, DollarSign, Calendar, Package, FileText, ArrowLeft } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
 import LandingChatbot from '../../components/LandingChatbot';
 
@@ -17,6 +17,9 @@ const VirtualWorkerMarketing: React.FC = () => {
                         <Logo className="h-14 w-auto text-indigo-600" />
                     </div>
                     <div className="flex gap-4 items-center">
+                        <button onClick={() => navigate('/')} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors hidden sm:flex">
+                            <ArrowLeft size={16} /> Back to Home
+                        </button>
                         <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=login'} className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200 text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-sm">
                             Login
                         </button>

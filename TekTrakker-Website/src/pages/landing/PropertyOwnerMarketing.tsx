@@ -2,8 +2,8 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MarketingFooter } from '../../components/layout/MarketingFooter';
 import { 
-    Wrench, ArrowRight, ShieldCheck, History, FileText, 
-    Search, CheckCircle, Home
+    Wrench, ArrowRight, ShieldCheck, History, FileText,
+    Search, CheckCircle, Home, ArrowLeft
 } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
 import LandingChatbot from '../../components/LandingChatbot';
@@ -26,6 +26,9 @@ const PropertyOwnerMarketing: React.FC = () => {
                             <Logo className="h-8 md:h-10 w-auto" />
                         </div>
                         <div className="flex items-center gap-3">
+                            <button onClick={() => navigate('/')} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-blue-600 transition-colors hidden sm:flex">
+                                <ArrowLeft size={16} /> Back to Home
+                            </button>
                             <button 
                                 onClick={() => window.location.href = 'https://app.tektrakker.com/login'} 
                                 className="text-slate-600 font-bold hover:text-blue-600 transition-colors whitespace-nowrap"
