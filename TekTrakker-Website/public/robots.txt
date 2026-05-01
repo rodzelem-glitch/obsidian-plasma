@@ -3,6 +3,9 @@ Allow: /
 Allow: /site/*
 Allow: /book
 Allow: /careers/*
+Allow: /franchise
+Allow: /ai-worker-commands
+Allow: /ai-worker
 Disallow: /admin/
 Disallow: /master/
 Disallow: /portal/
