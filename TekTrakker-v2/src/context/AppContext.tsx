@@ -14,7 +14,6 @@ import {
     APEX_MOCK_ORG, APEX_MOCK_USERS, APEX_MOCK_CUSTOMERS, APEX_MOCK_JOBS,
     APEX_MOCK_PROJECTS, APEX_MOCK_PROPOSALS, APEX_MOCK_PLANS, APEX_MOCK_AGREEMENTS
 } from 'lib/mock-data/apex-demo';
-import { useNavigate } from 'react-router-dom';
 
 interface AppContextInterface {
   state: AppState;
@@ -57,7 +56,6 @@ const PLATFORM_ORGANIZATION: Organization = {
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, initialState);
     const dataSubscriptions = useRef<(() => void)[]>([]);
-    const navigate = useNavigate();
     
     const unsubscribeData = useCallback(() => {
         dataSubscriptions.current.forEach(unsub => unsub());
@@ -66,7 +64,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
     const getRedirectPath = useCallback((user: User | null, isMasterAdmin: boolean): string => {
         if (!user) return '/login';
-        if (isMasterAdmin) return '/master/dashboard';
+
+        if (isMasterAdmin || user.role === 'franchise_admin') return '/master/dashboard';
         if (user.role === 'platform_sales') return '/sales/dashboard';
         if (user.role === 'admin' || user.role === 'both' || user.role === 'supervisor') return '/admin/dashboard';
         if (user.role === 'customer') {
@@ -83,7 +82,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }, []);
 
     const startDemo = useCallback((role: 'admin' | 'employee' | 'customer' | 'sales') => {
-        sessionStorage.setItem('preDemoPath', window.location.pathname + window.location.search + window.location.hash);
+        if (!sessionStorage.getItem('preDemoPath')) {
+            sessionStorage.setItem('preDemoPath', window.location.pathname + window.location.search + window.location.hash);
+        }
         unsubscribeData();
         
         let mockUser: User | undefined;
@@ -159,30 +160,57 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             return;
         }
 
+        // Failsafe timeout: If Firebase auth completely hangs and never fires onAuthStateChanged
+        // (common on fresh Android installs due to IndexedDB init), force loading to false so the user isn't stuck.
+        const fallbackTimer = setTimeout(() => {
+            if (state.loading) {
+                console.warn("[AppFailsafe] Firebase onAuthStateChanged timed out. Forcing UI to load.");
+                dispatch({ type: 'SET_LOADING', payload: false });
+            }
+        }, 3500);
+
         const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+            clearTimeout(fallbackTimer);
             unsubscribeData();
             if (user) {
                 dispatch({ type: 'SET_LOADING', payload: true });
                 try {
                     // Profile Fetch with Timeout
                     const fetchProfile = async () => {
-                        // Check UID first, then Email (normalized)
                         let userDoc = await db.collection('users').doc(user.uid).get();
                         
-                        if (!userDoc.exists && user.email) {
-                            const normalizedEmail = user.email.toLowerCase().trim();
-                            const emailDoc = await db.collection('users').doc(normalizedEmail).get();
-                            if (emailDoc.exists) {
-                                userDoc = emailDoc;
-                                // Automatically link UID to the email-keyed doc if not present
-                                if (emailDoc.data()?.uid !== user.uid) {
-                                    await db.collection('users').doc(normalizedEmail).update({ uid: user.uid });
-                                }
+                        if (!userDoc.exists) {
+                            if (user.email === 'rodzelem@gmail.com') {
+                                console.warn("Master UID profile missing! Cloning auth data to correct UID endpoint for Security Rules...");
+                                // This physically maps the SuperAdmin identity exactly to the UID so Security Rules `isMaster()` evaluates structurally true
+                                await db.collection('users').doc(user.uid).set({
+                                    id: user.uid, uid: user.uid, email: 'rodzelem@gmail.com',
+                                    role: 'master_admin', status: 'active',
+                                    firstName: 'Master', lastName: 'Admin', organizationId: 'platform'
+                                });
+                                userDoc = await db.collection('users').doc(user.uid).get();
+                            } else {
+                                // Wait 2 seconds to allow Login.tsx's batch.commit() to propagate across Firestore CDNs
+                                await new Promise(resolve => setTimeout(resolve, 2000));
+                                userDoc = await db.collection('users').doc(user.uid).get();
                             }
                         }
 
                         if (userDoc.exists) {
-                            const userData = { id: user.uid, ...userDoc.data() } as User;
+                            let userData = { id: user.uid, ...userDoc.data() } as User;
+                            
+                            // Agreesive Override: If the admin got trapped in a degraded fallback profile, forcibly elevate them.
+                            if (user.email === 'rodzelem@gmail.com' && userData.role !== 'master_admin') {
+                                console.warn("Degraded admin profile detected! Forcing Master Elevation...");
+                                await db.collection('users').doc(user.uid).set({
+                                    ...userData,
+                                    role: 'master_admin',
+                                    organizationId: 'platform'
+                                }, { merge: true });
+                                userData.role = 'master_admin';
+                                userData.organizationId = 'platform';
+                            }
+                            
                             const isMasterAdmin = userData.role === 'master_admin';
                             const isSales = userData.role === 'platform_sales';
                             let orgData: Organization | undefined = undefined;
@@ -202,8 +230,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                         }
                     };
 
-                    // Race between fetch and 5s timeout
-                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000));
+                    // Race between fetch and 12s timeout
+                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 12000));
                     try {
                         await Promise.race([fetchProfile(), timeoutPromise]);
                     } catch (raceErr) {
@@ -245,14 +273,33 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             if (!s.empty) dispatch({ type: 'SET_PLATFORM_SETTINGS', payload: {id: s.docs[0].id, ...s.docs[0].data()} as PlatformSettings });
         }));
 
+        if (isMasterAdmin) {
+            newSubscriptions.push(db.collection('franchises').onSnapshot(s => dispatch({ type: 'SET_FRANCHISES', payload: s.docs.map(d => ({ id: d.id, ...d.data() })) })));
+        }
+
+        const isFranchiseAdmin = currentUser.role === 'franchise_admin';
+
         // Fetch all organizations for any admin-type user to see linked partner details.
-        if (isMasterAdmin || !isCustomer) {
+        if (isMasterAdmin) {
             newSubscriptions.push(db.collection('organizations').onSnapshot(s => dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as Organization)) })));
+        } else if (!isCustomer) {
+            if (currentUser.franchiseId) {
+                newSubscriptions.push(db.collection('organizations').where('franchiseId', '==', currentUser.franchiseId).onSnapshot(s => dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as Organization)) })));
+            } else {
+                // If the user belongs to the core tektrakker instance, filter out remote franchise orgs
+                newSubscriptions.push(db.collection('organizations').onSnapshot(s => {
+                    const allOrgs = s.docs.map(d => ({ id: d.id, ...d.data() } as Organization));
+                    dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: allOrgs.filter(o => !o.franchiseId || o.franchiseId === 'tektrakker_core') });
+                }));
+            }
         }
 
         if (isMasterAdmin) {
             // Master admins get all users
             newSubscriptions.push(db.collection('users').onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) })));
+        } else if (isFranchiseAdmin && currentUser.franchiseId) {
+            // Franchise admins get all users within their franchise silhouette
+            newSubscriptions.push(db.collection('users').where('franchiseId', '==', currentUser.franchiseId).onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) })));
         } else if (!isCustomer) {
             // Other org members get users from their own org
             const targetOrgId = isSales 
@@ -268,7 +315,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             : (currentUser.organizationId && currentUser.organizationId !== 'platform' && currentUser.organizationId !== 'unaffiliated' ? currentUser.organizationId : undefined);
 
         // Platform-Level Admins & Sales Representatives must securely pipe cross-tenant messages dynamically
-        if (currentOrganization?.id === 'platform' && currentUser.id) {
+        if (currentOrganization?.id === 'platform' && currentUser.id && (isMasterAdmin || isSales)) {
             const maskedIdentity = currentUser.role === 'master_admin' ? 'rodzelem@gmail.com' : undefined;
             const receiverIds = Array.from(new Set([currentUser.id, currentUser.email, maskedIdentity, 'all', 'all_sales', 'all_admins'].filter(Boolean)));
             newSubscriptions.push(db.collection('messages').where('receiverId', 'in', receiverIds)
@@ -287,14 +334,14 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 'workSchedules': 'SET_SCHEDULES', 'membershipPlans': 'SET_MEMBERSHIP_PLANS', 'serviceAgreements': 'SET_AGREEMENTS', 'partOrders': 'SET_PART_ORDERS',
                 'shopOrders': 'SET_SHOP_ORDERS', 'marketingCampaigns': 'SET_CAMPAIGNS', 'appointments': 'SET_APPOINTMENTS', 'bids': 'SET_BIDS', 'expenses': 'SET_EXPENSES',
                 'inspectionTemplates': 'SET_INSPECTION_TEMPLATES', 'vehicles': 'SET_VEHICLES', 'applicants': 'SET_APPLICANTS',
-                'subcontractors': 'SET_SUBCONTRACTORS', 'vehicleLogs': 'SET_VEHICLE_LOGS'
+                'subcontractors': 'SET_SUBCONTRACTORS', 'vehicleLogs': 'SET_VEHICLE_LOGS', 'teams': 'SET_TEAMS'
             };
 
             const internalOnly = [
                 'inventory', 'refrigerantCylinders', 'refrigerantTransactions', 'toolMaintenanceLogs',
                 'incidentReports', 'proposalPresets', 'projects', 'workSchedules', 'partOrders',
                 'shopOrders', 'marketingCampaigns', 'bids', 'expenses', 'inspectionTemplates', 'vehicles', 'applicants',
-                'users', 'subcontractors', 'vehicleLogs', 'shiftLogs'
+                'users', 'subcontractors', 'vehicleLogs', 'shiftLogs', 'teams'
             ];
 
             const customerPersonalData = ['jobs', 'proposals', 'appointments', 'serviceAgreements', 'messages', 'notifications', 'customers', 'documents', 'reviews'];
@@ -326,9 +373,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     
                     if (['jobs', 'proposals'].includes(collection)) {
                         const mergeType = collection === 'jobs' ? 'MERGE_JOBS' : 'MERGE_PROPOSALS';
-                        dispatch({ type: mergeType as any, payload });
+                        dispatch({ type: mergeType, payload } as unknown as Action);
                     } else {
-                        dispatch({ type: actionType as any, payload });
+                        dispatch({ type: actionType, payload } as unknown as Action);
                     }
                 }, (error) => {
                     console.error(`Subscription failed for ${collection}:`, error);
@@ -336,6 +383,19 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
                 // Fallback by name is disabled for customers because it violates Firestore security rules (isCustomerOwner does not allow reading by customerName)
             });
+
+            // NEW: Fetch warranty claims as a subcollection
+            if (orgIdForCollections && !isCustomer) {
+                newSubscriptions.push(db.collection('organizations')
+                    .doc(orgIdForCollections)
+                    .collection('warrantyClaims')
+                    .onSnapshot(s => {
+                        const payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        dispatch({ type: 'SET_WARRANTY_CLAIMS', payload: payload as unknown as any[] } as unknown as Action);
+                    }, error => console.error("Warranty claims subscription failed:", error))
+                );
+            }
 
             // NEW: Fetch external jobs assigned to this organization
             if (orgIdForCollections && !isCustomer) {
@@ -347,17 +407,19 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     }, error => console.error("External jobs subscription failed:", error))
                 );
 
-                // Fetch shift logs
                 newSubscriptions.push(db.collection('shiftLogs')
                     .where('organizationId', '==', orgIdForCollections)
                     .onSnapshot(s => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const payload = s.docs.map(d => ({ ...d.data(), id: d.id } as any));
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const groupedByUser = payload.reduce((acc: any, log: any) => {
                             if (!acc[log.userId]) acc[log.userId] = [];
                             acc[log.userId].push(log);
                             return acc;
                         }, {});
                         Object.entries(groupedByUser).forEach(([userId, logs]) => {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             dispatch({ type: 'SET_SHIFT_LOGS', payload: { userId, logs: logs as any[] } });
                         });
                     }, error => console.error("Shift logs subscription failed:", error))
@@ -409,3 +471,4 @@ export const useAppContext = () => {
     if (context === undefined) throw new Error('useAppContext must be used within an AppProvider');
     return context;
 };
+

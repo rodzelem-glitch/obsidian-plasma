@@ -1,41 +1,54 @@
+import showToast from "lib/toast";
 import React from 'react';
-import { CheckCircle, DollarSign, LogOut } from 'lucide-react';
-import Card from '../../../../components/ui/Card';
-import Button from '../../../../components/ui/Button';
+import { FilePlus, Import, Send } from 'lucide-react';
 
 interface BillingStepProps {
     handleGoToPayments: () => void;
     handleLeaveSite: () => void;
+    onOpenInvoiceSelector: () => void;
 }
 
 const BillingStep: React.FC<BillingStepProps> = ({
     handleGoToPayments,
-    handleLeaveSite
+    handleLeaveSite,
+    onOpenInvoiceSelector
 }) => {
     return (
-        <div className="space-y-6">
-            <Card className="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200">
-                <div className="text-center p-6">
-                    <CheckCircle size={48} className="mx-auto text-emerald-500 mb-4"/>
-                    <h3 className="text-2xl font-black text-emerald-800 dark:text-emerald-300">Job Wrapped Up?</h3>
-                    <p className="text-emerald-600 dark:text-emerald-400 font-bold mt-2">Ready for Billing</p>
-                </div>
-            </Card>
-            <div className="grid grid-cols-1 gap-4">
-                <Button 
-                    onClick={handleGoToPayments} 
-                    className="h-16 text-lg font-black bg-slate-900 text-white shadow-xl flex items-center justify-center gap-3"
+        <div className="space-y-4">
+            <h3 className="text-xl font-black text-center mb-6">Finalize Billing</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button 
+                    onClick={handleGoToPayments}
+                    className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:border-primary-500 hover:shadow-md transition-all text-slate-700 dark:text-slate-300 hover:text-primary-600 group text-left"
                 >
-                    <DollarSign size={24}/> Review Invoice & Collect Payment
-                </Button>
-                <Button 
-                    onClick={handleLeaveSite} 
-                    variant="danger" 
-                    className="h-12 flex items-center justify-center"
+                    <FilePlus size={40} className="mb-3 text-slate-400 group-hover:text-primary-500 transition-colors" />
+                    <span className="font-bold whitespace-nowrap">Create Invoice</span>
+                    <span className="text-xs text-slate-400 mt-2 text-center text-balance leading-relaxed">Generate an invoice from scratch based on today's workflow.</span>
+                </button>
+
+                <button 
+                    onClick={onOpenInvoiceSelector}
+                    className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:border-purple-500 hover:shadow-md transition-all text-slate-700 dark:text-slate-300 hover:text-purple-600 group text-left"
                 >
-                    <LogOut size={20} className="mr-2"/> Complete Job & Leave Site
-                </Button>
+                    <Import size={40} className="mb-3 text-slate-400 group-hover:text-purple-500 transition-colors" />
+                    <span className="font-bold whitespace-nowrap">Import Invoice</span>
+                    <span className="text-xs text-slate-400 mt-2 text-center text-balance leading-relaxed">Upload an existing invoice from another accounting software.</span>
+                </button>
+
+                <button 
+                    onClick={() => {
+                        showToast.warn("To send this invoice to the customer, click OK to open your Invoice Editor, and then click the 'Share' option.");
+                        handleGoToPayments();
+                    }}
+                    className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl hover:border-blue-500 hover:shadow-md transition-all text-slate-700 dark:text-slate-300 hover:text-blue-600 group text-left"
+                >
+                    <Send size={40} className="mb-3 text-slate-400 group-hover:text-blue-500 transition-colors" />
+                    <span className="font-bold whitespace-nowrap">Review & Send</span>
+                    <span className="text-xs text-slate-400 mt-2 text-center text-balance leading-relaxed">Review invoice details and broadcast via Email or SMS.</span>
+                </button>
             </div>
+            <p className="text-sm text-center text-slate-500 mt-8 pt-4">Click <strong>Complete Job</strong> below when you are ready to depart the site.</p>
         </div>
     );
 };

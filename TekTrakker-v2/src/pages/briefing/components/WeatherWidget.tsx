@@ -47,43 +47,25 @@ const WeatherWidget: React.FC = () => {
                 const coords = await getCoords();
                 const lat = coords.lat;
                 const lng = coords.lng;
+                // Using the platform-wide API key provided by the SaaS owner
+                const apiKey = state.currentOrganization?.settings?.openWeatherApiKey || '06306b0cb08710418c31224005d40c6f';
 
-                let weatherData: any = null;
-                
                 try {
-                    // Try with auto timezone first
-                    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto`).catch(() => null);
-                    if (!res || !res.ok) throw new Error('Primary weather API failed');
-                    weatherData = await res.json();
-                } catch (e) {
-                    try {
-                        // Fallback without auto-timezone which sometimes causes 502s in specific regions
-                        const fallbackRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit`).catch(() => null);
-                        if (!fallbackRes || !fallbackRes.ok) throw new Error('Fallback weather API failed');
-                        weatherData = await fallbackRes.json();
-                    } catch (err) {
-                        // If all APIs fail (CORS/502), fail silently and use defaults
-                        throw new Error('All weather endpoints failed');
-                    }
-                }
-                
-                let city = 'Local Weather';
-                try {
-                    const geoRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
-                    const geoData = await geoRes.json();
-                    city = geoData.city || geoData.locality || 'Local Weather';
-                } catch (e) {}
-                
-                if (weatherData && weatherData.current_weather && weatherData.daily && weatherData.daily.temperature_2m_max && weatherData.daily.temperature_2m_max.length > 0) {
+                    const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${apiKey}&units=imperial`);
+                    if (!res || !res.ok) throw new Error('OpenWeather API failed');
+                    const data = await res.json();
+                    
+                    const city = data.name || 'Local Weather';
+                    
                     setWeather({
-                        temp: Math.round(weatherData.current_weather.temperature),
-                        condition: getWeatherCondition(weatherData.current_weather.weathercode),
-                        high: Math.round(weatherData.daily.temperature_2m_max[0]),
-                        low: Math.round(weatherData.daily.temperature_2m_min[0]),
+                        temp: Math.round(data.main.temp),
+                        condition: data.weather[0].main,
+                        high: Math.round(data.main.temp_max),
+                        low: Math.round(data.main.temp_min),
                         lat, lng, city
                     });
-                } else {
-                     setWeather({ temp: 72, condition: 'Clear', high: 80, low: 65, lat, lng, city });
+                } catch (e) {
+                    setWeather({ temp: 72, condition: 'Clear', high: 80, low: 65, lat, lng, city: 'Local Weather' });
                 }
             } catch (error) {
                 // Failsafe default if the network totally blocks the request

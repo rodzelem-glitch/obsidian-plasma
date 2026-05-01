@@ -1,0 +1,124 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.revenueCatWebhook = void 0;
+const functions = __importStar(require("firebase-functions/v1"));
+const admin = __importStar(require("firebase-admin"));
+/**
+ * RevenueCat Webhook Handler
+ * This function receives events from RevenueCat and updates the organization's subscription status.
+ * It specifically handles the 'Virtual Worker' add-on ($199/mo).
+ */
+exports.revenueCatWebhook = functions.https.onRequest(async (req, res) => {
+    // 1. Security: Verify the Authorization header
+    const authHeader = req.headers.authorization;
+    try {
+        const secretsDoc = await admin.firestore().collection('platformSettings').doc('secrets').get();
+        const secrets = secretsDoc.data();
+        const webhookSecret = secrets?.revenueCatWebhookSecret;
+        if (webhookSecret && authHeader !== `Bearer ${webhookSecret}`) {
+            functions.logger.error("Unauthorized RevenueCat webhook attempt");
+            res.status(401).send("Unauthorized");
+            return;
+        }
+        const body = req.body;
+        const event = body.event;
+        if (!event) {
+            res.status(400).send("Bad Request: Missing event data");
+            return;
+        }
+        const appUserId = event.app_user_id;
+        const productId = event.product_id;
+        const type = event.type;
+        functions.logger.info(`RevenueCat Event: ${type} for User: ${appUserId}, Product: ${productId}`);
+        // 2. Identify the Organization
+        let orgId = null;
+        // Try to see if appUserId is already an orgId (prefix check or direct match)
+        if (appUserId.startsWith('org_')) {
+            orgId = appUserId;
+        }
+        else {
+            // Assume appUserId is a Firebase UID
+            const userDoc = await admin.firestore().collection('users').doc(appUserId).get();
+            if (userDoc.exists) {
+                orgId = userDoc.data()?.organizationId || null;
+            }
+        }
+        if (!orgId || orgId === 'unaffiliated') {
+            functions.logger.warn(`Could not resolve organization for app_user_id: ${appUserId}`);
+            res.status(200).send("Event received but no organization found to update.");
+            return;
+        }
+        // 3. Handle Virtual Worker Subscription Logic
+        const VIRTUAL_WORKER_PRODUCT_ID = 'tek_virtual_worker_199';
+        const db = admin.firestore();
+        const orgRef = db.collection('organizations').doc(orgId);
+        switch (type) {
+            case 'INITIAL_PURCHASE':
+            case 'RENEWAL':
+            case 'PRODUCT_CHANGE':
+            case 'UNCANCEL':
+                if (productId === VIRTUAL_WORKER_PRODUCT_ID) {
+                    await orgRef.update({
+                        virtualWorkerEnabled: true,
+                        revenuecatId: appUserId // Link for future reference
+                    });
+                    functions.logger.info(`Enabled Virtual Worker for Organization: ${orgId}`);
+                }
+                break;
+            case 'CANCELLATION':
+            case 'EXPIRATION':
+            case 'BILLING_ISSUE':
+                if (productId === VIRTUAL_WORKER_PRODUCT_ID) {
+                    await orgRef.update({
+                        virtualWorkerEnabled: false
+                    });
+                    functions.logger.info(`Disabled Virtual Worker for Organization: ${orgId} due to ${type}`);
+                }
+                break;
+            case 'TEST':
+                functions.logger.info("RevenueCat TEST event received successfully.");
+                break;
+            default:
+                functions.logger.info(`Unhandled RevenueCat event type: ${type}`);
+        }
+        res.status(200).send("Webhook processed successfully");
+    }
+    catch (error) {
+        functions.logger.error("Error processing RevenueCat webhook", error);
+        res.status(500).send("Internal Server Error");
+    }
+});
+//# sourceMappingURL=revenuecat.js.map

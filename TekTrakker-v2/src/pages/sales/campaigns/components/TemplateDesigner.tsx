@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
 import { Mail, MessageSquare, Plus, Search, Trash2, Edit3, Sparkles, Loader2, Code, FileText, ImageIcon } from 'lucide-react';
@@ -62,13 +63,13 @@ const TemplateDesigner: React.FC = () => {
             setIsModalOpen(false);
             setEditingTemplate(null);
         } catch (e) {
-            alert("Failed to save template.");
+            showToast.warn("Failed to save template.");
         }
     };
 
     const handleAISmartWrite = async () => {
         if (!editingTemplate?.name) {
-            alert("Please enter a template name for context.");
+            showToast.warn("Please enter a template name for context.");
             return;
         }
         setIsWriting(true);
@@ -90,7 +91,7 @@ const TemplateDesigner: React.FC = () => {
 
             setEditingTemplate(prev => ({ ...prev, content: result.data.text }));
         } catch (e) {
-            alert("AI writing failed.");
+            showToast.warn("AI writing failed.");
         } finally {
             setIsWriting(false);
         }

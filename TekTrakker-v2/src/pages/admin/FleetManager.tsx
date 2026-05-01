@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -78,7 +79,7 @@ const FleetManager: React.FC = () => {
             setCurrentVehicle({ make: '', model: '', year: new Date().getFullYear(), licensePlate: '', vin: '', barcode: '', assignedUserId: '' });
         } catch (error) {
             console.error(error);
-            alert("Failed to save vehicle.");
+            showToast.warn("Failed to save vehicle.");
         } finally {
             setIsSaving(false);
         }

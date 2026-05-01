@@ -12,6 +12,9 @@ export interface Address {
 }
 
 export interface Organization {
+    franchiseId?: string;
+    gustoOnboardingUrl?: string;
+    gustoCompanyUuid?: string;
     id: string;
     name: string;
     phone: string;
@@ -133,6 +136,17 @@ export interface Organization {
     warrantyDisclaimer?: string;
     defaultWorkmanshipMonths?: number;
     defaultPartsMonths?: number;
+    marketingSpend?: Record<string, number>;
+    acceptsSubcontracting?: boolean;
+    profileSlug?: string;
+    gclid?: string;
+    marketingConsent?: {
+        sms: boolean;
+        email: boolean;
+        agreedAt: string;
+        source: string;
+        gclid?: string;
+    };
 }
 
 // --- User & Employee ---
@@ -163,7 +177,9 @@ export interface User {
   payType?: 'hourly' | 'salary'; 
   billableRate?: number | null; 
   ptoAccrued: number; 
-  role: 'master_admin' | 'admin' | 'employee' | 'both' | 'customer' | 'supervisor' | 'platform_sales' | 'Technician' | 'Subcontractor'; 
+  role: 'master_admin' | 'admin' | 'employee' | 'both' | 'customer' | 'supervisor' | 'platform_sales' | 'Technician' | 'Subcontractor' | 'franchise_admin';
+  franchiseId?: string;
+  taxW9Content?: string; 
   reportsTo?: string | null; 
   hireDate?: string | null;
   ssn?: string | null; 
@@ -188,7 +204,7 @@ export interface User {
   lastLoginAt?: string | null; 
   preferences?: any;
   permissions?: string[]; 
-  marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; };
+  marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; gclid?: string; };
   signedPolicies?: Record<string, string>;
   digitalId?: string;
   salesContractSigned?: boolean;
@@ -206,17 +222,72 @@ export interface User {
   customCommissionSettings?: CommissionSettings;
   hasAppAccess?: boolean;
   kioskPin?: string;
+  gclid?: string;
 }
 
 // --- Customer & Assets ---
 export interface EquipmentAsset {
     id: string;
+    propertyId?: string;
+    name?: string;
     brand: string;
     model: string;
     serial: string;
     type: string;
     location?: string;
     installDate?: string;
+    condition?: 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Critical';
+    serialPhotoUrl?: string;
+    unitTagPhotoUrl?: string;
+    conditionPhotoUrl?: string;
+    notes?: string;
+    linkedAssetIds?: string[];
+    warranty?: AssetWarranty;
+}
+
+export interface AssetWarranty {
+    manufacturerDurationMonths?: number;
+    manufacturerStartDate?: string;
+    manufacturerTerms?: string;
+    manufacturerClaimUrl?: string; // or info on how to claim
+    laborDurationMonths?: number;
+    laborStartDate?: string;
+    laborTerms?: string;
+    requiresMaintenance?: boolean;
+    maintenanceIntervalMonths?: number;
+    lastMaintenanceDate?: string;
+    warrantyNotes?: string;
+}
+
+export interface WarrantyClaim {
+    id: string;
+    organizationId: string;
+    customerId: string;
+    customerName: string;
+    equipmentId?: string;
+    jobId?: string; // Job where the warranty work was performed
+    status: 'Draft' | 'Submitted' | 'Approved' | 'Rejected' | 'Credit Received' | 'Part Received';
+    claimType: 'Manufacturer Parts' | 'Manufacturer Labor' | 'In-House Workmanship';
+    claimDate: string;
+    amountClaimed?: number;
+    amountApproved?: number;
+    notes?: string;
+    trackingNumber?: string;
+    rmaNumber?: string;
+    createdAt?: string;
+}
+
+export interface ServiceLocation {
+   id: string;
+   name: string;
+   address: string;
+   city?: string;
+   state?: string;
+   zip?: string;
+   gateCode?: string;
+   notes?: string;
+   parentId?: string | null;
+   locationType?: string;
 }
 
 export interface Customer {
@@ -237,7 +308,7 @@ export interface Customer {
   serviceHistory: any[];
   notes?: string | null;
   files?: StoredFile[]; 
-  marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; };
+  marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; gclid?: string; };
   profilePhotoUrl?: string | null;
   preferredContactMethod?: 'Phone' | 'SMS' | 'Email';
   bestTimeToContact?: string;
@@ -248,6 +319,7 @@ export interface Customer {
   accessInstructions?: { type: string; code?: string };
   technicianNotes?: string;
   savedProviders?: string[]; 
+  serviceLocations?: ServiceLocation[];
 }
 
 // --- Job & Scheduling ---
@@ -343,7 +415,7 @@ export interface Appointment {
     specialInstructions?: string;
     customerId?: string;
     createdAt: string;
-    marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; };
+    marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; gclid?: string; };
 }
 
 // --- Invoice & Billing ---
@@ -356,6 +428,7 @@ export interface InvoiceLineItem {
     type: 'Labor' | 'Part' | 'Part/Labor' | 'Fee' | 'Discount' | 'Service'; 
     taxable?: boolean;
     name?: string; 
+    isWarrantyWork?: boolean;
 }
 
 export interface InvoiceDetails {
@@ -364,7 +437,9 @@ export interface InvoiceDetails {
     subtotal: number;
     taxRate: number;
     taxAmount: number;
-    totalAmount: number; 
+    totalAmount: number;
+    paymentProofUrl?: string;
+    paymentProofDate?: string; 
     status: 'Paid' | 'Unpaid' | 'Pending';
     dueDate?: string | null;
     notes?: string | null;
@@ -384,7 +459,7 @@ export interface ProposalItem {
     quantity: number;
     price: number;
     total: number;
-    type: 'Labor' | 'Part' | 'Fee' | 'Service'; 
+    type: 'Labor' | 'Part' | 'Fee' | 'Service' | 'Discount'; 
     tier: 'Good' | 'Better' | 'Best';
     partCost?: number;
     laborHours?: number;
@@ -433,13 +508,84 @@ export interface ProjectNote {
     timestamp: string;
 }
 
+export interface ProjectSubtask {
+    id: string;
+    title: string;
+    status: 'Pending' | 'In Progress' | 'Completed';
+    assignedTo?: string;
+}
+
+export interface TaskComment {
+    id: string;
+    authorId: string;
+    authorName: string;
+    content: string;
+    timestamp: string;
+}
+
 export interface ProjectTask {
     id: string;
     description: string;
-    status: 'Pending' | 'In Progress' | 'Completed';
+    status: 'Pending' | 'In Progress' | 'Blocked' | 'Review' | 'Completed';
     isBenchmark: boolean;
     dueDate?: string;
     assignedTo?: string;
+    subtasks?: ProjectSubtask[];
+    dependencies?: string[]; // Array of Task IDs
+    priority?: 'Low' | 'Medium' | 'High' | 'Critical';
+    swimlane?: string;
+    phaseId?: string;
+    deliverableId?: string;
+    workPackageId?: string;
+    // Scrum/Agile fields
+    storyPoints?: number;
+    estimatedHours?: number;
+    actualHours?: number;
+    sprintId?: string;
+    labels?: string[];
+    acceptanceCriteria?: string[];
+    comments?: TaskComment[];
+    blockedReason?: string;
+    completedAt?: string;
+    createdAt?: string;
+    order?: number;
+}
+
+export interface WorkPackage {
+    id: string;
+    name: string;
+    description?: string;
+    assignedTeam?: string;
+    tasks: ProjectTask[];
+}
+
+export interface Deliverable {
+    id: string;
+    name: string;
+    description?: string;
+    status: 'Pending' | 'In Progress' | 'Completed';
+    dueDate?: string;
+    workPackages: WorkPackage[];
+}
+
+export interface ProjectPhase {
+    id: string;
+    name: string;
+    description?: string;
+    status: 'Pending' | 'In Progress' | 'Completed';
+    startDate?: string;
+    endDate?: string;
+    deliverables: Deliverable[];
+}
+
+export interface RiskLogEntry {
+    id: string;
+    title: string;
+    description: string;
+    probability: 'Low' | 'Medium' | 'High';
+    impact: 'Low' | 'Medium' | 'High';
+    status: 'Open' | 'Mitigated' | 'Closed';
+    mitigationPlan?: string;
 }
 
 export interface Permit {
@@ -452,6 +598,19 @@ export interface Permit {
     expirationDate?: string;
     notes?: string;
     files?: StoredFile[];
+}
+
+export interface Sprint {
+    id: string;
+    name: string;
+    goal?: string;
+    status: 'Planning' | 'Active' | 'Completed' | 'Cancelled';
+    startDate: string;
+    endDate: string;
+    taskIds: string[];
+    velocity?: number;
+    retrospectiveNotes?: string;
+    createdAt?: string;
 }
 
 export interface Project {
@@ -473,8 +632,13 @@ export interface Project {
     createdAt: string;
     notesList?: ProjectNote[];
     projectTasks?: ProjectTask[];
+    phases?: ProjectPhase[];
+    backlog?: ProjectTask[];
+    sprints?: Sprint[];
+    riskLog?: RiskLogEntry[];
     permits?: Permit[];
     files?: StoredFile[];
+    defaultView?: 'board' | 'list' | 'wbs';
 }
 
 // --- Inventory & Tools ---
@@ -641,6 +805,7 @@ export interface IncidentReport {
     description: string;
     status: 'Open' | 'Resolved';
     resolutionNotes?: string;
+    attachmentUrls?: string[];
     createdAt?: string;
 }
 
@@ -668,6 +833,8 @@ export interface PlatformSettings {
     excessUserFee: number;
     updatedAt: string;
     platformPaypalClientId?: string;
+    franchiseFeePct?: number;
+    franchiseDiscountCodes?: { code: string; discountPct: number; active: boolean }[];
 }
 
 export interface PlatformLead {
@@ -844,8 +1011,10 @@ export interface Expense {
     paidById?: string;
     paidByName?: string;
     projectId?: string | null;
+    inventoryItemId?: string | null;
     receiptData?: string | null;
     receiptUrl?: string | null;
+    receiptUrls?: string[];
     createdAt?: string;
     createdById?: string;
     createdByName?: string;
@@ -889,6 +1058,14 @@ export interface EquipmentRental {
     notes?: string;
 }
 
+export interface OrganizationTeam {
+    id: string;
+    organizationId: string;
+    name: string;
+    description?: string;
+    memberIds: string[]; // User IDs or Subcontractor IDs
+}
+
 export interface PartOrder {
     id: string;
     organizationId: string;
@@ -929,6 +1106,8 @@ export interface Bid {
     paymentStatus: 'Pending' | 'Paid';
     totalValue?: number;
     submittedDate?: string;
+    projectId?: string;
+    noticeId?: string;
     createdAt: string;
 }
 
@@ -946,6 +1125,7 @@ export interface BidLineItem {
     unitPrice: number;
     totalPrice: number;
     source?: 'Manual' | 'AI Extracted' | 'Pricebook';
+    aiRecommendedPrice?: number;
 }
 
 export interface BidQuestion {
@@ -953,6 +1133,38 @@ export interface BidQuestion {
     question: string;
     answer: string;
     source?: string;
+}
+
+export interface RFPNotice {
+    id: string;
+    organizationId: string; // The GC/Originator
+    title: string;
+    description: string;
+    trade: string; // Legacy/Primary trade
+    trades?: string[]; // Multiple components/trades
+    location: string;
+    budgetRange: string;
+    dueDate: string;
+    status: 'Open' | 'Closed' | 'Partially Awarded' | 'Awarded';
+    awardedTo?: string; // Legacy single awardee
+    awardedToIds?: string[]; // Multiple awardees
+    visibility: 'Public' | 'Private';
+    requirements: string[];
+    files: string[];
+    projectId?: string; // Project to auto-assign winner to
+    createdAt: string;
+}
+
+export interface RFPBidSubmission {
+    id: string;
+    noticeId: string;
+    bidderOrgId: string; // The Subcontractor
+    status: 'Pending' | 'Accepted' | 'Rejected';
+    proposedAmount: number;
+    estimatedDays: number;
+    proposalUrl?: string; // Link to the document or internal reference
+    notes: string;
+    createdAt: string;
 }
 
 export interface WorkSchedule {
@@ -988,3 +1200,5 @@ export interface Review {
     customerId?: string; 
     status?: 'pending' | 'approved' | 'rejected'; 
 }
+
+export interface Franchise { id: string; name: string; status: string; currentRoyaltyPct: number; currentMarketingFeePct: number; franchiseAgreementSignature?: string; franchiseAgreementSignedDate?: string; overrideSetupFee?: number; stripeAccountId?: string | null; ownerId?: string; createdAt: string; }

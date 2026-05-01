@@ -11,9 +11,15 @@ Disallow: /timelog
 Disallow: /messages
 Disallow: /payments
 Disallow: /proposal
+Disallow: /invoice/
+Disallow: /report/
+Disallow: /proposal-view/
 
 # Block AI bots from scraping internal API patterns if exposed
 User-agent: GPTBot
 Disallow: /admin/
+Disallow: /master/
+Disallow: /portal/
+Disallow: /briefing
 
 Sitemap: https://tektrakker.com/sitemap.xml

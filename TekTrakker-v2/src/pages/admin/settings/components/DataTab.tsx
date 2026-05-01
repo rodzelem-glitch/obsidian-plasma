@@ -9,6 +9,7 @@ interface DataTabProps {
     handleDetectDuplicates: () => void;
     handleCleanupRecords: () => void;
     handleFlushCache: () => void;
+    handleResetOverlays: () => void;
     handleImportFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
     handleDownloadTemplate: () => void;
 }
@@ -18,6 +19,7 @@ const DataTab: React.FC<DataTabProps> = ({
     handleDetectDuplicates,
     handleCleanupRecords,
     handleFlushCache,
+    handleResetOverlays,
     handleImportFile,
     handleDownloadTemplate
 }) => {
@@ -60,6 +62,10 @@ const DataTab: React.FC<DataTabProps> = ({
                         <Button variant="secondary" onClick={handleCleanupRecords} className="w-full flex justify-between items-center text-red-600 border-red-200 bg-red-50 hover:bg-red-100">
                             <span>Purge Archived Records</span>
                             <Trash2 size={14}/>
+                        </Button>
+                        <Button variant="secondary" onClick={handleResetOverlays} className="w-full flex justify-between items-center text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100">
+                            <span>Reset UI Customizations (Unhide Widgets)</span>
+                            <RefreshCw size={14}/>
                         </Button>
                         <Button variant="secondary" onClick={handleFlushCache} className="w-full flex justify-between items-center text-orange-600 border-orange-200 bg-orange-50 hover:bg-orange-100">
                             <span>Force Sync / Clear Cache</span>

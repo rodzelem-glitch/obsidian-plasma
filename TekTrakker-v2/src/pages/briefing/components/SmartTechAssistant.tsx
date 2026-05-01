@@ -5,7 +5,7 @@ import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
 import Textarea from 'components/ui/Textarea';
 import { db, storage } from 'lib/firebase';
-import { collection, addDoc, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, limit, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { uploadFileToStorage } from 'lib/storageService';
 import { useAppContext } from 'context/AppContext';
@@ -27,7 +27,7 @@ interface Message {
 }
 
 const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose, initialPrompt, jobId, organizationId }) => {
-    const { state } = useAppContext();
+    const { state, dispatch } = useAppContext();
     const [prompt, setPrompt] = useState(initialPrompt || '');
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -138,14 +138,71 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
                 await addDoc(collection(db, `organizations/${organizationId}/jobs/${jobId}/ai_messages`), messageData);
             }
 
+            const systemInstruction = `You are the Omni-Manager AI for field technicians.
+If the technician reports HVAC system vitals, measurements, or diagnostics (e.g. RLA is 15 amps, 230v on load side, filter is 16x20x1 dirty), you MUST extract them and output a JSON block at the VERY TOP of your response formatted exactly like this:
+\`\`\`json
+{
+  "action": "update_vitals",
+  "vitals": {
+    "comp_rla": "15",
+    "contactor_load_v": "230",
+    "filter_size": "16x20x1 Dirty"
+  }
+}
+\`\`\`
+Followed by a friendly message confirming what you saved. Supported keys: comp_lra, comp_rla, comp_ohms_ground, comp_winding_ohms, contactor_coil_v, contactor_line_v, contactor_load_v, cap_herm_mfd, cap_fan_mfd, cond_fan_amps, cond_coil_status, defrost_board, reversing_valve, blower_amps, blower_cap_mfd, evap_coil_status, drain_pan, heat_strip_amps, gas_inlet_pressure, gas_manifold_pressure, flame_sensor_ua, inducer_amps, co_ppm, heat_exchanger, filter_size.`;
+
+            const completePrompt = `${systemInstruction}\n\nTechnician: ${userMessage.text || "Analyze this image."}`;
+
             const result = await callGeminiAI({
-                prompt: userMessage.text || "Analyze this image.",
+                prompt: completePrompt,
                 modelName: "gemini-3.1-pro-preview",
                 image: imagePayload
             });
 
             const data = result.data as { text: string };
-            const aiText = data.text;
+            let aiText = data.text;
+
+            // Check for JSON action
+            const jsonMatch = aiText.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+            if (jsonMatch && jobId && organizationId) {
+                try {
+                    const payload = JSON.parse(jsonMatch[1]);
+                    if (payload.action === 'update_vitals' && payload.vitals) {
+                        const jobRef = doc(db, `organizations/${organizationId}/jobs/${jobId}`);
+                        const jobDoc = await getDoc(jobRef);
+                        if (jobDoc.exists()) {
+                            const job = jobDoc.data();
+                            const existingReadings = job.toolReadings || [];
+                            const otherReadings = existingReadings.filter((r: any) => r.type !== 'HVAC_Vitals');
+                            const existingVitalsReading = existingReadings.find((r: any) => r.type === 'HVAC_Vitals');
+                            
+                            const mergedVitals = {
+                                ...(existingVitalsReading?.data || {}),
+                                ...payload.vitals
+                            };
+
+                            const newReading = {
+                                id: existingVitalsReading?.id || `vitals_${Date.now()}`,
+                                type: 'HVAC_Vitals',
+                                timestamp: new Date().toISOString(),
+                                data: mergedVitals,
+                                performedBy: 'synthetic_ai'
+                            };
+
+                            await updateDoc(jobRef, {
+                                toolReadings: [...otherReadings, newReading]
+                            });
+                            
+                            dispatch({ type: 'UPDATE_JOB', payload: { ...job, id: jobId, toolReadings: [...otherReadings, newReading] } as any });
+                        }
+                        aiText = aiText.replace(jsonMatch[0], '').trim();
+                        if (!aiText) aiText = "I have successfully logged those measurements into the HVAC System Vitals database for this job.";
+                    }
+                } catch (e) {
+                    console.error("Failed to parse AI action payload", e);
+                }
+            }
 
             if (jobId && organizationId) {
                 await addDoc(collection(db, `organizations/${organizationId}/jobs/${jobId}/ai_messages`), {

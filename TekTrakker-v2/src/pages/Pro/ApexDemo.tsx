@@ -1,11 +1,27 @@
-
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
-import { Building, HardHat, ShieldCheck, Zap } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Building, HardHat, ShieldCheck, Zap, Users } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { Logo } from '../../components/ui/Logo';
 
 const ApexDemo: React.FC = () => {
-    const { startApexDemo } = useAppContext();
+    const { startDemo } = useAppContext();
+    const location = useLocation();
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const role = params.get('role');
+        const source = params.get('source');
+        const returnUrl = params.get('returnUrl');
+        
+        if (source === 'marketing') {
+            sessionStorage.setItem('preDemoPath', returnUrl || 'https://tektrakker.com/');
+        }
+
+        if (role === 'admin' || role === 'employee' || role === 'customer') {
+            startDemo(role);
+        }
+    }, [location, startDemo]);
 
     const featureHighlights = [
         { icon: Building, title: 'Enterprise Scale', description: 'For businesses managing large commercial and industrial clients.' },
@@ -17,8 +33,8 @@ const ApexDemo: React.FC = () => {
     return (
         <div className="min-h-screen bg-gray-900 text-white flex flex-col justify-center items-center p-4">
             <div className="text-center mb-8 max-w-4xl mx-auto">
-                <img src="/apex-logo.png" alt="Apex Logo" className="mx-auto h-24 mb-4"/>
-                <h1 className="text-5xl font-extrabold mb-2 text-indigo-400">Apex Service Solutions Demo</h1>
+                <Logo className="mx-auto h-24 mb-6 text-indigo-400" />
+                <h1 className="text-5xl font-extrabold mb-2 text-indigo-400">TekTrakker Interactive Demo</h1>
                 <p className="text-xl text-gray-400">
                     Experience TekTrakker's most powerful features in a high-revenue, enterprise-level environment.
                 </p>
@@ -34,26 +50,32 @@ const ApexDemo: React.FC = () => {
                 ))}
             </div>
 
-            <div className="bg-gray-800/50 border border-gray-700 p-4 md:p-8 rounded-xl shadow-2xl w-full max-w-lg mx-auto">
+            <div className="bg-gray-800/50 border border-gray-700 p-4 md:p-8 rounded-xl shadow-2xl w-full max-w-2xl mx-auto">
                 <h2 className="text-2xl font-bold text-center mb-6">Launch Interactive Demo</h2>
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <div className="flex flex-col md:flex-row gap-4 justify-center">
                     <button 
-                        onClick={() => startApexDemo('admin')}
-                        className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
+                        onClick={() => startDemo('admin')}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-4 rounded-lg transition-colors text-lg whitespace-nowrap"
                     >
                         Launch as Admin
                     </button>
                     <button 
-                        onClick={() => startApexDemo('employee')}
-                        className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors text-lg"
+                        onClick={() => startDemo('employee')}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-4 rounded-lg transition-colors text-lg whitespace-nowrap"
                     >
-                        Launch as Employee
+                        Launch as Technician
+                    </button>
+                    <button 
+                        onClick={() => startDemo('customer')}
+                        className="flex-1 bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 px-4 rounded-lg transition-colors text-lg whitespace-nowrap"
+                    >
+                        Launch as Customer
                     </button>
                 </div>
             </div>
-             <Link to="/" className="mt-8 text-sm text-gray-500 hover:text-gray-300 transition-colors">
+             <a href="https://tektrakker.com/" className="mt-8 text-sm text-gray-500 hover:text-gray-300 transition-colors">
                 Back to Main Site
-            </Link>
+            </a>
         </div>
     );
 };

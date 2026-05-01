@@ -1,6 +1,7 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from 'lib/firebase';
+import { db, auth } from 'lib/firebase';
 import { Organization, IndustryVertical, Review } from 'types';
 import { Logo } from 'components/ui/Logo';
 import Input from 'components/ui/Input';
@@ -26,8 +27,18 @@ interface ProviderData extends Organization {
 
 const ProviderDirectory: React.FC = () => {
     const navigate = useNavigate();
-    const { state } = useAppContext();
+    const { state, dispatch } = useAppContext();
     const { currentUser } = state;
+
+    const handleLogout = async () => {
+        try {
+            await auth.signOut();
+            dispatch({ type: 'LOGOUT' });
+            navigate('/login', { replace: true });
+        } catch (error) {
+            console.error('Error logging out:', error);
+        }
+    };
 
     const [providers, setProviders] = useState<ProviderData[]>([]);
     const [loading, setLoading] = useState(true);
@@ -35,6 +46,7 @@ const ProviderDirectory: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [industryFilter, setIndustryFilter] = useState<string>('All');
     const [cityFilter, setCityFilter] = useState('');
+    const [subcontractingFilter, setSubcontractingFilter] = useState(false);
     const [sortBy, setSortBy] = useState<'rating' | 'name'>('rating');
 
     const [isContactModalOpen, setIsContactModalOpen] = useState(false);
@@ -108,6 +120,9 @@ const ProviderDirectory: React.FC = () => {
                 p.address?.zip.toLowerCase().includes(lowerCity)
             );
         }
+        if (subcontractingFilter) {
+            result = result.filter(p => p.acceptsSubcontracting);
+        }
 
         result.sort((a, b) => {
             if (sortBy === 'rating') {
@@ -120,7 +135,7 @@ const ProviderDirectory: React.FC = () => {
         });
 
         return result;
-    }, [searchTerm, industryFilter, cityFilter, sortBy, providers]);
+    }, [searchTerm, industryFilter, cityFilter, subcontractingFilter, sortBy, providers]);
 
     const handleOpenContactModal = (org: Organization) => {
         setContactOrg(org);
@@ -164,11 +179,11 @@ const ProviderDirectory: React.FC = () => {
 
     const handleSendContactMessage = async () => {
         if (!contactName || !contactEmail || !contactMessage) {
-            alert("Please fill out all required fields.");
+            showToast.warn("Please fill out all required fields.");
             return;
         }
         if (!contactOrg || !contactOrg.id) {
-            alert("There was a problem identifying the provider. Please close the form and try again.");
+            showToast.warn("There was a problem identifying the provider. Please close the form and try again.");
             console.error("handleSendContactMessage failed: Missing contactOrg or contactOrg.id", { contactOrg });
             return;
         }
@@ -192,7 +207,7 @@ const ProviderDirectory: React.FC = () => {
             });
 
             if (response.ok) {
-                alert("Your message has been sent!");
+                showToast.warn("Your message has been sent!");
                 closeContactModal();
             } else {
                 // Robust extraction
@@ -226,7 +241,7 @@ const ProviderDirectory: React.FC = () => {
                     errorMessage = "An unreadable error occurred.";
                 }
             }
-            alert('There was an error sending your message: ' + errorMessage);
+            showToast.warn('There was an error sending your message: ' + errorMessage);
         } finally {
             setIsSending(false);
         }
@@ -234,11 +249,11 @@ const ProviderDirectory: React.FC = () => {
 
     const handleSendBookingRequest = async () => {
         if (!contactName || !contactEmail || !bookingDate || !contactMessage) {
-            alert("Please fill out all required fields.");
+            showToast.warn("Please fill out all required fields.");
             return;
         }
         if (!bookingOrg || !bookingOrg.id) {
-            alert("There was a problem identifying the provider. Please close the form and try again.");
+            showToast.warn("There was a problem identifying the provider. Please close the form and try again.");
             console.error("handleSendBookingRequest failed: Missing bookingOrg or bookingOrg.id", { bookingOrg });
             return;
         }
@@ -264,7 +279,7 @@ const ProviderDirectory: React.FC = () => {
             });
 
             if (response.ok) {
-                alert("Your booking request has been sent!");
+                showToast.warn("Your booking request has been sent!");
                 closeBookingModal();
             } else {
                 // Robust extraction
@@ -298,7 +313,7 @@ const ProviderDirectory: React.FC = () => {
                     errorMessage = "An unreadable error occurred.";
                 }
             }
-            alert('There was an error sending your booking request: ' + errorMessage);
+            showToast.warn('There was an error sending your booking request: ' + errorMessage);
         } finally {
             setIsSending(false);
         }
@@ -312,8 +327,16 @@ const ProviderDirectory: React.FC = () => {
                     <Link to="/marketplace" aria-label="Back to marketplace home">
                         <Logo className="h-9 w-auto text-white" />
                     </Link>
-                    <div>
-                        <Button variant="secondary" size="sm" onClick={() => navigate('/login')}>Provider Login</Button>
+                    <div className="flex items-center gap-3">
+                        {currentUser ? (
+                            <>
+                                <span className="text-white text-sm hidden sm:inline-block">Welcome, {currentUser.firstName}</span>
+                                <Button variant="secondary" size="sm" onClick={() => navigate('/')}>Dashboard</Button>
+                                <Button variant="outline" size="sm" onClick={handleLogout} className="border-rose-500 text-rose-500 hover:bg-rose-500 hover:text-white">Sign Out</Button>
+                            </>
+                        ) : (
+                            <Button variant="secondary" size="sm" onClick={() => navigate('/login')}>Provider Login</Button>
+                        )}
                     </div>
                 </div>
             </header>
@@ -366,6 +389,17 @@ const ProviderDirectory: React.FC = () => {
                                     </label>
                                 ))}
                             </div>
+                        </Card>
+                        
+                        <Card className="sticky top-[420px]">
+                            <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                                <Building2 size={18} /> Subcontracting
+                            </h3>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" checked={subcontractingFilter} onChange={(e) => setSubcontractingFilter(e.target.checked)} className="text-primary-600 focus:ring-primary-500 rounded border-slate-300" />
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Available for B2B Overflow</span>
+                            </label>
+                            <p className="text-xs text-slate-500 mt-2 ml-6">Only show businesses that accept subcontractor roles.</p>
                         </Card>
                     </div>
 
@@ -428,7 +462,7 @@ const ProviderDirectory: React.FC = () => {
                                                 </div>
                                             </div>
                                             
-                                            {((org.settings?.publicCredentials && org.settings.publicCredentials.length > 0) || org.isVerified || org.isLeadingPro) && (
+                                            {((org.settings?.publicCredentials && org.settings.publicCredentials.length > 0) || org.isVerified || org.isLeadingPro || org.acceptsSubcontracting) && (
                                                 <div className="mt-4 flex flex-wrap gap-2">
                                                     {org.isVerified && (
                                                         <div className="flex items-center bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 text-xs font-semibold px-2 py-1 rounded-full">
@@ -440,6 +474,12 @@ const ProviderDirectory: React.FC = () => {
                                                         <div className="flex items-center bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 text-xs font-bold px-2 py-1 rounded-full border border-amber-300 dark:border-amber-700 shadow-sm">
                                                             <Star size={14} className="mr-1 drop-shadow-sm fill-current" />
                                                             <span>Leading Pro</span>
+                                                        </div>
+                                                    )}
+                                                    {org.acceptsSubcontracting && (
+                                                        <div className="flex items-center bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300 text-xs font-bold px-2 py-1 rounded-full border border-indigo-300 dark:border-indigo-700 shadow-sm">
+                                                            <Briefcase size={14} className="mr-1 drop-shadow-sm" />
+                                                            <span>Accepts Subcontracting B2B</span>
                                                         </div>
                                                     )}
                                                     {org.settings?.publicCredentials?.map((cred, index) => (

@@ -1,0 +1,1 @@
+import{j as d}from"./index-BWq0k-zA.js";const t=({className:r,children:s,...a})=>d.jsx("div",{className:`bg-white dark:bg-gray-800 rounded-lg shadow p-3 md:p-4 ${r||""}`,...a,children:s});export{t as C};

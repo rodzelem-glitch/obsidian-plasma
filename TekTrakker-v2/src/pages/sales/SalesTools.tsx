@@ -1,11 +1,14 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
-import { Link as LinkIcon, Copy } from 'lucide-react';
+import { Link as LinkIcon, Copy, ArrowLeft } from 'lucide-react';
 
 const SalesTools: React.FC = () => {
+    const navigate = useNavigate();
     const [utmParams, setUtmParams] = useState({
         baseUrl: 'https://tektrakker.com',
         source: '',
@@ -32,14 +35,19 @@ const SalesTools: React.FC = () => {
 
     const copyToClipboard = () => {
         navigator.clipboard.writeText(generatedLink);
-        alert("Link copied!");
+        showToast.warn("Link copied!");
     };
 
     return (
         <div className="space-y-6">
-            <header>
+            <header className="flex items-start gap-4">
+                <button onClick={() => navigate(-1)} className="mt-1 p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                    <ArrowLeft size={24} />
+                </button>
+                <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Sales Tools</h2>
                 <p className="text-slate-500">Utilities to track and optimize your outreach.</p>
+                </div>
             </header>
 
             <Card className="max-w-2xl">

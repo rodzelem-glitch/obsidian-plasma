@@ -44,7 +44,7 @@ const IndustryToolsHub: React.FC = () => {
             return <PaintingTools />;
         }
 
-        if (ind.includes('general contracting') || ind.includes('construction') || ind.includes('remodel') || ind.includes('builder')) {
+        if (ind.includes('general contracting') || ind.includes('construction') || ind.includes('remodel') || ind.includes('builder') || ind.includes('contracting')) {
             return <GeneralContractingTools />;
         }
 
@@ -99,4 +99,5 @@ const IndustryToolsHub: React.FC = () => {
 };
 
 export default IndustryToolsHub;
+
 

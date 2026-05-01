@@ -33,9 +33,8 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onusercreate = void 0;
-const functionsV1 = __importStar(require("firebase-functions/v1"));
-const functions = __importStar(require("firebase-functions"));
+exports.onUserRegistration = void 0;
+const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const db = admin.firestore();
 const applyReferralDiscount = async (referringOrgId, newOrgId) => {
@@ -59,8 +58,9 @@ const applyReferralDiscount = async (referringOrgId, newOrgId) => {
         throw new functions.https.HttpsError("internal", "Failed to apply referral discounts.");
     }
 };
-exports.onusercreate = functionsV1.auth.user().onCreate(async (user) => {
-    const { email } = user;
+exports.onUserRegistration = functions.firestore.document('users/{userId}').onCreate(async (snap, context) => {
+    const userData = snap.data();
+    const email = userData?.email;
     if (!email) {
         console.log("User does not have an email address. Skipping referral check.");
         return null;

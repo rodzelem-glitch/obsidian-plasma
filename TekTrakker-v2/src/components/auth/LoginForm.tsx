@@ -8,6 +8,7 @@ interface LoginFormProps {
     password: string;
     setPassword: (val: string) => void;
     handleLogin: (e: React.FormEvent) => void;
+    handleGoogleLogin?: () => void;
     isLoading: boolean;
     brandColor: string;
     setView: (view: any) => void;
@@ -15,7 +16,7 @@ interface LoginFormProps {
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({
-    email, setEmail, password, setPassword, handleLogin, isLoading, brandColor, setView, setUserType
+    email, setEmail, password, setPassword, handleLogin, handleGoogleLogin, isLoading, brandColor, setView, setUserType
 }) => (
     <form onSubmit={handleLogin} className="space-y-4">
         <InputField id="email" name="email" type="email" label="Email Address" value={email} onChange={(e: any) => setEmail(e.target.value)} required autoComplete="off" brandColor={brandColor} />
@@ -33,6 +34,18 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         >
             {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Sign In'}
         </button>
+
+        {handleGoogleLogin && (
+            <button 
+                type="button" 
+                onClick={handleGoogleLogin}
+                disabled={isLoading}
+                className="w-full mt-4 py-4 rounded-xl font-bold text-slate-800 bg-white border border-slate-200 shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+            >
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+                Sign in with Google
+            </button>
+        )}
 
         <div className="mt-8 pt-6 border-t border-slate-800">
             <p className="text-center text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-4">Create New Account</p>

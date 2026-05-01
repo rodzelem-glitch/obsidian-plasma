@@ -42,9 +42,15 @@ const AnalyticsMaster: React.FC = () => {
     // 1. FINANCIAL HEALTH CALCULATIONS
     // ------------------------------------------------------------------
     const financialData = useMemo(() => {
-        const revenue = filteredJobs
+        const jobRevenue = filteredJobs
             .filter((j: Job) => j.invoice?.status === 'Paid')
             .reduce((sum: number, j: Job) => sum + (j.invoice.totalAmount || j.invoice.amount || 0), 0);
+
+        const warrantyRevenue = (state.warrantyClaims || [])
+            .filter((c: any) => c.status === 'Credit Received')
+            .reduce((sum: number, c: any) => sum + (c.amountApproved || 0), 0);
+
+        const revenue = jobRevenue + warrantyRevenue;
 
         const expenses = (state.expenses || [])
             .filter(e => !excludeTest || (!isTestItem(e.description) && !isTestItem(e.vendor)))
@@ -56,8 +62,8 @@ const AnalyticsMaster: React.FC = () => {
 
         const profit = revenue - expenses;
 
-        return { revenue, expenses, inventoryValue, profit };
-    }, [filteredJobs, state.expenses, state.inventory, excludeTest]);
+        return { revenue, jobRevenue, warrantyRevenue, expenses, inventoryValue, profit };
+    }, [filteredJobs, state.expenses, state.inventory, state.warrantyClaims, excludeTest]);
 
     // ------------------------------------------------------------------
     // 2. LABOR EFFICIENCY CALCULATIONS
@@ -120,23 +126,31 @@ const AnalyticsMaster: React.FC = () => {
         let totalSpend = 0;
         let totalAttributedRevenue = 0;
 
-        (state.campaigns as MarketingCampaign[])
-            .filter(c => !excludeTest || !isTestItem(c.name))
-            .forEach((camp: MarketingCampaign) => {
-                totalSpend += camp.spend;
-                
-                const campaignJobs = filteredJobs.filter((j: Job) => 
-                    j.source && j.source.toLowerCase().includes((camp.name || '').toLowerCase()) && j.invoice?.status === 'Paid'
-                );
-                
-                const revenue = campaignJobs.reduce((sum: number, j: Job) => sum + (j.invoice.totalAmount || j.invoice.amount || 0), 0);
-                totalAttributedRevenue += revenue;
-            });
+        const marketingSpends = state.currentOrganization?.marketingSpend || {};
+        const sources: Record<string, { revenue: number, cost: number }> = {};
+
+        filteredJobs.forEach((j: Job) => {
+            if (j.source) {
+                if (!sources[j.source]) sources[j.source] = { revenue: 0, cost: 0 };
+                sources[j.source].revenue += (j.total || 0);
+            }
+        });
+
+        // Add costs even for sources that had no jobs if they are in marketingSpend
+        Object.entries(marketingSpends).forEach(([name, cost]) => {
+            if (!sources[name]) sources[name] = { revenue: 0, cost: 0 };
+            sources[name].cost = cost;
+        });
+
+        Object.values(sources).forEach(s => {
+            totalSpend += s.cost;
+            totalAttributedRevenue += s.revenue;
+        });
 
         const roi = totalSpend > 0 ? ((totalAttributedRevenue - totalSpend) / totalSpend) * 100 : 0;
 
         return { totalSpend, totalAttributedRevenue, roi };
-    }, [state.campaigns, filteredJobs, excludeTest]);
+    }, [filteredJobs, state.currentOrganization?.marketingSpend]);
 
     // ------------------------------------------------------------------
     // 5. TECHNICIAN LEADERBOARD
@@ -173,10 +187,7 @@ const AnalyticsMaster: React.FC = () => {
     return (
         <div className="space-y-6 pb-20">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight uppercase">Executive Insights</h2>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium">Core business performance and operational efficiency.</p>
-                </div>
+                
                 {state.currentUser?.role === 'master_admin' && (
                     <div className="bg-white dark:bg-slate-800 px-4 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-4 shadow-sm">
                         <div className="flex items-center gap-2">

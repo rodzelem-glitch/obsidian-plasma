@@ -1,19 +1,22 @@
+import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import { 
     TrendingUp, Target, Megaphone, 
     DollarSign, Sparkles, Wand2, 
-    ArrowUpRight, ArrowDownRight, RefreshCw, Layers
-} from 'lucide-react';
+    ArrowUpRight, ArrowDownRight, RefreshCw, Layers, ArrowLeft } from 'lucide-react';
 import type { Lead, Job } from 'types';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import DOMPurify from 'dompurify';
+import { db } from 'lib/firebase';
 
 const MarketingROI: React.FC = () => {
-    const { state } = useAppContext();
+    const navigate = useNavigate();
+    const { state, dispatch } = useAppContext();
     const [isThinking, setIsThinking] = useState(false);
     const [aiInsights, setAiInsights] = useState<string | null>(null);
 
@@ -28,32 +31,38 @@ const MarketingROI: React.FC = () => {
         commonSources.forEach(s => sources[s] = { leads: 0, jobs: 0, revenue: 0, cost: 0 });
 
         leads.forEach(l => {
-            if (l.source && sources[l.source]) {
+            if (l.source) {
+                if (!sources[l.source]) sources[l.source] = { leads: 0, jobs: 0, revenue: 0, cost: 0 };
                 sources[l.source].leads++;
             }
         });
 
         jobs.forEach(j => {
-            if (j.source && sources[j.source]) {
+            if (j.source) {
+                if (!sources[j.source]) sources[j.source] = { leads: 0, jobs: 0, revenue: 0, cost: 0 };
                 sources[j.source].jobs++;
                 sources[j.source].revenue += (j.total || 0);
             }
         });
+        
+        const marketingSpends = state.currentOrganization?.marketingSpend || {};
 
-        if (sources['Google Ads']) sources['Google Ads'].cost = 1500;
-        if (sources['Facebook']) sources['Facebook'].cost = 800;
-        if (sources['Yelp']) sources['Yelp'].cost = 400;
-
-        return Object.entries(sources).map(([name, data]) => ({
-            name,
-            ...data,
-            roi: data.cost > 0 ? ((data.revenue - data.cost) / data.cost) * 100 : 0,
-            conversion: data.leads > 0 ? (data.jobs / data.leads) * 100 : 0
-        })).filter(s => s.leads > 0 || s.jobs > 0).sort((a, b) => b.revenue - a.revenue);
-    }, [state.jobs, state.leads]);
+        return Object.entries(sources).map(([name, data]) => {
+            const cost = marketingSpends[name] || 0;
+            return {
+                name,
+                ...data,
+                cost,
+                roi: cost > 0 ? ((data.revenue - cost) / cost) * 100 : 0,
+                conversion: data.leads > 0 ? (data.jobs / data.leads) * 100 : 0
+            };
+        }).filter(s => s.leads > 0 || s.jobs > 0 || (marketingSpends[s.name] || 0) > 0).sort((a, b) => b.revenue - a.revenue);
+    }, [state.jobs, state.leads, state.currentOrganization?.marketingSpend]);
 
     const totalRevenue = useMemo(() => stats.reduce((sum, s) => sum + s.revenue, 0), [stats]);
     const totalSpend = useMemo(() => stats.reduce((sum, s) => sum + s.cost, 0), [stats]);
+    const totalLeadsCount = useMemo(() => stats.reduce((sum, s) => sum + s.leads, 0), [stats]);
+    const avgCostPerLead = totalLeadsCount > 0 ? (totalSpend / totalLeadsCount) : 0;
 
     const handleGenerateInsights = async () => {
         setIsThinking(true);
@@ -79,32 +88,53 @@ const MarketingROI: React.FC = () => {
             setAiInsights(data.text);
         } catch (error) {
             console.error("Marketing AI Error:", error);
-            alert("Error generating insights.");
+            showToast.warn("Error generating insights.");
         } finally {
             setIsThinking(false);
+        }
+    };
+
+    const handleSpendChange = async (source: string, val: string) => {
+        if (!state.currentOrganization) return;
+        const numVal = parseFloat(val) || 0;
+        const updatedSpends = { ...(state.currentOrganization.marketingSpend || {}), [source]: numVal };
+        
+        try {
+            await db.collection('organizations').doc(state.currentOrganization.id).update({
+                marketingSpend: updatedSpends
+            });
+            dispatch({ 
+                type: 'UPDATE_ORGANIZATION', 
+                payload: { ...state.currentOrganization, marketingSpend: updatedSpends } 
+            });
+        } catch (e) {
+            console.error(e);
         }
     };
 
     return (
         <div className="space-y-6">
             <header className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-black flex items-center gap-2"><Megaphone /> Marketing ROI</h2>
-                    <p className="text-slate-500 font-medium">Track lead sources, ad spend, and conversion value.</p>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                        <ArrowLeft size={20} />
+                    </button>
+                    <h1 className="text-3xl font-black text-slate-900 dark:text-white">Marketing ROI</h1>
                 </div>
+                
                 <Button variant="secondary" onClick={() => window.print()} className="hidden md:flex">
                     Export Report
                 </Button>
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <Card className="p-6 bg-primary-600 text-white shadow-xl shadow-primary-500/20">
+                <div className="rounded-lg p-6 bg-primary-600 text-white shadow-xl shadow-primary-500/20">
                     <p className="text-primary-100 text-[10px] font-black uppercase tracking-widest mb-1">Total Ad Revenue</p>
                     <h3 className="text-3xl font-black">${totalRevenue.toLocaleString()}</h3>
                     <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-emerald-300">
                         <ArrowUpRight size={14}/> +12% from last month
                     </div>
-                </Card>
+                </div>
                 <Card className="p-6">
                     <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Estimated Ad Spend</p>
                     <h3 className="text-3xl font-black text-slate-900 dark:text-white">${totalSpend.toLocaleString()}</h3>
@@ -114,9 +144,9 @@ const MarketingROI: React.FC = () => {
                 </Card>
                 <Card className="p-6">
                     <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Avg. Cost Per Lead</p>
-                    <h3 className="text-3xl font-black text-slate-900 dark:text-white">$42.50</h3>
+                    <h3 className="text-3xl font-black text-slate-900 dark:text-white">${avgCostPerLead.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</h3>
                     <div className="mt-2 flex items-center gap-1 text-[10px] font-bold text-emerald-500">
-                        <ArrowDownRight size={14}/> -8% Efficiency
+                        <ArrowDownRight size={14}/> Across {totalLeadsCount} Leads
                     </div>
                 </Card>
                 <Card className="p-6">
@@ -142,8 +172,9 @@ const MarketingROI: React.FC = () => {
                                 <tr>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Source</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Leads</th>
-                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Jobs</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Jobs Convert</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Revenue</th>
+                                    <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">Ad Spend</th>
                                     <th className="px-6 py-4 text-[10px] font-black uppercase text-slate-400">ROI</th>
                                 </tr>
                             </thead>
@@ -152,10 +183,24 @@ const MarketingROI: React.FC = () => {
                                     <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-900/30 transition-colors">
                                         <td className="px-6 py-4"><span className="font-black text-slate-900 dark:text-white">{s.name}</span></td>
                                         <td className="px-6 py-4 font-bold text-slate-600">{s.leads}</td>
-                                        <td className="px-6 py-4 font-bold text-slate-600">{s.jobs}</td>
+                                        <td className="px-6 py-4 font-bold text-slate-600">
+                                            {s.jobs} <span className="text-[10px] text-slate-400 ml-1">({s.conversion.toFixed(1)}%)</span>
+                                        </td>
                                         <td className="px-6 py-4 font-black text-slate-900 dark:text-white">${s.revenue.toLocaleString()}</td>
                                         <td className="px-6 py-4">
-                                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${s.roi > 200 ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>
+                                            <div className="relative">
+                                                <span className="absolute left-2 top-1.5 text-xs text-slate-400">$</span>
+                                                <input 
+                                                    type="number" 
+                                                    value={s.cost || ''} 
+                                                    onChange={e => handleSpendChange(s.name, e.target.value)}
+                                                    placeholder="0.00"
+                                                    className="w-24 pl-5 p-1 border rounded bg-transparent dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white"
+                                                />
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${s.roi > 200 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'}`}>
                                                 {s.roi.toFixed(0)}%
                                             </span>
                                         </td>

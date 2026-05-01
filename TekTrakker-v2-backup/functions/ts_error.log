@@ -1,0 +1,84 @@
+src/index.ts(34,6): error TS2339: Property 'document' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/providers/firestore")'.
+src/index.ts(35,22): error TS7006: Parameter 'change' implicitly has an 'any' type.
+src/index.ts(35,30): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/index.ts(106,10): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(106,18): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(106,26): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(106,34): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(109,41): error TS2339: Property 'uid' does not exist on type 'CallableRequest<any>'.
+src/index.ts(109,59): error TS2339: Property 'role' does not exist on type 'CallableRequest<any>'.
+src/index.ts(110,43): error TS2339: Property 'uid' does not exist on type 'CallableRequest<any>'.
+src/index.ts(110,68): error TS2339: Property 'role' does not exist on type 'CallableRequest<any>'.
+src/index.ts(115,10): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(115,18): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(115,26): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(115,34): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(267,44): error TS2339: Property 'document' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/providers/firestore")'.
+src/index.ts(267,89): error TS7006: Parameter 'snap' implicitly has an 'any' type.
+src/index.ts(325,51): error TS2339: Property 'document' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/providers/firestore")'.
+src/index.ts(325,94): error TS7006: Parameter 'snap' implicitly has an 'any' type.
+src/index.ts(325,100): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/index.ts(334,61): error TS2339: Property 'document' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/providers/firestore")'.
+src/index.ts(334,104): error TS7006: Parameter 'snap' implicitly has an 'any' type.
+src/index.ts(334,110): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/index.ts(422,10): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(422,18): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(424,19): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(424,27): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(424,90): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(424,98): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(428,13): error TS2339: Property 'review' does not exist on type 'CallableRequest<any>'.
+src/index.ts(460,19): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(460,27): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(464,13): error TS2339: Property 'prompt' does not exist on type 'CallableRequest<any>'.
+src/index.ts(464,21): error TS2339: Property 'systemInstruction' does not exist on type 'CallableRequest<any>'.
+src/index.ts(480,39): error TS2339: Property 'runWith' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/index")'.
+src/index.ts(480,92): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/index.ts(480,98): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/index.ts(537,37): error TS2339: Property 'runWith' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/index")'.
+src/index.ts(537,105): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/index.ts(537,111): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/index.ts(602,10): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(602,18): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(603,19): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(603,27): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(603,90): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(603,98): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(605,13): error TS2339: Property 'bid' does not exist on type 'CallableRequest<any>'.
+src/index.ts(632,46): error TS2339: Property 'runWith' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/index")'.
+src/index.ts(632,114): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/index.ts(632,120): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/index.ts(769,10): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(769,18): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(771,13): error TS2339: Property 'action' does not exist on type 'CallableRequest<any>'.
+src/index.ts(771,21): error TS2339: Property 'targetOrgId' does not exist on type 'CallableRequest<any>'.
+src/index.ts(771,34): error TS2339: Property 'requestingOrgId' does not exist on type 'CallableRequest<any>'.
+src/index.ts(771,51): error TS2339: Property 'subcontractorId' does not exist on type 'CallableRequest<any>'.
+src/index.ts(950,53): error TS2339: Property 'document' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/providers/firestore")'.
+src/index.ts(950,100): error TS7006: Parameter 'snap' implicitly has an 'any' type.
+src/index.ts(950,106): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/index.ts(1055,46): error TS2339: Property 'runWith' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/index")'.
+src/index.ts(1055,114): error TS7006: Parameter 'data' implicitly has an 'any' type.
+src/index.ts(1055,120): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/index.ts(1201,10): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(1201,18): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(1201,26): error TS18048: 'context' is possibly 'undefined'.
+src/index.ts(1201,34): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/index.ts(1204,13): error TS2339: Property 'email' does not exist on type 'CallableRequest<any>'.
+src/index.ts(1204,20): error TS2339: Property 'password' does not exist on type 'CallableRequest<any>'.
+src/index.ts(1204,30): error TS2339: Property 'displayName' does not exist on type 'CallableRequest<any>'.
+src/index.ts(1204,43): error TS2339: Property 'role' does not exist on type 'CallableRequest<any>'.
+src/index.ts(1204,49): error TS2339: Property 'organizationId' does not exist on type 'CallableRequest<any>'.
+src/index.ts(1329,46): error TS2339: Property 'runWith' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/index")'.
+src/index.ts(1406,61): error TS2339: Property 'document' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/providers/firestore")'.
+src/index.ts(1406,120): error TS7006: Parameter 'snap' implicitly has an 'any' type.
+src/index.ts(1406,126): error TS7006: Parameter 'context' implicitly has an 'any' type.
+src/promotions.ts(33,39): error TS2339: Property 'auth' does not exist on type 'typeof import("C:/Users/roder/.gemini/antigravity/playground/obsidian-plasma/TekTrakker-v2/functions/node_modules/firebase-functions/lib/v2/index")'.
+src/quickbooks.ts(22,8): error TS18048: 'context' is possibly 'undefined'.
+src/quickbooks.ts(22,16): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/quickbooks.ts(28,13): error TS2339: Property 'orgId' does not exist on type 'CallableRequest<any>'.
+src/quickbooks.ts(35,22): error TS2339: Property 'orgId' does not exist on type 'CallableRequest<any>'.
+src/quickbooks.ts(100,8): error TS18048: 'context' is possibly 'undefined'.
+src/quickbooks.ts(100,16): error TS2339: Property 'auth' does not exist on type 'CallableResponse<unknown>'.
+src/quickbooks.ts(106,13): error TS2339: Property 'orgId' does not exist on type 'CallableRequest<any>'.
+src/quickbooks.ts(113,22): error TS2339: Property 'orgId' does not exist on type 'CallableRequest<any>'.

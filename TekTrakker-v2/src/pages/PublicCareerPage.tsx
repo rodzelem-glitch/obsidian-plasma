@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
@@ -52,7 +53,7 @@ const PublicCareerPage: React.FC = () => {
             let resumeDataUrl = '';
             if (resumeFile) {
                 if (resumeFile.size > 1024 * 1024 * 10) { // 10MB Limit
-                    alert("File too large. Max 10MB.");
+                    showToast.warn("File too large. Max 10MB.");
                     setLoading(false);
                     return;
                 }
@@ -93,7 +94,7 @@ const PublicCareerPage: React.FC = () => {
             setSuccess(true);
         } catch (error) {
             console.error(error);
-            alert("Application failed. Please try again.");
+            showToast.warn("Application failed. Please try again.");
         } finally {
             setLoading(false);
         }

@@ -57,50 +57,61 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                         
                         <div className="flex flex-wrap items-end justify-between gap-4 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
                             {/* Left-aligned inputs */}
-                            <div className="flex flex-wrap items-end gap-3 text-xs text-slate-600 dark:text-slate-400 [&_.mb-4]:!mb-0">
-                                <div className="w-20">
-                                    <Input 
-                                        label="Qty"
+                            <div className="flex flex-wrap items-end gap-3 sm:gap-4 text-xs text-slate-600 dark:text-slate-400">
+                                <div className="flex flex-col gap-1 w-16 sm:w-20">
+                                    <label className="font-semibold px-1">Qty</label>
+                                    <input 
                                         type="number" 
                                         value={item.quantity === 0 ? '' : item.quantity}
                                         onChange={e => handleUpdateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                                         onFocus={e => e.target.select()}
-                                        className="h-[34px] !py-0 text-center bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600"
+                                        className="h-10 text-center bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 border rounded focus:ring-1 focus:ring-primary-500 font-medium"
                                         aria-label="Quantity"
                                         title="Quantity"
                                     />
                                 </div>
-                                <div className="w-28">
-                                    <Input 
-                                        label="Price ($)"
+                                <div className="flex flex-col gap-1 w-24 sm:w-28">
+                                    <label className="font-semibold px-1">Price ($)</label>
+                                    <input 
                                         type="number" 
                                         value={item.unitPrice === 0 ? '' : item.unitPrice}
                                         onChange={e => handleUpdateItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
                                         onFocus={e => e.target.select()}
                                         step="0.01"
-                                        className="h-[34px] !py-0 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600"
+                                        className="h-10 pl-3 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 border rounded focus:ring-1 focus:ring-primary-500 font-medium"
                                         aria-label="Unit Price"
                                         title="Unit Price"
                                     />
                                 </div>
-                                <div className="w-32 [&_.mb-2]:!mb-0">
-                                    <Select 
-                                        label="Type"
+                                <div className="flex flex-col gap-1 w-28 sm:w-32">
+                                    <label className="font-semibold px-1">Type</label>
+                                    <select 
                                         value={item.type}
                                         onChange={e => handleUpdateItem(item.id, 'type', e.target.value as InvoiceLineItem['type'])}
-                                        className="h-[34px] !py-0 !text-sm bg-white dark:bg-slate-700 sm:text-sm border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white"
+                                        className="h-10 px-2 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 border rounded focus:ring-1 focus:ring-primary-500 text-sm font-medium"
+                                        aria-label="Type"
+                                        title="Type"
                                     >
                                         <option value="Labor">Labor</option>
                                         <option value="Part">Part</option>
                                         <option value="Part/Labor">Part/Labor</option>
                                         <option value="Fee">Fee</option>
                                         <option value="Discount">Discount</option>
-                                    </Select>
+                                    </select>
                                 </div>
                             </div>
 
                             {/* Right-aligned controls */}
                             <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold cursor-pointer pb-2"> 
+                                    <input 
+                                        type="checkbox" 
+                                        checked={item.isWarrantyWork || false}
+                                        onChange={e => handleUpdateItem(item.id, 'isWarrantyWork', e.target.checked)}
+                                        className="w-4 h-4 rounded border-slate-300 text-amber-500 focus:ring-amber-500"
+                                    />
+                                    <span className="text-amber-600 dark:text-amber-500">Warranty</span>
+                                </label>
                                 <label className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold cursor-pointer pb-2"> 
                                     <input 
                                         type="checkbox" 

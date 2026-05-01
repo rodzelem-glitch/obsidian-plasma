@@ -26,9 +26,12 @@ const GenerateTab: React.FC<GenerateTabProps> = ({ docs, onGenerate, isGeneratin
     }, [docs]);
 
     const sanitizeHtmlContent = (htmlString: string): string => {
-        // Extracts content from the <body> tag to prevent style conflicts with the main page.
+        // Extract content from <body> if present, but preserve <style> tags
+        const styleMatch = htmlString.match(/<style[\s\S]*?<\/style>/gi);
         const bodyMatch = htmlString.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-        return bodyMatch ? bodyMatch[1] : htmlString;
+        const content = bodyMatch ? bodyMatch[1] : htmlString;
+        const styles = styleMatch ? styleMatch.join('\n') : '';
+        return styles + content;
     };
 
     const toggleDoc = (index: number) => {
@@ -87,6 +90,9 @@ const GenerateTab: React.FC<GenerateTabProps> = ({ docs, onGenerate, isGeneratin
 
             <div className="space-y-4">
                 {docs.map((doc, idx) => {
+                    const isHistorical = doc.title.toLowerCase().includes('historic') || doc.title.toLowerCase().includes('history');
+                    if (isHistorical) return null;
+
                     const isOpen = openDocIndices.has(idx);
                     return (
                         <div key={idx} className="bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 transition-all duration-300">

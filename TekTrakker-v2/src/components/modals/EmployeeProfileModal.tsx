@@ -1,3 +1,4 @@
+import { getBaseUrl } from "lib/utils";
 
 import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
@@ -9,9 +10,11 @@ import { useAppContext } from 'context/AppContext';
 import { db, auth } from 'lib/firebase';
 import type { User } from 'types';
 import { User as UserIcon, Lock, Mail, Camera, RefreshCw, CheckCircle, Sparkles, Key, Trash2, DollarSign, Settings, Search, Filter, Eye, EyeOff, FileText, Upload, Download } from 'lucide-react';
+import HRHandbookView from '../../pages/admin/compliance/components/HRHandbookView';
 import { encryptSensitiveData, decryptSensitiveData } from 'lib/encryption';
 import { sendEmail } from 'lib/notificationService';
 import { uploadFileToStorage } from 'lib/storageService';
+import showToast from 'lib/toast';
 
 interface EmployeeProfileModalProps {
     isOpen: boolean;
@@ -72,20 +75,29 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
     }, [isOpen, initialData.id, state.currentOrganization?.id, isSelf]);
 
     const handleResetPassword = async () => {
-        if (!formData.email) { alert("User email is required."); return; }
+        if (!formData.email) { showToast.warn("User email is required."); return; }
         setIsResetting(true);
-        try { await auth.sendPasswordResetEmail(formData.email); alert(`Reset link sent.`); }
-        catch (err: any) { alert("Error: " + err.message); }
+        try { await auth.sendPasswordResetEmail(formData.email); showToast.success(`Reset link sent.`); }
+        catch (err: any) { showToast.error("Error: " + err.message); }
         finally { setIsResetting(false); }
     };
     
     const handleChangePassword = async () => {
-        if (newPassword !== confirmPassword) { alert("Passwords do not match."); return; }
-        if (newPassword.length < 6) { alert("Password must be at least 6 characters."); return; }
+        if (newPassword !== confirmPassword) { showToast.warn("Passwords do not match."); return; }
+        if (newPassword.length < 6) { showToast.warn("Password must be at least 6 characters."); return; }
         setIsUpdatingPassword(true);
-        try { await auth.currentUser?.updatePassword(newPassword); alert("Password updated!"); setNewPassword(''); setConfirmPassword(''); }
-        catch (err: any) { alert("Error: " + err.message); }
+        try { await auth.currentUser?.updatePassword(newPassword); showToast.success("Password updated!"); setNewPassword(''); setConfirmPassword(''); }
+        catch (err: any) { showToast.error("Error: " + err.message); }
         finally { setIsUpdatingPassword(false); }
+    };
+
+    const handleResetOverlays = () => {
+        localStorage.removeItem('virtual-worker-hidden');
+        localStorage.removeItem('virtual-worker-pos');
+        localStorage.removeItem('live-support-hidden');
+        localStorage.removeItem('live-support-pos');
+        showToast.success("UI bubbles reset. Refreshing...");
+        window.location.reload();
     };
 
     const handleDeleteAccount = async () => {
@@ -100,9 +112,9 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         } catch (error: any) {
             console.error("Account Deletion Error:", error);
             if (error.code === 'auth/requires-recent-login') {
-                alert("For security purposes, please log out and log back in to authenticate before deleting your account.");
+                showToast.warn("For security purposes, please log out and log back in to authenticate before deleting your account.");
             } else {
-                alert("Failed to delete account. Please contact support.");
+                showToast.error("Failed to delete account. Please contact support.");
             }
             setIsDeleting(false);
         }
@@ -111,6 +123,13 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
     const handleProfilePicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+            showToast.warn("File too large. Profile pictures must be under 5MB.");
+            e.target.value = '';
+            return;
+        }
+
         setIsUploadingPic(true);
         try {
             const orgId = state.currentOrganization?.id || 'unknown';
@@ -118,7 +137,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
             const path = `organizations/${orgId}/users/${userId}/profilePic_${Date.now()}`;
             const downloadUrl = await uploadFileToStorage(path, file);
             setFormData(prev => ({ ...prev, profilePicUrl: downloadUrl }));
-        } catch (err) { console.error(err); alert("Failed to upload profile picture."); }
+        } catch (err) { console.error(err); showToast.error("Failed to upload profile picture."); }
         finally { setIsUploadingPic(false); }
     };
     
@@ -156,7 +175,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
             };
             setFormData(prev => ({ ...prev, documents: [...(prev.documents || []), newDoc] }));
             setHrFileObj(null); setHrFileLabel(''); setHrFileDesc(''); setHrFileType(''); setHrFileVisible(false); setHrNewType('');
-        } catch (e) { alert("Failed to process file."); }
+        } catch (e) { showToast.error("Failed to process file."); }
         finally { setIsUploadingHR(false); }
     };
     
@@ -186,7 +205,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         if (!orgName || !orgId || !normalizedEmail) return;
 
         const fullName = `${formData.firstName || ''} ${formData.lastName || ''}`.trim();
-        const inviteLink = `${window.location.origin}/#/register?view=register_user&userType=staff&email=${encodeURIComponent(normalizedEmail)}&name=${encodeURIComponent(fullName)}&oid=${orgId}`;
+        const inviteLink = `${getBaseUrl()}/#/register?view=register_user&userType=staff&email=${encodeURIComponent(normalizedEmail)}&name=${encodeURIComponent(fullName)}&oid=${orgId}`;
         const subject = `Join ${orgName} on TekTrakker`;
 
         const htmlBody = `
@@ -210,8 +229,8 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                 message: { subject, html: htmlBody },
                 type: 'Invite'
             });
-            alert("Invitation email sent!");
-        } catch (e) { alert("Failed to send invite."); }
+            showToast.success("Invitation email sent!");
+        } catch (e) { showToast.error("Failed to send invite."); }
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -219,9 +238,9 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         if (!state.currentOrganization) return;
         const isOfflineOnly = formData.hasAppAccess === false;
         const normalizedEmail = (formData.email || '').toLowerCase().trim();
-        if (!formData.firstName || !formData.lastName) { alert("First and Last Name are required."); return; }
-        if (!isOfflineOnly && !normalizedEmail && !formData.id) { alert("Email is required for App Access users."); return; }
-        if (isOfflineOnly && (!formData.kioskPin || formData.kioskPin.length !== 4)) { alert("A 4-digit Kiosk PIN is required for Offline employees."); return; }
+        if (!formData.firstName || !formData.lastName) { showToast.warn("First and Last Name are required."); return; }
+        if (!isOfflineOnly && !normalizedEmail && !formData.id) { showToast.warn("Email is required for App Access users."); return; }
+        if (isOfflineOnly && (!formData.kioskPin || formData.kioskPin.length !== 4)) { showToast.warn("A 4-digit Kiosk PIN is required for Offline employees."); return; }
         setIsSaving(true);
         const orgId = state.currentOrganization.id;
         const id = formData.id || (isOfflineOnly ? `kiosk-${Date.now()}` : normalizedEmail);
@@ -256,7 +275,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
             onClose();
         } catch (error: any) { 
             console.error("Save Error Details:", error);
-            alert("Error saving profile: " + (error.message || "Unknown Error")); 
+            showToast.error("Error saving profile: " + (error.message || "Unknown Error")); 
         } finally { 
             setIsSaving(false); 
         }
@@ -419,6 +438,9 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                             
                             {activeTab === 'hr_files' && (
                                 <div className="space-y-4">
+                                    <div className="mb-6">
+                                        <HRHandbookView employee={formData as User} isSelf={isSelf} />
+                                    </div>
                                     <div className="flex justify-between items-center">
                                         <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2"><FileText size={16}/> HR File System</h4>
                                     </div>
@@ -444,7 +466,16 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                                     Visible to Employee
                                                 </label>
                                                 <div className="flex items-center gap-2">
-                                                    <input type="file" onChange={e => setHrFileObj(e.target.files?.[0] || null)} className="text-xs" title="Select HR document to upload" aria-label="Select HR document to upload" />
+                                                    <input type="file" onChange={e => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file && file.size > 5 * 1024 * 1024) {
+                                                            showToast.warn("File too large. HR documents must be under 5MB.");
+                                                            e.target.value = '';
+                                                            setHrFileObj(null);
+                                                        } else {
+                                                            setHrFileObj(file || null);
+                                                        }
+                                                    }} className="text-xs" title="Select HR document to upload" aria-label="Select HR document to upload" />
                                                     <Button type="button" onClick={handleUploadHR} disabled={!hrFileObj || !hrFileLabel || !hrFileType || isUploadingHR} className="text-xs flex items-center gap-1 w-auto">
                                                         <Upload size={12}/> {isUploadingHR ? 'Uploading...' : 'Upload'}
                                                     </Button>
@@ -533,6 +564,16 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                                     {isUpdatingPassword ? 'Updating...' : 'Update Password'}
                                                 </Button>
                                             </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-4">
+                                        <div>
+                                            <h5 className="font-bold text-sm mb-2 text-slate-700 dark:text-slate-300">User Interface Controls</h5>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Restore hidden bubbles or reset widget positions to their defaults.</p>
+                                            <Button type="button" variant="secondary" onClick={handleResetOverlays} className="w-auto">
+                                                Reset UI Customizations
+                                            </Button>
                                         </div>
                                     </div>
                                     

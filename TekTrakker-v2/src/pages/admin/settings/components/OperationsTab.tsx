@@ -3,7 +3,7 @@ import React from 'react';
 import Card from 'components/ui/Card';
 import Input from 'components/ui/Input';
 import Toggle from 'components/ui/Toggle';
-import { MapPinIcon, Gavel, Users, Zap } from 'lucide-react';
+import { MapPinIcon, Gavel, Users, Zap, Bot } from 'lucide-react';
 
 interface OperationsTabProps {
     address: string;
@@ -81,11 +81,20 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
                             enabled={aiPricebookEnabled} 
                             onChange={setAiPricebookEnabled} 
                         />
-                        <Toggle 
-                            label="Premium AI Virtual Worker (Coming Soon)" 
-                            enabled={false} 
-                            onChange={() => {}} 
-                        />
+                        {virtualWorkerEnabled ? (
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 rounded-full border border-emerald-200 dark:border-emerald-800">
+                                <Bot size={16} />
+                                <span className="text-sm font-bold">Virtual Worker Active</span>
+                            </div>
+                        ) : (
+                            <a 
+                                href="#/admin/ai-worker-upgrade" 
+                                className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 text-white rounded-full transition-all shadow-sm"
+                            >
+                                <Bot size={16} />
+                                <span className="text-sm font-bold">Upgrade AI Worker</span>
+                            </a>
+                        )}
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

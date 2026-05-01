@@ -27,4 +27,6 @@ export interface InvoiceDetails {
     paidTo?: string; // Added for B2B
     paymentRecipientName?: string; // Added for B2B
     paymentMethod?: string;
+    paymentProofUrl?: string | null; // Added for proof of payment
+    paymentProofDate?: string | null;
 }

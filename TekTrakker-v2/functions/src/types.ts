@@ -41,6 +41,13 @@ export interface Organization {
     supportedTrades?: IndustryVertical[];
     reviewLink?: string;
     paypalClientId?: string | null;
+    gustoCompanyId?: string | null;
+    gustoOnboardingUrl?: string | null;
+    hasPayrollEnabled?: boolean;
+    bofaCashProApiKey?: string | null;
+    bofaMerchantGatewayId?: string | null;
+    gustoClientId?: string | null;
+    gustoClientSecret?: string | null;
     stripePublicKey?: string | null;
     stripeAccountId?: string | null;
     squareApplicationId?: string | null;
@@ -97,6 +104,8 @@ export interface Organization {
     customDiscountPct?: number;
     quickbooksConnected?: boolean;
     aiPricebookEnabled?: boolean;
+    virtualWorkerEnabled?: boolean;
+    revenuecatId?: string;
     salesRepId?: string;
     settings?: any; 
     isVerified?: boolean; 

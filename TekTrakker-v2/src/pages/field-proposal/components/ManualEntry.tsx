@@ -47,6 +47,7 @@ const ManualEntry: React.FC<ManualEntryProps> = ({ activeTier, onAdd }) => {
                          <option value="Labor">Labor</option>
                          <option value="Part/Labor">Part/Labor</option>
                          <option value="Fee">Fee</option>
+                         <option value="Discount">Discount</option>
                      </Select>
                  </div>
                  <div className="w-full md:w-24">

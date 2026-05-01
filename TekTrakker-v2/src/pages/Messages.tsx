@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -181,12 +182,31 @@ const Messages: React.FC = () => {
 
     const broadcastUnreadCount = useMemo(() => {
         const lastSeenId = localStorage.getItem(`tt_last_broadcast_${user?.id}`);
-        const broadcasts = state.messages.filter(m => m.receiverId === 'all' || m.receiverId === 'all_customers');
-        if (!lastSeenId) return broadcasts.length;
+        const broadcasts = state.messages.filter(m => {
+            if (user?.role === 'master_admin') {
+                return ['all', 'all_customers', 'all_admins', 'all_sales'].includes(m.receiverId);
+            }
+            if (m.receiverId === 'all') return true;
+            if (m.receiverId === 'all_admins' && ['master_admin', 'admin', 'both'].includes(user?.role || '')) return true;
+            if (m.receiverId === 'all_sales' && user?.role === 'platform_sales') return true;
+            return false;
+        }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
         
-        const lastIndex = broadcasts.findIndex(m => m.id === lastSeenId);
-        return lastIndex === -1 ? broadcasts.length : lastIndex;
-    }, [state.messages, user?.id]);
+        // Deduplicate
+        const uniqueBroadcasts: Message[] = [];
+        const seenKeys = new Set<string>();
+        broadcasts.forEach(m => {
+            const key = `${m.timestamp}-${m.content}`;
+            if (!seenKeys.has(key)) {
+                seenKeys.add(key);
+                uniqueBroadcasts.push(m);
+            }
+        });
+
+        if (!lastSeenId) return uniqueBroadcasts.length;
+        const lastIndex = uniqueBroadcasts.findIndex(m => m.id === lastSeenId);
+        return lastIndex === -1 ? uniqueBroadcasts.length : Math.max(0, uniqueBroadcasts.length - 1 - lastIndex);
+    }, [state.messages, user?.id, user?.role]);
 
     const threadMessages = useMemo(() => {
         if (activeTab === 'team') {
@@ -256,7 +276,7 @@ const Messages: React.FC = () => {
         if (!newMessage.trim() || !user || !state.currentOrganization) return;
 
         if (activeTab === 'customers' && !selectedCustomerId) {
-            alert("Please select a customer.");
+            showToast.warn("Please select a customer.");
             return;
         }
 
@@ -265,7 +285,7 @@ const Messages: React.FC = () => {
             const customer = state.customers.find(c => c.id === selectedCustomerId);
             if (activeTab === 'customers') {
                  if (!customer?.marketingConsent?.sms) {
-                     alert("⚠️ Cannot Send: This customer has not opted-in to SMS communications.");
+                     showToast.warn("⚠️ Cannot Send: This customer has not opted-in to SMS communications.");
                      return;
                  }
             }
@@ -376,7 +396,7 @@ const Messages: React.FC = () => {
             setNewMessage('');
         } catch (error: any) {
             console.error(error);
-            alert("Send failed. Please check your connection.");
+            showToast.warn("Send failed. Please check your connection.");
         } finally {
             setIsSending(false);
         }
@@ -404,7 +424,7 @@ const Messages: React.FC = () => {
             }
         } catch (e) {
             console.error(e);
-            alert("Delete failed.");
+            showToast.warn("Delete failed.");
         }
     };
 
@@ -422,7 +442,7 @@ const Messages: React.FC = () => {
             dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });
             setEditingMessageId(null);
         } catch (e) {
-            alert("Edit failed.");
+            showToast.warn("Edit failed.");
         }
     };
 
@@ -461,7 +481,7 @@ const Messages: React.FC = () => {
                 return <button key={i} onClick={(e) => { 
                     e.preventDefault(); 
                     if (isStaffAdmin) navigate(`/admin/records?tab=history&histId=${id}`); 
-                    else alert("Restricted: Historical job records require administrator privileges.");
+                    else showToast.warn("Restricted: Historical job records require administrator privileges.");
                 }} className="underline font-bold bg-slate-200 dark:bg-slate-700/50 text-slate-800 dark:text-slate-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
             }
             if (part.match(/^#DOC-(.+)/)) {
@@ -469,7 +489,7 @@ const Messages: React.FC = () => {
                 return <button key={i} onClick={(e) => { 
                     e.preventDefault(); 
                     if (isStaffAdmin) navigate(`/admin/records?tab=documents&docId=${id}`);
-                    else alert('Restricted: Documents require administrator privileges.');
+                    else showToast.warn('Restricted: Documents require administrator privileges.');
                 }} className="underline font-bold bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
             }
             if (part.match(/^#INV-(.+)/)) {
@@ -477,7 +497,7 @@ const Messages: React.FC = () => {
                 return <button key={i} onClick={(e) => { 
                     e.preventDefault(); 
                     if (isStaffAdmin) navigate(`/admin/financials?tab=invoices&invoiceId=${id}`);
-                    else alert('Restricted: Invoices require administrator privileges.');
+                    else showToast.warn('Restricted: Invoices require administrator privileges.');
                 }} className="underline font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
             }
             if (part.match(/^#PROP-(.+)/)) {
@@ -493,7 +513,7 @@ const Messages: React.FC = () => {
                 return <button key={i} onClick={(e) => { 
                     e.preventDefault(); 
                     if (isStaffAdmin) navigate(`/admin/customers?custId=${id}`);
-                    else alert('Restricted: Full customer profiles require administrator privileges. Please view customer info assigned to your jobs.');
+                    else showToast.warn('Restricted: Full customer profiles require administrator privileges. Please view customer info assigned to your jobs.');
                 }} className="underline font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
             }
             if (part.match(/^#EXP-(.+)/)) {
@@ -501,7 +521,7 @@ const Messages: React.FC = () => {
                 return <button key={i} onClick={(e) => { 
                     e.preventDefault(); 
                     if (isStaffAdmin) navigate(`/admin/financials?tab=expenses&expId=${id}`);
-                    else alert('Restricted: Financial records require administrator privileges.');
+                    else showToast.warn('Restricted: Financial records require administrator privileges.');
                 }} className="underline font-bold bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
             }
             return part;

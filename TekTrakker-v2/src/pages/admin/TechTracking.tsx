@@ -1,5 +1,6 @@
+import showToast from "lib/toast";
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
 import Button from 'components/ui/Button';
 import { db } from 'lib/firebase';
@@ -35,10 +36,41 @@ const TechTracking: React.FC = () => {
             });
     }, [state.users, state.jobs, state.currentOrganization, currentUser]);
 
-    const mappedTechs = useMemo(() => allTechs.filter(t => t.hasLocation), [allTechs]);
+    const [fleetPositions, setFleetPositions] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (!state.currentOrganization?.id) return;
+        
+        const unsubscribe = db.collection(`organizations/${state.currentOrganization.id}/fleet_positions`)
+            .onSnapshot(snapshot => {
+                const positions = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                setFleetPositions(positions);
+            }, error => {
+                console.error("Fleet positions error:", error);
+            });
+            
+        return () => unsubscribe();
+    }, [state.currentOrganization?.id]);
+
+    const mappedTechs = useMemo(() => {
+        const techsWithLoc = allTechs.filter(t => t.hasLocation);
+        const fleetTechs = fleetPositions.map(pos => ({
+            id: `fleet-${pos.id}`,
+            firstName: pos.name || 'Vehicle',
+            lastName: `(${pos.id.substring(0,4)})`,
+            location: { lat: pos.lat, lng: pos.lng, timestamp: pos.updatedAt?.toDate()?.toISOString() || new Date().toISOString() },
+            isOnline: true,
+            isFleet: true,
+            speed: pos.speed
+        }));
+        return [...techsWithLoc, ...fleetTechs];
+    }, [allTechs, fleetPositions]);
 
     const [mapCenter, setMapCenter] = useState<[number, number]>(() => {
-        if (mappedTechs.length > 0 && mappedTechs[0].location) { // Add null check for mappedTechs[0].location
+        if (mappedTechs.length > 0 && mappedTechs[0].location) {
             return [mappedTechs[0].location.lat, mappedTechs[0].location.lng];
         }
         return [39.8283, -98.5795];
@@ -58,18 +90,22 @@ const TechTracking: React.FC = () => {
             await db.collection('users').doc(currentUser.id).update({ location: locationData });
             dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...currentUser, location: locationData } });
             setMapCenter([locationData.lat, locationData.lng]);
-            alert('Location updated!');
+            showToast.warn('Location updated!');
         } else {
-            alert('Failed to update location. Please ensure location services are enabled and permissions granted.');
+            showToast.warn('Failed to update location. Please ensure location services are enabled and permissions granted.');
         }
     };
 
     return (
         <div className="h-[calc(100vh-100px)] flex flex-col">
             <header className="mb-4 px-4 sm:px-0 flex justify-between items-center">
-                <div>
-                    <h2 className="text-2xl font-bold">Technician Tracking</h2>
-                    <p className="text-gray-600">Real-time location monitoring.</p>
+                <div className="flex items-center gap-4">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Live Operations Tracking</h3>
+                    {fleetPositions.length > 0 && (
+                        <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                            {fleetPositions.length} Vehicles Online
+                        </span>
+                    )}
                 </div>
                 <Button onClick={handleForceUpdate} variant="secondary" className="w-auto flex items-center gap-2 text-xs">
                     <Navigation size={14} /> Force My Location Update
@@ -77,7 +113,7 @@ const TechTracking: React.FC = () => {
             </header>
 
             <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden">
-                <TechList techs={allTechs} onTechSelect={jumpToTech} />
+                <TechList techs={[...allTechs, ...fleetPositions.map(p => ({ ...p, isFleet: true, firstName: p.name || 'Vehicle', lastName: p.id }))] as any} onTechSelect={jumpToTech} />
                 <TrackingMap techs={mappedTechs} center={mapCenter} />
             </div>
         </div>

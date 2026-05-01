@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useMemo, useState } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -26,6 +27,16 @@ const Memberships: React.FC = () => {
     const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
     const [editingPlan, setEditingPlan] = useState<MembershipPlan | null>(null);
     const [benefitsText, setBenefitsText] = useState('');
+    const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
+    const [isEditAgreementModalOpen, setIsEditAgreementModalOpen] = useState(false);
+    const [editingAgreement, setEditingAgreement] = useState<ServiceAgreement | null>(null);
+    const [enrollForm, setEnrollForm] = useState({
+        customerId: '',
+        planId: '',
+        billingCycle: 'Annual' as 'Monthly'|'Annual',
+        systemCount: 1,
+        paymentMethod: 'Check / Separate Invoice'
+    });
 
     const agreements = state.serviceAgreements;
     
@@ -81,7 +92,7 @@ const Memberships: React.FC = () => {
             setIsPlanModalOpen(false);
         } catch (e) {
             console.error(e);
-            alert("Error saving plan");
+            showToast.warn("Error saving plan");
         }
     };
 
@@ -94,7 +105,7 @@ const Memberships: React.FC = () => {
             });
             // Update handled by snapshot listener or manual refresh
         } catch (e) {
-            alert("Failed to cancel agreement.");
+            showToast.warn("Failed to cancel agreement.");
         }
     };
 
@@ -106,16 +117,62 @@ const Memberships: React.FC = () => {
             dispatch({ type: 'SYNC_DATA', payload: { serviceAgreements: state.serviceAgreements.filter(a => a.id !== id) } });
         } catch (e) {
             console.error(e);
-            alert("Failed to delete agreement.");
+            showToast.warn("Failed to delete agreement.");
+        }
+    };
+
+    const handleEnrollSubmit = async () => {
+        if (!enrollForm.customerId || !enrollForm.planId) return showToast.warn("Please select a customer and plan.");
+        const customer = state.customers.find(c => c.id === enrollForm.customerId);
+        const plan = plans.find(p => p.id === enrollForm.planId);
+        if (!customer || !plan) return;
+
+        const price = enrollForm.billingCycle === 'Monthly' ? plan.monthlyPrice : plan.annualPrice;
+        const totalSysPrice = (enrollForm.systemCount - 1) * (plan.pricePerAdditionalSystem || 0);
+        const finalizedPrice = enrollForm.billingCycle === 'Monthly' ? (price + totalSysPrice) : (price + (totalSysPrice * 12));
+
+        const newId = 'm-' + Date.now();
+        const agreement: ServiceAgreement = {
+            id: newId,
+            organizationId: state.currentOrganization?.id || '',
+            customerId: customer.id,
+            customerName: customer.name,
+            planName: plan.name,
+            price: finalizedPrice,
+            billingCycle: enrollForm.billingCycle,
+            startDate: new Date().toISOString(),
+            endDate: new Date(Date.now() + (enrollForm.billingCycle === 'Annual' ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString(),
+            status: 'Active',
+            visitsTotal: plan.visitsPerYear || 0,
+            visitsRemaining: plan.visitsPerYear || 0,
+            systemCount: enrollForm.systemCount,
+        };
+
+        try {
+            await db.collection('serviceAgreements').doc(newId).set(agreement);
+            setIsEnrollModalOpen(false);
+            setEnrollForm({
+                customerId: '',
+                planId: '',
+                billingCycle: 'Annual',
+                systemCount: 1,
+                paymentMethod: 'Check / Separate Invoice'
+            });
+        } catch (e) {
+            console.error(e);
+            showToast.warn("Error enrolling customer manually.");
         }
     };
 
     return (
         <div className="space-y-6">
-            <header>
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Membership Management</h2>
-                <p className="text-gray-600 dark:text-gray-400">Manage recurring revenue and service agreements.</p>
-            </header>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h2 className="text-2xl font-bold dark:text-white">Membership Operations</h2>
+                <Button onClick={() => setIsEnrollModalOpen(true)} className="flex items-center gap-2">
+                    <Plus size={18} /> Manual Enrollment
+                </Button>
+            </div>
+            
 
             {/* KPI Panel */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -151,8 +208,9 @@ const Memberships: React.FC = () => {
 
             {/* Plans */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {plans.map(plan => (
-                    <div key={plan.id} className={`rounded-xl border-t-8 shadow-lg p-6 bg-white dark:bg-gray-800 flex flex-col`} style={{ borderColor: plan.color }}>
+                {plans.map(plan => {
+                    return (
+                    <div key={plan.id} className={`rounded-xl border-t-8 shadow-lg p-6 bg-white dark:bg-gray-800 flex flex-col ${plan.color === 'yellow' ? 'border-yellow-400' : plan.color === 'gray' ? 'border-gray-400' : plan.color === 'orange' ? 'border-orange-400' : 'border-blue-400'}`}>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-xl font-bold text-gray-900 dark:text-white">{plan.name}</h3>
                             <Shield className="w-6 h-6" style={{ color: plan.color }} />
@@ -171,7 +229,8 @@ const Memberships: React.FC = () => {
                         
                         <Button onClick={() => handleEditPlan(plan)} variant="secondary" className="w-full mt-auto">Edit Plan</Button>
                     </div>
-                ))}
+                    );
+                })}
             </div>
 
             {/* Agreements Table */}
@@ -188,6 +247,12 @@ const Memberships: React.FC = () => {
                                 <span className={`px-2 py-1 rounded text-xs font-bold ${a.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{a.status}</span>
                             </td>
                             <td className="px-6 py-4 flex items-center gap-2">
+                                <button onClick={() => {
+                                    setEditingAgreement({...a});
+                                    setIsEditAgreementModalOpen(true);
+                                }} className="text-blue-500 hover:text-blue-700" title="Edit Agreement">
+                                    <Wrench size={16}/>
+                                </button>
                                 {a.status === 'Active' && (
                                     <button onClick={() => handleCancelAgreement(a.id)} className="text-orange-500 hover:text-orange-700" title="Cancel Membership">
                                         <Ban size={16}/>
@@ -251,6 +316,139 @@ const Memberships: React.FC = () => {
                         <div className="flex justify-end gap-2 pt-4">
                             <Button variant="secondary" onClick={() => setIsPlanModalOpen(false)}>Cancel</Button>
                             <Button onClick={handleSavePlan}>Save Changes</Button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+            
+            <Modal isOpen={isEnrollModalOpen} onClose={() => setIsEnrollModalOpen(false)} title="Manual Enrollment">
+                <div className="space-y-4">
+                    <div className="bg-yellow-50 text-yellow-800 p-3 rounded-lg border border-yellow-200 text-sm">
+                        <strong>Note:</strong> Manual enrollments <strong>bypass</strong> the automated initial invoice and credit card charge process. Use this when a customer paid by check, cash, or you already manually added their membership cost onto an existing repair invoice.
+                    </div>
+
+                    <Select
+                        label="Customer"
+                        value={enrollForm.customerId}
+                        onChange={(e) => setEnrollForm({ ...enrollForm, customerId: e.target.value })}
+                    >
+                        <option value="">Select a Customer</option>
+                        {state.customers.map(c => (
+                            <option key={c.id} value={c.id}>{c.name} {c.address ? `- ${c.address}` : ''}</option>
+                        ))}
+                    </Select>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Select
+                            label="Membership Plan"
+                            value={enrollForm.planId}
+                            onChange={(e) => setEnrollForm({ ...enrollForm, planId: e.target.value })}
+                        >
+                            <option value="">Select a Plan</option>
+                            {plans.map(p => (
+                                <option key={p.id} value={p.id}>{p.name} - ${p.monthlyPrice}/mo or ${p.annualPrice}/yr</option>
+                            ))}
+                        </Select>
+
+                        <Select
+                            label="Billing Cycle"
+                            value={enrollForm.billingCycle}
+                            onChange={(e) => setEnrollForm({ ...enrollForm, billingCycle: e.target.value as any })}
+                        >
+                            <option value="Annual">Annual (Prepaid / 1 Year Expish)</option>
+                            <option value="Monthly">Monthly (1 Month Expish)</option>
+                        </Select>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Input
+                            type="number"
+                            label="Number of Systems"
+                            value={enrollForm.systemCount}
+                            onChange={(e) => setEnrollForm({ ...enrollForm, systemCount: parseInt(e.target.value) || 1 })}
+                            min="1"
+                        />
+                        
+                        <Select
+                            label="Payment Method"
+                            value={enrollForm.paymentMethod}
+                            onChange={(e) => setEnrollForm({ ...enrollForm, paymentMethod: e.target.value })}
+                        >
+                            <option value="Check / Separate Invoice">Paid by Check / Separate Invoice</option>
+                            <option value="Cash">Paid by Cash</option>
+                            <option value="Complimentary">Complimentary / Free Trial</option>
+                        </Select>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-4">
+                        <Button variant="secondary" onClick={() => setIsEnrollModalOpen(false)}>Cancel</Button>
+                        <Button onClick={handleEnrollSubmit} className="bg-green-600 hover:bg-green-700 text-white">Enroll & Activate</Button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Edit Agreement Modal */}
+            <Modal isOpen={isEditAgreementModalOpen} onClose={() => setIsEditAgreementModalOpen(false)} title="Edit Service Agreement">
+                {editingAgreement && (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Select
+                                label="Status"
+                                value={editingAgreement.status}
+                                onChange={(e) => setEditingAgreement({ ...editingAgreement, status: e.target.value as 'Active' | 'Cancelled' | 'Expired' })}
+                            >
+                                <option value="Active">Active</option>
+                                <option value="Cancelled">Cancelled</option>
+                                <option value="Expired">Expired</option>
+                            </Select>
+
+                            <Select
+                                label="Billing Cycle"
+                                value={editingAgreement.billingCycle}
+                                onChange={(e) => setEditingAgreement({ ...editingAgreement, billingCycle: e.target.value as 'Annual' | 'Monthly' })}
+                            >
+                                <option value="Annual">Annual</option>
+                                <option value="Monthly">Monthly</option>
+                            </Select>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input
+                                label="Start Date"
+                                type="date"
+                                value={editingAgreement.startDate ? new Date(editingAgreement.startDate).toISOString().split('T')[0] : ''}
+                                onChange={(e) => {
+                                    const newDate = new Date(e.target.value);
+                                    if (!isNaN(newDate.getTime())) {
+                                        setEditingAgreement({ ...editingAgreement, startDate: newDate.toISOString() });
+                                    }
+                                }}
+                            />
+                            
+                            <Input
+                                label="Renewal Date (End Date)"
+                                type="date"
+                                value={editingAgreement.endDate ? new Date(editingAgreement.endDate).toISOString().split('T')[0] : ''}
+                                onChange={(e) => {
+                                    const newDate = new Date(e.target.value);
+                                    if (!isNaN(newDate.getTime())) {
+                                        setEditingAgreement({ ...editingAgreement, endDate: newDate.toISOString() });
+                                    }
+                                }}
+                            />
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-4">
+                            <Button variant="secondary" onClick={() => setIsEditAgreementModalOpen(false)}>Cancel</Button>
+                            <Button onClick={async () => {
+                                try {
+                                    await db.collection('serviceAgreements').doc(editingAgreement.id).update(editingAgreement);
+                                    setIsEditAgreementModalOpen(false);
+                                    showToast.success("Agreement updated.");
+                                } catch (e) {
+                                    showToast.error("Failed to update agreement.");
+                                }
+                            }} className="bg-blue-600 hover:bg-blue-700 text-white">Save Changes</Button>
                         </div>
                     </div>
                 )}

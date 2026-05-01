@@ -1,11 +1,11 @@
-import showToast from "../../lib/toast";
+
 
 import React, { useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Zap, Shield, BarChart3, Smartphone,
     CheckCircle, ArrowRight, Cpu, Users, DollarSign,
-    Heart, TrendingUp, Layers, MapPin, Star, X, Mail,
+    Heart, TrendingUp, Layers, MapPin, Star, X,
     Wrench, Layout,
     Phone, FileText, Camera
 } from 'lucide-react';
@@ -304,17 +304,6 @@ const ROICalculator = () => {
     );
 };
 
-const TikTok = ({ size = 20, className = "" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5v3a3 3 0 0 1-3-3v11a7 7 0 1 1-7-7" />
-    </svg>
-);
-
-const XLogo = ({ size = 20, className = "" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-    </svg>
-);
 
 const AppWireframe = () => (
     <div className="absolute inset-0 z-0 overflow-hidden opacity-[0.45] select-none pointer-events-none filter blur-[3px]">
@@ -748,7 +737,6 @@ const InteractiveFeatures = () => {
 
 const SaaSMarketing: React.FC = () => {
     const navigate = useNavigate();
-    const { startDemo } = useAppContext();
     const [showDemoOptions, setShowDemoOptions] = useState(false);
     const [activeMockTab, setActiveMockTab] = useState<'layout' | 'users' | 'analytics' | 'wrench'>('layout');
 

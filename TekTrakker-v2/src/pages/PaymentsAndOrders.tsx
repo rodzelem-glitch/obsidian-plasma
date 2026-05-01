@@ -1,3 +1,5 @@
+import showToast from "lib/toast";
+import { getBaseUrl } from "lib/utils";
 import React, { useState, useMemo, useEffect } from 'react';
 import Card from 'components/ui/Card';
 import Select from 'components/ui/Select';
@@ -11,7 +13,8 @@ import { db } from 'lib/firebase';
 import type { PartOrder, InvoiceLineItem, Job, Proposal, ShopOrder, Customer } from 'types';
 import InvoiceEditorModal from 'components/modals/InvoiceEditorModal';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Briefcase, Wrench, Edit, Trash2, Plus, CreditCard, Send, CheckCircle, RefreshCw, Search, User } from 'lucide-react';
+import { FileText, Briefcase, Wrench, Edit, Trash2, Plus, CreditCard, Send, CheckCircle, RefreshCw, Search, User, Eye, Bell } from 'lucide-react';
+import DocumentPreview from 'components/ui/DocumentPreview';
 import { globalConfirm } from "lib/globalConfirm";
 import { uploadFileToStorage } from 'lib/storageService';
 
@@ -19,7 +22,7 @@ import { uploadFileToStorage } from 'lib/storageService';
 const PaymentsAndOrders: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'invoices' | 'proposals' | 'parts'>('invoices');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'proposals' | 'invoices' | 'parts'>('dashboard');
     const [searchTerm, setSearchTerm] = useState('');
 
     // --- STATE: INVOICES ---
@@ -35,17 +38,19 @@ const PaymentsAndOrders: React.FC = () => {
     const [selectedJobId, setSelectedJobId] = useState<string>(state.jobs[0]?.id || '');
     const [partsList, setPartsList] = useState('');
     const [partCost, setPartCost] = useState('');
-    const [fulfillmentMethod, setFulfillmentMethod] = useState<'Truck Stock' | 'Purchase' | 'Special Order'>('Truck Stock');
+    const [fulfillmentMethod, setFulfillmentMethod] = useState<'Truck Stock' | 'Purchase' | 'PunchOut' | 'Special Order'>('Truck Stock');
     const [priceChecked, setPriceChecked] = useState(false);
     const [orderStatus, setOrderStatus] = useState('');
     const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+    const [isPunchingOut, setIsPunchingOut] = useState(false);
     
     // Purchase specific state
     const [paymentMethod, setPaymentMethod] = useState<'Company Credit' | 'Personal Funds' | 'Other'>('Company Credit');
     const [paymentExplanation, setPaymentExplanation] = useState('');
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
 
-
+    // --- STATE: PREVIEWER ---
+    const [viewingDocument, setViewingDocument] = useState<{type: 'Invoice' | 'Proposal', data: Job | Proposal} | null>(null);
 
     // --- FILTERED LISTS ---
     const filteredInvoices = useMemo(() => {
@@ -71,6 +76,10 @@ const PaymentsAndOrders: React.FC = () => {
             c.phone.includes(custSearch)
         ).slice(0, 5);
     }, [state.customers, custSearch]);
+
+    const latestProposal = filteredProposals.length > 0 ? filteredProposals[0] : null;
+    const latestInvoice = filteredInvoices.length > 0 ? filteredInvoices[0] : null;
+    const latestPartOrder = state.partOrders.length > 0 ? state.partOrders[0] : null;
 
     // --- ACTIONS: INVOICES ---
     const handleInitCreateInvoice = () => {
@@ -114,7 +123,7 @@ const PaymentsAndOrders: React.FC = () => {
             setEditingInvoiceId(id);
         } catch (e) {
             console.error(e);
-            alert("Failed to create invoice.");
+            showToast.warn("Failed to create invoice.");
         } finally {
             setIsCreatingInvoice(false);
         }
@@ -144,6 +153,38 @@ const PaymentsAndOrders: React.FC = () => {
         if (await globalConfirm("Delete this proposal?")) {
             await db.collection('proposals').doc(id).delete();
             dispatch({ type: 'DELETE_PROPOSAL', payload: id });
+        }
+    };
+
+    const handleSendProposalReminder = async (proposal: Proposal) => {
+        const email = proposal.customerEmail;
+        if (!email) {
+            showToast.warn("Customer email missing for this proposal.");
+            return;
+        }
+
+        if (!await globalConfirm(`Send proposal reminder to ${email}?`)) return;
+
+        try {
+            const link = `${getBaseUrl()}/#/proposal-view/${proposal.id}`;
+            const orgName = state.currentOrganization?.name || 'Service Provider';
+            
+            await db.collection('mail').add({
+                to: [email],
+                message: {
+                    subject: `Following up: Proposal from ${orgName}`,
+                    html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #e0e7ff;border-radius:8px;"><h2 style="color:#4f46e5;">Proposal Reminder</h2><p>Hi ${proposal.customerName},</p><p>We are following up on the proposal we sent you for <strong>$${(proposal.total ?? 0).toFixed(2)}</strong>. You can review the details and quickly accept it online so we can get started.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#4f46e5;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">Review & Accept Proposal</a></div><p>If you have any questions, please let us know.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                    text: `Reminder: Your proposal for $${(proposal.total ?? 0).toFixed(2)} is awaiting review. Review here: ${link}`
+                },
+                organizationId: state.currentOrganization?.id,
+                type: 'ProposalReminder',
+                createdAt: new Date().toISOString()
+            });
+
+            showToast.warn(`Reminder sent via email to ${email}!`);
+        } catch (e) {
+            console.error(e);
+            showToast.warn("Error sending reminder.");
         }
     };
 
@@ -260,13 +301,42 @@ const PaymentsAndOrders: React.FC = () => {
         }
     };
 
+    const handleInitiatePunchOut = async () => {
+        if (isPunchingOut) return;
+        setIsPunchingOut(true);
+        setOrderStatus('');
+        
+        try {
+            const initPunchout = (window as any).firebase.functions().httpsCallable('initiatePunchoutSession');
+            const result = await initPunchout({ jobId: selectedJobId });
+            
+            if (result.data.success && result.data.url) {
+                // Redirect user out of the app and into the supplier's B2B site
+                window.location.href = result.data.url;
+            } else {
+                setOrderStatus('Could not retrieve supplier URL.');
+            }
+        } catch (e: any) {
+            console.error("Punchout error:", e);
+            if (e.message?.includes('not fully configured') || e.message?.includes('identity config is incomplete')) {
+                showToast.warn("Supplier Not Linked:\n\nYour administrator hasn't linked a supplier catalog yet. Please ask your admin to configure the B2B PunchOut Integration in the Settings > Integrations tab before you can order parts.");
+                setOrderStatus('Supplier not configured.');
+            } else {
+                showToast.warn(`PunchOut Connection Failed: ${e.message}`);
+                setOrderStatus('PunchOut failed to connect.');
+            }
+        } finally {
+            setIsPunchingOut(false);
+        }
+    };
+
     const handleDeletePartOrder = async (orderId: string) => {
         if (await globalConfirm("Are you sure you want to delete this part order?")) {
             try {
                 await db.collection('partOrders').doc(orderId).delete();
             } catch (error) {
                 console.error("Error deleting part order:", error);
-                alert("Failed to delete order.");
+                showToast.warn("Failed to delete order.");
             }
         }
     };
@@ -322,8 +392,20 @@ const PaymentsAndOrders: React.FC = () => {
 
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Sales & Payments</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Manage invoices, estimates, and orders.</p>
+                    {activeTab === 'dashboard' ? (
+                        <>
+                            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Sales & Payments</h2>
+                            <p className="text-gray-600 dark:text-gray-400">Manage invoices, estimates, and orders.</p>
+                        </>
+                    ) : (
+                        <Button 
+                            variant="secondary" 
+                            onClick={() => setActiveTab('dashboard')} 
+                            className="w-auto flex items-center gap-2 text-xs bg-white dark:bg-gray-800"
+                        >
+                            &larr; Back to Dashboard
+                        </Button>
+                    )}
                 </div>
                 {activeTab === 'invoices' && (
                     <Button onClick={handleInitCreateInvoice} disabled={isCreatingInvoice} className="w-auto flex items-center gap-2 text-xs">
@@ -337,27 +419,87 @@ const PaymentsAndOrders: React.FC = () => {
                 )}
             </header>
 
-            {/* TAB NAV */}
-            <div className="flex bg-gray-200 dark:bg-gray-700 p-1 rounded-lg w-full sm:w-auto overflow-x-auto">
-                <button 
-                    onClick={() => setActiveTab('invoices')}
-                    className={`flex-1 shrink-0 min-w-[120px] whitespace-nowrap px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 ${activeTab === 'invoices' ? 'bg-white dark:bg-gray-600 text-primary-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'}`}
-                >
-                    <FileText size={16}/> Invoices
-                </button>
-                <button 
-                    onClick={() => setActiveTab('proposals')}
-                    className={`flex-1 shrink-0 min-w-[120px] whitespace-nowrap px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 ${activeTab === 'proposals' ? 'bg-white dark:bg-gray-600 text-primary-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'}`}
-                >
-                    <Briefcase size={16}/> Proposals
-                </button>
-                <button 
-                    onClick={() => setActiveTab('parts')}
-                    className={`flex-1 shrink-0 min-w-[120px] whitespace-nowrap px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2 ${activeTab === 'parts' ? 'bg-white dark:bg-gray-600 text-primary-600 dark:text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-200'}`}
-                >
-                    <Wrench size={16}/> Parts
-                </button>
-            </div>
+            {activeTab === 'dashboard' && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-2 mt-4">
+                    <div 
+                        onClick={() => setActiveTab('proposals')}
+                        className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 transition-all cursor-pointer hover:border-primary-400 hover:shadow-xl flex flex-col gap-4 group"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 group-hover:bg-purple-200 transition-colors">
+                                <Briefcase size={28}/>
+                            </div>
+                            <span className="font-black text-lg text-gray-900 dark:text-white">Proposals</span>
+                        </div>
+                        {latestProposal ? (
+                            <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700">
+                                <p className="text-xs text-gray-500 mb-1 uppercase font-bold tracking-wider">Most Recent</p>
+                                <p className="font-bold text-gray-800 dark:text-gray-200 truncate">{latestProposal.customerName}</p>
+                                <div className="flex justify-between items-center mt-1">
+                                    <span className="text-sm text-gray-500">{new Date(latestProposal.createdAt).toLocaleDateString()}</span>
+                                    <span className="text-sm font-bold text-gray-900 dark:text-white">${(latestProposal.total ?? 0).toFixed(2)}</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700 opacity-50">
+                                <p className="text-sm italic text-gray-500">No proposals yet.</p>
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div 
+                        onClick={() => setActiveTab('invoices')}
+                        className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 transition-all cursor-pointer hover:border-primary-400 hover:shadow-xl flex flex-col gap-4 group"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 group-hover:bg-blue-200 transition-colors">
+                                <FileText size={28}/>
+                            </div>
+                            <span className="font-black text-lg text-gray-900 dark:text-white">Invoices</span>
+                        </div>
+                        {latestInvoice ? (
+                            <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700">
+                                <p className="text-xs text-gray-500 mb-1 uppercase font-bold tracking-wider">Most Recent</p>
+                                <p className="font-bold text-gray-800 dark:text-gray-200 truncate">{latestInvoice.customerName}</p>
+                                <div className="flex justify-between items-center mt-1">
+                                    <span className="text-sm text-gray-500">#{latestInvoice.invoice.id}</span>
+                                    <span className="text-sm font-bold text-gray-900 dark:text-white">${(latestInvoice.invoice.totalAmount ?? latestInvoice.invoice.amount ?? 0).toFixed(2)}</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700 opacity-50">
+                                <p className="text-sm italic text-gray-500">No invoices yet.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    <div 
+                        onClick={() => setActiveTab('parts')}
+                        className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 transition-all cursor-pointer hover:border-primary-400 hover:shadow-xl flex flex-col gap-4 group"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-200 transition-colors">
+                                <Wrench size={28}/>
+                            </div>
+                            <span className="font-black text-lg text-gray-900 dark:text-white">Parts & Orders</span>
+                        </div>
+                        {latestPartOrder ? (
+                            <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700">
+                                <p className="text-xs text-gray-500 mb-1 uppercase font-bold tracking-wider">Most Recent Log</p>
+                                <p className="font-bold text-gray-800 dark:text-gray-200 truncate">{latestPartOrder.parts}</p>
+                                <div className="flex justify-between items-center mt-1">
+                                    <span className="text-sm text-amber-600 dark:text-amber-400">{latestPartOrder.status}</span>
+                                    <span className="text-sm font-bold text-gray-900 dark:text-white">${(latestPartOrder.cost ?? 0).toFixed(2)}</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-700 opacity-50">
+                                <p className="text-sm italic text-gray-500">No recent orders.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* CONTENT */}
             {activeTab === 'invoices' && (
@@ -392,8 +534,11 @@ const PaymentsAndOrders: React.FC = () => {
                                     </div>
                                 </div>
                                 <div className="text-right flex flex-col items-end gap-2 w-full sm:w-auto">
-                                    <span className="text-2xl font-bold text-gray-900 dark:text-white">${(job.invoice.totalAmount || job.invoice.amount).toFixed(2)}</span>
+                                    <span className="text-2xl font-bold text-gray-900 dark:text-white">${(job.invoice.totalAmount ?? job.invoice.amount ?? 0).toFixed(2)}</span>
                                     <div className="flex gap-2 w-full sm:w-auto">
+                                        <Button variant="secondary" onClick={() => setViewingDocument({ type: 'Invoice', data: job })} className="px-3 py-1 text-xs border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                                            <Eye size={14}/> View
+                                        </Button>
                                         <Button variant="secondary" onClick={() => handleDeleteInvoice(job.id)} className="text-red-700 dark:text-red-400 font-bold px-3 py-1 text-xs border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/40">
                                             <Trash2 size={14}/>
                                         </Button>
@@ -433,8 +578,16 @@ const PaymentsAndOrders: React.FC = () => {
                                     <p className="text-xs text-gray-400 mt-1">Option: {p.selectedOption || 'Standard'}</p>
                                 </div>
                                 <div className="text-right flex flex-col items-end gap-2 w-full sm:w-auto">
-                                    <span className="text-2xl font-bold text-gray-900 dark:text-white">${p.total.toFixed(2)}</span>
+                                    <span className="text-2xl font-bold text-gray-900 dark:text-white">${(p.total ?? 0).toFixed(2)}</span>
                                     <div className="flex gap-2 w-full sm:w-auto">
+                                        {p.status !== 'Accepted' && (
+                                            <Button variant="secondary" onClick={() => handleSendProposalReminder(p)} className="px-3 py-1 text-xs border bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-800/40">
+                                                <Bell size={14} /> Remind
+                                            </Button>
+                                        )}
+                                        <Button variant="secondary" onClick={() => setViewingDocument({ type: 'Proposal', data: p })} className="px-3 py-1 text-xs border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                                            <Eye size={14}/> View
+                                        </Button>
                                         <Button variant="secondary" onClick={() => handleDeleteProposal(p.id)} className="text-red-700 dark:text-red-400 font-bold px-3 py-1 text-xs border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/40">
                                             <Trash2 size={14}/>
                                         </Button>
@@ -463,11 +616,28 @@ const PaymentsAndOrders: React.FC = () => {
 
                             <Select label="Fulfillment Method" id="fulfillment-select" value={fulfillmentMethod} onChange={e => setFulfillmentMethod(e.target.value as any)} className="dark:text-white">
                                 <option value="Truck Stock">Use Parts on Hand (Truck Stock)</option>
-                                <option value="Purchase">Purchase at Supply House</option>
+                                <option value="Purchase">Purchase at Supply House (Manual Receipt)</option>
+                                <option value="PunchOut">Order from B2B Supplier Catalog (cXML)</option>
                                 <option value="Special Order">Request Special Order (From Office)</option>
                             </Select>
 
-                            {fulfillmentMethod === 'Purchase' && (
+                            {fulfillmentMethod === 'PunchOut' ? (
+                                <div className="p-6 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 rounded-xl space-y-4 text-center">
+                                    <div className="mx-auto w-12 h-12 bg-amber-100 dark:bg-amber-900/60 rounded-full flex items-center justify-center text-amber-600 dark:text-amber-400 mb-2">
+                                        <RefreshCw className={isPunchingOut ? "animate-spin" : ""} size={24} />
+                                    </div>
+                                    <h4 className="font-black text-lg text-amber-900 dark:text-amber-400 uppercase tracking-wide">Automated Restock</h4>
+                                    <p className="text-sm text-amber-800/70 dark:text-amber-200/60 mb-4 max-w-sm mx-auto">
+                                        This will launch the live dynamic parts catalog for your integrated supplier. Once you complete your cart, it will automatically bridge as a Purchase Order.
+                                    </p>
+                                    <Button type="button" onClick={handleInitiatePunchOut} disabled={!selectedJobId || isPunchingOut} className="w-full sm:w-auto mx-auto !bg-amber-600 hover:!bg-amber-700 text-white font-bold py-3">
+                                        {isPunchingOut ? "Connecting to Supplier..." : "Launch Supplier Catalog"}
+                                    </Button>
+                                    {orderStatus && <p className="text-sm text-amber-700 mt-2 font-bold">{orderStatus}</p>}
+                                </div>
+                            ) : (
+                                <>
+                                    {fulfillmentMethod === 'Purchase' && (
                                 <div className="p-4 bg-slate-50 dark:bg-slate-800 border rounded-lg space-y-4">
                                     <h4 className="font-bold text-sm">Payment Details</h4>
                                     <Select label="Method of Payment" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as any)}>
@@ -486,7 +656,16 @@ const PaymentsAndOrders: React.FC = () => {
                                             type="file" 
                                             title="Upload Receipt Image"
                                             accept="image/*" 
-                                            onChange={e => setReceiptFile(e.target.files?.[0] || null)}
+                                            onChange={e => {
+                                                const file = e.target.files?.[0];
+                                                if (file && file.size > 5 * 1024 * 1024) {
+                                                    showToast.warn("File Too Large: The receipt photo must be under 5MB. Please compress the image.");
+                                                    e.target.value = '';
+                                                    setReceiptFile(null);
+                                                } else {
+                                                    setReceiptFile(file || null);
+                                                }
+                                            }}
                                             className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                                             required
                                         />
@@ -507,6 +686,8 @@ const PaymentsAndOrders: React.FC = () => {
                                 {isSubmittingOrder ? <Spinner size="sm" /> : 'Log Part / Submit Request'}
                             </Button>
                             {orderStatus && <p className="text-sm text-center text-green-600 dark:text-green-400 mt-2">{orderStatus}</p>}
+                            </>
+                            )}
                         </form>
                     </Card>
 
@@ -531,7 +712,7 @@ const PaymentsAndOrders: React.FC = () => {
                                         </p>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        <span className="font-bold text-gray-900 dark:text-white">${order.cost.toFixed(2)}</span>
+                                        <span className="font-bold text-gray-900 dark:text-white">${(order.cost ?? 0).toFixed(2)}</span>
                                         <button 
                                             onClick={() => handleDeletePartOrder(order.id)} 
                                             className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded transition-all opacity-0 group-hover:opacity-100"
@@ -553,6 +734,14 @@ const PaymentsAndOrders: React.FC = () => {
                     isOpen={true} 
                     onClose={() => setEditingInvoiceId(null)} 
                     jobId={editingInvoiceId} 
+                />
+            )}
+            {viewingDocument && (
+                <DocumentPreview
+                    type={viewingDocument.type}
+                    data={viewingDocument.data}
+                    onClose={() => setViewingDocument(null)}
+                    isInternal={true}
                 />
             )}
         </div>

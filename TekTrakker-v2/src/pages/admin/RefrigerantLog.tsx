@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
@@ -9,7 +10,8 @@ import Select from 'components/ui/Select';
 import { db } from 'lib/firebase';
 import type { RefrigerantTransaction } from 'types';
 import { globalConfirm } from 'lib/globalConfirm';
-import { Edit, Trash2, Database } from 'lucide-react';
+import { Edit, Trash2, Database, ScanBarcode } from 'lucide-react';
+import { BarcodeScannerButton } from 'components/ui/BarcodeScanner';
 
 const REFRIGERANTS = [
     'R22', 'R410A', 'R134a', 'R404A', 'R407C', 'R422B', 
@@ -159,7 +161,7 @@ const RefrigerantLog: React.FC = () => {
             setEntry({ action: 'Purchase', date: new Date().toISOString().split('T')[0], vendor: '', customerId: '', refType: 'R410A', amount: 0, cylinderNo: '', cost: 0, notes: '' });
         } catch (err) {
             console.error(err);
-            alert("Failed to save log entry.");
+            showToast.warn("Failed to save log entry.");
         } finally {
             setIsSaving(false);
         }
@@ -188,14 +190,14 @@ const RefrigerantLog: React.FC = () => {
         if (!id.startsWith('reftx-')) {
             if (!await globalConfirm("This log is linked to a job. Deleting here won't affect the job record. Delete anyway?")) return;
             // Job-linked logs don't have their own Firestore document - inform user
-            alert("Job-linked refrigerant logs cannot be deleted from here. To remove this, edit the job and delete it from its refrigerant log.");
+            showToast.warn("Job-linked refrigerant logs cannot be deleted from here. To remove this, edit the job and delete it from its refrigerant log.");
             return;
         }
         if (!await globalConfirm("Delete this refrigerant record?")) return;
         try {
             await db.collection('refrigerantTransactions').doc(id).delete();
         } catch (e) {
-            alert("Delete failed");
+            showToast.warn("Delete failed");
         }
     };
 
@@ -207,7 +209,7 @@ const RefrigerantLog: React.FC = () => {
     const handleSaveCylinder = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!state.currentOrganization?.id) {
-            alert('Cannot save: organization not loaded.');
+            showToast.warn('Cannot save: organization not loaded.');
             return;
         }
         if (isSaving) return;
@@ -231,7 +233,7 @@ const RefrigerantLog: React.FC = () => {
             setIsCylinderModalOpen(false);
             setEditingCylinder(null);
         } catch (err) {
-            alert('Failed to save cylinder: ' + (err as any)?.message);
+            showToast.warn('Failed to save cylinder: ' + (err as any)?.message);
         } finally {
             setIsSaving(false);
         }
@@ -242,17 +244,14 @@ const RefrigerantLog: React.FC = () => {
         try {
             await db.collection('refrigerantCylinders').doc(id).delete();
         } catch (e) {
-            alert("Delete failed");
+            showToast.warn("Delete failed");
         }
     };
 
     return (
         <div className="space-y-6">
             <header className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-900">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Refrigerant Logbook</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Track usage by customer to guarantee EPA compliance.</p>
-                </div>
+                
                 <div className="flex gap-2">
                     <Button variant="secondary" onClick={() => window.print()} className="w-auto border-blue-200">Print Log</Button>
                     <Button onClick={() => {
@@ -300,10 +299,10 @@ const RefrigerantLog: React.FC = () => {
                                 <td className="px-6 py-4 font-bold text-blue-600">{(cyl.currentWeight - cyl.tareWeight).toFixed(2)} lbs</td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-2">
-                                        <button onClick={() => { setEditingCylinder(cyl); setIsCylinderModalOpen(true); }} className="text-blue-500 hover:text-blue-700">
+                                        <button onClick={() => { setEditingCylinder(cyl); setIsCylinderModalOpen(true); }} className="text-blue-500 hover:text-blue-700" aria-label="Edit Cylinder" title="Edit Cylinder">
                                             <Edit size={16} />
                                         </button>
-                                        <button onClick={() => handleDeleteCylinder(cyl.id)} className="text-red-500 hover:text-red-700">
+                                        <button onClick={() => handleDeleteCylinder(cyl.id)} className="text-red-500 hover:text-red-700" aria-label="Delete Cylinder" title="Delete Cylinder">
                                             <Trash2 size={16} />
                                         </button>
                                     </div>
@@ -346,10 +345,10 @@ const RefrigerantLog: React.FC = () => {
                                     <td className="px-6 py-4 text-right">
                                         {entry.id.startsWith('reftx-') && (
                                             <div className="flex justify-end gap-2">
-                                                <button onClick={() => handleEdit(entry)} className="text-blue-500 hover:text-blue-700">
+                                                <button onClick={() => handleEdit(entry)} className="text-blue-500 hover:text-blue-700" aria-label="Edit Record" title="Edit Record">
                                                     <Edit size={16} />
                                                 </button>
-                                                <button onClick={() => handleDelete(entry.id)} className="text-red-500 hover:text-red-700">
+                                                <button onClick={() => handleDelete(entry.id)} className="text-red-500 hover:text-red-700" aria-label="Delete Record" title="Delete Record">
                                                     <Trash2 size={16} />
                                                 </button>
                                             </div>
@@ -385,7 +384,12 @@ const RefrigerantLog: React.FC = () => {
                         <Input label="Amount (lbs)" type="number" step="0.01" value={entry.amount} onChange={e => setEntry({...entry, amount: parseFloat(e.target.value)})} required />
                     </div>
                     
-                    <Input label="Cylinder #" value={entry.cylinderNo} onChange={e => setEntry({...entry, cylinderNo: e.target.value})} required />
+                    <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                            <Input label="Cylinder #" value={entry.cylinderNo} onChange={e => setEntry({...entry, cylinderNo: e.target.value})} required />
+                        </div>
+                        <BarcodeScannerButton onScan={(text) => setEntry({...entry, cylinderNo: text})} />
+                    </div>
 
                     {entry.action === 'Purchase' ? (
                         <div className="space-y-4">
@@ -412,7 +416,12 @@ const RefrigerantLog: React.FC = () => {
             <Modal isOpen={isCylinderModalOpen} onClose={() => setIsCylinderModalOpen(false)} title="Cylinder Management">
                 {editingCylinder && (
                     <form onSubmit={handleSaveCylinder} className="space-y-4">
-                        <Input label="Cylinder / Tank Serial #" value={editingCylinder.cylinderNo} onChange={e => setEditingCylinder({...editingCylinder, cylinderNo: e.target.value})} required />
+                        <div className="flex gap-2 items-end">
+                            <div className="flex-1">
+                                <Input label="Cylinder / Tank Serial #" value={editingCylinder.cylinderNo} onChange={e => setEditingCylinder({...editingCylinder, cylinderNo: e.target.value})} required />
+                            </div>
+                            <BarcodeScannerButton onScan={(text) => setEditingCylinder({...editingCylinder, cylinderNo: text})} />
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                             <Select label="Ref Type" value={editingCylinder.type} onChange={e => setEditingCylinder({...editingCylinder, type: e.target.value})}>
                                 {REFRIGERANTS.map(r => <option key={r} value={r}>{r}</option>)}

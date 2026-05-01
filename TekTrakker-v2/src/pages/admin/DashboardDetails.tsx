@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -9,9 +10,11 @@ import Modal from 'components/ui/Modal';
 import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import Textarea from 'components/ui/Textarea';
-import type { Job, User, PartOrder, InvoiceLineItem, ShopOrder } from 'types';
+import type { Job, PartOrder, InvoiceLineItem, ShopOrder, Customer } from 'types';
 import { formatAddress } from 'lib/utils';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Mail } from 'lucide-react';
+import { db } from 'lib/firebase';
+import { collection, addDoc } from 'firebase/firestore';
 import { globalConfirm } from "lib/globalConfirm";
 
 const BackButton = () => {
@@ -37,10 +40,7 @@ export const ActiveTechsView: React.FC = () => {
     return (
         <div>
             <BackButton />
-            <header className="mb-6">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Active Technicians & Supervisors</h2>
-                <p className="text-gray-600 dark:text-gray-400">Detailed list of all technicians and supervisors currently employed.</p>
-            </header>
+            
             <Card>
                 <Table headers={['Name', 'Role', 'Contact', 'Status', 'Current Assignment']}>
                     {employees.map(tech => {
@@ -82,10 +82,7 @@ export const ActiveJobsView: React.FC = () => {
     return (
         <div>
             <BackButton />
-            <header className="mb-6">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Jobs in Progress</h2>
-                <p className="text-gray-600 dark:text-gray-400">All jobs currently assigned and active (not yet paid).</p>
-            </header>
+            
              <Card>
                 <Table headers={['Customer', 'Address', 'Technician', 'Status', 'Due']}>
                     {jobs.map(job => (
@@ -184,7 +181,7 @@ export const PartOrdersView: React.FC = () => {
                         }
                     };
                     dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
-                    alert('Invoice updated with parts.');
+                    showToast.warn('Invoice updated with parts.');
                 }
             }
         }
@@ -211,10 +208,10 @@ export const PartOrdersView: React.FC = () => {
              {editingOrder && (
                 <Modal isOpen={true} onClose={() => setEditingOrder(null)} title="Edit Part Order">
                     <form onSubmit={handleSaveOrder} className="space-y-4">
-                        <Textarea label="Parts List" value={editingOrder.parts} onChange={(e: any) => setEditingOrder({...editingOrder, parts: e.target.value})} />
+                        <Textarea label="Parts List" value={editingOrder.parts} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditingOrder({...editingOrder, parts: e.target.value})} />
                         <Input label="Cost ($)" type="number" value={editingOrder.cost} onChange={e => setEditingOrder({...editingOrder, cost: parseFloat(e.target.value)})} />
                         
-                        <Select label="Status" value={editingOrder.status} onChange={(e: any) => setEditingOrder({...editingOrder, status: e.target.value})}>
+                        <Select label="Status" value={editingOrder.status} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEditingOrder({...editingOrder, status: e.target.value as PartOrder['status']})}>
                             <option value="Pending Approval">Pending Approval</option>
                             <option value="Ordered">Ordered (Awaiting Delivery)</option>
                             <option value="Fulfilled">Fulfilled / Picked Up</option>
@@ -255,10 +252,7 @@ export const PartOrdersView: React.FC = () => {
              )}
 
             <header className="mb-6 flex justify-between items-center">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Orders Management</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Parts & Shop Orders.</p>
-                </div>
+                
                 <div className="bg-gray-100 dark:bg-gray-800 p-1 rounded-lg border border-gray-200 dark:border-gray-700 flex">
                     <button 
                         onClick={() => setViewMode('internal')}
@@ -279,7 +273,7 @@ export const PartOrdersView: React.FC = () => {
                  <Card>
                     <h3 className="text-lg font-bold text-primary-600 dark:text-primary-400 mb-4">Technician Part Requests & Logs</h3>
                     <Table headers={['Status', 'Method', 'Customer / Job', 'Parts List', 'Cost', 'Actions']}>
-                        {partOrders.map((order: any) => (
+                        {partOrders.map((order: PartOrder & { fulfillmentMethod?: string, customerName?: string, jobAddress?: string }) => (
                             <tr key={order.id} className="group">
                                  <td className="px-6 py-4">
                                      <span className={`px-2 py-1 rounded text-[10px] uppercase font-bold ${
@@ -372,10 +366,7 @@ export const UnpaidInvoicesView: React.FC = () => {
     return (
         <div>
             <BackButton />
-            <header className="mb-6">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Unpaid Invoices</h2>
-                <p className="text-gray-600 dark:text-gray-400">Outstanding balances requiring payment (Unpaid & Pending).</p>
-            </header>
+            
             <Card>
                 <Table headers={['Invoice ID', 'Customer', 'Date Scheduled', 'Amount', 'Status']}>
                     {invoices.map(job => (
@@ -396,6 +387,246 @@ export const UnpaidInvoicesView: React.FC = () => {
                     ))}
                      {invoices.length === 0 && (
                         <tr><td colSpan={5} className="p-6 text-center text-gray-500">No unpaid invoices. Good job!</td></tr>
+                    )}
+                </Table>
+            </Card>
+        </div>
+    );
+};
+
+
+export const UpcomingMaintenanceView: React.FC = () => {
+    const { state } = useAppContext();
+
+    
+    interface UpcomingMaintenanceItem {
+        customer: Customer;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        asset: any;
+        nextDate: Date;
+        daysUntil: number;
+        isOverdue: boolean;
+    }
+    
+    const upcomingList: UpcomingMaintenanceItem[] = [];
+    const now = new Date();
+    
+    Object.values(state.customers).forEach(customer => {
+        if(customer.equipment) {
+            customer.equipment.forEach(asset => {
+                if(asset.warranty?.requiresMaintenance && asset.warranty.maintenanceIntervalMonths) {
+                    let nextDate: Date;
+                    if(asset.warranty.lastMaintenanceDate) {
+                        nextDate = new Date(asset.warranty.lastMaintenanceDate);
+                    } else if(asset.warranty.manufacturerStartDate) {
+                        nextDate = new Date(asset.warranty.manufacturerStartDate);
+                        nextDate.setDate(nextDate.getDate() + 1);
+                    } else {
+                        return;
+                    }
+                    
+                    nextDate.setMonth(nextDate.getMonth() + asset.warranty.maintenanceIntervalMonths);
+                    const diffTime = nextDate.getTime() - now.getTime();
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    if(diffDays <= 45) {
+                        upcomingList.push({
+                            customer,
+                            asset,
+                            nextDate,
+                            daysUntil: diffDays,
+                            isOverdue: diffDays < 0
+                        });
+                    }
+                }
+            });
+        }
+    });
+
+    upcomingList.sort((a,b) => a.daysUntil - b.daysUntil);
+
+    const handleSendReminder = async (item: UpcomingMaintenanceItem) => {
+        if (!item.customer.email) {
+            showToast.warn("No email address found for this customer.");
+            return;
+        }
+        if (await globalConfirm(`Send an automated reminder email to ${item.customer.name} (${item.customer.email})?`)) {
+            try {
+                const orgName = state.currentOrganization?.name || 'Service Provider';
+                const orgEmail = state.currentOrganization?.email || '';
+                const orgLicense = state.currentOrganization?.settings?.licenseNumber || state.currentOrganization?.licenseNumber || '';
+                const portalUrl = `https://tektrakker-v2.web.app/#/portal/auth?orgId=${item.customer.organizationId}`;
+                
+                const licenseFooterText = orgLicense ? `\n\nState License: ${orgLicense}` : '';
+                const licenseFooterHtml = orgLicense ? `<br/><br/><small style="color:#6b7280;font-size:12px;">State License: ${orgLicense}</small>` : '';
+
+                await addDoc(collection(db, 'mail'), {
+                     toUids: [item.customer.id],
+                     to: item.customer.email,
+                     message: {
+                         from: `${orgName} <no-reply@tektrakker.com>`,
+                         ...(orgEmail ? { replyTo: orgEmail } : {}),
+                         subject: `Action Required: Maintenance due for your ${item.asset.brand || ''} Equipment`,
+                         text: `Hello ${item.customer.name || 'Valued Customer'},\n\nThis is a friendly reminder from ${orgName} that your ${item.asset.brand || 'HVAC'} ${item.asset.type || 'system'} is due for routine warranty maintenance in ${item.daysUntil} days.\n\nPlease schedule an appointment through your portal to maintain your warranty compliance: ${portalUrl}\n\nThank you,\n${orgName}${licenseFooterText}`,
+                         html: `<p>Hello <strong>${item.customer.name || 'Valued Customer'}</strong>,</p>
+                                <p>This is a friendly reminder from <strong>${orgName}</strong> that your <strong>${item.asset.brand || 'HVAC'} ${item.asset.type || 'system'}</strong> is due for routine warranty maintenance in <strong>${item.daysUntil} days</strong>.</p>
+                                <p>Please schedule an appointment through your portal to maintain your warranty coverage.</p>
+                                <p><a href="${portalUrl}" style="background-color:#2563eb;color:white;padding:10px 15px;text-decoration:none;border-radius:5px;display:inline-block;margin-top:10px;">Access Service Portal to Schedule</a></p>
+                                <p>Thank you,<br/><strong>${orgName}</strong></p>${licenseFooterHtml}`
+                     }
+                });
+                showToast.warn(`Reminder email queued for ${item.customer.name}!`);
+            } catch (e: unknown) {
+                console.error("Failed to queue mail docs", e);
+                showToast.warn(`Failed to send: ${(e as Error).message}`);
+            }
+        }
+    };
+
+    return (
+        <div>
+            <BackButton />
+            
+            <Card>
+                <Table headers={['Customer', 'Equipment', 'Last Serviced', 'Next Due', 'Status', 'Actions']}>
+                    {upcomingList.map((item, idx) => (
+                        <tr key={idx}>
+                            <td className="px-6 py-4">
+                                <div className="text-gray-900 dark:text-white font-medium">{item.customer.name}</div>
+                                <div className="text-xs text-gray-500">{item.customer.phone || 'No phone'}</div>
+                            </td>
+                            <td className="px-6 py-4">
+                                <span className="font-semibold">{item.asset.brand} - {item.asset.type}</span>
+                                <div className="text-xs text-slate-500">M/N: {item.asset.model || 'Unknown'}</div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
+                                {item.asset.warranty?.lastMaintenanceDate ? new Date(item.asset.warranty.lastMaintenanceDate).toLocaleDateString() : 'Never'}
+                            </td>
+                            <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
+                                {item.nextDate.toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 text-sm">
+                                {item.isOverdue ? (
+                                    <span className="px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                                        Overdue ({-item.daysUntil} days)
+                                    </span>
+                                ) : (
+                                    <span className="px-2 py-1 rounded text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                        Due in {item.daysUntil} days
+                                    </span>
+                                )}
+                            </td>
+                            <td className="px-6 py-4">
+                                <button
+                                    onClick={() => handleSendReminder(item)}
+                                    className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition-colors"
+                                >
+                                    <Mail size={14} /> Send Reminder
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
+                    {upcomingList.length === 0 && (
+                        <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nothing due in the next 45 days.</td></tr>
+                    )}
+                </Table>
+            </Card>
+        </div>
+    );
+};
+
+export const ActiveWarrantiesView: React.FC = () => {
+    const { state } = useAppContext();
+    const navigate = useNavigate();
+    const now = new Date();
+    const addMonths = (d: Date, m: number) => { const r = new Date(d); r.setMonth(r.getMonth() + m); return r; };
+
+    const warrantyRows: { customerId: string; customerName: string; phone: string; equipmentLabel: string; warrantyType: string; expiryDate: Date; nextPmDate: Date | null; pmStatus: string; daysUntilPm: number | null; }[] = [];
+
+    state.customers.forEach(customer => {
+        (customer.equipment || []).forEach(asset => {
+            const w = asset.warranty;
+            if (!w) return;
+            const mfgStart = w.manufacturerStartDate ? new Date(w.manufacturerStartDate) : null;
+            const mfgExpiry = mfgStart && w.manufacturerDurationMonths ? addMonths(mfgStart, w.manufacturerDurationMonths) : null;
+            const labStart = w.laborStartDate ? new Date(w.laborStartDate) : null;
+            const labExpiry = labStart && w.laborDurationMonths ? addMonths(labStart, w.laborDurationMonths) : null;
+            const latestExpiry = [mfgExpiry, labExpiry].filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0];
+            if (!latestExpiry || latestExpiry <= now) return;
+            let nextPmDate: Date | null = null;
+            let daysUntilPm: number | null = null;
+            let pmStatus = 'n/a';
+            if (w.requiresMaintenance && w.maintenanceIntervalMonths) {
+                const baseDate = w.lastMaintenanceDate ? new Date(w.lastMaintenanceDate) : (mfgStart || new Date());
+                nextPmDate = addMonths(baseDate, w.maintenanceIntervalMonths);
+                daysUntilPm = Math.ceil((nextPmDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                pmStatus = daysUntilPm < 0 ? 'overdue' : daysUntilPm <= 30 ? 'upcoming' : 'ok';
+            }
+            const types: string[] = [];
+            if (mfgExpiry && mfgExpiry > now) types.push('Manufacturer');
+            if (labExpiry && labExpiry > now) types.push('Labor');
+            warrantyRows.push({ customerId: customer.id, customerName: customer.name, phone: customer.phone || '', equipmentLabel: `${asset.brand || ''} ${asset.type || 'System'}`.trim(), warrantyType: types.join(' + ') || 'Equipment', expiryDate: latestExpiry, nextPmDate, pmStatus, daysUntilPm });
+        });
+    });
+
+    (state.jobs as Job[]).forEach(job => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const inv = job.invoice as any;
+        if (!inv || !inv.warrantyDisclaimerAgreed) return;
+        const wm = inv.workmanshipWarrantyMonths || 0;
+        const pm = inv.partsWarrantyMonths || 0;
+        if (!wm && !pm) return;
+        const issued = new Date(job.appointmentTime);
+        const wExpiry = wm > 0 ? addMonths(issued, wm) : null;
+        const pExpiry = pm > 0 ? addMonths(issued, pm) : null;
+        const latestExpiry = [wExpiry, pExpiry].filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0];
+        if (!latestExpiry || latestExpiry <= now) return;
+        const types: string[] = [];
+        if (wExpiry && wExpiry > now) types.push('Workmanship');
+        if (pExpiry && pExpiry > now) types.push('Parts');
+        warrantyRows.push({ customerId: job.customerId || '', customerName: job.customerName || 'Unknown', phone: '', equipmentLabel: 'Invoice Coverage', warrantyType: types.join(' + '), expiryDate: latestExpiry, nextPmDate: null, pmStatus: 'n/a', daysUntilPm: null });
+    });
+
+    warrantyRows.sort((a, b) => {
+        const aPm = a.nextPmDate ? a.nextPmDate.getTime() : Infinity;
+        const bPm = b.nextPmDate ? b.nextPmDate.getTime() : Infinity;
+        if (aPm !== bPm) return aPm - bPm;
+        return a.expiryDate.getTime() - b.expiryDate.getTime();
+    });
+
+    return (
+        <div>
+            <BackButton />
+            <div className="mb-6">
+                <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white">Active Warranty Customers</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{warrantyRows.length} active warranties &bull; Sorted by next PM service due</p>
+            </div>
+            <Card>
+                <Table headers={['Customer', 'Equipment', 'Warranty Type', 'Warranty Expires', 'Next PM Due', 'PM Status']}>
+                    {warrantyRows.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors" onClick={() => navigate(`/admin/customers?custId=${row.customerId}`)}>
+                            <td className="px-6 py-4">
+                                <div className="text-gray-900 dark:text-white font-medium">{row.customerName}</div>
+                                {row.phone && <div className="text-xs text-gray-500">{row.phone}</div>}
+                            </td>
+                            <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm">{row.equipmentLabel}</td>
+                            <td className="px-6 py-4">
+                                <span className="px-2 py-1 text-xs font-bold rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">{row.warrantyType}</span>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-700 dark:text-gray-300">{row.expiryDate.toLocaleDateString()}</td>
+                            <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
+                                {row.nextPmDate ? row.nextPmDate.toLocaleDateString() : <span className="text-gray-400 font-normal text-xs">No PM required</span>}
+                            </td>
+                            <td className="px-6 py-4">
+                                {row.pmStatus === 'overdue' && <span className="px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Overdue ({Math.abs(row.daysUntilPm!)} days)</span>}
+                                {row.pmStatus === 'upcoming' && <span className="px-2 py-1 rounded text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">Due in {row.daysUntilPm} days</span>}
+                                {row.pmStatus === 'ok' && <span className="px-2 py-1 rounded text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">OK ({row.daysUntilPm} days)</span>}
+                                {row.pmStatus === 'n/a' && <span className="text-xs text-gray-400">&mdash;</span>}
+                            </td>
+                        </tr>
+                    ))}
+                    {warrantyRows.length === 0 && (
+                        <tr><td colSpan={6} className="p-6 text-center text-gray-500">No active warranties found.</td></tr>
                     )}
                 </Table>
             </Card>

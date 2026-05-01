@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, DollarSign, Target, FileText, Wrench, Receipt, Rocket, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Users, DollarSign, Target, FileText, Wrench, Receipt, Rocket, MessageSquare, ListChecks } from 'lucide-react';
 import type { User } from '../../types';
 import { Logo } from '../ui/Logo';
 
@@ -28,6 +28,7 @@ const SalesSidebar: React.FC<SalesSidebarProps> = ({ user, onLogout, isOpen = fa
         group: 'Outreach',
         items: [
             { path: '/sales/campaigns', label: 'Campaigns', icon: Rocket },
+            { path: '/sales/mailing-lists', label: 'Mailing Lists', icon: ListChecks },
             { path: '/sales/messages', label: 'Messages', icon: MessageSquare },
         ]
     },

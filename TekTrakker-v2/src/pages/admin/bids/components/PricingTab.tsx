@@ -1,10 +1,9 @@
-
 import React, { useState } from 'react';
 import Input from 'components/ui/Input';
 import Button from 'components/ui/Button';
 import Textarea from 'components/ui/Textarea';
 import { BidLineItem, ProposalPreset } from 'types';
-import { Trash2, Plus } from 'lucide-react';
+import { Trash2, Plus, Sparkles } from 'lucide-react';
 import Modal from 'components/ui/Modal';
 
 interface PricingTabProps {
@@ -14,9 +13,11 @@ interface PricingTabProps {
     onAdd: (item: Partial<BidLineItem>) => void;
     pricebook: ProposalPreset[];
     onAddFromPricebook: (preset: ProposalPreset) => void;
+    onGenerateAIPricing: () => void;
+    isGeneratingAIPricing: boolean;
 }
 
-const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, onAdd, pricebook, onAddFromPricebook }) => {
+const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, onAdd, pricebook, onAddFromPricebook, onGenerateAIPricing, isGeneratingAIPricing }) => {
     const [isPricebookOpen, setIsPricebookOpen] = useState(false);
     const [newItem, setNewItem] = useState<Partial<BidLineItem>>({ qty: 1, unit: 'EA', unitPrice: 0 });
     const total = lineItems.reduce((sum, i) => sum + (i.totalPrice || 0), 0);
@@ -46,19 +47,25 @@ const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, 
 
             <div className="flex justify-between items-center">
                 <h3 className="font-bold text-lg text-slate-800 dark:text-white">Pricing Schedule (CLINs)</h3>
-                <Button onClick={() => setIsPricebookOpen(true)} variant="secondary" className="text-xs flex items-center gap-1">
-                    <Plus size={14} /> Add from Pricebook
-                </Button>
+                <div className="flex gap-2">
+                    <Button onClick={onGenerateAIPricing} disabled={isGeneratingAIPricing || lineItems.length === 0} variant="secondary" className="text-xs flex items-center gap-1 border-purple-200 text-purple-700 hover:bg-purple-50">
+                        {isGeneratingAIPricing ? <span className="animate-pulse">Analyzing...</span> : <><Sparkles size={14} className="text-purple-500" /> AI Pricing Recommendations</>}
+                    </Button>
+                    <Button onClick={() => setIsPricebookOpen(true)} variant="secondary" className="text-xs flex items-center gap-1">
+                        <Plus size={14} /> Add from Pricebook
+                    </Button>
+                </div>
             </div>
             
             <div className="bg-slate-50 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner overflow-x-auto">
-                <div className="min-w-[800px]">
+                <div className="min-w-[900px]">
                     {/* Header Row */}
                     <div className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
                         <div className="flex-[3_3_0%] min-w-[250px]">Description</div>
                         <div className="flex-[0.5_0.5_0%] min-w-[80px] text-center">Unit</div>
                         <div className="flex-[0.5_0.5_0%] min-w-[80px] text-center">Qty</div>
                         <div className="flex-[1_1_0%] min-w-[120px] text-right">Unit Price</div>
+                        <div className="flex-[1_1_0%] min-w-[120px] text-right text-purple-600">AI Rec Price</div>
                         <div className="flex-[1_1_0%] min-w-[120px] text-right">Total</div>
                         <div className="w-[40px] flex-shrink-0"></div>
                     </div>
@@ -74,7 +81,7 @@ const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, 
                             <div key={item.id} className="flex items-start gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm hover:border-primary-300 transition-colors group">
                                 <div className="flex-[3_3_0%] min-w-[250px]">
                                     <textarea 
-                                        className="w-full text-sm bg-transparent border-transparent hover:border-slate-300 focus:border-primary-500 focus:bg-white transition-all shadow-none rounded-md p-2 resize-none overflow-hidden" 
+                                        className="w-full text-sm bg-transparent border-transparent hover:border-slate-300 focus:border-primary-500 focus:bg-white transition-all shadow-none rounded-md p-2 resize-none overflow-hidden h-auto min-h-[38px]" 
                                         value={item.description || ''} 
                                         onChange={(e) => {
                                             onUpdate(item.id, 'description', e.target.value);
@@ -83,7 +90,6 @@ const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, 
                                         }} 
                                         placeholder="Item description"
                                         rows={1}
-                                        style={{ height: 'auto', minHeight: '38px' }}
                                         onFocus={(e) => {
                                             e.target.style.height = 'auto';
                                             e.target.style.height = e.target.scrollHeight + 'px';
@@ -115,6 +121,24 @@ const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, 
                                         prefix="$"
                                     />
                                 </div>
+                                <div className="flex-[1_1_0%] min-w-[120px] pt-1 flex items-center justify-end">
+                                    {item.aiRecommendedPrice !== undefined ? (
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-sm font-semibold text-purple-700 bg-purple-50 px-2 py-1 rounded border border-purple-100">
+                                                ${item.aiRecommendedPrice.toFixed(2)}
+                                            </span>
+                                            <button 
+                                                onClick={() => onUpdate(item.id, 'unitPrice', item.aiRecommendedPrice)}
+                                                className="text-purple-600 hover:text-purple-800 hover:bg-purple-100 p-1 rounded"
+                                                title="Apply Recommendation"
+                                            >
+                                                <Sparkles size={14} />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <span className="text-slate-300 text-xs italic">N/A</span>
+                                    )}
+                                </div>
                                 <div className="flex-[1_1_0%] min-w-[120px] text-right font-bold text-slate-800 dark:text-white px-3 pt-3">
                                     ${(item.totalPrice || 0).toFixed(2)}
                                 </div>
@@ -136,7 +160,7 @@ const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, 
                         <div className="flex items-start gap-2">
                             <div className="flex-[3_3_0%] min-w-[250px]">
                                 <textarea 
-                                    className="w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 p-2 resize-none overflow-hidden" 
+                                    className="w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 p-2 resize-none overflow-hidden h-auto min-h-[38px]" 
                                     placeholder="Enter new item description..." 
                                     value={newItem.description || ''} 
                                     onChange={(e) => {
@@ -145,7 +169,6 @@ const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, 
                                         e.target.style.height = e.target.scrollHeight + 'px';
                                     }} 
                                     rows={1}
-                                    style={{ height: 'auto', minHeight: '38px' }}
                                 />
                             </div>
                             <div className="flex-[0.5_0.5_0%] min-w-[80px]">
@@ -175,6 +198,7 @@ const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, 
                                     prefix="$"
                                 />
                             </div>
+                            <div className="flex-[1_1_0%] min-w-[120px]"></div>
                             <div className="flex-[1_1_0%] min-w-[120px] pr-[48px] flex justify-end">
                                 <Button 
                                     onClick={() => {

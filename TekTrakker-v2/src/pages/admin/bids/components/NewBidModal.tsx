@@ -7,16 +7,25 @@ import Button from 'components/ui/Button';
 interface NewBidModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (title: string) => void;
+    onSubmit: (title: string, linkedNoticeId?: string) => void;
     isProcessing: boolean;
+    initialTitle?: string;
+    noticeId?: string;
 }
 
-const NewBidModal: React.FC<NewBidModalProps> = ({ isOpen, onClose, onSubmit, isProcessing }) => {
-    const [title, setTitle] = useState('');
+const NewBidModal: React.FC<NewBidModalProps> = ({ isOpen, onClose, onSubmit, isProcessing, initialTitle = '', noticeId }) => {
+    const [title, setTitle] = useState(initialTitle);
+
+    // Update local title state if initialTitle changes
+    React.useEffect(() => {
+        if (initialTitle) {
+            setTitle(initialTitle);
+        }
+    }, [initialTitle]);
 
     const handleSubmit = () => {
         if (title) {
-            onSubmit(title);
+            onSubmit(title, noticeId);
             setTitle('');
         }
     };
@@ -24,6 +33,11 @@ const NewBidModal: React.FC<NewBidModalProps> = ({ isOpen, onClose, onSubmit, is
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Start New Proposal">
             <div className="space-y-4">
+                {noticeId && (
+                    <div className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 p-3 rounded-lg text-sm flex items-center gap-2">
+                        <span className="font-medium">Linking to Notice ID:</span> {noticeId.slice(0, 8)}...
+                    </div>
+                )}
                 <Input 
                     label="Project Title" 
                     value={title} 

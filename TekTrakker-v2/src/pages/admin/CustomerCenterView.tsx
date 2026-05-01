@@ -18,30 +18,27 @@ const CustomerCenterView: React.FC = () => {
 
     return (
         <div className="space-y-4">
-            <header className="flex items-center justify-between">
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Customer Center</h2>
-                <div className="flex space-x-1 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg w-full overflow-x-auto whitespace-nowrap scrollbar-hide">
-                    <button
-                        onClick={() => setActiveTab('customers')}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                            activeTab === 'customers'
-                                ? 'bg-white dark:bg-gray-800 text-primary-600 dark:text-primary-400 shadow-sm'
-                                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-                        }`}
-                    >
-                        Customers
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('memberships')}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                            activeTab === 'memberships'
-                                ? 'bg-white dark:bg-gray-800 text-primary-600 dark:text-primary-400 shadow-sm'
-                                : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
-                        }`}
-                    >
-                        Memberships
-                    </button>
-                </div>
+            <header className="flex flex-wrap items-center gap-3 mb-2">
+                <button
+                    onClick={() => setActiveTab('customers')}
+                    className={`px-6 py-2 text-sm font-bold rounded-lg transition-colors border ${
+                        activeTab === 'customers'
+                            ? 'bg-primary-600 text-white border-primary-600 shadow-md'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    }`}
+                >
+                    Customers
+                </button>
+                <button
+                    onClick={() => setActiveTab('memberships')}
+                    className={`px-6 py-2 text-sm font-bold rounded-lg transition-colors border ${
+                        activeTab === 'memberships'
+                            ? 'bg-primary-600 text-white border-primary-600 shadow-md'
+                            : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    }`}
+                >
+                    Memberships
+                </button>
             </header>
 
             <div className="mt-4">

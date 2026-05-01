@@ -31,6 +31,8 @@ interface BrandingTabProps {
     setPublicCredentials: (creds: string[]) => void;
     publicServices: string[];
     setPublicServices: (services: string[]) => void;
+    acceptsSubcontracting: boolean;
+    setAcceptsSubcontracting: (val: boolean) => void;
 }
 
 const BrandingTab: React.FC<BrandingTabProps> = ({
@@ -45,7 +47,8 @@ const BrandingTab: React.FC<BrandingTabProps> = ({
     publicProfileEnabled, setPublicProfileEnabled,
     publicDescription, setPublicDescription,
     publicCredentials, setPublicCredentials,
-    publicServices, setPublicServices
+    publicServices, setPublicServices,
+    acceptsSubcontracting, setAcceptsSubcontracting
 }) => {
     const [newCredential, setNewCredential] = useState('');
     const [newService, setNewService] = useState('');
@@ -83,7 +86,7 @@ const BrandingTab: React.FC<BrandingTabProps> = ({
                         <div>
                             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Primary Brand Color</label>
                             <div className="flex gap-2">
-                                <input type="color" className="h-10 w-10 rounded cursor-pointer border-0" value={brandingColor} onChange={e => setBrandingColor(e.target.value)} />
+                                <input type="color" title="Brand Color" aria-label="Brand Color" className="h-10 w-10 rounded cursor-pointer border-0" value={brandingColor} onChange={e => setBrandingColor(e.target.value)} />
                                 <Input value={brandingColor} onChange={e => setBrandingColor(e.target.value)} className="flex-1" />
                             </div>
                         </div>
@@ -149,6 +152,14 @@ const BrandingTab: React.FC<BrandingTabProps> = ({
                         description="Allow your business to be listed in the public contractor marketplace."
                     />
 
+                    <Toggle 
+                        label="Available for Subcontracting"
+                        enabled={acceptsSubcontracting}
+                        onChange={setAcceptsSubcontracting}
+                        description="Show a badge on your profile indicating you accept overflow work or subcontractor roles from other businesses."
+                        disabled={!publicProfileEnabled}
+                    />
+
                     <div>
                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Public Profile Logo</label>
                          <div className="flex items-center gap-4">
@@ -179,7 +190,7 @@ const BrandingTab: React.FC<BrandingTabProps> = ({
                                 <div key={index} className="flex items-center bg-sky-100 dark:bg-sky-900/50 text-sky-800 dark:text-sky-300 text-xs font-semibold px-2 py-1 rounded-full">
                                     <Wrench size={14} className="mr-1.5" />
                                     <span>{service}</span>
-                                    <button onClick={() => handleRemoveService(index)} className="ml-2 text-sky-600 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-200">
+                                    <button title="Remove Service" aria-label={`Remove ${service}`} onClick={() => handleRemoveService(index)} className="ml-2 text-sky-600 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-200">
                                         <X size={14} />
                                     </button>
                                 </div>
@@ -204,7 +215,7 @@ const BrandingTab: React.FC<BrandingTabProps> = ({
                                 <div key={index} className="flex items-center bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300 text-xs font-semibold px-2 py-1 rounded-full">
                                     <BadgeCheck size={14} className="mr-1.5" />
                                     <span>{cred}</span>
-                                    <button onClick={() => handleRemoveCredential(index)} className="ml-2 text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200">
+                                    <button title="Remove Credential" aria-label={`Remove ${cred}`} onClick={() => handleRemoveCredential(index)} className="ml-2 text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-200">
                                         <X size={14} />
                                     </button>
                                 </div>

@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
+import IoTDiagnosticsViewer from '../features/IoTDiagnosticsViewer';
+import CompanyCamGallery from '../features/CompanyCamGallery';
 import Modal from '../ui/Modal';
 import { 
     Calendar, MapPin, Clock, CheckCircle, Package, 
@@ -213,7 +215,9 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 {(() => {
                                                     try {
                                                         const items = JSON.parse(job.notes.diagnosisChecklist);
-                                                        return items.map((item: any, idx: number) => (
+                                                        const visibleItems = isAdmin ? items : items.filter((i: any) => !i.hiddenFromCustomer);
+                                                        if (visibleItems.length === 0) return <p className="text-xs text-slate-400 italic">No visible items.</p>;
+                                                        return visibleItems.map((item: any, idx: number) => (
                                                             <div key={idx} className="flex items-start gap-3 text-xs">
                                                                 <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${item.completed ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
                                                                     <Check size={10} strokeWidth={4}/>
@@ -235,7 +239,9 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 {(() => {
                                                     try {
                                                         const items = JSON.parse(job.notes.qualityChecklist);
-                                                        return items.map((item: any, idx: number) => (
+                                                        const visibleItems = isAdmin ? items : items.filter((i: any) => !i.hiddenFromCustomer);
+                                                        if (visibleItems.length === 0) return <p className="text-xs text-slate-400 italic">No visible items.</p>;
+                                                        return visibleItems.map((item: any, idx: number) => (
                                                             <div key={idx} className="flex items-start gap-3 text-xs">
                                                                 <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${item.completed ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
                                                                     <Check size={10} strokeWidth={4}/>
@@ -279,6 +285,22 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     <p className="text-xs text-slate-400 italic col-span-2 p-4 text-center">No field notes were recorded for this service.</p>
                                 )}
                             </div>
+                        </section>
+
+                        {/* CompanyCam Integration */}
+                        <CompanyCamGallery 
+                            jobId={job.id} 
+                            orgId={job.organizationId} 
+                            address={formatAddress(job.address)} 
+                        />
+
+                        {/* IoT Smart Diagnostics */}
+                        <section className="space-y-4 print:hidden">
+                            <IoTDiagnosticsViewer 
+                                jobId={job.id} 
+                                customerName={job.customerName} 
+                                orgId={job.organizationId} 
+                            />
                         </section>
 
                         {/* Refrigerant & Technical Data */}
@@ -535,7 +557,8 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 </p>
                                                 {wmExpiry && <p className="text-[9px] text-slate-400 mt-1">{wmActive ? `Exp. ${wmExpiry.toLocaleDateString()}` : `Expired ${wmExpiry.toLocaleDateString()}`}</p>}
                                                 <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                                                    <div className={`h-full rounded-full ${wmActive ? 'bg-blue-500' : 'bg-slate-300'}`} style={{ width: `${wmActive ? Math.min(100, (monthsLeft(wmExpiry) / wm) * 100) : 0}%` }} />
+                                                    {/* eslint-disable react/forbid-dom-props */}
+                                                    <div className={`h-full rounded-full ${wmActive ? 'bg-blue-500' : 'bg-slate-300'}`} {...({style: { width: `${wmActive ? Math.min(100, (monthsLeft(wmExpiry) / wm) * 100) : 0}%` }})} />
                                                 </div>
                                             </div>
                                         )}
@@ -548,7 +571,8 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 </p>
                                                 {pmExpiry && <p className="text-[9px] text-slate-400 mt-1">{pmActive ? `Exp. ${pmExpiry.toLocaleDateString()}` : `Expired ${pmExpiry.toLocaleDateString()}`}</p>}
                                                 <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                                                    <div className={`h-full rounded-full ${pmActive ? 'bg-emerald-500' : 'bg-slate-300'}`} style={{ width: `${pmActive ? Math.min(100, (monthsLeft(pmExpiry) / pm) * 100) : 0}%` }} />
+                                                    {/* eslint-disable react/forbid-dom-props */}
+                                                    <div className={`h-full rounded-full ${pmActive ? 'bg-emerald-500' : 'bg-slate-300'}`} {...({style: { width: `${pmActive ? Math.min(100, (monthsLeft(pmExpiry) / pm) * 100) : 0}%` }})} />
                                                 </div>
                                             </div>
                                         )}

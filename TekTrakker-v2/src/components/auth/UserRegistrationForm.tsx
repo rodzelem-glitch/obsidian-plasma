@@ -73,7 +73,7 @@ export const UserRegistrationForm: React.FC<UserRegistrationFormProps> = ({
         <div className="flex items-start gap-3 mt-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
             <input type="checkbox" id="consent" checked={consentGiven} onChange={e => setConsentGiven(e.target.checked)} className="mt-1 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500" />
             <label htmlFor="consent" className="text-xs text-slate-400">
-                I agree to the <a href="#" className="text-blue-400 hover:underline">Terms of Service</a> and consent to receive automated SMS/Email notifications regarding my account and services.
+                I agree to the <a href="#/terms" target="_blank" className="text-blue-400 hover:underline">Terms of Service</a> and consent to receive automated SMS/Email notifications regarding my account and services.
             </label>
         </div>
 

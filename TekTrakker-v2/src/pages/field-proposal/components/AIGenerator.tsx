@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import { BrainCircuit } from 'lucide-react';
@@ -57,7 +58,7 @@ const AIGenerator: React.FC<AIGeneratorProps> = ({ onSuggestions }) => {
             
         } catch (e) { 
             console.error("AI Estimation Error:", e);
-            alert("Failed to generate AI suggestions. Please try manual entry.");
+            showToast.warn("Failed to generate AI suggestions. Please try manual entry.");
         } finally { 
             setIsThinking(false); 
         }

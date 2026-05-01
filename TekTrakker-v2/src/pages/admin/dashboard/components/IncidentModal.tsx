@@ -21,6 +21,23 @@ const IncidentModal: React.FC<{ incident: any | null, onClose: () => void, onRes
                             <p><strong className='dark:text-white'>Time:</strong> {new Date(incident.timestamp).toLocaleString()}</p>
                             <p><strong className='dark:text-white'>Description:</strong></p>
                             <p className='p-2 bg-gray-100 dark:bg-gray-700 rounded'>{incident.description}</p>
+                            
+                            {incident.attachmentUrls && incident.attachmentUrls.length > 0 && (
+                                <div className="mt-4">
+                                    <p className='text-xs font-black uppercase text-slate-400 mb-2'>Attached Evidence / Photos</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {incident.attachmentUrls.map((url: string, idx: number) => (
+                                            <img 
+                                                key={idx} 
+                                                src={url} 
+                                                alt="Evidence" 
+                                                className="w-20 h-20 object-cover rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:scale-105 transition-transform" 
+                                                onClick={() => window.open(url, '_blank')}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

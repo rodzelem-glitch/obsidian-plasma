@@ -1,6 +1,8 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
-import { Mail, MessageSquare, Play, Pause, Trash2, Plus, Search, Target, Clock, BarChart3, TrendingUp, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Mail, MessageSquare, Play, Pause, Trash2, Plus, Search, Target, Clock, BarChart3, TrendingUp, Sparkles, AlertCircle, Loader2, ArrowLeft } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useAppContext } from '../../context/AppContext';
 import Card from '../../components/ui/Card';
@@ -35,6 +37,7 @@ interface Campaign {
 }
 
 const CampaignManager: React.FC = () => {
+    const navigate = useNavigate();
     const { state } = useAppContext();
     const [activeTab, setActiveTab] = useState<'campaigns' | 'templates' | 'analytics'>('campaigns');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -85,7 +88,7 @@ const CampaignManager: React.FC = () => {
             setIsCreateModalOpen(false);
             setNewCampaign({ name: '', type: 'email', audience: 'new_leads', content: '' });
         } catch (e) {
-            alert("Failed to save campaign.");
+            showToast.warn("Failed to save campaign.");
         } finally {
             setIsSubmitting(false);
         }
@@ -93,7 +96,7 @@ const CampaignManager: React.FC = () => {
 
     const handleAISmartWrite = async () => {
         if (!newCampaign.name) {
-            alert("Please enter a campaign name first to give the AI context.");
+            showToast.warn("Please enter a campaign name first to give the AI context.");
             return;
         }
         setIsWriting(true);
@@ -114,7 +117,7 @@ const CampaignManager: React.FC = () => {
 
             setNewCampaign(prev => ({ ...prev, content: result.data.text }));
         } catch (e) {
-            alert("AI writing failed.");
+            showToast.warn("AI writing failed.");
         } finally {
             setIsWriting(false);
         }
@@ -125,7 +128,7 @@ const CampaignManager: React.FC = () => {
         try {
             await db.collection('sales_campaigns').doc(camp.id).update({ status: nextStatus });
         } catch (e) {
-            alert("Update failed.");
+            showToast.warn("Update failed.");
         }
     };
 
@@ -140,12 +143,13 @@ const CampaignManager: React.FC = () => {
     return (
         <div className="space-y-6 pb-20">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Campaign Command Center</h2>
-                    <p className="text-slate-600 dark:text-slate-400 font-medium text-sm flex items-center gap-2">
-                        <Sparkles size={14} className="text-primary-600"/> High-velocity sales automation for platform growth.
-                    </p>
+                <div className="flex items-center gap-2">
+                    <Button variant="ghost" onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <ArrowLeft size={20} />
+                    </Button>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Campaign Manager</h1>
                 </div>
+                
                 <div className="flex gap-2">
                     <Button onClick={() => setIsCreateModalOpen(true)} className="w-auto shadow-xl bg-primary-600 hover:bg-primary-700 px-6 font-black uppercase text-xs">
                         <Plus size={16} className="mr-2"/> New Campaign

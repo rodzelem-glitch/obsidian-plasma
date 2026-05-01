@@ -28,7 +28,8 @@ export interface User {
   payType?: 'hourly' | 'salary'; 
   billableRate?: number | null; 
   ptoAccrued: number; 
-  role: 'master_admin' | 'admin' | 'employee' | 'both' | 'customer' | 'supervisor' | 'platform_sales' | 'Technician' | 'Subcontractor'; 
+  role: 'master_admin' | 'franchise_admin' | 'admin' | 'employee' | 'both' | 'customer' | 'supervisor' | 'platform_sales' | 'Technician' | 'Subcontractor'; 
+  franchiseId?: string;
   reportsTo?: string | null; 
   hireDate?: string | null;
   ssn?: string | null; 
@@ -53,13 +54,14 @@ export interface User {
   lastLoginAt?: string | null; 
   preferences?: any;
   permissions?: string[]; 
-  marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; };
+  marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; gclid?: string; };
   signedPolicies?: Record<string, string>;
   digitalId?: string;
   salesContractSigned?: boolean;
   salesContractDate?: string;
   salesContractSignature?: string;
   salesContractContent?: string;
+  taxW9Content?: string;
   profilePicUrl?: string;
   aiEstimatorEnabled?: boolean;
   w4Status?: 'Single' | 'Married' | 'Head of Household';
@@ -68,6 +70,8 @@ export interface User {
   w4Deductions?: number;
   w4ExtraWithholding?: number;
   squareTeamMemberId?: string | null;
+  gustoEmployeeId?: string | null;
   hasAppAccess?: boolean;
   kioskPin?: string;
+  gclid?: string;
 }

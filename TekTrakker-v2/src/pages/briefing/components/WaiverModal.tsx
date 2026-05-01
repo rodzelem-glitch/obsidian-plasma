@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../../context/AppContext';
 import { db } from '../../../lib/firebase';
@@ -100,7 +101,7 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                     }).catch(console.error);
                 } catch (e) {
                     console.error("Error creating waiver file:", e);
-                    alert("Error saving waiver document. Please try again.");
+                    showToast.warn("Error saving waiver document. Please try again.");
                     return;
                 }
             }
@@ -108,7 +109,7 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
             onSign(signature);
             onClose();
         } else {
-            alert("Please sign before accepting.");
+            showToast.warn("Please sign before accepting.");
         }
     };
 
@@ -174,7 +175,7 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                                 ${combinedText}
                             </div>
                             <p>You can sign these electronically by logging into your customer portal.</p>
-                            <a href="https://tektrakker.com/portal" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Go to Customer Portal</a>
+                            <a href="https://app.tektrakker.com/portal" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Go to Customer Portal</a>
                         </div>
                     `
                 },
@@ -182,10 +183,10 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                 type: 'WaiverRequest',
                 createdAt: new Date().toISOString()
             });
-            alert("Sent to customer and added to pending documents!");
+            showToast.warn("Sent to customer and added to pending documents!");
         } catch (e) {
             console.error(e);
-            alert("Failed to send.");
+            showToast.warn("Failed to send.");
         } finally {
             setIsSending(false);
         }

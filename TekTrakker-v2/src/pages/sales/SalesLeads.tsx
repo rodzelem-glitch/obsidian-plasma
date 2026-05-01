@@ -1,3 +1,5 @@
+import showToast from "lib/toast";
+import { getBaseUrl } from "lib/utils";
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -15,7 +17,7 @@ import {
     Rocket, CreditCard, Percent
 } from 'lucide-react';
 import Textarea from 'components/ui/Textarea';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { globalConfirm } from "lib/globalConfirm";
 
 const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
@@ -30,6 +32,7 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
 };
 
 const SalesLeads: React.FC = () => {
+    const navigate = useNavigate();
     const { state } = useAppContext();
     const { currentUser } = state;
     const [searchParams] = useSearchParams();
@@ -156,7 +159,7 @@ const SalesLeads: React.FC = () => {
             }
             setIsEditLeadOpen(false);
         } catch (e) {
-            alert("Save failed.");
+            showToast.warn("Save failed.");
         }
     };
 
@@ -168,7 +171,7 @@ const SalesLeads: React.FC = () => {
             await db.collection('platformLeads').doc(selectedLead.id).delete();
             setSelectedLead(null);
         } catch (e) {
-            alert("Delete failed.");
+            showToast.warn("Delete failed.");
         }
     };
 
@@ -194,23 +197,22 @@ const SalesLeads: React.FC = () => {
         try {
             if (commType === 'email') {
                 if (!selectedLead.email) {
-                    alert("Lead has no email.");
+                    showToast.warn("Lead has no email.");
                     setIsSending(false); return;
                 }
-                // Send via Mail Collection (Trigger)
-                await db.collection('mail').add({
-                    to: [selectedLead.email],
-                    message: {
-                        subject: `Message from ${currentUser?.firstName}`,
-                        text: commInput
-                    },
-                    organizationId: 'platform', // Sent from platform
+                const { sendEmail } = await import('../../lib/mailService');
+                
+                await sendEmail({
+                    to: selectedLead.email,
+                    subject: `Message from ${currentUser?.firstName}`,
+                    text: commInput,
+                    organizationId: 'platform',
                     type: 'SalesOutreach',
-                    createdAt: new Date().toISOString()
+                    bypassOptOut: false
                 });
             } else if (commType === 'sms') {
                 if (!selectedLead.phone) {
-                     alert("Lead has no phone.");
+                     showToast.warn("Lead has no phone.");
                      setIsSending(false); return;
                 }
                 // Simulate SMS or use Twilio if configured
@@ -236,7 +238,7 @@ const SalesLeads: React.FC = () => {
             setActiveTab('activity');
         } catch (e) {
             console.error(e);
-            alert("Failed to send/save.");
+            showToast.warn("Failed to send/save.");
         } finally {
             setIsSending(false);
         }
@@ -246,7 +248,7 @@ const SalesLeads: React.FC = () => {
         if (!selectedLead || !currentUser) return;
         
         if (!selectedLead.email) {
-            alert("Lead must have an email address to create an organization/user.");
+            showToast.warn("Lead must have an email address to create an organization/user.");
             return;
         }
 
@@ -268,7 +270,8 @@ const SalesLeads: React.FC = () => {
                 salesRepId: currentUser.id, // Tag commission owner
                 enabledPanels: { inventory: true, marketing: true, memberships: true, documents: true, time_tracking: true },
                 additionalUserSlots: additionalUsers,
-                customDiscountPct: customDiscount
+                customDiscountPct: customDiscount,
+                ...(currentUser.franchiseId ? { franchiseId: currentUser.franchiseId } : {})
             };
             
             // 2. Create User (Admin)
@@ -284,7 +287,8 @@ const SalesLeads: React.FC = () => {
                 username: selectedLead.email.split('@')[0],
                 payRate: 0,
                 ptoAccrued: 0,
-                notes: 'Created via Sales Conversion'
+                notes: 'Created via Sales Conversion',
+                ...(currentUser.franchiseId ? { franchiseId: currentUser.franchiseId } : {})
             };
             
             // 3. Create First Invoice (Job)
@@ -359,15 +363,15 @@ const SalesLeads: React.FC = () => {
             await batch.commit();
             
             // Generate Invoice Link
-            const link = `${window.location.origin}/#/invoice/${invoiceId}`;
+            const link = `${getBaseUrl()}/#/invoice/${invoiceId}`;
             setConvertedInvoiceLink(link);
             
             // Update UI
             setSelectedLead({ ...selectedLead, status: 'Closed Won' });
-            alert("Lead converted successfully! Organization and Invoice created.");
+            showToast.warn("Lead converted successfully! Organization and Invoice created.");
         } catch (e: any) {
             console.error(e);
-            alert("Conversion failed: " + e.message);
+            showToast.warn("Conversion failed: " + e.message);
         } finally {
             setIsConverting(false);
         }
@@ -641,7 +645,7 @@ const SalesLeads: React.FC = () => {
                              </div>
                              
                              <div className="flex justify-center gap-2 pt-2">
-                                 <Button onClick={() => { navigator.clipboard.writeText(convertedInvoiceLink); alert("Copied!"); }} variant="secondary">Copy Link</Button>
+                                 <Button onClick={() => { navigator.clipboard.writeText(convertedInvoiceLink); showToast.warn("Copied!"); }} variant="secondary">Copy Link</Button>
                                  <Button onClick={() => { setIsConvertModalOpen(false); setConvertedInvoiceLink(''); }}>Done</Button>
                              </div>
                         </div>

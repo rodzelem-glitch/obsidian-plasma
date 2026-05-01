@@ -7,18 +7,18 @@ interface TableProps {
 
 const Table: React.FC<TableProps> = ({ headers, children }) => {
     return (
-        <div className="relative overflow-x-auto custom-scrollbar touch-pan-x">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800">
+        <div className="relative overflow-x-auto custom-scrollbar touch-pan-x rounded-lg border border-slate-200 dark:border-slate-700">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 sticky top-0 z-[1]">
                     <tr>
                         {headers.map((h, i) => (
-                            <th key={i} className="px-4 md:px-6 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">
+                            <th key={i} className="px-4 md:px-6 py-3 text-left text-[10px] md:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap">
                                 {h}
                             </th>
                         ))}
                     </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="bg-white dark:bg-slate-800 text-slate-900 dark:text-gray-100 divide-y divide-slate-100 dark:divide-slate-700/50 [&>tr]:transition-colors [&>tr:hover]:bg-slate-50 dark:[&>tr:hover]:bg-slate-700/30 [&>tr]:min-h-[48px]">
                     {children}
                 </tbody>
             </table>

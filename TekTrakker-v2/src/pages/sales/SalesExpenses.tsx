@@ -1,5 +1,7 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import { useConfirm } from 'context/ConfirmContext';
 import Card from 'components/ui/Card';
@@ -8,23 +10,29 @@ import Button from 'components/ui/Button';
 import Modal from 'components/ui/Modal';
 import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
-import { db } from 'lib/firebase';
+import { db, functions } from 'lib/firebase';
 import { uploadFileToStorage } from 'lib/storageService';
 import type { Expense, BusinessDocument } from 'types';
-import { Receipt, Plus, Trash2, FileText, Download, PenTool, Paperclip } from 'lucide-react';
+import { Receipt, Plus, Trash2, FileText, Download, PenTool, Paperclip, Camera as CameraIcon, Loader2, ArrowLeft } from 'lucide-react';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { formatAddress } from 'lib/utils';
+import DOMPurify from 'dompurify';
 
 const SalesExpenses: React.FC = () => {
+    const navigate = useNavigate();
     const { state, dispatch } = useAppContext();
     const { confirm } = useConfirm();
     const { currentUser } = state;
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [taxDocs, setTaxDocs] = useState<BusinessDocument[]>([]);
-    const [viewingReceipt, setViewingReceipt] = useState<string | null>(null);
+    const [viewingReceipt, setViewingReceipt] = useState<string[] | null>(null);
+    const [currentReceiptIndex, setCurrentReceiptIndex] = useState(0);
     const [isUploadingToExpenseId, setIsUploadingToExpenseId] = useState<string | null>(null);
     
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [newExpenseFile, setNewExpenseFile] = useState<File | null>(null);
+    const [newExpensePhotos, setNewExpensePhotos] = useState<string[]>([]);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [newExpense, setNewExpense] = useState<Partial<Expense>>({
         date: new Date().toISOString().split('T')[0],
         category: 'Travel',
@@ -32,12 +40,20 @@ const SalesExpenses: React.FC = () => {
         description: '',
         vendor: '',
         receiptData: null,
-        receiptUrl: null
+        receiptUrl: null,
+        receiptUrls: []
     });
 
     const handleAttachToExisting = async (e: React.ChangeEvent<HTMLInputElement>, expId: string) => {
         const file = e.target.files?.[0];
         if (!file || !currentUser) return;
+        
+        if (file.size > 5 * 1024 * 1024) {
+            showToast.warn("File Too Large: The receipt photo must be under 5MB. Please compress the image.");
+            e.target.value = '';
+            return;
+        }
+
         setIsUploadingToExpenseId(expId);
         
         try {
@@ -47,16 +63,51 @@ const SalesExpenses: React.FC = () => {
             await db.collection('expenses').doc(expId).update({ receiptUrl: downloadUrl, receiptData: null });
         } catch (err) {
             console.error("Failed to update receipt", err);
-            alert("Upload failed.");
+            showToast.warn("Upload failed. The file format might be unsupported or the server rejected the payload.");
         } finally {
             setIsUploadingToExpenseId(null);
         }
     };
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setNewExpenseFile(file);
+    const handleCaptureReceipt = async () => {
+        try {
+            const image = await Camera.getPhoto({
+                quality: 60,
+                allowEditing: false,
+                resultType: CameraResultType.Base64,
+                source: CameraSource.Prompt
+            });
+            if (image.base64String) {
+                const dataUrl = `data:image/jpeg;base64,${image.base64String}`;
+                const updatedPhotos = [...newExpensePhotos, dataUrl];
+                setNewExpensePhotos(updatedPhotos);
+
+                if (updatedPhotos.length === 1) {
+                    setIsAnalyzing(true);
+                    try {
+                        const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
+                        const res = await analyzeFn({ base64Images: [dataUrl] });
+                        const extracted = (res.data as any).data;
+                        if (extracted) {
+                            setNewExpense(prev => ({
+                                ...prev,
+                                vendor: extracted.vendor || prev.vendor,
+                                amount: extracted.amount ? parseFloat(extracted.amount) : prev.amount,
+                                date: extracted.date || prev.date,
+                                category: extracted.category || prev.category,
+                                description: extracted.description || prev.description
+                            }));
+                        }
+                    } catch (aiErr) {
+                        console.error('OCR Extraction failed:', aiErr);
+                    } finally {
+                        setIsAnalyzing(false);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Camera Cancelled/Failed", e);
+        }
     };
 
     // W-9 State
@@ -110,38 +161,43 @@ const SalesExpenses: React.FC = () => {
         e.preventDefault();
         if (!currentUser) return;
         
-        let receiptUrl = null;
-        if (newExpenseFile) {
-            try {
-                const safeName = newExpenseFile.name ? newExpenseFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg';
-                const path = `organizations/platform/users/${currentUser.id}/receipts/${Date.now()}_${safeName}`;
-                receiptUrl = await uploadFileToStorage(path, newExpenseFile);
-            } catch (err) {
-                console.error('Failed to upload receipt', err);
-            }
-        }
-
-        const expense: Expense = {
-            id: `exp-${Date.now()}`,
-            organizationId: 'platform',
-            date: newExpense.date || new Date().toISOString(),
-            category: newExpense.category || 'Other',
-            amount: Number(newExpense.amount),
-            description: newExpense.description || '',
-            vendor: newExpense.vendor || '',
-            paidBy: currentUser.firstName, 
-            projectId: 'SalesExpense',
-            receiptData: null,
-            receiptUrl: receiptUrl
-        };
+        setIsSaving(true);
+        let uploadedUrls: string[] = [];
 
         try {
+            if (newExpensePhotos.length > 0) {
+                for (let i = 0; i < newExpensePhotos.length; i++) {
+                    const safeName = `expense_${Date.now()}_page${i+1}.jpg`;
+                    const path = `organizations/platform/users/${currentUser.id}/receipts/${safeName}`;
+                    const url = await uploadFileToStorage(path, newExpensePhotos[i]);
+                    uploadedUrls.push(url);
+                }
+            }
+
+            const expense: Expense = {
+                id: `exp-${Date.now()}`,
+                organizationId: 'platform',
+                date: newExpense.date || new Date().toISOString(),
+                category: newExpense.category || 'Other',
+                amount: Number(newExpense.amount),
+                description: newExpense.description || '',
+                vendor: newExpense.vendor || '',
+                paidBy: currentUser.firstName, 
+                projectId: 'SalesExpense',
+                receiptData: null,
+                receiptUrl: uploadedUrls.length > 0 ? uploadedUrls[0] : null,
+                receiptUrls: uploadedUrls
+            };
+
             await db.collection('expenses').doc(expense.id).set(expense);
             setIsAddModalOpen(false);
-            setNewExpense({ date: new Date().toISOString().split('T')[0], category: 'Travel', amount: 0, description: '', vendor: '', receiptData: '' });
+            setNewExpensePhotos([]);
+            setNewExpense({ date: new Date().toISOString().split('T')[0], category: 'Travel', amount: 0, description: '', vendor: '', receiptData: '', receiptUrls: [] });
         } catch (e) {
             console.error(e);
-            alert("Failed to save expense.");
+            showToast.warn("Failed to save expense. Please try again.");
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -154,12 +210,12 @@ const SalesExpenses: React.FC = () => {
         e.preventDefault();
         
         if (!w9Data.name || !w9Data.tin) {
-            alert("Name and TIN are required.");
+            showToast.warn("Name and TIN are required.");
             return;
         }
 
         if (!w9Data.certification1 || !w9Data.certification2) {
-            alert("You must agree to the certifications.");
+            showToast.warn("You must agree to the certifications.");
             return;
         }
 
@@ -294,7 +350,7 @@ const SalesExpenses: React.FC = () => {
 
         try {
             await db.collection('users').doc(currentUser.id).update({
-                salesContractContent: w9Html, 
+                taxW9Content: DOMPurify.sanitize(w9Html), 
             });
             
             // Save as a Document record too
@@ -302,26 +358,29 @@ const SalesExpenses: React.FC = () => {
                 organizationId: 'platform',
                 title: `W-9 - ${w9Data.name}`,
                 type: 'Tax Form',
-                content: w9Html,
+                content: DOMPurify.sanitize(w9Html),
                 createdAt: new Date().toISOString(),
                 createdBy: currentUser.id
             });
 
-            alert("W-9 Generated and Saved.");
+            showToast.warn("W-9 Generated and Saved.");
             setIsW9Open(false);
         } catch (e) {
             console.error(e);
-            alert("Failed to save W-9.");
+            showToast.warn("Failed to save W-9.");
         }
     };
 
     return (
         <div className="space-y-6">
             <header className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Expenses & Tax</h2>
-                    <p className="text-slate-500">Track reimbursements and manage tax documents.</p>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                        <ArrowLeft size={20} />
+                    </button>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Expenses & W-9</h1>
                 </div>
+                
                 <div className="flex gap-2">
                     <Button onClick={() => setIsW9Open(true)} variant="secondary" className="flex items-center gap-2">
                         <FileText size={18}/> Update W-9
@@ -348,11 +407,19 @@ const SalesExpenses: React.FC = () => {
                                     <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">Pending</span>
                                 </td>
                                 <td className="px-6 py-4 flex items-center gap-3">
-                                    {(exp.receiptData || exp.receiptUrl) ? (
-                                        <button onClick={() => setViewingReceipt(exp.receiptUrl || exp.receiptData!)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
-                                            <Receipt size={16}/>
-                                        </button>
-                                    ) : null}
+                                    {(() => {
+                                        const possibleReceipt = exp.receiptUrl || exp.receiptData;
+                                        const possibleUrls = exp.receiptUrls && exp.receiptUrls.length > 0 ? exp.receiptUrls : (possibleReceipt ? [possibleReceipt] : []);
+                                        if (possibleUrls.length > 0) {
+                                            return (
+                                                <button onClick={() => setViewingReceipt(possibleUrls)} className="text-blue-500 hover:text-blue-700 flex items-center gap-1" title="View Receipt">
+                                                    <Receipt size={16}/>
+                                                    {possibleUrls.length > 1 && <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-1 rounded-full">{possibleUrls.length}</span>}
+                                                </button>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
                                     <label htmlFor={`receipt-upload-${exp.id}`} className={`cursor-pointer ${isUploadingToExpenseId === exp.id ? 'text-blue-400 animate-pulse' : 'text-slate-500 hover:text-primary-600'}`} title={(exp.receiptData || exp.receiptUrl) ? "Replace Receipt" : "Attach Receipt"}>
                                         <input type="file" title="Upload receipt" id={`receipt-upload-${exp.id}`} className="hidden" accept="image/*" onChange={(e) => handleAttachToExisting(e, exp.id)} />
                                         <Paperclip size={16} />
@@ -408,18 +475,27 @@ const SalesExpenses: React.FC = () => {
                     <Input label="Description" value={newExpense.description} onChange={e => setNewExpense({...newExpense, description: e.target.value})} placeholder="Client lunch, Flight to HQ..." />
                     
                     <div>
-                        <label htmlFor="receipt-upload-new" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Receipt Image (Optional)</label>
-                        <input id="receipt-upload-new" type="file" accept="image/*" title="Upload receipt image" onChange={handleFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/40 dark:text-slate-300 dark:file:text-blue-400" />
-                        {newExpenseFile && (
-                            <div className="mt-2 text-emerald-600 text-xs flex items-center gap-1">
-                                <Receipt size={14} /> Receipt attached: {newExpenseFile.name}
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Receipt Images (Optional)</label>
+                        <div className="flex gap-2 mb-2">
+                            <Button type="button" variant="secondary" onClick={handleCaptureReceipt} className="w-full flex items-center justify-center gap-2">
+                                <CameraIcon size={16} /> Capture Receipt / Add Page
+                            </Button>
+                        </div>
+                        {newExpensePhotos.length > 0 && (
+                            <div className="mt-2 text-emerald-600 text-xs flex flex-col gap-1 font-medium bg-emerald-50 dark:bg-emerald-900/30 p-2 rounded">
+                                <div><Receipt size={14} className="inline mr-1" /> {newExpensePhotos.length} {newExpensePhotos.length === 1 ? 'Page' : 'Pages'} Captured</div>
+                                {isAnalyzing && <div className="text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1"><Loader2 size={12} className="animate-spin"/> AI Extracting Receipt Data...</div>}
                             </div>
                         )}
                     </div>
 
                     <div className="flex justify-end gap-2 pt-4">
-                        <Button variant="secondary" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
-                        <Button type="submit">Submit Expense</Button>
+                        <Button type="button" variant="secondary" onClick={() => setIsAddModalOpen(false)}>Cancel</Button>
+                        <Button type="submit" disabled={isSaving || isAnalyzing}>
+                            {isSaving ? (
+                                <><Loader2 size={16} className="animate-spin mr-2"/> Saving...</>
+                            ) : 'Submit Expense'}
+                        </Button>
                     </div>
                 </form>
             </Modal>
@@ -495,9 +571,32 @@ const SalesExpenses: React.FC = () => {
                 </form>
             </Modal>
 
-            <Modal isOpen={!!viewingReceipt} onClose={() => setViewingReceipt(null)} title="View Receipt" size="lg">
-                <div className="flex justify-center p-4 bg-slate-50 dark:bg-slate-900 rounded-b-lg">
-                     {viewingReceipt && <img src={viewingReceipt} alt="Receipt" className="max-w-full max-h-[70vh] object-contain shadow-md rounded" />}
+            <Modal isOpen={!!viewingReceipt} onClose={() => { setViewingReceipt(null); setCurrentReceiptIndex(0); }} title="Receipt Preview" size="lg">
+                <div className="flex flex-col items-center p-4 bg-slate-50 dark:bg-slate-900 rounded-b-lg gap-4">
+                     {viewingReceipt && viewingReceipt.length > 0 && (
+                        <div className="w-full flex flex-col items-center gap-2">
+                             {viewingReceipt.length > 1 && (
+                                <div className="flex items-center gap-4 text-slate-500 font-bold mb-2">
+                                    <button 
+                                        disabled={currentReceiptIndex === 0} 
+                                        onClick={() => setCurrentReceiptIndex(c => c - 1)}
+                                        className="p-2 disabled:opacity-30 hover:text-slate-900 dark:hover:text-white"
+                                    >
+                                        &larr; Prev
+                                    </button>
+                                    <span>Page {currentReceiptIndex + 1} of {viewingReceipt.length}</span>
+                                    <button 
+                                        disabled={currentReceiptIndex === viewingReceipt.length - 1} 
+                                        onClick={() => setCurrentReceiptIndex(c => c + 1)}
+                                        className="p-2 disabled:opacity-30 hover:text-slate-900 dark:hover:text-white"
+                                    >
+                                        Next &rarr;
+                                    </button>
+                                </div>
+                            )}
+                            <img src={viewingReceipt[currentReceiptIndex]} alt={`Receipt Page ${currentReceiptIndex + 1}`} className="max-w-full max-h-[70vh] object-contain shadow-md rounded" />
+                        </div>
+                     )}
                 </div>
             </Modal>
         </div>

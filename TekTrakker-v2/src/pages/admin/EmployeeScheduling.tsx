@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
@@ -49,7 +50,7 @@ const EmployeeScheduling: React.FC = () => {
             dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
         } catch (error) {
             console.error("Failed to update schedule:", error);
-            alert("Permission denied or failed to save schedule.");
+            showToast.warn("Permission denied or failed to save schedule.");
         } finally {
             setIsSaving(false);
         }
@@ -57,10 +58,7 @@ const EmployeeScheduling: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <header>
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Employee Scheduling</h2>
-                <p className="text-gray-600 dark:text-gray-400">Set weekly availability.</p>
-            </header>
+            
             <Card>
                 <EmployeeSelector 
                     employees={employees}

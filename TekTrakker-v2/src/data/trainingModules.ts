@@ -240,7 +240,7 @@ Navigate your field jobs with ease using the centralized Job Workflow Modal.
     },
     {
         id: 'gov-bid-helper',
-        title: 'Navigating the Government Bid Helper',
+        title: 'Navigating the Bid Optimization Tool',
         description: 'Learn how to find, analyze, and generate compliance checklists for government HVAC contracts.',
         duration: '0:48',
         roles: ['admin', 'master'],
@@ -252,9 +252,9 @@ Navigate your field jobs with ease using the centralized Job Workflow Modal.
         content: `
 ### Securing Public Sector Contracts
 
-The Gov Bid Helper is your central hub for federal and local contracts.
+The Bid Optimization Tool is your central hub for federal and local contracts.
 
-1. **Access the Helper**: Navigate to "Gov Contracts" from the admin sidebar.
+1. **Access the Tool**: Navigate to "Bid Optimization" from the admin sidebar.
 2. **Search & Scrape**: Use the built-in search tools to pull active RFP/RFQ listings from government databases.
 3. **Analyze Requirements**: Click on a contract to automatically extract the bonding, insurance, and certification requirements.
 4. **Generate Proposals**: Use the tool to auto-generate a compliance checklist and start building your bid proposal directly within the platform.

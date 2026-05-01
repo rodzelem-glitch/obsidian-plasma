@@ -30,7 +30,7 @@ const HistoryTab: React.FC<HistoryTabProps> = ({ bid, onSearch, isSearching, onD
                     {isSearching ? 'Searching...' : 'Search Historical Data'}
                 </Button>
             </div>
-            {bid.generatedDocs?.filter(d => d.title.includes('History')).map((doc, i) => (
+            {bid.generatedDocs?.filter(d => d.title.toLowerCase().includes('historic') || d.title.toLowerCase().includes('history')).map((doc, i) => (
                 <div key={i} className="rounded-xl overflow-hidden bg-white dark:bg-slate-800">
                     <div className="bg-slate-100 dark:bg-slate-700 p-3 font-bold flex justify-between items-center text-slate-800 dark:text-white border-b border-slate-200 dark:border-slate-700">
                         <span>{doc.title}</span>

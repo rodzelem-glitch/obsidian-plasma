@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -26,6 +27,7 @@ const GlobalUsers: React.FC = () => {
 
     const users = state.users || [];
     const orgs = state.allOrganizations || [];
+    const franchises = state.franchises || [];
 
     const filteredUsers = useMemo(() => {
         let result = users.filter(u => {
@@ -86,10 +88,10 @@ const GlobalUsers: React.FC = () => {
         if (!await globalConfirm(`PERMANENTLY DELETE user "${user.firstName} ${user.lastName}" (${user.email})?\n\nThis will remove their profile from the system completely. This action cannot be undone.`)) return;
         try {
             await db.collection('users').doc(user.id).delete();
-            alert("User deleted successfully.");
+            showToast.warn("User deleted successfully.");
         } catch (e: any) {
             console.error(e);
-            alert("Failed to delete user: " + e.message);
+            showToast.warn("Failed to delete user: " + e.message);
         }
     };
 
@@ -98,19 +100,27 @@ const GlobalUsers: React.FC = () => {
         if (!editingUser) return;
         setIsSaving(true);
         try {
-            await db.collection('users').doc(editingUser.id).update({
+            const updates: any = {
                 firstName: editingUser.firstName || '',
                 lastName: editingUser.lastName || '',
                 email: editingUser.email || '',
-                organizationId: editingUser.organizationId || 'unaffiliated',
                 role: editingUser.role || 'employee',
                 status: editingUser.status || 'active'
-            });
+            };
+
+            if (editingUser.role === 'franchise_admin') {
+                updates.organizationId = 'master_admin_placeholder';
+                updates.franchiseId = editingUser.franchiseId || '';
+            } else {
+                updates.organizationId = editingUser.organizationId || 'unaffiliated';
+            }
+
+            await db.collection('users').doc(editingUser.id).update(updates);
             setEditingUser(null);
-            alert("User record updated.");
+            showToast.warn("User record updated.");
         } catch (e: any) {
             console.error(e);
-            alert("Failed to update user: " + e.message);
+            showToast.warn("Failed to update user: " + e.message);
         } finally {
             setIsSaving(false);
         }
@@ -128,13 +138,13 @@ const GlobalUsers: React.FC = () => {
             
             const data = result.data as any;
             if (data.success) {
-                alert(`Success! Auth claims for ${user.firstName} updated to '${user.role}'. The user must log out and back in to see the changes.`);
+                showToast.warn(`Success! Auth claims for ${user.firstName} updated to '${user.role}'. The user must log out and back in to see the changes.`);
             } else {
                 throw new Error("Function returned failure status.");
             }
         } catch (e: any) {
             console.error(e);
-            alert("Failed to sync auth claims: " + e.message);
+            showToast.warn("Failed to sync auth claims: " + e.message);
         } finally {
             setIsSyncingClaims(null);
         }
@@ -142,10 +152,7 @@ const GlobalUsers: React.FC = () => {
 
     return (
         <div className="space-y-6 pb-20">
-            <header>
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Global User Registry</h2>
-                <p className="text-gray-600 dark:text-gray-400">Total platform user base and activity monitoring.</p>
-            </header>
+
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <Card className="flex items-center p-6 bg-blue-50 dark:bg-blue-900/10 border-blue-200">
@@ -241,6 +248,7 @@ const GlobalUsers: React.FC = () => {
                                     (u.role || '').includes('admin') ? 'bg-purple-100 text-purple-700' : 
                                     u.role === 'customer' ? 'bg-emerald-100 text-emerald-700' :
                                     u.role === 'platform_sales' ? 'bg-indigo-100 text-indigo-700' :
+                                    u.role === 'franchise_admin' ? 'bg-orange-100 text-orange-700' :
                                     'bg-blue-100 text-blue-700'
                                 }`}>
                                     {(u.role || 'Unknown').replace('_', ' ')}
@@ -306,13 +314,22 @@ const GlobalUsers: React.FC = () => {
                         <Input label="Email Address" type="email" value={editingUser.email || ''} onChange={e => setEditingUser({...editingUser, email: e.target.value})} required />
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Select label="Assigned Organization" value={editingUser.organizationId || 'unaffiliated'} onChange={e => setEditingUser({...editingUser, organizationId: e.target.value})}>
-                                <option value="unaffiliated">-- Unaffiliated / Orphaned --</option>
-                                <option value="platform">TekTrakker Platform (Internal)</option>
-                                {orgs.map(org => (
-                                    <option key={org.id} value={org.id}>{org.name}</option>
-                                ))}
-                            </Select>
+                            {editingUser.role !== 'franchise_admin' ? (
+                                <Select label="Assigned Organization" value={editingUser.organizationId || 'unaffiliated'} onChange={e => setEditingUser({...editingUser, organizationId: e.target.value})}>
+                                    <option value="unaffiliated">-- Unaffiliated / Orphaned --</option>
+                                    <option value="platform">TekTrakker Platform (Internal)</option>
+                                    {orgs.map(org => (
+                                        <option key={org.id} value={org.id}>{org.name}</option>
+                                    ))}
+                                </Select>
+                            ) : (
+                                <Select label="Assigned Franchise" value={editingUser.franchiseId || ''} onChange={e => setEditingUser({...editingUser, franchiseId: e.target.value})}>
+                                    <option value="">-- No Franchise Assigned --</option>
+                                    {franchises.map(fr => (
+                                        <option key={fr.id} value={fr.id}>{fr.name}</option>
+                                    ))}
+                                </Select>
+                            )}
                             <Select label="System Role" value={editingUser.role || 'employee'} onChange={e => setEditingUser({...editingUser, role: e.target.value as any})}>
                                 <option value="employee">Employee / Tech</option>
                                 <option value="supervisor">Supervisor</option>
@@ -320,6 +337,7 @@ const GlobalUsers: React.FC = () => {
                                 <option value="both">Superuser (Both)</option>
                                 <option value="customer">Customer / Client</option>
                                 <option value="platform_sales">Platform Sales Rep</option>
+                                <option value="franchise_admin">Franchise Partner</option>
                                 <option value="master_admin">Master Admin</option>
                             </Select>
                         </div>

@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import { Bid, BidDoc, BidLineItem, ProposalPreset, Organization } from 'types';
@@ -10,6 +11,9 @@ import HistoryTab from './HistoryTab';
 import { useAppContext } from 'context/AppContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { globalConfirm } from "lib/globalConfirm";
+import { db } from 'lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
 
 interface BidWorkspaceProps {
     bid: Bid;
@@ -22,11 +26,16 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
     const [activeTab, setActiveTab] = React.useState<'setup' | 'inputs' | 'pricing' | 'generate' | 'history'>('setup');
     const [isGenerating, setIsGenerating] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
+    const [isGeneratingAIPricing, setIsGeneratingAIPricing] = useState(false);
+
+    const [isConverting, setIsConverting] = useState(false);
+    const navigate = useNavigate();
 
     const functions = getFunctions();
     // Increase client-side timeout to match the 9-minute backend timeout
     const generateBidDocument = httpsCallable(functions, 'generateBidDocument', { timeout: 540000 });
     const searchHistoricalBidData = httpsCallable(functions, 'searchHistoricalBidData', { timeout: 540000 });
+    const suggestBidPricing = httpsCallable(functions, 'suggestBidPricing', { timeout: 540000 });
 
     // --- Inputs Tab Handlers ---
     const handleSaveAnswers = (newAnswers: Record<string, string>) => {
@@ -35,7 +44,7 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
             answer: newAnswers[q.id] !== undefined ? newAnswers[q.id] : q.answer
         }));
         onUpdate({ questions: updatedQuestions });
-        alert('Answers saved!');
+        showToast.warn('Answers saved!');
     };
 
     // --- Pricing Tab Handlers ---
@@ -97,8 +106,7 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
     };
 
     const handleGenerate = async () => {
-        const cost = 2.00;
-        if (!await globalConfirm(`This will generate a complete, ready-to-submit bid package using AI based on your answers and pricing. The cost is $${cost.toFixed(2)} and will be added to your next invoice. Continue?`)) return;
+        if (!await globalConfirm(`This will generate a complete, ready-to-submit bid package using AI based on your answers and pricing. This will use credits from your token bucket. Continue?`)) return;
 
         setIsGenerating(true);
         try {
@@ -112,18 +120,21 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
             
             // Replace the entire document array with the new comprehensive package
             onUpdate({ generatedDocs: docs });
-            alert('Package generated successfully!');
+            showToast.warn('Package generated successfully!');
         } catch (error: any) {
             console.error('Error generating documents:', error);
-            alert(`Failed to generate documents: ${error.message}`);
+            if (error.message && (error.message.includes('429') || error.message.includes('Resource exhausted'))) {
+                showToast.warn('AI Service is currently busy. Please try again in a few moments.');
+            } else {
+                showToast.warn(`Failed to generate documents: ${error.message}`);
+            }
         } finally {
             setIsGenerating(false);
         }
     };
 
     const handleGlobalEdit = async (prompt: string) => {
-        const cost = 2.00;
-        if (!await globalConfirm(`Applying this global AI edit will cost $${cost.toFixed(2)} and will be added to your next invoice. Continue?`)) return;
+        if (!await globalConfirm(`Applying this global AI edit will use credits from your token bucket. Continue?`)) return;
 
         setIsGenerating(true);
         try {
@@ -136,18 +147,21 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
             
             const { docs } = result.data as { docs: BidDoc[] };
             onUpdate({ generatedDocs: docs });
-            alert('Edits applied successfully!');
+            showToast.warn('Edits applied successfully!');
         } catch (error: any) {
             console.error('Error editing documents:', error);
-            alert(`Failed to apply global edit: ${error.message}`);
+            if (error.message && (error.message.includes('429') || error.message.includes('Resource exhausted'))) {
+                showToast.warn('AI Service is currently busy. Please try again in a few moments.');
+            } else {
+                showToast.warn(`Failed to apply global edit: ${error.message}`);
+            }
         } finally {
             setIsGenerating(false);
         }
     };
 
     const handleEditDoc = async (docIndex: number, prompt: string) => {
-        const cost = 2.00;
-        if (!await globalConfirm(`Editing this specific document with AI will cost $${cost.toFixed(2)} and will be added to your next invoice. Continue?`)) return;
+        if (!await globalConfirm(`Editing this specific document with AI will use credits from your token bucket. Continue?`)) return;
 
         setIsGenerating(true);
         try {
@@ -163,10 +177,14 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
             updatedDocs[docIndex] = docs[0]; // The backend returns an array of 1 for specific doc edits
             
             onUpdate({ generatedDocs: updatedDocs });
-            alert('Document edited successfully!');
+            showToast.warn('Document edited successfully!');
         } catch (error: any) {
             console.error('Error editing document:', error);
-            alert(`Failed to edit document: ${error.message}`);
+            if (error.message && (error.message.includes('429') || error.message.includes('Resource exhausted'))) {
+                showToast.warn('AI Service is currently busy. Please try again in a few moments.');
+            } else {
+                showToast.warn(`Failed to edit document: ${error.message}`);
+            }
         } finally {
             setIsGenerating(false);
         }
@@ -181,9 +199,35 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
             onUpdate({ generatedDocs: [...(bid.generatedDocs || []), newDoc] });
         } catch (error: any) {
             console.error('Error searching historical data:', error);
-            alert('Failed to search historical data.');
+            showToast.warn('Failed to search historical data.');
         } finally {
             setIsSearching(false);
+        }
+    };
+    
+    const handleGenerateAIPricing = async () => {
+        if (!await globalConfirm(`This will analyze historical data and current pricing schemes to recommend competitive prices for your line items. It will use credits from your token bucket. Continue?`)) return;
+
+        setIsGeneratingAIPricing(true);
+        try {
+            const result = await suggestBidPricing({ bid: getCleanBidPayload() });
+            const { updatedLineItems } = result.data as { updatedLineItems: BidLineItem[] };
+            
+            if (updatedLineItems && updatedLineItems.length > 0) {
+                onUpdate({ lineItems: updatedLineItems });
+                showToast.success('AI pricing recommendations applied!');
+            } else {
+                showToast.warn('No pricing recommendations were generated.');
+            }
+        } catch (error: any) {
+            console.error('Error generating AI pricing:', error);
+            if (error.message && (error.message.includes('429') || error.message.includes('Resource exhausted'))) {
+                showToast.error('AI Service is currently busy. Please try again in a few moments.');
+            } else {
+                showToast.error(`Failed to generate AI pricing: ${error.message}`);
+            }
+        } finally {
+            setIsGeneratingAIPricing(false);
         }
     };
     
@@ -210,12 +254,18 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
                 filename = `${doc.title.replace(/ /g, '_')}.html`;
             }
         } else {
+            // Extract embedded <style> tags so they go in <head> for proper Word rendering
+            const sRgx = /<style[\s\S]*?<\/style>/gi;
+            const sMtch = doc.content.match(sRgx) || [];
+            const bodyOnly = doc.content.replace(sRgx, '');
+            const hStyles = sMtch.join('\n');
+
             const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' "+
                 "xmlns:w='urn:schemas-microsoft-com:office:word' "+
                 "xmlns='http://www.w3.org/TR/REC-html40'>"+
-                "<head><meta charset='utf-8'><title>TekTrakker</title></head><body>";
+                "<head><meta charset='utf-8'><title>TekTrakker</title>" + hStyles + "</head><body>";
             const footer = "</body></html>";
-            const sourceHTML = header + doc.content + footer;
+            const sourceHTML = header + bodyOnly + footer;
             blob = new Blob([sourceHTML], { type: 'application/msword' });
             filename = `${doc.title.replace(/ /g, '_')}.doc`;
         }
@@ -228,6 +278,47 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    };
+
+    const handleConvertToProject = async () => {
+        if (!await globalConfirm(`This will create a new Project using the details and pricing from this Bid. Continue?`)) return;
+
+        setIsConverting(true);
+        try {
+            const projectData = {
+                organizationId: bid.organizationId,
+                customerId: '', // Can be updated by user later
+                customerName: bid.agency || 'Unknown Agency',
+                name: bid.title,
+                status: 'Planning',
+                startDate: new Date().toISOString(),
+                endDate: bid.dueDate || '',
+                budget: bid.totalValue || bid.lineItems?.reduce((acc, item) => acc + (item.totalPrice || 0), 0) || 0,
+                description: bid.summary || 'Converted from bid package',
+                createdAt: serverTimestamp(),
+                projectTasks: (bid.lineItems || []).map((item, index) => ({
+                    id: `task-${Date.now()}-${index}`,
+                    description: item.description,
+                    status: 'Pending',
+                    isBenchmark: false,
+                    order: index
+                })),
+                files: bid.files || [],
+            };
+
+            const docRef = await addDoc(collection(db, 'projects'), projectData);
+            
+            await onUpdate({ projectId: docRef.id });
+
+            showToast.success('Project created successfully!');
+            navigate('/admin/projects'); 
+            onClose(); // close the bid workspace
+        } catch (error: any) {
+            console.error('Error converting to project:', error);
+            showToast.error(`Failed to convert: ${error.message}`);
+        } finally {
+            setIsConverting(false);
+        }
     };
 
     const renderTabContent = () => {
@@ -253,6 +344,8 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
                     onAdd={handleLineItemAdd}
                     pricebook={state.proposalPresets || []}
                     onAddFromPricebook={handleAddFromPricebook}
+                    onGenerateAIPricing={handleGenerateAIPricing}
+                    isGeneratingAIPricing={isGeneratingAIPricing}
                 />
             );
             case 'generate': return (
@@ -273,7 +366,10 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
     return (
         <div className="bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl animate-fade-in">
             <BidWorkspaceHeader 
-                bidTitle={bid.title} 
+                bidTitle={bid.title}
+                bid={bid}
+                isConverting={isConverting}
+                onConvertToProject={handleConvertToProject}
                 activeTab={activeTab} 
                 onTabChange={setActiveTab}
                 onClose={onClose}

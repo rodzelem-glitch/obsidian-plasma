@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import Card from 'components/ui/Card';
-import { CalendarIcon, Clock, FileText, ShieldCheck, Star, Award, User } from 'lucide-react';
+import { CalendarIcon, Clock, FileText, ShieldCheck, Star, Award, User, CalendarPlus } from 'lucide-react';
 import type { Job, BusinessDocument, User as AppUser } from 'types';
 import DocumentPreview from 'components/ui/DocumentPreview';
 
@@ -53,6 +53,36 @@ const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documen
         }
     };
 
+    const handleAddToCalendar = (job: Job) => {
+        const start = new Date(job.appointmentTime);
+        const end = new Date(start.getTime() + 2 * 60 * 60 * 1000); // Default to 2 hours
+        const formatDate = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+        
+        const icsString = [
+            'BEGIN:VCALENDAR',
+            'VERSION:2.0',
+            'PRODID:-//TekTrakker//NONSGML v1.0//EN',
+            'BEGIN:VEVENT',
+            `UID:${job.id}@tektrakker.com`,
+            `DTSTAMP:${formatDate(new Date())}`,
+            `DTSTART:${formatDate(start)}`,
+            `DTEND:${formatDate(end)}`,
+            `SUMMARY:TekTrakker Service - ${job.tasks?.join(', ') || 'Appointment'}`,
+            `DESCRIPTION:Scheduled service appointment.\\nCustomer: ${job.customerName || ''}\\nTasks: ${job.tasks?.join(', ') || 'Service Call'}`,
+            `LOCATION:${job.address || ''}`,
+            'END:VEVENT',
+            'END:VCALENDAR'
+        ].join('\r\n');
+
+        const blob = new Blob([icsString], { type: 'text/calendar;charset=utf-8' });
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.setAttribute('download', `appointment_${job.id}.ics`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <>
         <section>
@@ -89,7 +119,17 @@ const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documen
                                         <p className="text-sm text-slate-500 flex items-center gap-1 mt-1">
                                             <Clock size={14} /> {new Date(job.appointmentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </p>
-                                        <p className="text-xs text-slate-400 mt-1 capitalize">{job.jobStatus}</p>
+                                        <div className="flex items-center gap-3 mt-2">
+                                            <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 capitalize">{job.jobStatus}</span>
+                                            {(job.jobStatus === 'Scheduled' || job.jobStatus === 'In Progress') && (
+                                                <button 
+                                                    onClick={() => handleAddToCalendar(job)}
+                                                    className="flex items-center gap-1 text-[10px] font-black uppercase text-primary-600 hover:text-primary-700 transition"
+                                                >
+                                                    <CalendarPlus size={12}/> Add to Calendar
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 

@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -113,7 +114,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ defaultTab = 'overview'
             setIsEditLeadOpen(false);
         } catch (e) {
             console.error(e);
-            alert("Failed to save lead.");
+            showToast.warn("Failed to save lead.");
         }
     };
 
@@ -138,7 +139,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ defaultTab = 'overview'
             timestamp: new Date().toISOString(),
             repId: currentUser?.id
         });
-        alert(`${type === 'call' ? 'Call' : 'Email'} logged.`);
+        showToast.warn(`${type === 'call' ? 'Call' : 'Email'} logged.`);
     };
 
     const handleUpdateStatus = async (status: string) => {
@@ -152,9 +153,7 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ defaultTab = 'overview'
     return (
         <div className="space-y-6 h-[calc(100vh-100px)] flex flex-col">
             <header className="flex justify-between items-center shrink-0">
-                <div>
-                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Sales Command</h2>
-                </div>
+                
                 <Button onClick={() => { setEditingLead({}); setIsEditLeadOpen(true); }} className="flex items-center gap-2 shadow-lg">
                     <Plus size={18}/> Add Prospect
                 </Button>

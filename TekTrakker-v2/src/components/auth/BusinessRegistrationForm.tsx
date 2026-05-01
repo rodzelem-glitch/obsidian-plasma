@@ -1,5 +1,6 @@
 
 import React, { useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { CreditCard, Tag, Check, Loader2 } from 'lucide-react';
 import { InputField } from './AuthFields';
 import { PlanCard } from './PlanCard';
@@ -67,6 +68,8 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
         };
     }, [platformSettings]);
 
+    const isIOS = Capacitor.getPlatform() === 'ios';
+
     return (
         <form onSubmit={bizRegStep === 1 ? handleNextStepBusiness : handleRegisterBusiness} className="space-y-6">
             {bizRegStep === 1 ? (
@@ -111,33 +114,43 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                     <div>
                         <label className="block text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Select Plan</label>
                         <div className="space-y-3">
-                            <PlanCard id="starter" name="Starter" price={planPrices.starter} users={`${planPrices.starterUsers} Users Included`} ribbonText={planPrices.starterRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
-                            <PlanCard id="growth" name="Growth" price={planPrices.growth} users={`${planPrices.growthUsers} Users Included`} ribbonText={planPrices.growthRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
-                            <PlanCard id="enterprise" name="Enterprise" price={planPrices.enterprise} users={`${planPrices.enterpriseUsers} Users Included`} ribbonText={planPrices.enterpriseRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                            <PlanCard id="starter" name="TekTrakker Pro" price={planPrices.starter} users={`${planPrices.starterUsers} Users Included`} ribbonText={planPrices.starterRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                            <PlanCard id="growth" name="TekTrakker Premium" price={planPrices.growth} users={`${planPrices.growthUsers} Users Included`} ribbonText={planPrices.growthRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                            <PlanCard id="enterprise" name="TekTrakker Unlimited" price={planPrices.enterprise} users={`${planPrices.enterpriseUsers} Users Included`} ribbonText={planPrices.enterpriseRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
                         </div>
                     </div>
 
                     <div className="flex items-start gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
                         <input type="checkbox" id="biz-consent" checked={consentGiven} onChange={e => setConsentGiven(e.target.checked)} className="mt-1 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500" />
                         <label htmlFor="biz-consent" className="text-xs text-slate-400">
-                            I agree to the <a href="#" className="text-blue-400 hover:underline">SaaS Agreement</a> and consent to receive business communications via SMS/Email.
+                            I agree to the <a href="#/terms" target="_blank" className="text-blue-400 hover:underline">SaaS Agreement</a> and consent to receive business communications via SMS/Email.
                         </label>
                     </div>
 
                     <button type="submit" className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all ${isValidPromo ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'}`}>
-                        {isValidPromo ? 'Register (Free Access)' : 'Next: Billing Info'}
+                        {isValidPromo ? 'Register (Free Access)' : (isIOS ? 'Next: Add Subscription' : 'Next: Billing Info')}
                     </button>
                 </>
             ) : (
                 <>
                     <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 text-center mb-6">
                         <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Selected Plan</p>
-                        <p className="text-2xl font-black text-white capitalize">{selectedPlan}</p>
+                        <p className="text-2xl font-black text-white">{selectedPlan === 'starter' ? 'TekTrakker Pro' : selectedPlan === 'growth' ? 'TekTrakker Premium' : 'TekTrakker Unlimited'}</p>
                         <p className="text-sm text-blue-400 font-bold">${planPrices[selectedPlan as keyof typeof planPrices]} / month</p>
-                        <p className="text-xs text-slate-500 mt-2">30 Day Free Trial • Cancel Anytime</p>
+                        <p className="text-xs text-slate-500 mt-2">{isIOS ? '1 Month Auto-Renewing Subscription' : '30 Day Free Trial • Cancel Anytime'}</p>
+                        {isIOS && (
+                            <div className="mt-4 text-[10px] text-slate-400 text-left leading-relaxed space-y-2 border-t border-slate-700/50 pt-4">
+                                <p>Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period.</p>
+                                <p>You can manage and cancel your subscriptions by going to your account settings on the App Store after purchase.</p>
+                                <div className="flex justify-center gap-4 pt-2">
+                                    <a href="/#/eula" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-white underline">Terms of Use (EULA)</a>
+                                    <a href="/#/privacy" target="_blank" rel="noreferrer" className="text-blue-400 hover:text-white underline">Privacy Policy</a>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    <div className="space-y-4">
+                    {!isIOS && <div className="space-y-4">
                         <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg flex items-start gap-3">
                             <CreditCard className="text-blue-400 mt-1" size={20} />
                             <div>
@@ -152,14 +165,14 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                             <InputField id="cc-exp" name="ccExp" label="Expiry (MM/YY)" value={ccExp} onChange={(e: any) => setCcExp(e.target.value)} placeholder="MM/YY" required brandColor={brandColor} />
                             <InputField id="cc-cvc" name="ccCvc" label="CVC" value={ccCvc} onChange={(e: any) => setCcCvc(e.target.value)} placeholder="123" required brandColor={brandColor} />
                         </div>
-                    </div>
+                    </div>}
 
                     <div className="flex gap-4 pt-4">
                         <button type="button" onClick={() => setBizRegStep(1)} className="flex-1 py-4 rounded-xl font-bold text-slate-400 border border-slate-700 hover:bg-slate-800 transition-all">
                             Back
                         </button>
                         <button type="submit" disabled={isLoading} className="flex-[2] py-4 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-50 shadow-lg shadow-emerald-500/20 transition-all">
-                            {isLoading ? 'Processing...' : 'Start Free Trial'}
+                            {isLoading ? 'Processing...' : (isIOS ? 'Subscribe & Finish Registration' : 'Start Free Trial')}
                         </button>
                     </div>
                 </>

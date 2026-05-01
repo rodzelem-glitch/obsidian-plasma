@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Job, User } from 'types';
@@ -143,7 +144,7 @@ const JobScheduling: React.FC = () => {
 
         } catch (error) {
             console.error("Failed to update job:", error);
-            alert("Failed to save changes.");
+            showToast.warn("Failed to save changes.");
         }
     };
 
@@ -166,7 +167,7 @@ const JobScheduling: React.FC = () => {
 
     const handleSendSms = async () => {
         if (!smsJob) return;
-        alert('SMS Sent Successfully (Simulated)');
+        showToast.warn('SMS Sent Successfully (Simulated)');
         setIsSmsModalOpen(false);
     };
 
@@ -191,10 +192,7 @@ const JobScheduling: React.FC = () => {
              </Modal>
 
              <header className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Job Scheduling & Assignment</h2>
-                    <p className="text-gray-600 dark:text-gray-400">View active and unpaid jobs. Closed jobs are moved to History.</p>
-                </div>
+                
                 <Button onClick={() => window.open('/#/book', '_blank')} className="w-auto">Open Booking Page</Button>
             </header>
             <Card>

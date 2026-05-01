@@ -51,6 +51,7 @@ export interface Organization {
     squareApplicationId?: string | null;
     squareLocationId?: string | null;
     squareToken?: string | null;
+    defaultPaymentGateway?: 'paypal' | 'stripe' | 'square';
     enabledPanels?: {
         inventory?: boolean;
         marketing?: boolean;
@@ -58,6 +59,7 @@ export interface Organization {
         documents?: boolean;
         time_tracking?: boolean;
     };
+    marketingSpend?: Record<string, number>;
     linkedPartners?: string[];
     partnerRequests?: { fromOrgId: string; fromOrgName: string; status: 'pending' | 'accepted' }[];
     smtpConfig?: {
@@ -107,4 +109,14 @@ export interface Organization {
     promoCode?: string | null;
     measureQuickApiKey?: string;
     virtualWorkerEnabled?: boolean;
+    franchiseId?: string;
+    profileSlug?: string;
+    gclid?: string;
+    marketingConsent?: {
+        sms: boolean;
+        email: boolean;
+        agreedAt: string;
+        source: string;
+        gclid?: string;
+    };
 }

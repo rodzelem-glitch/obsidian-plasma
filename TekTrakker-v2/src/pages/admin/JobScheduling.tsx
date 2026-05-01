@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useMemo, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Job, User, Address, Subcontractor, BusinessDocument, InspectionTemplate } from '../../types';
@@ -8,8 +9,9 @@ import Modal from '../../components/ui/Modal';
 import Textarea from '../../components/ui/Textarea';
 import { useAppContext } from '../../context/AppContext';
 import { db } from '../../lib/firebase';
-import { Trash2, MessageSquare, CheckCircle, Globe, Users, Clock, MapPin, FileText, Edit, Share2, Copy } from 'lucide-react';
+import { Trash2, MessageSquare, CheckCircle, Globe, Users, Clock, MapPin, FileText, Edit, Share2, Copy, Calendar, AlignLeft } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
+import JobAppointmentModal from 'components/modals/JobAppointmentModal';
 
 const JobScheduling: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -18,6 +20,8 @@ const JobScheduling: React.FC = () => {
     const [smsMessage, setSmsMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
     
+    const [editingFullJob, setEditingFullJob] = useState<Job | null>(null);
+
     // Crew Management
     const [editingCrewJob, setEditingCrewJob] = useState<Job | null>(null);
     const [crewSelection, setCrewSelection] = useState<string[]>([]);
@@ -187,7 +191,7 @@ const JobScheduling: React.FC = () => {
                     type: 'job_assignment'
                 });
             }
-        } catch (e) { alert("Failed to assign."); }
+        } catch (e) { showToast.warn("Failed to assign."); }
     };
 
     const handleDeleteJob = async (jobId: string) => {
@@ -230,7 +234,7 @@ const JobScheduling: React.FC = () => {
             await db.collection('jobs').doc(editingNotesJob.id).update(updates);
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
             setEditingNotesJob(null);
-        } catch (e) { alert("Failed to save notes."); }
+        } catch (e) { showToast.warn("Failed to save notes."); }
     };
 
     const saveDocs = async () => {
@@ -244,12 +248,12 @@ const JobScheduling: React.FC = () => {
             await db.collection('jobs').doc(editingDocsJob.id).update(updates);
             dispatch({ type: 'UPDATE_JOB', payload: { ...editingDocsJob, ...updates } });
             setEditingDocsJob(null);
-        } catch (e) { alert("Failed to save documents."); }
+        } catch (e) { showToast.warn("Failed to save documents."); }
     };
 
     const handleCopyRef = (jobId: string) => {
         navigator.clipboard.writeText(`#JOB-${jobId}`);
-        alert("Reference Copied! Paste it anywhere to create a smart link.");
+        showToast.warn("Reference Copied! Paste it anywhere to create a smart link.");
     };
 
     const handleShareJob = async () => {
@@ -268,11 +272,11 @@ const JobScheduling: React.FC = () => {
                 type: 'internal'
             };
             await db.collection('messages').doc(msgObj.id).set(msgObj);
-            alert("Job shared successfully!");
+            showToast.warn("Job shared successfully!");
             setShareModalJob(null);
             setShareMessageText('');
         } catch (e) {
-            alert("Failed to share.");
+            showToast.warn("Failed to share.");
         } finally {
             setIsSending(false);
         }
@@ -297,6 +301,7 @@ const JobScheduling: React.FC = () => {
     
     return (
         <div className="space-y-6">
+             <JobAppointmentModal isOpen={!!editingFullJob} onClose={() => setEditingFullJob(null)} jobToEdit={editingFullJob} />
              <Modal isOpen={!!editingCrewJob} onClose={() => setEditingCrewJob(null)} title="Manage Job Crew">
                  {editingCrewJob && (
                      <div className="space-y-4">
@@ -321,40 +326,64 @@ const JobScheduling: React.FC = () => {
                  )}
              </Modal>
 
+             <Modal isOpen={isSmsModalOpen} onClose={() => setIsSmsModalOpen(false)} title={`Text Customer: ${smsJob?.customerName}`}>
+                 <div className="space-y-4">
+                     <Textarea 
+                        label="SMS Message"
+                        value={smsMessage} 
+                        onChange={e => setSmsMessage(e.target.value)} 
+                        rows={4}
+                     />
+                     <div className="flex justify-end gap-2">
+                         <Button variant="secondary" onClick={() => setIsSmsModalOpen(false)}>Cancel</Button>
+                         <Button disabled={isSending} onClick={async () => {
+                             setIsSending(true);
+                             try {
+                                 // Add an SMS integration later via Twilio/Firebase
+                                 showToast.warn('SMS feature is scheduled for next update. Your business number will be linked here.');
+                                 setIsSmsModalOpen(false);
+                             } finally {
+                                 setIsSending(false);
+                             }
+                         }}>{isSending ? 'Sending...' : 'Send Text'}</Button>
+                     </div>
+                 </div>
+             </Modal>
+
              <Modal isOpen={!!editingDocsJob} onClose={() => setEditingDocsJob(null)} title="Required Job Documents">
                 {editingDocsJob && (
                     <div className="space-y-6">
                         <div>
-                            <h4 className="font-bold text-sm text-gray-700 mb-2">Required Waivers</h4>
-                            <div className="max-h-32 overflow-y-auto border p-2 rounded bg-slate-50">
+                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">Required Waivers</h4>
+                            <div className="max-h-32 overflow-y-auto border p-2 rounded bg-slate-50 dark:bg-slate-700 dark:border-slate-600">
                                 {waiverTemplates.map(t => (
-                                    <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 cursor-pointer">
+                                    <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
                                         <input type="checkbox" checked={selectedWaivers.includes(t.id)} onChange={() => setSelectedWaivers(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} className="rounded text-primary-600"/>
-                                        <span className="text-sm">{t.title}</span>
+                                        <span className="text-sm dark:text-slate-100">{t.title}</span>
                                     </label>
                                 ))}
                             </div>
                         </div>
 
                         <div>
-                            <h4 className="font-bold text-sm text-gray-700 mb-2">Step 2: Diagnosis Checklists</h4>
-                            <div className="max-h-32 overflow-y-auto border p-2 rounded bg-slate-50">
+                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">Step 2: Diagnosis Checklists</h4>
+                            <div className="max-h-32 overflow-y-auto border p-2 rounded bg-slate-50 dark:bg-slate-700 dark:border-slate-600">
                                 {checklistTemplates.map(t => (
-                                    <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 cursor-pointer">
+                                    <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
                                         <input type="checkbox" checked={selectedDiagChecklists.includes(t.id)} onChange={() => setSelectedDiagChecklists(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} className="rounded text-blue-600"/>
-                                        <span className="text-sm">{t.name}</span>
+                                        <span className="text-sm dark:text-slate-100">{t.name}</span>
                                     </label>
                                 ))}
                             </div>
                         </div>
 
                         <div>
-                            <h4 className="font-bold text-sm text-gray-700 mb-2">Step 4: Quality Checklists</h4>
-                            <div className="max-h-32 overflow-y-auto border p-2 rounded bg-slate-50">
+                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">Step 4: Quality Checklists</h4>
+                            <div className="max-h-32 overflow-y-auto border p-2 rounded bg-slate-50 dark:bg-slate-700 dark:border-slate-600">
                                 {checklistTemplates.map(t => (
-                                    <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 cursor-pointer">
+                                    <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
                                         <input type="checkbox" checked={selectedQualChecklists.includes(t.id)} onChange={() => setSelectedQualChecklists(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} className="rounded text-green-600"/>
-                                        <span className="text-sm">{t.name}</span>
+                                        <span className="text-sm dark:text-slate-100">{t.name}</span>
                                     </label>
                                 ))}
                             </div>
@@ -390,7 +419,7 @@ const JobScheduling: React.FC = () => {
                      <select 
                          aria-label="Select Share Recipient"
                          title="Select Share Recipient"
-                         className="w-full border rounded-lg p-2 dark:bg-slate-800 dark:border-slate-700"
+                        className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
                          value={shareTargetId}
                          onChange={e => setShareTargetId(e.target.value)}
                      >
@@ -438,9 +467,18 @@ const JobScheduling: React.FC = () => {
             </div>
 
             <div className="md:hidden space-y-4">
-                {(allJobs as Job[]).map((job: Job) => (
-                    <div key={job.id} className={`p-4 rounded-xl border bg-white dark:bg-gray-800 shadow-sm transition-all ${job.assignedPartnerId === state.currentOrganization?.id ? 'border-blue-200 bg-blue-50/30' : 'border-gray-200 dark:border-gray-700'}`}>
-                        <div className="flex justify-between items-start mb-3">
+                {allJobs.length === 0 ? (
+                    <div className="bg-white dark:bg-gray-800 p-8 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 flex flex-col items-center justify-center text-center shadow-sm">
+                        <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-full mb-3">
+                            <Calendar size={24} className="text-gray-400" />
+                        </div>
+                        <h3 className="font-bold text-gray-900 dark:text-white mb-1">No Active Jobs</h3>
+                        <p className="text-[11px] text-gray-500">There are no upcoming jobs right now.</p>
+                    </div>
+                ) : (
+                    (allJobs as Job[]).map((job: Job) => (
+                        <div key={job.id} className={`p-4 rounded-xl border bg-white dark:bg-gray-800 shadow-sm transition-all ${job.assignedPartnerId === state.currentOrganization?.id ? 'border-blue-200 bg-blue-50/30' : 'border-gray-200 dark:border-gray-700'}`}>
+                            <div className="flex justify-between items-start mb-3">
                             <div>
                                 <h3 className="font-bold text-gray-900 dark:text-white">{job.customerName}</h3>
                                 <p className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5"><MapPin size={10}/> {formatAddress(job.address)}</p>
@@ -467,8 +505,9 @@ const JobScheduling: React.FC = () => {
 
                         <div className="flex flex-wrap gap-2 items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700">
                             <div className="flex gap-2">
+                                <button onClick={() => setEditingFullJob(job)} className="text-emerald-600 p-1 bg-slate-50 dark:bg-slate-700 rounded rounded-l-none" aria-label="Edit Appointment Details" title="Edit Appointment Details"><Edit size={16}/></button>
                                 <button onClick={() => openSmsModal(job)} className="text-blue-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="SMS Customer" title="SMS Customer"><MessageSquare size={16}/></button>
-                                <button onClick={() => openNotesModal(job)} className="text-amber-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="Internal Notes" title="Internal Notes"><Edit size={16}/></button>
+                                <button onClick={() => openNotesModal(job)} className="text-amber-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="Internal Notes" title="Internal Notes"><AlignLeft size={16}/></button>
                                 <button onClick={() => openDocsModal(job)} className="text-slate-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="Documents and Checklists" title="Documents and Checklists"><FileText size={16}/></button>
                                 <button onClick={() => handleCopyRef(job.id)} className="text-emerald-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="Copy Job Link" title="Copy Job Link"><Copy size={16}/></button>
                                 <button onClick={() => setShareModalJob(job)} className="text-primary-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="Share with Staff" title="Share with Staff"><Share2 size={16}/></button>
@@ -509,61 +548,71 @@ const JobScheduling: React.FC = () => {
                             </select>
                         </div>
                     </div>
-                ))}
+                    ))
+                )}
             </div>
 
             <Card className="hidden md:block">
-                <Table headers={['Customer', 'Unit/System', 'Appointment Time', 'Invoice Status', 'Job Status', 'Assigned Tech / Partner', 'Crew', 'Actions']}>
-                    {(allJobs as Job[]).map((job: Job) => (
-                        <tr id={`job-card-${job.id}`} key={job.id} className={`${job.assignedPartnerId === state.currentOrganization?.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
-                            <td className="px-6 py-4 whitespace-nowrap font-bold text-sm">
-                                {job.customerName}
-                                {job.assignedPartnerId === state.currentOrganization?.id && <span className="ml-2 text-[10px] text-blue-600 border border-blue-200 px-1 rounded bg-white">Assigned to You</span>}
-                                <div className="text-[10px] text-gray-400 font-normal">{formatAddress(job.address)}</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-xs text-blue-600 font-bold">{job.hvacBrand || '---'}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                                <input type="datetime-local" aria-label="Appointment Time" title="Appointment Time" value={formatDateTimeForInput(job.appointmentTime)} onChange={(e) => handleJobUpdate(job.id, 'appointmentTime', new Date(e.target.value).toISOString())} className="bg-white dark:bg-gray-700 border text-xs rounded p-1"/>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap"><span className="px-2 py-1 text-[10px] rounded-full bg-slate-100 font-bold">{job.invoice?.status}</span></td>
-                             <td className="px-6 py-4 whitespace-nowrap">
-                                <select aria-label="Update Job Status" title="Update Job Status" value={job.jobStatus} onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)} className="text-xs border rounded p-1">
-                                    <option value="Scheduled">Scheduled</option>
-                                    <option value="In Progress">In Progress</option>
-                                    <option value="Completed">Completed</option>
-                                </select>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                                <select 
-                                    aria-label="Assign Technician"
-                                    title="Assign Technician"
-                                    value={job.assignedTechnicianId || (job.assignedPartnerId && job.assignedPartnerId !== state.currentOrganization?.id ? `partner:${job.assignedPartnerId}` : '')} 
-                                    onChange={(e) => handleAssignmentChange(job, e.target.value)} 
-                                    className="text-xs border rounded p-1 max-w-[150px]"
-                                >
-                                    <option value="">Unassigned</option>
-                                    <optgroup label="Internal Technicians">
-                                        {employees.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName} {tech.lastName}</option>)}
-                                    </optgroup>
-                                    {linkedPartners.length > 0 && (
-                                        <optgroup label="Partner Network">
-                                            {linkedPartners.map(p => <option key={p.id} value={`partner:${p.linkedOrgId}`}>{p.companyName}</option>)}
+                {allJobs.length === 0 ? (
+                    <div className="p-12 flex flex-col items-center justify-center text-center bg-gray-50/50 dark:bg-gray-800/50 rounded-lg">
+                        <Calendar size={32} className="text-gray-300 mb-4" />
+                        <h3 className="font-bold text-gray-700 dark:text-gray-200">No Active Jobs</h3>
+                        <p className="text-sm text-gray-500">Your dispatch board is clear. Time to book some calls!</p>
+                    </div>
+                ) : (
+                    <Table headers={['Customer', 'Unit/System', 'Appointment Time', 'Invoice Status', 'Job Status', 'Assigned Tech / Partner', 'Crew', 'Actions']}>
+                        {(allJobs as Job[]).map((job: Job) => (
+                            <tr id={`job-card-${job.id}`} key={job.id} className={`${job.assignedPartnerId === state.currentOrganization?.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                                <td className="px-6 py-4 whitespace-nowrap font-bold text-sm">
+                                    {job.customerName}
+                                    {job.assignedPartnerId === state.currentOrganization?.id && <span className="ml-2 text-[10px] text-blue-600 border border-blue-200 px-1 rounded bg-white">Assigned to You</span>}
+                                    <div className="text-[10px] text-gray-400 font-normal">{formatAddress(job.address)}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-xs text-blue-600 font-bold">{job.hvacBrand || '---'}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <input type="datetime-local" aria-label="Appointment Time" title="Appointment Time" value={formatDateTimeForInput(job.appointmentTime)} onChange={(e) => handleJobUpdate(job.id, 'appointmentTime', new Date(e.target.value).toISOString())} className="bg-white dark:bg-gray-700 border text-xs rounded p-1"/>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap"><span className="px-2 py-1 text-[10px] rounded-full bg-slate-100 font-bold">{job.invoice?.status}</span></td>
+                                 <td className="px-6 py-4 whitespace-nowrap">
+                                    <select aria-label="Update Job Status" title="Update Job Status" value={job.jobStatus} onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)} className="text-xs border rounded p-1">
+                                        <option value="Scheduled">Scheduled</option>
+                                        <option value="In Progress">In Progress</option>
+                                        <option value="Completed">Completed</option>
+                                    </select>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <select 
+                                        aria-label="Assign Technician"
+                                        title="Assign Technician"
+                                        value={job.assignedTechnicianId || (job.assignedPartnerId && job.assignedPartnerId !== state.currentOrganization?.id ? `partner:${job.assignedPartnerId}` : '')} 
+                                        onChange={(e) => handleAssignmentChange(job, e.target.value)} 
+                                        className="text-xs border rounded p-1 max-w-[150px]"
+                                    >
+                                        <option value="">Unassigned</option>
+                                        <optgroup label="Internal Technicians">
+                                            {employees.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName} {tech.lastName}</option>)}
                                         </optgroup>
-                                    )}
-                                </select>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap"><button onClick={() => openCrewModal(job)} className="text-[10px] bg-slate-100 px-2 py-1 rounded">Crew ({job.assistants?.length || 0})</button></td>
-                            <td className="px-6 py-4 whitespace-nowrap flex gap-1.5 flex-wrap">
-                                <button onClick={() => openSmsModal(job)} className="text-blue-600 p-1 hover:bg-black/5 rounded" title="SMS Customer"><MessageSquare size={16}/></button>
-                                <button onClick={() => openNotesModal(job)} className="text-amber-600 p-1 hover:bg-black/5 rounded" title="Internal Notes"><Edit size={16}/></button>
-                                <button onClick={() => openDocsModal(job)} className="text-slate-600 p-1 hover:bg-black/5 rounded" title="Documents & Checklists"><FileText size={16}/></button>
-                                <button onClick={() => handleCopyRef(job.id)} className="text-emerald-600 p-1 hover:bg-black/5 rounded" title="Copy Reference"><Copy size={16}/></button>
-                                <button onClick={() => setShareModalJob(job)} className="text-primary-600 p-1 hover:bg-black/5 rounded" title="Share Job"><Share2 size={16}/></button>
-                                <button onClick={() => handleDeleteJob(job.id)} className="text-red-600 p-1 hover:bg-black/5 rounded" title="Delete Job"><Trash2 size={16}/></button>
-                            </td>
-                        </tr>
-                    ))}
-                </Table>
+                                        {linkedPartners.length > 0 && (
+                                            <optgroup label="Partner Network">
+                                                {linkedPartners.map(p => <option key={p.id} value={`partner:${p.linkedOrgId}`}>{p.companyName}</option>)}
+                                            </optgroup>
+                                        )}
+                                    </select>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap"><button onClick={() => openCrewModal(job)} className="text-[10px] bg-slate-100 px-2 py-1 rounded">Crew ({job.assistants?.length || 0})</button></td>
+                                <td className="px-6 py-4 whitespace-nowrap flex gap-1.5 flex-wrap">
+                                    <button onClick={() => setEditingFullJob(job)} className="text-emerald-600 p-1 hover:bg-black/5 rounded" title="Edit Appointment Details"><Edit size={16}/></button>
+                                    <button onClick={() => openSmsModal(job)} className="text-blue-600 p-1 hover:bg-black/5 rounded" title="SMS Customer"><MessageSquare size={16}/></button>
+                                    <button onClick={() => openNotesModal(job)} className="text-amber-600 p-1 hover:bg-black/5 rounded" title="Internal Notes"><AlignLeft size={16}/></button>
+                                    <button onClick={() => openDocsModal(job)} className="text-slate-600 p-1 hover:bg-black/5 rounded" title="Documents & Checklists"><FileText size={16}/></button>
+                                    <button onClick={() => handleCopyRef(job.id)} className="text-emerald-600 p-1 hover:bg-black/5 rounded" title="Copy Reference"><Copy size={16}/></button>
+                                    <button onClick={() => setShareModalJob(job)} className="text-primary-600 p-1 hover:bg-black/5 rounded" title="Share Job"><Share2 size={16}/></button>
+                                    <button onClick={() => handleDeleteJob(job.id)} className="text-red-600 p-1 hover:bg-black/5 rounded" title="Delete Job"><Trash2 size={16}/></button>
+                                </td>
+                            </tr>
+                        ))}
+                    </Table>
+                )}
             </Card>
         </div>
     );

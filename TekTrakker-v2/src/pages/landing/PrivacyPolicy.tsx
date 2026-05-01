@@ -4,10 +4,15 @@ import { Logo } from '../../components/ui/Logo';
 
 const PrivacyPolicy: React.FC = () => {
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans">
+    <div className="min-h-screen bg-white text-slate-900 font-sans pt-safe">
       <nav className="border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-md z-50">
-          <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
-              <Logo className="h-10 w-auto" />
+          <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
+              <a href="/#/login" className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                  <span className="font-medium font-sans">Back</span>
+              </a>
+              <Logo className="h-8 w-auto" />
+              <div className="w-[72px]"></div> {/* Spacer for centering */}
           </div>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-12">
@@ -71,7 +76,7 @@ const PrivacyPolicy: React.FC = () => {
             <h3 className="text-xl font-bold mt-6 mb-2">5. Data Retention & Deletion</h3>
             <p>We retain your personal data only as long as necessary to fulfill the purposes we collected it for, including for the purposes of satisfying any legal, accounting, or reporting requirements.</p>
             <p className="mt-2 font-bold">Account Deletion Request:</p>
-            <p>Users may request the deletion of their account and all associated personal data at any time. To request deletion, please email us directly at <a href="mailto:privacy@tektrakker.com" className="text-blue-600 hover:underline">privacy@tektrakker.com</a>. We will process your request within 30 days, subject to legal retention requirements.</p>
+            <p>Users may request the deletion of their account and all associated personal data at any time. To request deletion, please email us directly at <a href="mailto:platform@tektrakker.com" className="text-blue-600 hover:underline">platform@tektrakker.com</a>. We will process your request within 30 days, subject to legal retention requirements.</p>
 
             <h3 className="text-xl font-bold mt-6 mb-2">6. Children's Privacy</h3>
             <p>Our platform is NOT intended for children under the age of 13. We do not knowingly collect personal data from children. If we learn we have collected data from a child under 13, we will delete it immediately.</p>
@@ -82,7 +87,7 @@ const PrivacyPolicy: React.FC = () => {
             <h3 className="text-xl font-bold mt-6 mb-2">8. Contact Details</h3>
             <p>If you have any questions about this privacy policy or our privacy practices, please contact us at:</p>
             <p className="font-bold">TekTrakker Privacy Team</p>
-            <a href="mailto:privacy@tektrakker.com" className="text-blue-600 hover:underline">privacy@tektrakker.com</a>
+            <a href="mailto:platform@tektrakker.com" className="text-blue-600 hover:underline">platform@tektrakker.com</a>
 
             <div className="mt-12 bg-blue-50 dark:bg-blue-900/10 p-8 rounded-3xl border border-blue-100 dark:border-blue-900/30">
                 <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-4">Google Play Data Safety Summary</h3>

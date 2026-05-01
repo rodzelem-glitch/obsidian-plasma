@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -12,6 +13,7 @@ import { db } from 'lib/firebase';
 import type { User, CommissionSettings, PlatformCommission, PlatformLead } from 'types';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { Users, FileText, Settings, DollarSign, PlusCircle, LayoutDashboard, TrendingUp, Download, Edit, Trash2, Save, Eye, GitMerge, HandCoins, Printer } from 'lucide-react';
+import DOMPurify from 'dompurify';
 
 // Modular Components
 import Form1099CopyA from './components/sales-team/Form1099CopyA';
@@ -53,16 +55,30 @@ const MasterSalesTeam: React.FC = () => {
     const [payoutFilter, setPayoutFilter] = useState<'Pending' | 'Paid'>('Pending');
     
     // 1099 Specific State
+    const [activeTaxTab, setActiveTaxTab] = useState<'1099' | 'W9'>('1099');
     const [taxYear, setTaxYear] = useState<number>(new Date().getFullYear());
     const [taxAmountOverride, setTaxAmountOverride] = useState<string>('');
 
     useEffect(() => {
-        const unsub = db.collection('users').where('role', '==', 'platform_sales').onSnapshot(snap => setSalesReps(snap.docs.map(d => ({ ...d.data(), id: d.id } as User))));
-        const unsubLeads = db.collection('platformLeads').onSnapshot(snap => setAllLeads(snap.docs.map(d => ({ ...d.data(), id: d.id } as PlatformLead))));
-        const unsubComms = db.collection('platformCommissions').onSnapshot(snap => setCommissions(snap.docs.map(d => ({ ...d.data(), id: d.id } as PlatformCommission))));
+        const isFranchiseAdmin = !state.isMasterAdmin && state.currentUser?.franchiseId;
+        const myFranchiseId = state.currentUser?.franchiseId;
+
+        let repsQuery: any = db.collection('users').where('role', '==', 'platform_sales');
+        let leadsQuery: any = db.collection('platformLeads');
+        let commsQuery: any = db.collection('platformCommissions');
+
+        if (isFranchiseAdmin && myFranchiseId) {
+            repsQuery = repsQuery.where('franchiseId', '==', myFranchiseId);
+            leadsQuery = leadsQuery.where('franchiseId', '==', myFranchiseId);
+            commsQuery = commsQuery.where('franchiseId', '==', myFranchiseId);
+        }
+
+        const unsub = repsQuery.onSnapshot((snap: any) => setSalesReps(snap.docs.map((d: any) => ({ ...d.data(), id: d.id } as User))));
+        const unsubLeads = leadsQuery.onSnapshot((snap: any) => setAllLeads(snap.docs.map((d: any) => ({ ...d.data(), id: d.id } as PlatformLead))));
+        const unsubComms = commsQuery.onSnapshot((snap: any) => setCommissions(snap.docs.map((d: any) => ({ ...d.data(), id: d.id } as PlatformCommission))));
         db.collection('settings').doc('commission_rules').get().then(doc => { if (doc.exists) setCommissionRules(doc.data() as CommissionSettings); });
         return () => { unsub(); unsubLeads(); unsubComms(); };
-    }, []);
+    }, [state.isMasterAdmin, state.currentUser?.franchiseId]);
 
     const repStats = useMemo(() => {
         return salesReps.map(rep => {
@@ -113,12 +129,28 @@ const MasterSalesTeam: React.FC = () => {
             });
 
             await db.collection('organizations').doc('platform').set({ id: 'platform', name: 'TekTrakker Platform', subscriptionStatus: 'active', plan: 'enterprise', email: 'platform@tektrakker.com', phone: '555-000-0000', createdAt: new Date().toISOString() }, { merge: true });
-            const user: User = { id: userId, uid: userId, organizationId: 'platform', role: 'platform_sales', firstName: newRepData.firstName, lastName: newRepData.lastName, email: userId, username: userId.split('@')[0], status: 'active', payRate: 0, ptoAccrued: 0, salesContractSigned: false, hireDate: new Date().toISOString(), notes: '' };
+            const user: User = { 
+                id: userId, 
+                uid: userId, 
+                organizationId: 'platform', 
+                role: 'platform_sales', 
+                firstName: newRepData.firstName, 
+                lastName: newRepData.lastName, 
+                email: userId, 
+                username: userId.split('@')[0], 
+                status: 'active', 
+                payRate: 0, 
+                ptoAccrued: 0, 
+                salesContractSigned: false, 
+                hireDate: new Date().toISOString(), 
+                notes: '',
+                ...(!state.isMasterAdmin && state.currentUser?.franchiseId ? { franchiseId: state.currentUser.franchiseId } : {})
+            };
             await db.collection('users').doc(userId).set(user);
             setIsAddRepModalOpen(false);
-            alert(`Sales Rep Created Successfully! Instruct them to login using the credentials you just assigned.`);
+            showToast.warn(`Sales Rep Created Successfully! Instruct them to login using the credentials you just assigned.`);
             setNewRepData({ firstName: '', lastName: '', email: '', tempPassword: '', useCustomRules: false, customRules: DEFAULT_COMMISSION_RULES });
-        } catch (e: any) { alert(e.message); }
+        } catch (e: any) { showToast.warn(e.message); }
     };
 
     const handleEditRep = async (e: React.FormEvent) => {
@@ -139,7 +171,7 @@ const MasterSalesTeam: React.FC = () => {
             setIsAddRepModalOpen(false);
             setEditingRepId(null);
             setNewRepData({ firstName: '', lastName: '', email: '', tempPassword: '', useCustomRules: false, customRules: DEFAULT_COMMISSION_RULES });
-        } catch (e: any) { alert(e.message); }
+        } catch (e: any) { showToast.warn(e.message); }
     };
 
     const handleMerge = async () => {
@@ -152,7 +184,7 @@ const MasterSalesTeam: React.FC = () => {
             batch.delete(db.collection('users').doc(duplicateId));
             await batch.commit();
             setIsMergeModalOpen(false);
-        } catch(e: any) { alert(e.message); } finally { setIsMerging(false); }
+        } catch(e: any) { showToast.warn(e.message); } finally { setIsMerging(false); }
     };
 
     const handleOpenContract = (rep: User) => {
@@ -171,16 +203,16 @@ const MasterSalesTeam: React.FC = () => {
         try {
             await db.collection('settings').doc('commission_rules').set(commissionRules, { merge: true });
             setIsSettingsModalOpen(false);
-            alert("Commission rules updated.");
+            showToast.warn("Commission rules updated.");
         } catch (e) {
-            alert("Failed to save settings.");
+            showToast.warn("Failed to save settings.");
         }
     };
 
     return (
         <div className="space-y-6">
             <header className="flex justify-between items-center">
-                <div><h2 className="text-3xl font-bold">Platform Sales Force</h2><p className="text-slate-500">Manage reps and track commissions.</p></div>
+                
                 <div className="flex gap-2">
                     <Button onClick={() => setIsMergeModalOpen(true)} variant="secondary"><GitMerge size={18}/> Merge</Button>
                     <Button onClick={() => setIsSettingsModalOpen(true)} variant="secondary"><Settings size={18}/> Rules</Button>
@@ -268,19 +300,47 @@ const MasterSalesTeam: React.FC = () => {
             )}
             
             {viewTaxRep && (
-                <Modal isOpen={true} onClose={() => { setViewTaxRep(null); setTaxAmountOverride(''); }} title="Tax Form 1099-NEC Generation">
+                <Modal isOpen={true} onClose={() => { setViewTaxRep(null); setTaxAmountOverride(''); setActiveTaxTab('1099'); }} title="Tax Documents">
                     <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
-                            <Input label="Tax Year" type="number" value={taxYear} onChange={e => setTaxYear(parseInt(e.target.value))} />
-                            <Input label="Override Amount ($) (Manual Job)" type="number" value={taxAmountOverride} onChange={e => setTaxAmountOverride(e.target.value)} placeholder={`Aggregate Paid: $${calculatedTaxEarnings.toFixed(2)}`} />
+                        <div className="flex gap-2 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg w-full overflow-x-auto whitespace-nowrap scrollbar-hide">
+                            <button onClick={() => setActiveTaxTab('1099')} className={`shrink-0 min-w-max whitespace-nowrap px-4 py-2 text-sm font-bold rounded-md uppercase ${activeTaxTab === '1099' ? 'bg-white text-blue-600 shadow' : 'text-slate-500'}`}>1099-NEC Generation</button>
+                            <button onClick={() => setActiveTaxTab('W9')} className={`shrink-0 min-w-max whitespace-nowrap px-4 py-2 text-sm font-bold rounded-md uppercase ${activeTaxTab === 'W9' ? 'bg-white text-blue-600 shadow' : 'text-slate-500'}`}>Form W-9</button>
                         </div>
-                        <div className="text-xs text-slate-500 mb-2 px-2">
-                           The calculated amount inherently includes all commissions marked "Paid" within the selected tax year for this rep. For manually entered job amounts, provide an override.
-                        </div>
-                        <Form1099CopyA recipient={viewTaxRep} amount={finalTaxAmount || 0} year={taxYear} />
-                        <div className="flex justify-end pt-4">
-                            <Button onClick={() => window.print()} className="flex items-center gap-2"><Printer size={16}/> Print Tax Form</Button>
-                        </div>
+                        
+                        {activeTaxTab === '1099' && (
+                            <div className="space-y-4 animate-in fade-in">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+                                    <Input label="Tax Year" type="number" value={taxYear} onChange={e => setTaxYear(parseInt(e.target.value))} />
+                                    <Input label="Override Amount ($) (Manual Job)" type="number" value={taxAmountOverride} onChange={e => setTaxAmountOverride(e.target.value)} placeholder={`Aggregate Paid: $${calculatedTaxEarnings.toFixed(2)}`} />
+                                </div>
+                                <div className="text-xs text-slate-500 mb-2 px-2">
+                                   The calculated amount inherently includes all commissions marked "Paid" within the selected tax year for this rep. For manually entered job amounts, provide an override.
+                                </div>
+                                <Form1099CopyA recipient={viewTaxRep} amount={finalTaxAmount || 0} year={taxYear} />
+                                <div className="flex justify-end pt-4">
+                                    <Button onClick={() => window.print()} className="flex items-center gap-2"><Printer size={16}/> Print Tax Form</Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTaxTab === 'W9' && (
+                            <div className="space-y-4 animate-in fade-in">
+                                {viewTaxRep.taxW9Content ? (
+                                    <>
+                                        <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-md h-[600px] overflow-y-auto wysiwyg-content prose dark:prose-invert max-w-none"
+                                             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewTaxRep.taxW9Content) }}
+                                        />
+                                        <div className="flex justify-end items-center pt-4">
+                                            <Button onClick={() => window.print()} className="flex items-center gap-2"><Printer size={16}/> Print W-9</Button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="p-8 text-center text-slate-500 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                                        This Sales Rep has not submitted a W-9 form yet.
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </Modal>
             )}
@@ -296,9 +356,9 @@ const MasterSalesTeam: React.FC = () => {
                                 className="font-mono text-sm"
                             />
                         ) : (
-                            <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-md whitespace-pre-wrap font-mono text-sm h-96 overflow-y-auto">
-                                {viewContractRep.salesContractContent || 'No contract content available.'}
-                            </div>
+                            <div className="p-4 bg-slate-100 dark:bg-slate-800 rounded-md h-96 overflow-y-auto wysiwyg-content prose dark:prose-invert max-w-none"
+                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewContractRep.salesContractContent || 'No contract content available.') }}
+                            />
                         )}
                         <div className="flex justify-between items-center">
                             <div>

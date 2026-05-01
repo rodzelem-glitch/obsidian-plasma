@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
@@ -10,16 +11,36 @@ import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import Textarea from 'components/ui/Textarea';
 import DOMPurify from 'dompurify';
+import showToast from 'lib/toast';
+import { uploadFileToStorage } from 'lib/storageService';
+import { Camera, Upload, Trash2, FileText, CheckCircle2, BookOpen, ShieldAlert, Award, ArrowLeft, ChevronRight } from 'lucide-react';
 
 const HRResources: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const [view, setView] = useState<'handbook' | 'safety' | 'certs'>('handbook');
+    const location = useLocation();
+    const [view, setView] = useState<'menu' | 'handbook' | 'safety' | 'certs'>('menu');
     const { currentUser: user } = state;
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get('tab');
+        if (tab === 'handbook' || tab === 'safety' || tab === 'certs') {
+            setView(tab);
+        } else {
+            setView('menu');
+        }
+    }, [location.search]);
 
     // Safety Form State
     const [incidentType, setIncidentType] = useState<IncidentReport['type']>('Injury');
     const [incidentDesc, setIncidentDesc] = useState('');
+    const [incidentAttachments, setIncidentAttachments] = useState<string[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+
+    // Cert Upload State
+    const [certFile, setCertFile] = useState<File | null>(null);
+    const [certName, setCertName] = useState('');
 
     const policies = state.documents.filter(d => d.type === 'Policy');
     const myIncidents = state.incidentReports.filter(i => i.reporterId === user?.id);
@@ -37,33 +58,136 @@ const HRResources: React.FC = () => {
                 date: new Date().toISOString(),
                 type: incidentType,
                 description: incidentDesc,
-                status: 'Open'
+                status: 'Open',
+                attachmentUrls: incidentAttachments
             };
             await db.collection('incidentReports').doc(report.id).set(report);
             dispatch({ type: 'ADD_INCIDENT', payload: report });
             setIncidentDesc('');
-            alert('Incident Report Submitted.');
+            setIncidentAttachments([]);
+            showToast.success('Incident report submitted.');
         } catch (error) {
             console.error(error);
-            alert('Submission failed.');
+            showToast.error('Submission failed.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
+    const handleIncidentFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !user) return;
+
+        setIsUploading(true);
+        try {
+            const path = `organizations/${user.organizationId}/incidents/${Date.now()}_${file.name}`;
+            const url = await uploadFileToStorage(path, file);
+            setIncidentAttachments(prev => [...prev, url]);
+            showToast.success('Photo attached.');
+        } catch (error) {
+            console.error(error);
+            showToast.error('Upload failed.');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleCertificationUpload = async () => {
+        if (!certFile || !certName || !user) {
+            showToast.warn('Please provide both a name and a file.');
+            return;
+        }
+
+        setIsUploading(true);
+        try {
+            const path = `organizations/${user.organizationId}/users/${user.id}/certs/${Date.now()}_${certFile.name}`;
+            const url = await uploadFileToStorage(path, certFile);
+            
+            const newCert = {
+                name: certName,
+                expiryDate: null,
+                fileUrl: url
+            };
+
+            const updatedCerts = [...(user.certifications || []), newCert];
+            await db.collection('users').doc(user.id).update({
+                certifications: updatedCerts
+            });
+
+            dispatch({ 
+                type: 'UPDATE_USER', 
+                payload: { ...user, certifications: updatedCerts } 
+            });
+
+            setCertFile(null);
+            setCertName('');
+            showToast.success('Certification uploaded successfully!');
+        } catch (error) {
+            console.error(error);
+            showToast.error('Upload failed.');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     return (
-        <div className="p-4 sm:p-6 lg:p-8 space-y-6 pb-24">
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">HR & Safety Portal</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Resources, reporting, and records.</p>
+        <div className="p-4 sm:p-6 lg:p-8 space-y-6 pb-24 max-w-7xl mx-auto">
+            {view === 'menu' ? (
+                <>
+                    <header className="mb-8">
+                        <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">HR & Safety Resources</h1>
+                        <p className="text-slate-500 mt-2">Select a category below to access policies, report incidents, or manage your certifications.</p>
+                    </header>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <button onClick={() => setView('handbook')} className="group flex flex-col items-start p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 hover:border-primary-500 transition-all hover:-translate-y-1 text-left">
+                            <div className="w-14 h-14 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                                <BookOpen size={28} />
+                            </div>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Company Handbook</h2>
+                            <p className="text-slate-500 text-sm mb-6 flex-1">Read official company policies, standard operating procedures, and HR guidelines.</p>
+                            <div className="flex items-center text-primary-600 font-bold text-sm">
+                                Open Handbook <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
+                            </div>
+                        </button>
+
+                        <button onClick={() => setView('safety')} className="group flex flex-col items-start p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 hover:border-red-500 transition-all hover:-translate-y-1 text-left">
+                            <div className="w-14 h-14 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                                <ShieldAlert size={28} />
+                            </div>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Safety & Incidents</h2>
+                            <p className="text-slate-500 text-sm mb-6 flex-1">Report workplace injuries, vehicle accidents, or property damage and view past reports.</p>
+                            <div className="flex items-center text-red-600 font-bold text-sm">
+                                Access Safety <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
+                            </div>
+                        </button>
+
+                        <button onClick={() => setView('certs')} className="group flex flex-col items-start p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 hover:border-green-500 transition-all hover:-translate-y-1 text-left">
+                            <div className="w-14 h-14 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                                <Award size={28} />
+                            </div>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">My Certifications</h2>
+                            <p className="text-slate-500 text-sm mb-6 flex-1">View your active credentials, EPA licenses, and upload new certifications for approval.</p>
+                            <div className="flex items-center text-green-600 font-bold text-sm">
+                                Manage Certs <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
+                            </div>
+                        </button>
+                    </div>
+                </>
+            ) : (
+                <div className="mb-6">
+                    <button onClick={() => setView('menu')} className="flex items-center text-sm font-bold text-slate-500 hover:text-primary-600 transition-colors mb-6">
+                        <ArrowLeft size={16} className="mr-2"/> Back to Resources
+                    </button>
+                    <header className="mb-6">
+                        <h1 className="text-2xl font-black text-slate-900 dark:text-white">
+                            {view === 'handbook' && 'Company Handbook & Policies'}
+                            {view === 'safety' && 'Safety & Incident Reporting'}
+                            {view === 'certs' && 'My Certifications'}
+                        </h1>
+                    </header>
                 </div>
-                <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
-                    <button onClick={() => setView('handbook')} className={`px-4 py-2 text-sm rounded transition-colors ${view === 'handbook' ? 'bg-white dark:bg-gray-600 shadow text-primary-600 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>Handbook</button>
-                    <button onClick={() => setView('safety')} className={`px-4 py-2 text-sm rounded transition-colors ${view === 'safety' ? 'bg-white dark:bg-gray-600 shadow text-red-600 dark:text-red-200' : 'text-gray-500 dark:text-gray-400'}`}>Safety</button>
-                    <button onClick={() => setView('certs')} className={`px-4 py-2 text-sm rounded transition-colors ${view === 'certs' ? 'bg-white dark:bg-gray-600 shadow text-primary-600 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>Certifications</button>
-                </div>
-            </header>
+            )}
 
             {view === 'handbook' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -102,8 +226,34 @@ const HRResources: React.FC = () => {
                                 placeholder="Describe exactly what happened..." 
                                 required 
                             />
-                            <Button type="submit" disabled={isSubmitting} className="bg-red-600 hover:bg-red-700 text-white">
-                                {isSubmitting ? 'Submitting...' : 'Submit Official Report'}
+
+                            <div className="space-y-2">
+                                <label className="block text-sm font-black uppercase text-slate-400">Documentation / Photos</label>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {incidentAttachments.map((url, idx) => (
+                                        <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
+                                            <img src={url} alt="Incident Attachment" className="w-full h-full object-cover" />
+                                            <button 
+                                                type="button"
+                                                title="Delete Attachment"
+                                                aria-label="Delete Attachment"
+                                                onClick={() => setIncidentAttachments(prev => prev.filter((_, i) => i !== idx))}
+                                                className="absolute top-1 right-1 bg-red-600 text-white p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    <label className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                                        <Camera className="text-slate-400 mb-1" size={24} />
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase">Add Photo</span>
+                                        <input type="file" accept="image/*" onChange={handleIncidentFileUpload} className="hidden" title="Add Photo" aria-label="Add Photo" />
+                                    </label>
+                                </div>
+                            </div>
+
+                            <Button type="submit" disabled={isSubmitting || isUploading} className="w-full bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20 py-4 text-sm">
+                                {isSubmitting ? 'Submitting Report...' : 'Submit Official Incident Report'}
                             </Button>
                         </form>
                     </Card>
@@ -120,6 +270,19 @@ const HRResources: React.FC = () => {
                                     <div className="text-xs font-medium">
                                         Status: <span className={inc.status === 'Resolved' ? 'text-green-600' : 'text-yellow-600'}>{inc.status}</span>
                                     </div>
+                                    {inc.attachmentUrls && inc.attachmentUrls.length > 0 && (
+                                        <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
+                                            {inc.attachmentUrls.map((url, idx) => (
+                                                <img 
+                                                    key={idx} 
+                                                    src={url} 
+                                                    alt="Evidence" 
+                                                    className="w-12 h-12 object-cover rounded border border-slate-200 dark:border-slate-700 flex-shrink-0" 
+                                                    onClick={() => window.open(url, '_blank')}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
                                     {inc.resolutionNotes && <p className="text-xs text-gray-500 mt-1 italic">Resolution: {inc.resolutionNotes}</p>}
                                 </div>
                             )) : <p className="text-gray-500 text-sm">No incidents reported.</p>}
@@ -141,17 +304,51 @@ const HRResources: React.FC = () => {
                                         <p className="text-xs text-gray-500">Expires: {cert.expiryDate ? new Date(cert.expiryDate).toLocaleDateString() : 'N/A'}</p>
                                     </div>
                                 </div>
-                                <span className="bg-white dark:bg-gray-800 text-green-700 dark:text-green-400 text-xs font-bold px-3 py-1 rounded-full shadow-sm">Active</span>
+                                <div className="flex items-center gap-2">
+                                    {cert.fileUrl && (
+                                        <button 
+                                            onClick={() => window.open(cert.fileUrl, '_blank')}
+                                            className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                                            title="View Certificate"
+                                        >
+                                            <FileText size={18} />
+                                        </button>
+                                    )}
+                                    <span className="bg-white dark:bg-gray-800 text-green-700 dark:text-green-400 text-xs font-bold px-3 py-1 rounded-full shadow-sm flex items-center gap-1">
+                                        <CheckCircle2 size={12} /> Active
+                                    </span>
+                                </div>
                             </div>
                         )) : (
                             <p className="text-gray-500">No certifications recorded on profile.</p>
                         )}
-                        <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">Upload New Certification</h4>
-                            <div className="flex gap-2">
-                                <Input label="" type="file" className="flex-1 text-sm" />
-                                <Button className="w-auto text-sm">Upload</Button>
+                        <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 space-y-4">
+                            <h4 className="font-black text-xs uppercase text-slate-400 tracking-wider">Upload New Certification</h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Input 
+                                    label="Certification Name" 
+                                    placeholder="e.g. EPA Section 608" 
+                                    value={certName}
+                                    onChange={e => setCertName(e.target.value)}
+                                />
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">File / Photo</label>
+                                    <input 
+                                        type="file" 
+                                        title="Certification File Upload"
+                                        aria-label="Certification File Upload"
+                                        onChange={e => setCertFile(e.target.files?.[0] || null)}
+                                        className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100" 
+                                    />
+                                </div>
                             </div>
+                            <Button 
+                                onClick={handleCertificationUpload} 
+                                disabled={isUploading || !certFile || !certName} 
+                                className="w-full bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-500/20 py-4 text-sm"
+                            >
+                                {isUploading ? 'Uploading...' : 'Register Certification'}
+                            </Button>
                         </div>
                     </div>
                 </Card>

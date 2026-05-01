@@ -19,6 +19,7 @@ import SignaturePad, { SignaturePadHandle } from 'components/ui/SignaturePad';
 import { QRCodeCanvas } from 'qrcode.react';
 import { formatAddress } from 'lib/utils';
 import { APEX_MOCK_DOCUMENTS, MILE_HIGH_MOCK_ORG } from 'lib/mock-data/apex-demo';
+import showToast from 'lib/toast';
 
 // Modular Components
 import AppointmentsSection from './components/AppointmentsSection';
@@ -306,7 +307,7 @@ const CustomerDashboard: React.FC = () => {
             setViewingWarrantyJob(null);
         } catch (e) {
             console.error("Error accepting warranty:", e);
-            alert("Error updating warranty. Please try again.");
+            showToast.error("Error updating warranty. Please try again.");
         } finally {
             setIsSubmitting(false);
         }
@@ -392,7 +393,7 @@ const CustomerDashboard: React.FC = () => {
             sigPadRef.current.clear();
         } catch (e: any) {
             console.error(e);
-            alert("Failed to save signature: " + (e.message || String(e)));
+            showToast.error("Failed to save signature: " + (e.message || String(e)));
         } finally {
             setIsSubmitting(false);
         }
@@ -456,7 +457,7 @@ const CustomerDashboard: React.FC = () => {
             sigPadRef.current.clear();
         } catch (e: any) { 
             console.error(e); 
-            alert("Failed to save signature: " + (e.message || String(e)));
+            showToast.error("Failed to save signature: " + (e.message || String(e)));
         } finally { 
             setIsSubmitting(false); 
         }
@@ -474,9 +475,9 @@ const CustomerDashboard: React.FC = () => {
         } catch (error: any) {
             console.error("Account Deletion Error:", error);
             if (error.code === 'auth/requires-recent-login') {
-                alert("For security purposes, please log out and log back in to authenticate before deleting your account.");
+                showToast.warn("For security, please log out and log back in before deleting your account.");
             } else {
-                alert("Failed to delete account. Please contact support.");
+                showToast.error("Failed to delete account. Please contact support.");
             }
             setIsSubmitting(false);
         }
@@ -489,10 +490,10 @@ const CustomerDashboard: React.FC = () => {
             // Unset auto-billing visually and cancel the plan agreement
             await db.collection('serviceAgreements').doc(membership.id).update({ status: 'Cancelled' });
             setIsCancelPlanModalOpen(false);
-            alert("Your membership has been successfully cancelled. You will not be billed again.");
-        } catch (e) {
-            console.error("Cancel plan error:", e);
-            alert("Failed to cancel membership plan. Please try again or contact support.");
+            showToast.success("Membership cancelled. You will not be billed again.");
+        } catch (e: any) {
+            console.error(e);
+            showToast.error("Failed to cancel membership. Please contact support.");
         } finally {
             setIsSubmitting(false);
         }

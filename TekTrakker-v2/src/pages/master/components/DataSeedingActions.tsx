@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useEffect } from 'react';
 import Button from 'components/ui/Button';
 import { db } from 'lib/firebase';
@@ -51,7 +52,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
             setDurationMonths('12');
             fetchPromoCodes();
         } catch (e: any) {
-            alert("Error: " + e.message);
+            showToast.warn("Error: " + e.message);
         } finally {
             setSeeding(false);
         }
@@ -61,7 +62,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
         try {
             await db.collection('promoCodes').doc(id).update({ isActive: !current });
             fetchPromoCodes();
-        } catch (e) {}
+        } catch (e) { console.error(e); }
     };
 
     const handleDeletePromo = async (id: string) => {
@@ -69,7 +70,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
         try {
             await db.collection('promoCodes').doc(id).delete();
             fetchPromoCodes();
-        } catch (e) {}
+        } catch (e) { console.error(e); }
     };
 
     const handleSeedData = async () => {
@@ -148,11 +149,11 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
             }
 
             await batch.commit();
-            alert("Test data seeded successfully! You can now Impersonate these organizations to view their data.");
+            showToast.warn("Test data seeded successfully! You can now Impersonate these organizations to view their data.");
             window.location.reload(); 
         } catch (e: any) {
             console.error(e);
-            alert("Error seeding data: " + e.message);
+            showToast.warn("Error seeding data: " + e.message);
         } finally {
             setSeeding(false);
         }
@@ -565,10 +566,10 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
             });
 
             await commitAndReset();
-            alert("High-Revenue Demo Suite Created! 'Apex Service Solutions (Demo)' is ready for presentation.");
+            showToast.warn("High-Revenue Demo Suite Created! 'Apex Service Solutions (Demo)' is ready for presentation.");
         } catch (e: any) {
             console.error(e);
-            alert("Error seeding demo suite: " + e.message);
+            showToast.warn("Error seeding demo suite: " + e.message);
         } finally {
             setSeeding(false);
         }

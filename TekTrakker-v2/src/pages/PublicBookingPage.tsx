@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -137,7 +138,7 @@ const PublicBookingPage: React.FC = () => {
                         <p><strong>Property Owner Name:</strong> ${formData.ownerName}</p>
                         <p><strong>Property Owner Phone:</strong> ${formData.ownerPhone}</p>` : ''}
                         <br/>
-                        <a href="https://tektrakker.com" style="background:#0284c7;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Manage Request</a>
+                        <a href="https://app.tektrakker.com" style="background:#0284c7;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Manage Request</a>
                     `
                 },
                 organizationId: targetOrgId || 'platform',
@@ -157,7 +158,7 @@ const PublicBookingPage: React.FC = () => {
             setSuccess(true);
         } catch (e) {
             console.error(e);
-            alert("Booking failed. Please try again or call us.");
+            showToast.warn("Booking failed. Please try again or call us.");
         } finally {
             setIsSubmitting(false);
         }
@@ -220,8 +221,8 @@ const PublicBookingPage: React.FC = () => {
 
                         <Input label="Preferred Date" type="date" value={formData.preferredDate} onChange={e => setFormData({...formData, preferredDate: e.target.value})} min={new Date().toISOString().split('T')[0]} required />
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Are you the property owner?</label>
+                        <fieldset>
+                            <legend className="block text-sm font-medium text-gray-700">Are you the property owner?</legend>
                             <div className="flex items-center mt-2 space-x-6">
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input type="radio" name="isOwner" value="Yes" checked={formData.isOwner === 'Yes'} onChange={e => setFormData({...formData, isOwner: e.target.value})} className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300" />
@@ -232,7 +233,7 @@ const PublicBookingPage: React.FC = () => {
                                     <span className="text-gray-900 font-medium">No</span>
                                 </label>
                             </div>
-                        </div>
+                        </fieldset>
 
                         {formData.isOwner === 'No' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -243,10 +244,10 @@ const PublicBookingPage: React.FC = () => {
 
                         <Textarea label="Notes / Issues" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} rows={3} placeholder="Describe the issue or any special instructions..." />
 
-                        <div className="flex items-start gap-2 mt-2 p-3 bg-blue-50 rounded border border-blue-100 text-xs text-blue-800">
+                        <label className="flex items-start gap-2 mt-2 p-3 bg-blue-50 rounded border border-blue-100 text-xs text-blue-800 cursor-pointer">
                              <input type="checkbox" required className="mt-0.5" />
                              <span>I agree to receive automated SMS/Email notifications regarding this request. Msg & data rates may apply.</span>
-                        </div>
+                        </label>
 
                         <Button type="submit" disabled={isSubmitting} className="w-full h-12 text-lg font-bold mt-4" style={{ backgroundColor: brandColor }}>
                             {isSubmitting ? 'Submitting...' : 'Request Appointment'}

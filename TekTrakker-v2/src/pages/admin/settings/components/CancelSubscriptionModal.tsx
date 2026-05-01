@@ -1,9 +1,11 @@
+import showToast from "lib/toast";
 import React, { useState } from 'react';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
 import { AlertCircle, PauseCircle, Tag, XCircle, Gift, CheckCircle2 } from 'lucide-react';
 import { db } from 'lib/firebase';
 import { useAppContext } from 'context/AppContext';
+import { Capacitor } from '@capacitor/core';
 
 interface CancelSubscriptionModalProps {
     isOpen: boolean;
@@ -60,7 +62,7 @@ const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = ({ isOpe
             }
             setStep('success_retained');
         } catch (error) {
-            alert('Failed to process. Please contact support.');
+            showToast.warn('Failed to process. Please contact support.');
             console.error(error);
         } finally {
             setIsProcessing(false);
@@ -71,6 +73,14 @@ const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = ({ isOpe
         if (!state.currentOrganization) return;
         setIsProcessing(true);
         try {
+            // App Store Compliance: If on iOS, we MUST direct the user to Apple Subscriptions
+            // because Apple does not allow third-party APIs to physically cancel auto-renewing App Store subs.
+            if (Capacitor.getPlatform() === 'ios') {
+                 window.open('https://apps.apple.com/account/subscriptions', '_blank');
+                 setStep('success_canceled');
+                 return;
+            }
+
             await db.collection('organizations').doc(state.currentOrganization.id).update({
                 subscriptionStatus: 'cancelled',
                 cancellationReason: feedbackReason,
@@ -83,7 +93,7 @@ const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = ({ isOpe
             });
             setStep('success_canceled');
         } catch (error) {
-            alert('Failed to process cancellation. Please try again.');
+            showToast.warn('Failed to process cancellation. Please try again.');
             console.error(error);
         } finally {
             setIsProcessing(false);

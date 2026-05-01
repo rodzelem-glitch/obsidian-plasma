@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
@@ -34,7 +35,7 @@ const CustomerPayment: React.FC = () => {
     const fetchData = async () => {
         if (!jobId) { setError("Invalid Link."); setLoading(false); return; }
         try {
-            if (!auth.currentUser) { try { await auth.signInAnonymously(); } catch (e) {} }
+            if (!auth.currentUser) { try { await auth.signInAnonymously(); } catch (e) { console.error(e); } }
             
             const jobDoc = await db.collection('jobs').doc(jobId).get();
             if (!jobDoc.exists) throw new Error("Invoice record not found.");
@@ -113,26 +114,26 @@ const CustomerPayment: React.FC = () => {
           if (job.source === 'PlatformAdmin' && job.customerId) await db.collection('organizations').doc(job.customerId).update({ subscriptionStatus: 'active' });
           setJob({ ...job, invoice: { ...job.invoice, status: 'Paid' } });
           setSuccess(true);
-      } catch (e) { alert("Failed to update status."); }
+      } catch (e) { showToast.warn("Failed to update status."); }
   };
 
   const handlePayPalApprove = async (data: any, actions: any) => {
     try {
         const details = await actions.order.capture();
         if (details.status === 'COMPLETED') await markJobPaid();
-    } catch (error) { alert("Transaction failed."); }
+    } catch (error) { showToast.warn("Transaction failed."); }
   };
   
-  const handleSubscriptionApprove = async () => { await markJobPaid(); alert("Subscription Active!"); };
+  const handleSubscriptionApprove = async () => { await markJobPaid(); showToast.warn("Subscription Active!"); };
 
   const handleSignInvoice = async () => {
-      if (!sigPadRef.current || sigPadRef.current.isEmpty() || !job) { alert("Sign first."); return; }
+      if (!sigPadRef.current || sigPadRef.current.isEmpty() || !job) { showToast.warn("Sign first."); return; }
       setIsSigning(true);
       try {
           const sig = sigPadRef.current.toDataURL();
           await db.collection('jobs').doc(job.id).update({ invoiceSignature: sig, invoiceSignedDate: new Date().toISOString() });
           setJob({ ...job, invoiceSignature: sig });
-      } catch (e) { alert("Failed to save."); } finally { setIsSigning(false); }
+      } catch (e) { showToast.warn("Failed to save."); } finally { setIsSigning(false); }
   };
 
   const isPlatformSubscription = job?.source === 'PlatformAdmin';

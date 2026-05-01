@@ -1,0 +1,10 @@
+{
+	"appId": "com.tektrakker.app",
+	"appName": "TekTrakker",
+	"webDir": "dist",
+	"plugins": {
+		"StatusBar": {
+			"overlaysWebView": true
+		}
+	}
+}

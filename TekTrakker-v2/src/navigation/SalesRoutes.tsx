@@ -15,6 +15,7 @@ import SalesTools from '../pages/sales/SalesTools';
 import SalesExpenses from '../pages/sales/SalesExpenses';
 import CampaignManager from '../pages/sales/CampaignManager';
 import Messages from '../pages/Messages';
+import MailingListManager from '../pages/master/components/MailingListManager';
 
 const SalesRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({ user, handleLogout }) => (
   <ProtectedRoute isAllowed={user?.role === 'platform_sales' || user?.role === 'master_admin'}>
@@ -29,6 +30,7 @@ const SalesRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({ user,
         <Route path="tools" element={<SalesTools />} />
         <Route path="expenses" element={<SalesExpenses />} />
         <Route path="messages" element={<Messages />} />
+        <Route path="mailing-lists" element={<MailingListManager />} />
         <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Routes>
     </SalesLayout>

@@ -1,7 +1,8 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from 'lib/firebase';
+import { db, functions } from 'lib/firebase';
 import { Organization, Review, Customer, User } from 'types';
 import Button from 'components/ui/Button';
 import Card from 'components/ui/Card';
@@ -10,7 +11,7 @@ import Textarea from 'components/ui/Textarea';
 import Input from 'components/ui/Input';
 import { 
     MapPin, Star, Phone, Globe, ShieldCheck, 
-    MessageSquare, Link as LinkIcon, AlertTriangle, ArrowLeft, Wrench, Calendar, BadgeCheck,
+    MessageSquare, Link as LinkIcon, AlertTriangle, ArrowLeft, Wrench, Calendar, BadgeCheck, Briefcase,
     Facebook, Instagram, Linkedin, Twitter, Youtube
 } from 'lucide-react';
 import { formatAddress } from 'lib/utils';
@@ -21,7 +22,7 @@ const ProviderProfile: React.FC = () => {
     const { orgId } = useParams<{ orgId: string }>();
     const navigate = useNavigate();
     const { state, dispatch } = useAppContext();
-    const { currentUser, customers } = state;
+    const { currentUser, customers, currentOrganization, subcontractors } = state;
     
     const [org, setOrg] = useState<Organization | null>(null);
     const [loading, setLoading] = useState(true);
@@ -155,12 +156,60 @@ const ProviderProfile: React.FC = () => {
 
             dispatch({ type: 'ADD_CUSTOMER', payload: newCustomer });
             setIsLinked(true);
-            alert(`Successfully linked with ${org.name}!`);
+            showToast.warn(`Successfully linked with ${org.name}!`);
             navigate('/portal');
 
         } catch (error) {
             console.error("Error linking account:", error);
-            alert("There was an error linking your account.");
+            showToast.warn("There was an error linking your account.");
+        } finally {
+            setIsProcessingLink(false);
+        }
+    };
+    
+    const handleConnectSubcontractor = async () => {
+        if (!currentOrganization || !org) return;
+        setIsProcessingLink(true);
+        try {
+            // Check if subcontractor record already exists
+            const existingSub = subcontractors?.find(s => s.linkedOrgId === org.id);
+            const manageHandshake = functions.httpsCallable('manageHandshake');
+            
+            if (existingSub) {
+                await manageHandshake({
+                    action: 'request',
+                    targetOrgId: org.id,
+                    requestingOrgId: currentOrganization.id,
+                    subcontractorId: existingSub.id
+                });
+                dispatch({ type: 'UPDATE_SUBCONTRACTOR', payload: { ...existingSub, handshakeStatus: 'Pending' } as any });
+            } else {
+                const subId = `sub-${Date.now()}`;
+                const newSub = {
+                    id: subId,
+                    organizationId: currentOrganization.id,
+                    companyName: org.name,
+                    trade: org.industry || 'General',
+                    email: org.email || '',
+                    phone: org.phone || '',
+                    linkedOrgId: org.id,
+                    handshakeStatus: 'Pending',
+                    status: 'Active'
+                };
+                await db.collection('subcontractors').doc(subId).set(newSub);
+                dispatch({ type: 'ADD_SUBCONTRACTOR', payload: newSub as any });
+
+                await manageHandshake({
+                    action: 'request',
+                    targetOrgId: org.id,
+                    requestingOrgId: currentOrganization.id,
+                    subcontractorId: subId
+                });
+            }
+            showToast.warn(`Partnership request sent to ${org.name}!`);
+        } catch (error: any) {
+            console.error("Error connecting subcontractor:", error);
+            showToast.warn("There was an error sending the partnership request: " + error.message);
         } finally {
             setIsProcessingLink(false);
         }
@@ -173,7 +222,7 @@ const ProviderProfile: React.FC = () => {
         try {
             const customerForReview = customers.find(c => c.organizationId === orgId && c.email === currentUser.email);
             if (!customerForReview) {
-                alert("Could not find a valid customer profile to submit this review.");
+                showToast.warn("Could not find a valid customer profile to submit this review.");
                 return;
             }
 
@@ -197,7 +246,7 @@ const ProviderProfile: React.FC = () => {
 
         } catch (e) {
             console.error("Failed to submit review:", e);
-            alert("Failed to submit review.");
+            showToast.warn("Failed to submit review.");
         } finally {
             setIsSubmittingReview(false);
         }
@@ -205,11 +254,11 @@ const ProviderProfile: React.FC = () => {
 
     const handleSendContactMessage = async () => {
         if (!contactName || !contactEmail || !contactMessage) {
-            alert("Please fill out all required fields.");
+            showToast.warn("Please fill out all required fields.");
             return;
         }
         if (!org || !org.id) {
-            alert("There was a problem identifying the provider. Please close the form and try again.");
+            showToast.warn("There was a problem identifying the provider. Please close the form and try again.");
             console.error("handleSendContactMessage failed: Missing org or org.id", { org });
             return;
         }
@@ -233,7 +282,7 @@ const ProviderProfile: React.FC = () => {
             });
 
             if (response.ok) {
-                alert("Your message has been sent!");
+                showToast.warn("Your message has been sent!");
                 closeContactModal();
             } else {
                 // Robust extraction
@@ -263,7 +312,7 @@ const ProviderProfile: React.FC = () => {
                     errorMessage = "An unreadable error occurred.";
                 }
             }
-            alert('There was an error sending your message: ' + errorMessage);
+            showToast.warn('There was an error sending your message: ' + errorMessage);
         } finally {
             setIsSending(false);
         }
@@ -271,11 +320,11 @@ const ProviderProfile: React.FC = () => {
 
     const handleSendBookingRequest = async () => {
         if (!contactName || !contactEmail || !bookingDate || !contactMessage) {
-            alert("Please fill out all required fields.");
+            showToast.warn("Please fill out all required fields.");
             return;
         }
         if (!org || !org.id) {
-            alert("There was a problem identifying the provider. Please close the form and try again.");
+            showToast.warn("There was a problem identifying the provider. Please close the form and try again.");
             console.error("handleSendBookingRequest failed: Missing org or org.id", { org });
             return;
         }
@@ -301,7 +350,7 @@ const ProviderProfile: React.FC = () => {
             });
 
             if (response.ok) {
-                alert("Your booking request has been sent!");
+                showToast.warn("Your booking request has been sent!");
                 closeBookingModal();
             } else {
                 // Robust extraction
@@ -331,7 +380,7 @@ const ProviderProfile: React.FC = () => {
                     errorMessage = "An unreadable error occurred.";
                 }
             }
-            alert('There was an error sending your booking request: ' + errorMessage);
+            showToast.warn('There was an error sending your booking request: ' + errorMessage);
         } finally {
             setIsSending(false);
         }
@@ -343,6 +392,10 @@ const ProviderProfile: React.FC = () => {
     const averageRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length) : 0;
     const isPublic = org.settings?.publicProfile === true;
     const displayLogo = org.settings?.publicLogoUrl || org.logoUrl || '/img/logo_placeholder.png';
+
+    const isViewingAsOrg = !!currentOrganization;
+    const existingPartner = isViewingAsOrg ? subcontractors?.find(s => s.linkedOrgId === orgId) : null;
+    const partnerStatus = existingPartner?.handshakeStatus;
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans pb-20">
@@ -378,6 +431,12 @@ const ProviderProfile: React.FC = () => {
                                             <span>Verified</span>
                                         </div>
                                     )}
+                                    {org.acceptsSubcontracting && (
+                                        <div className="flex items-center bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">
+                                            <Briefcase size={14} className="mr-1.5" />
+                                            <span>Subcontracting B2B</span>
+                                        </div>
+                                    )}
                                 </h1>
                                 <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3 text-sm text-slate-500 font-medium">
                                     {org.address && <span className="flex items-center gap-1.5"><MapPin size={14} /> {formatAddress(org.address)}</span>}
@@ -403,6 +462,19 @@ const ProviderProfile: React.FC = () => {
                                     <LinkIcon size={16} className="mr-2"/>
                                     {isProcessingLink ? 'Linking...' : (isLinked ? 'View My Dashboard' : 'Link My Account')}
                                 </Button>
+                                {isViewingAsOrg && currentOrganization.id !== org.id && org.acceptsSubcontracting && (
+                                    <Button 
+                                        onClick={handleConnectSubcontractor}
+                                        disabled={isProcessingLink || partnerStatus === 'Pending' || partnerStatus === 'Linked'}
+                                        className="px-4 md:px-8 py-3 text-sm font-black uppercase tracking-widest shadow-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400"
+                                    >
+                                        <Briefcase size={16} className="mr-2"/>
+                                        {isProcessingLink ? 'Requesting...' : 
+                                         partnerStatus === 'Linked' ? 'Partnered' : 
+                                         partnerStatus === 'Pending' ? 'Request Sent' : 
+                                         'Connect Subcontractor'}
+                                    </Button>
+                                )}
                                 <Button variant="outline" onClick={handleOpenBookingModal}><Calendar size={16} className="mr-2"/>Book Appointment</Button>
                                 <Button variant="secondary" onClick={handleOpenContactModal}><MessageSquare size={16} className="mr-2"/>Contact</Button>
                                 <Button as="a" href={`tel:${org.phone}`} variant="outline" className="sm:ml-auto"><Phone size={16} className="mr-2"/> Call</Button>

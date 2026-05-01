@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import { ProjectTask, Project, ProjectNote } from 'types';
@@ -61,7 +62,7 @@ const ProjectTaskWorkflowModal = ({ isOpen, onClose, task, project }: { isOpen: 
             await db.collection('projects').doc(project.id).update(updates);
             dispatch({ type: 'UPDATE_PROJECT', payload: { ...project, ...updates } });
             setNotes(''); setFile(null); onClose();
-        } catch (e) { alert("Failed to update task."); } finally { setIsSaving(false); }
+        } catch (e) { showToast.warn("Failed to update task."); } finally { setIsSaving(false); }
     };
 
     return (

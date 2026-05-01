@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useEffect } from 'react';
 import Card from 'components/ui/Card';
 import { Zap, Bot, Plus } from 'lucide-react';
@@ -6,6 +7,7 @@ import { db } from 'lib/firebase';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { useAppContext } from 'context/AppContext';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { Capacitor } from '@capacitor/core';
 
 interface SubscriptionTabProps {
     billingDetails: {
@@ -59,7 +61,7 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
                 virtualWorkerLimitTokens: increment(1000000)
             });
             setVwUsage(prev => ({ ...prev, limit: prev.limit + 1000000 }));
-            alert("Tokens added successfully!");
+            showToast.warn("Tokens added successfully!");
         }
     };
 
@@ -72,11 +74,11 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
                     virtualWorkerLimitTokens: increment(1000000)
                 });
                 setVwUsage(prev => ({ ...prev, limit: prev.limit + 1000000 }));
-                alert("Virtual Worker Power Pack tokens added successfully!");
+                showToast.warn("Virtual Worker Power Pack tokens added successfully!");
                 setShowPayPal(false);
             }
         } catch (error) {
-            alert("Transaction failed.");
+            showToast.warn("Transaction failed.");
         }
     };
 
@@ -134,8 +136,7 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
                                 <p className="text-sm text-slate-500">Manage your automated assistant usage</p>
                             </div>
                         </div>
-                        
-                        {showPayPal && platformPaypalClientId ? (
+                        {showPayPal && platformPaypalClientId && !Capacitor.isNativePlatform() ? (
                             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm w-full max-w-xs z-20">
                                 <p className="text-sm font-bold text-center mb-3 text-slate-700">Buy 1M Tokens for $10.00</p>
                                 <PayPalScriptProvider options={{ clientId: platformPaypalClientId, intent: 'capture', vault: true }}>
@@ -149,12 +150,14 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
                                 <button onClick={() => setShowPayPal(false)} className="w-full text-xs text-center text-slate-400 mt-2 hover:text-slate-600">Cancel</button>
                             </div>
                         ) : (
-                            <button 
-                                onClick={handleTopUp}
-                                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-medium hover:bg-indigo-700 transition h-fit"
-                            >
-                                <Plus size={16} /> Power Pack
-                            </button>
+                            !Capacitor.isNativePlatform() && (
+                                <button 
+                                    onClick={handleTopUp}
+                                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-medium hover:bg-indigo-700 transition h-fit"
+                                >
+                                    <Plus size={16} /> Power Pack
+                                </button>
+                            )
                         )}
                     </div>
                     

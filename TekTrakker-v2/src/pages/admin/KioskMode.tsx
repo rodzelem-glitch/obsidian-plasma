@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
@@ -112,7 +113,7 @@ const KioskMode: React.FC = () => {
         if (adminPw === "0000" || adminPw === state.currentUser?.kioskPin) {
             navigate('/admin/dashboard');
         } else {
-            alert('Invalid escape sequence.');
+            showToast.warn('Invalid escape sequence.');
         }
     };
 

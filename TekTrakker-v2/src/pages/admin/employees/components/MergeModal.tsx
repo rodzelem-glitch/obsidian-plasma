@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import Modal from 'components/ui/Modal';
@@ -23,18 +24,18 @@ const MergeModal: React.FC<MergeModalProps> = ({ isOpen, onClose, employees }) =
 
     const handleMerge = async () => {
         if (state.isDemoMode) {
-            alert("This feature is disabled in demo mode.");
+            showToast.warn("This feature is disabled in demo mode.");
             return;
         }
 
         if (!masterId || !duplicateId || masterId === duplicateId) {
-            alert("Please select distinct Master and Duplicate profiles.");
+            showToast.warn("Please select distinct Master and Duplicate profiles.");
             return;
         }
 
         const orgId = state.currentOrganization?.id;
         if (!orgId) {
-            alert("Organization context lost.");
+            showToast.warn("Organization context lost.");
             return;
         }
         
@@ -73,10 +74,10 @@ const MergeModal: React.FC<MergeModalProps> = ({ isOpen, onClose, employees }) =
             batch.delete(duplicateRef);
 
             await batch.commit();
-            alert("Merge successful.");
+            showToast.warn("Merge successful.");
             onClose();
         } catch(e: any) {
-            alert("Merge failed: " + e.message);
+            showToast.warn("Merge failed: " + e.message);
         } finally {
             setIsMerging(false);
         }

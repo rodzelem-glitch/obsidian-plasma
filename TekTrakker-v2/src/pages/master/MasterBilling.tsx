@@ -1,3 +1,5 @@
+import showToast from "lib/toast";
+import { getBaseUrl } from "lib/utils";
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -90,7 +92,7 @@ const MasterBilling: React.FC = () => {
                     const defaultPlatform: Organization = { 
                         id: 'platform', 
                         name: 'TekTrakker', 
-                        email: 'billing@tektrakker.com', 
+                        email: 'platform@tektrakker.com',
                         phone: '', 
                         address: { street: '', city: '', state: '', zip: '' }, 
                         subscriptionStatus: 'active' 
@@ -177,8 +179,8 @@ const MasterBilling: React.FC = () => {
         try {
             await db.collection('platformSettings').doc('global').set({ ...config, updatedAt: new Date().toISOString() });
             if (platformOrg) await db.collection('organizations').doc('platform').update(platformOrg);
-            alert("Settings updated successfully and synchronized.");
-        } catch (e) { alert("Failed to update config."); }
+            showToast.warn("Settings updated successfully and synchronized.");
+        } catch (e) { showToast.warn("Failed to update config."); }
         finally { setIsSubmitting(false); }
     };
 
@@ -226,18 +228,18 @@ const MasterBilling: React.FC = () => {
         try {
             await db.collection('jobs').doc(jobId).set(invoiceData);
             await db.collection('organizations').doc(selectedOrg.id).update({ plan: upgradePlan, isFreeAccess: isFreeAccess, unlockAllFeatures: unlockAllFeatures, customDiscountPct: customDiscountPct, additionalUserSlots: additionalUsers });
-            alert(`Upgrade processed. Total: ${formatCurrency(finalTotal)}`);
+            showToast.warn(`Upgrade processed. Total: ${formatCurrency(finalTotal)}`);
             setIsManageModalOpen(false);
         } catch (e) {
             console.error("Upgrade error:", e);
-            alert("Failed to generate upgrade invoice.");
+            showToast.warn("Failed to generate upgrade invoice.");
         }
         finally { setIsSubmitting(false); }
     };
 
     const handleSendRenewalReminder = async (org: Organization) => {
         if (!org.email) {
-            alert("Organization email missing.");
+            showToast.warn("Organization email missing.");
             return;
         }
 
@@ -258,7 +260,7 @@ const MasterBilling: React.FC = () => {
                             <p>Current Plan: <strong>${org.plan?.toUpperCase()}</strong></p>
                             <p>Expiry Date: <strong>${org.subscriptionExpiryDate || 'N/A'}</strong></p>
                             <div style="margin: 20px 0;">
-                                <a href="${window.location.origin}/#/billing" style="background-color: #0284c7; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Manage Subscription</a>
+                                <a href="${getBaseUrl()}/#/billing" style="background-color: #0284c7; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Manage Subscription</a>
                             </div>
                             <p>If you have any questions, please reply to this email.</p>
                             <p>Thank you for being a valued partner!</p>
@@ -269,10 +271,10 @@ const MasterBilling: React.FC = () => {
                 type: 'RenewalReminder',
                 createdAt: new Date().toISOString()
             });
-            alert(`Renewal reminder sent to ${org.email}`);
+            showToast.warn(`Renewal reminder sent to ${org.email}`);
         } catch (e) {
             console.error(e);
-            alert("Failed to send reminder.");
+            showToast.warn("Failed to send reminder.");
         } finally {
             setIsSubmitting(false);
         }
@@ -284,10 +286,7 @@ const MasterBilling: React.FC = () => {
             {previewJob && <DocumentPreview type="Invoice" data={previewJob} onClose={() => setPreviewJob(null)} organization={platformOrg} />}
 
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Platform Revenue Management</h2>
-                    <p className="text-gray-600 dark:text-gray-400 font-medium">Production billing settings and overview.</p>
-                </div>
+                
                 <div className="flex gap-2 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg w-full overflow-x-auto whitespace-nowrap scrollbar-hide">
                     <button onClick={() => setActiveTab('dashboard')} className={`shrink-0 min-w-max whitespace-nowrap px-4 py-2 text-sm font-bold rounded-md ${activeTab === 'dashboard' ? 'bg-white dark:bg-gray-800 text-primary-600 dark:text-white shadow' : 'text-gray-600 dark:text-gray-300'}`}>Dashboard</button>
                     <button onClick={() => setActiveTab('invoices')} className={`shrink-0 min-w-max whitespace-nowrap px-4 py-2 text-sm font-bold rounded-md ${activeTab === 'invoices' ? 'bg-white dark:bg-gray-800 text-primary-600 dark:text-white shadow' : 'text-gray-600 dark:text-gray-300'}`}>Invoices</button>
@@ -383,6 +382,60 @@ const MasterBilling: React.FC = () => {
                             <div className="mt-4 max-w-xs">
                                 <Input label="Excess User Fee ($/mo)" type="number" value={config.excessUserFee} onChange={e => setConfig({...config, excessUserFee: parseFloat(e.target.value)})} />
                             </div>
+
+                        <div className="p-6 bg-purple-50 dark:bg-purple-900/20 rounded-3xl border border-purple-100 dark:border-purple-800">
+                            <h4 className="font-black text-sm uppercase text-purple-600 tracking-widest mb-4 flex items-center gap-2"><Building2 size={18}/> Franchise Operations & Fees</h4>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <Input 
+                                        label="Corporate Royalties (%)" 
+                                        type="number" 
+                                        value={config.franchiseFeePct || 0} 
+                                        onChange={e => setConfig({...config, franchiseFeePct: parseFloat(e.target.value) || 0})} 
+                                    />
+                                    <p className="text-xs text-slate-500 mt-2">Set the baseline percentage fee charged to standard franchise organizations per billing cycle.</p>
+                                </div>
+                                
+                                <div className="space-y-4">
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Franchise Discount Codes</label>
+                                    <div className="space-y-2 border border-slate-200 dark:border-slate-800 rounded-lg p-2 bg-white dark:bg-slate-900 max-h-60 overflow-y-auto w-full">
+                                        {(config.franchiseDiscountCodes || []).map((dc, i) => (
+                                            <div key={i} className="flex gap-2 items-center">
+                                                <div className="w-24">
+                                                    <Input value={dc.code} onChange={e => {
+                                                        const arr = [...(config.franchiseDiscountCodes || [])];
+                                                        arr[i].code = e.target.value.toUpperCase();
+                                                        setConfig({...config, franchiseDiscountCodes: arr});
+                                                    }} placeholder="CODE" />
+                                                </div>
+                                                <div className="w-20">
+                                                    <Input value={dc.discountPct} type="number" onChange={e => {
+                                                        const arr = [...(config.franchiseDiscountCodes || [])];
+                                                        arr[i].discountPct = parseFloat(e.target.value) || 0;
+                                                        setConfig({...config, franchiseDiscountCodes: arr});
+                                                    }} placeholder="%" />
+                                                </div>
+                                                <Button variant="secondary" onClick={() => {
+                                                    const arr = [...(config.franchiseDiscountCodes || [])];
+                                                    arr[i].active = !arr[i].active;
+                                                    setConfig({...config, franchiseDiscountCodes: arr});
+                                                }} className={dc.active ? 'text-emerald-600' : 'text-slate-400'}>{dc.active ? 'ON' : 'OFF'}</Button>
+                                                <Button variant="secondary" onClick={() => {
+                                                    const arr = [...(config.franchiseDiscountCodes || [])];
+                                                    arr.splice(i, 1);
+                                                    setConfig({...config, franchiseDiscountCodes: arr});
+                                                }} className="text-red-500 px-2"><Trash2 size={16}/></Button>
+                                            </div>
+                                        ))}
+                                        <Button variant="secondary" className="w-full text-xs" onClick={() => {
+                                            const arr = [...(config.franchiseDiscountCodes || []), { code: '', discountPct: 0, active: true }];
+                                            setConfig({...config, franchiseDiscountCodes: arr});
+                                        }}><Plus size={14} className="mr-1 inline"/> Add Code</Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

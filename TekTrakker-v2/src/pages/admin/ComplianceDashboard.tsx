@@ -11,13 +11,15 @@ import { uploadFileToStorage } from 'lib/storageService';
 import type { RefrigerantCylinder, RefrigerantTransaction, ToolMaintenanceLog, BusinessDocument, User } from 'types';
 import { CheckCircle, AlertTriangle, Wrench, Shield, Users, Printer, Flag, Trash2 } from 'lucide-react';
 import { globalConfirm } from 'lib/globalConfirm';
+import showToast from 'lib/toast';
 
 import ToolsTab from './compliance/components/ToolsTab';
 import CertsTab from './compliance/components/CertsTab';
 import PolicyTrackingTab from './compliance/components/PolicyTrackingTab';
 import HRHandbookView from './compliance/components/HRHandbookView';
 import IncidentsTab from './compliance/components/IncidentsTab';
-
+import AiAuditTab from './compliance/components/AiAuditTab';
+import { Bot } from 'lucide-react';
 
 const ComplianceDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -25,26 +27,17 @@ const ComplianceDashboard: React.FC = () => {
     const industry = state.currentOrganization?.industry || 'HVAC';
     const { currentUser } = state;
     
-    // Determine initial tab from URL or default
-    const getInitialTab = () => {
-        const tabParam = searchParams.get('tab');
-        if (tabParam === 'hr') return 'hr';
-        if (tabParam === 'incidents') return 'incidents';
-        return 'tools';
-    };
+    // UI State for Modal expansion
+    const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
+    const [isRequirementsModalOpen, setIsRequirementsModalOpen] = useState(false);
+    const [isIncidentsModalOpen, setIsIncidentsModalOpen] = useState(false);
+    const [isAiAuditModalOpen, setIsAiAuditModalOpen] = useState(false);
 
-    const [activeTab, setActiveTab] = useState<'tools' | 'certs' | 'hr' | 'policy_tracking' | 'incidents'>(
-        getInitialTab() as any
-    );
-    
-    // Update tab if URL parameter changes
+    // Initial check for URL deep links
     useEffect(() => {
         const tabParam = searchParams.get('tab');
-        if (tabParam === 'hr') {
-            setActiveTab('hr');
-        } else if (tabParam === 'incidents') {
-            setActiveTab('incidents');
-        }
+        if (tabParam === 'requirements') setIsRequirementsModalOpen(true);
+        if (tabParam === 'incidents') setIsIncidentsModalOpen(true);
     }, [searchParams]);
     
     const [isAddCylinderOpen, setIsAddCylinderOpen] = useState(false);
@@ -52,7 +45,7 @@ const ComplianceDashboard: React.FC = () => {
     const [isReportOpen, setIsReportOpen] = useState(false);
     const [newCylinder, setNewCylinder] = useState<Partial<RefrigerantCylinder>>({ type: 'R410A', status: 'Full', totalWeight: 25, remainingWeight: 25 });
     const [maintenanceLog, setMaintenanceLog] = useState<Partial<ToolMaintenanceLog>>({ toolType: 'Recovery Machine', result: 'Pass', nextDueDate: '' });
-    const [reportConfig, setReportConfig] = useState({ type: activeTab === 'tools' ? 'Tools' : 'Compliance', range: 'Yearly' });
+    const [reportConfig, setReportConfig] = useState({ type: 'Compliance', range: 'Yearly' });
 
     const [isCertUploadOpen, setIsCertUploadOpen] = useState(false);
     const [selectedUserForCert, setSelectedUserForCert] = useState<User | null>(null);
@@ -94,7 +87,7 @@ const ComplianceDashboard: React.FC = () => {
             status: isEdit ? (newCylinder.status || 'Full') : 'Full',
             totalWeight: Number(newCylinder.totalWeight),
             remainingWeight: isEdit ? Number(newCylinder.remainingWeight) : Number(newCylinder.totalWeight),
-            assignedTechId: newCylinder.assignedTechId,
+            assignedTechId: newCylinder.assignedTechId || null,
             createdAt: newCylinder.createdAt || new Date().toISOString()
         };
         if (isEdit) {
@@ -114,7 +107,7 @@ const ComplianceDashboard: React.FC = () => {
         try {
             await db.collection('refrigerantCylinders').doc(id).delete();
             dispatch({ type: 'DELETE_CYLINDER', payload: id });
-        } catch (e) { alert("Delete failed"); }
+        } catch (e) { showToast.error("Delete failed."); }
     };
 
     const handleLogMaintenance = async () => {
@@ -128,7 +121,7 @@ const ComplianceDashboard: React.FC = () => {
             action: (maintenanceLog.action || 'Inspection') as any, 
             result: (maintenanceLog.result || 'Pass') as any, 
             nextDueDate: maintenanceLog.nextDueDate || '', 
-            notes: maintenanceLog.notes 
+            notes: maintenanceLog.notes || '' 
         };
         await db.collection('toolMaintenanceLogs').doc(log.id).set(log);
         dispatch({ type: 'ADD_TOOL_LOG', payload: log });
@@ -148,7 +141,7 @@ const ComplianceDashboard: React.FC = () => {
             const updatedCerts = [...(selectedUserForCert.certifications || []), newCert];
             await db.collection('users').doc(selectedUserForCert.id).update({ certifications: updatedCerts });
             setIsCertUploadOpen(false);
-        } catch (e) { alert("Failed to upload."); } finally { setIsUploadingCert(false); }
+        } catch (e) { showToast.error("Failed to upload certification."); } finally { setIsUploadingCert(false); }
     };
 
     const generateReport = () => {
@@ -157,47 +150,145 @@ const ComplianceDashboard: React.FC = () => {
         setIsReportOpen(false);
     };
 
-    const tabs = [
-        { id: 'tools', icon: Wrench, label: 'Tools', hide: false },
-        { id: 'certs', icon: Shield, label: 'Certs / EPA', hide: false },
-        { id: 'hr', icon: Users, label: 'My Documents', hide: false },
-        { id: 'policy_tracking', icon: CheckCircle, label: 'Policy Tracking', hide: !(state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'supervisor') },
-        { id: 'incidents', icon: Flag, label: 'Hazards & Incidents', hide: false }
-    ];
-
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in relative">
             <header className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Compliance & Safety</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Industry standards and internal policies.</p>
-                </div>
+                
                 <Button onClick={() => setIsReportOpen(true)} variant="secondary" className="w-auto flex items-center gap-2">
                     <Printer size={16}/> Generate Report
                 </Button>
             </header>
 
-            <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6 overflow-x-auto">
-                {tabs.filter(t => !t.hide).map(tab => (
-                    <button
-                        key={tab.id}
-                        onClick={() => setActiveTab(tab.id as any)}
-                        className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
-                            activeTab === tab.id ? 'border-primary-600 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                        }`}
-                    >
-                        <tab.icon size={16} /> {tab.label}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                {/* Tools & Maintenance Card */}
+                <div 
+                    onClick={() => setIsToolsModalOpen(true)}
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col"
+                >
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
+                            <Wrench size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Tools & Maintenance</h3>
+                    </div>
+                    {toolLogs.length === 0 ? (
+                        <p className="text-sm text-gray-500 italic mt-auto">No tools logged.</p>
+                    ) : (
+                        <div className="space-y-2 flex-1">
+                            {toolLogs.slice(0, 3).map(log => (
+                                <div key={log.id} className="flex justify-between items-center text-sm p-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+                                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{log.toolType}</span>
+                                    <span className={`text-xs px-2 py-1 rounded-full ${log.result === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{log.result}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
+                        View All {toolLogs.length} Tools
                     </button>
-                ))}
+                </div>
+
+                {/* Requirements Card */}
+                {(state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'supervisor') && (
+                    <div 
+                        onClick={() => setIsRequirementsModalOpen(true)}
+                        className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col"
+                    >
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-3 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg">
+                                <CheckCircle size={24} />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Requirements</h3>
+                        </div>
+                        <div className="space-y-3 flex-1">
+                            <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-purple-500">
+                                <p className="text-xs font-bold text-gray-500 uppercase">Policy Tracking</p>
+                                <p className="text-sm text-gray-800 dark:text-gray-200">{policies.length} Active Policies</p>
+                            </div>
+                            <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-indigo-500">
+                                <p className="text-xs font-bold text-gray-500 uppercase">Certifications</p>
+                                <p className="text-sm text-gray-800 dark:text-gray-200">{employees.length} Tracked Employees</p>
+                            </div>
+                        </div>
+                        <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
+                            Manage Trackers
+                        </button>
+                    </div>
+                )}
+
+                {/* Incidents Card */}
+                <div 
+                    onClick={() => setIsIncidentsModalOpen(true)}
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col"
+                >
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg">
+                            <Flag size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Hazards & Incidents</h3>
+                    </div>
+                    {(!state.incidentReports || state.incidentReports.length === 0) ? (
+                        <p className="text-sm text-gray-500 italic mt-auto">No incidents reported.</p>
+                    ) : (
+                        <div className="space-y-2 flex-1">
+                            {state.incidentReports.slice(0, 3).map(incident => (
+                                <div key={incident.id} className="flex justify-between items-center text-sm p-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+                                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{incident.type || 'Hazard'}</span>
+                                    <span className="text-xs text-gray-500">{new Date(incident.date).toLocaleDateString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
+                        View All {state.incidentReports?.length || 0} Reports
+                    </button>
+                </div>
+
+                {/* AI Audit Log Card */}
+                {(state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both') && (
+                    <div 
+                        onClick={() => setIsAiAuditModalOpen(true)}
+                        className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col"
+                    >
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-3 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-lg">
+                                <Bot size={24} />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">AI Operations</h3>
+                        </div>
+                        <div className="space-y-2 flex-1">
+                            <p className="text-sm text-gray-500">Track and audit actions completed by the Virtual AI Worker.</p>
+                        </div>
+                        <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
+                            View Audit Ledger
+                        </button>
+                    </div>
+                )}
             </div>
 
-            <div className="animate-fade-in">
-                {activeTab === 'tools' && <ToolsTab {...{ toolLogs, setIsLogMaintenanceOpen }} />}
-                {activeTab === 'certs' && <CertsTab {...{ employees, requiredCerts, setSelectedUserForCert, setIsCertUploadOpen }} />}
-                {activeTab === 'hr' && <HRHandbookView />}
-                {activeTab === 'policy_tracking' && <PolicyTrackingTab {...{ employees, policies }} />}
-                {activeTab === 'incidents' && <IncidentsTab incidents={state.incidentReports || []} />}
-            </div>
+            {/* Expansive Modals */}
+            <Modal isOpen={isToolsModalOpen} onClose={() => setIsToolsModalOpen(false)} title="Tools & Maintenance" size="full">
+                <ToolsTab {...{ toolLogs, setIsLogMaintenanceOpen }} />
+            </Modal>
+
+            <Modal isOpen={isRequirementsModalOpen} onClose={() => setIsRequirementsModalOpen(false)} title="Requirement Tracking" size="full">
+                <div className="space-y-12 pb-12">
+                    <div>
+                        <CertsTab {...{ employees, requiredCerts, setSelectedUserForCert, setIsCertUploadOpen }} />
+                    </div>
+                    <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <PolicyTrackingTab {...{ employees, policies }} />
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={isIncidentsModalOpen} onClose={() => setIsIncidentsModalOpen(false)} title="Hazards & Incidents" size="full">
+                <IncidentsTab incidents={state.incidentReports || []} />
+            </Modal>
+
+            <Modal isOpen={isAiAuditModalOpen} onClose={() => setIsAiAuditModalOpen(false)} title="AI Operations Ledger" size="full">
+                <AiAuditTab />
+            </Modal>
 
             <Modal isOpen={isAddCylinderOpen} onClose={() => setIsAddCylinderOpen(false)} title="Manage Tank">
                 <div className="space-y-4">

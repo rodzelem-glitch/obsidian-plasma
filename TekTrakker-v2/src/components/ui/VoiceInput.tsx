@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useRef } from 'react';
 import { Mic, StopCircle as StopIcon } from 'lucide-react';
 
@@ -13,7 +14,7 @@ export const VoiceInput = ({ onResult }: { onResult: (text: string) => void }) =
         }
         
         if (!('webkitSpeechRecognition' in window)) { 
-            alert("Speech recognition is not supported in this browser."); 
+            showToast.warn("Speech recognition is not supported in this browser."); 
             return; 
         }
 

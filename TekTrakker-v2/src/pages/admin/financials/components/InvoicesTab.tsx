@@ -1,8 +1,10 @@
+import showToast from "lib/toast";
+import { getBaseUrl } from "lib/utils";
 
 import React, { useState } from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
-import { Trash2, Share2, Copy } from 'lucide-react';
+import { Trash2, Share2, Copy, Bell } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
@@ -28,7 +30,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
 
     const handleCopyRef = (jobId: string) => {
         navigator.clipboard.writeText(`#INV-${jobId}`);
-        alert("Invoice Reference Copied! Paste it anywhere to create a smart link.");
+        showToast.warn("Invoice Reference Copied! Paste it anywhere to create a smart link.");
     };
 
     const handleShareInvoice = async () => {
@@ -47,13 +49,70 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 type: 'internal'
             };
             await db.collection('messages').doc(msgObj.id).set(msgObj);
-            alert("Invoice shared successfully!");
+            showToast.warn("Invoice shared successfully!");
             setShareModalInvoice(null);
             setShareMessageText('');
         } catch (e) {
-            alert("Failed to share.");
+            showToast.warn("Failed to share.");
         } finally {
             setIsSharing(false);
+        }
+    };
+
+    const handleSendInvoiceReminder = async (job: any) => {
+        let email = job.customerEmail;
+        let phone = job.customerPhone;
+        
+        // If not in job object natively, attempt to lookup
+        if (!email && job.customerId) {
+            const cust = state.customers.find((c: any) => c.id === job.customerId);
+            if (cust) {
+                email = cust.email;
+                phone = cust.phone || phone;
+            }
+        }
+
+        if (!email && !phone) {
+            showToast.warn("Customer requires an email or phone number for reminders.");
+            return;
+        }
+
+        if (!confirm(`Send payment reminder for invoice #${job.invoice.id} to ${email || 'this customer'}?`)) return;
+
+        try {
+            const link = `${getBaseUrl()}/#/invoice/${job.id}`;
+            const orgName = state.currentOrganization?.name || 'Service Provider';
+            const invTotal = Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0;
+            
+            if (email) {
+                await db.collection('mail').add({
+                    to: [email],
+                    message: {
+                        subject: `Reminder: Invoice #${job.invoice.id} from ${orgName}`,
+                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;"><h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${job.customerName},</p><p>This is a friendly reminder that your invoice <strong>#${job.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                        text: `Reminder: Invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. Pay here: ${link}`
+                    },
+                    organizationId: state.currentOrganization?.id,
+                    type: 'InvoiceReminder',
+                    createdAt: new Date().toISOString()
+                });
+            }
+
+            if (phone) {
+                await db.collection('messages').add({
+                    to: phone,
+                    body: `Reminder from ${orgName}: Your invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. View and pay securely here: ${link}`,
+                    organizationId: state.currentOrganization?.id,
+                    status: 'pending',
+                    type: 'sms',
+                    createdAt: new Date().toISOString()
+                });
+            }
+
+            showToast.warn(`Reminder sent via ${email ? 'email' : ''} ${email && phone ? 'and ' : ''}${phone ? 'SMS text' : ''}!`);
+        } catch (e) {
+            console.error(e);
+            showToast.warn("Error sending reminder.");
         }
     };
 
@@ -96,7 +155,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     <select 
                         aria-label="Select Share Recipient"
                         title="Select Share Recipient"
-                        className="w-full border rounded-lg p-2 dark:bg-slate-800 dark:border-slate-700"
+                        className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
                         value={shareTargetId}
                         onChange={e => setShareTargetId(e.target.value)}
                     >
@@ -147,10 +206,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
             <Table headers={['Invoice #', 'Customer', 'Date', 'Amount', 'Status', 'Actions']}>
                 {sortedInvoices.map((job: any) => (
                     <tr key={job.id}>
-                        <td className="px-6 py-4 font-mono text-xs">{job.invoice.id}</td>
-                        <td className="px-6 py-4 font-medium">{job.customerName}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(job.appointmentTime).toLocaleDateString()}</td>
-                        <td className="px-6 py-4 font-bold">${(Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0).toFixed(2)}</td>
+                        <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">{job.invoice.id}</td>
+                        <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{job.customerName}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{new Date(job.appointmentTime).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">${(Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0).toFixed(2)}</td>
                         <td className="px-6 py-4">
                             <span className={`px-2 py-1 rounded text-xs font-bold ${job.invoice.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                 {job.invoice.status}
@@ -158,6 +217,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                         </td>
                         <td className="px-6 py-4">
                             <div className="flex flex-wrap gap-2 items-center">
+                                {job.invoice.status !== 'Paid' && (
+                                    <button aria-label="Send Reminder" title="Send Reminder" onClick={(e) => { e.stopPropagation(); handleSendInvoiceReminder(job); }} className="p-1 text-orange-500 hover:text-orange-700"><Bell size={16}/></button>
+                                )}
                                 <button title="View Invoice" onClick={() => setViewingInvoiceJob(job)} className="text-primary-600 hover:underline text-sm font-bold">View</button>
                                 <span className="text-slate-300">|</span>
                                 <button title="Manage Invoice" onClick={() => setEditingInvoiceId(job.id)} className="text-primary-600 hover:underline text-sm font-bold">Manage</button>

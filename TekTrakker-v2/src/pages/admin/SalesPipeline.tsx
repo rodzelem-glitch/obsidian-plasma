@@ -1,3 +1,5 @@
+import showToast from "lib/toast";
+import { getBaseUrl } from "lib/utils";
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
@@ -7,7 +9,7 @@ import { db } from 'lib/firebase';
 import type { Proposal, Job, Notification } from 'types';
 import { 
     DollarSign, Briefcase, CheckCircle, XCircle, 
-    FileText, User, Calendar, ArrowRight, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy
+    FileText, User, Calendar, ArrowRight, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy, Bell
 } from 'lucide-react';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -105,7 +107,7 @@ const SalesPipeline: React.FC = () => {
             }
         } catch (e) {
             console.error(e);
-            alert("Update failed");
+            showToast.warn("Update failed");
         }
     };
 
@@ -121,7 +123,7 @@ const SalesPipeline: React.FC = () => {
             await db.collection('proposals').doc(id).delete();
             dispatch({ type: 'DELETE_PROPOSAL', payload: id });
         } catch (e) {
-            alert("Delete failed.");
+            showToast.warn("Delete failed.");
         }
     };
 
@@ -171,17 +173,17 @@ const SalesPipeline: React.FC = () => {
                 handleStatusChange(proposal, 'Accepted');
             }
             
-            alert("Job Created! View in Operations -> Job List.");
+            showToast.warn("Job Created! View in Operations -> Job List.");
             setViewProposal(null);
         } catch (e) {
             console.error(e);
-            alert("Failed to create job.");
+            showToast.warn("Failed to create job.");
         }
     };
 
     const handleCopyRef = (propId: string) => {
         navigator.clipboard.writeText(`#PROP-${propId}`);
-        alert("Proposal Reference Copied! Paste it anywhere to create a smart link.");
+        showToast.warn("Proposal Reference Copied! Paste it anywhere to create a smart link.");
     };
 
     const handleShareProposal = async () => {
@@ -200,11 +202,11 @@ const SalesPipeline: React.FC = () => {
                 type: 'internal'
             };
             await db.collection('messages').doc(msgObj.id).set(msgObj);
-            alert("Proposal shared successfully!");
+            showToast.warn("Proposal shared successfully!");
             setShareModalProp(null);
             setShareMessageText('');
         } catch (e) {
-            alert("Failed to share.");
+            showToast.warn("Failed to share.");
         } finally {
             setIsSharing(false);
         }
@@ -214,6 +216,38 @@ const SalesPipeline: React.FC = () => {
 
     const canApprove = state.currentUser?.role === 'admin' || state.currentUser?.role === 'supervisor' || state.currentUser?.role === 'both' || state.currentUser?.role === 'master_admin';
 
+    const handleSendProposalReminder = async (proposal: Proposal) => {
+        const email = proposal.customerEmail;
+        if (!email) {
+            showToast.warn("Customer email missing for this proposal.");
+            return;
+        }
+
+        if (!await globalConfirm(`Send proposal reminder to ${email}?`)) return;
+
+        try {
+            const link = `${getBaseUrl()}/#/proposal-view/${proposal.id}`;
+            const orgName = state.currentOrganization?.name || 'Service Provider';
+            
+            await db.collection('mail').add({
+                to: [email],
+                message: {
+                    subject: `Following up: Proposal from ${orgName}`,
+                    html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #e0e7ff;border-radius:8px;"><h2 style="color:#4f46e5;">Proposal Reminder</h2><p>Hi ${proposal.customerName},</p><p>We are following up on the proposal we sent you for <strong>$${(proposal.total ?? 0).toFixed(2)}</strong>. You can review the details and quickly accept it online so we can get started.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#4f46e5;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">Review & Accept Proposal</a></div><p>If you have any questions, please let us know.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                    text: `Reminder: Your proposal for $${(proposal.total ?? 0).toFixed(2)} is awaiting review. Review here: ${link}`
+                },
+                organizationId: state.currentOrganization?.id,
+                type: 'ProposalReminder',
+                createdAt: new Date().toISOString()
+            });
+
+            showToast.warn(`Reminder sent via email to ${email}!`);
+        } catch (e) {
+            console.error(e);
+            showToast.warn("Error sending reminder.");
+        }
+    };
+
     return (
         <div className="space-y-6 pb-20">
             <Modal isOpen={!!shareModalProp} onClose={() => setShareModalProp(null)} title={`Share Proposal: ${shareModalProp?.customerName}`}>
@@ -222,7 +256,7 @@ const SalesPipeline: React.FC = () => {
                      <select 
                          aria-label="Select Share Recipient"
                          title="Select Share Recipient"
-                         className="w-full border rounded-lg p-2 dark:bg-slate-800 dark:border-slate-700"
+                        className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
                          value={shareTargetId}
                          onChange={e => setShareTargetId(e.target.value)}
                      >
@@ -248,10 +282,7 @@ const SalesPipeline: React.FC = () => {
                      </div>
                  </div>
              </Modal>
-            <header>
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Sales Pipeline</h2>
-                <p className="text-gray-600 dark:text-gray-400">Track estimates, proposals, and conversions.</p>
-            </header>
+            
 
             {/* KPI CARDS */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -259,8 +290,8 @@ const SalesPipeline: React.FC = () => {
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-200 dark:bg-blue-800 rounded-full text-blue-700"><Briefcase size={20}/></div>
                         <div>
-                            <p className="text-xs font-bold text-blue-700 uppercase">Open Pipeline</p>
-                            <p className="text-2xl font-bold dark:text-white">{formatCurrency(metrics.openValue)}</p>
+                            <p className="text-xs font-bold text-blue-800 dark:text-blue-300 uppercase">Open Pipeline</p>
+                            <p className="text-2xl font-bold text-blue-900 dark:text-blue-50">{formatCurrency(metrics.openValue)}</p>
                         </div>
                     </div>
                 </Card>
@@ -268,8 +299,8 @@ const SalesPipeline: React.FC = () => {
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-green-200 dark:bg-green-800 rounded-full text-green-700"><DollarSign size={20}/></div>
                         <div>
-                            <p className="text-xs font-bold text-green-700 uppercase">Booked Revenue</p>
-                            <p className="text-2xl font-bold dark:text-white">{formatCurrency(metrics.acceptedValue)}</p>
+                            <p className="text-xs font-bold text-green-800 dark:text-green-300 uppercase">Booked Revenue</p>
+                            <p className="text-2xl font-bold text-green-900 dark:text-green-50">{formatCurrency(metrics.acceptedValue)}</p>
                         </div>
                     </div>
                 </Card>
@@ -277,8 +308,8 @@ const SalesPipeline: React.FC = () => {
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-purple-200 dark:bg-purple-800 rounded-full text-purple-700"><CheckCircle size={20}/></div>
                         <div>
-                            <p className="text-xs font-bold text-purple-700 uppercase">Close Rate</p>
-                            <p className="text-2xl font-bold dark:text-white">{metrics.closeRate.toFixed(1)}%</p>
+                            <p className="text-xs font-bold text-purple-800 dark:text-purple-300 uppercase">Close Rate</p>
+                            <p className="text-2xl font-bold text-purple-900 dark:text-purple-50">{metrics.closeRate.toFixed(1)}%</p>
                         </div>
                     </div>
                 </Card>
@@ -286,8 +317,8 @@ const SalesPipeline: React.FC = () => {
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-gray-200 dark:bg-gray-700 rounded-full text-gray-700"><FileText size={20}/></div>
                         <div>
-                            <p className="text-xs font-bold text-gray-500 uppercase">Total Proposals</p>
-                            <p className="text-2xl font-bold dark:text-white">{metrics.count}</p>
+                            <p className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase">Total Proposals</p>
+                            <p className="text-2xl font-bold text-gray-900 dark:text-white">{metrics.count}</p>
                         </div>
                     </div>
                 </Card>
@@ -361,6 +392,9 @@ const SalesPipeline: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex gap-2 items-center flex-wrap">
+                                        {p.status !== 'Accepted' && (
+                                            <button onClick={() => handleSendProposalReminder(p)} className="p-2 text-orange-600 hover:bg-orange-50 rounded" title="Send Reminder"><Bell size={16}/></button>
+                                        )}
                                         {p.status === 'Pending Approval' && canApprove && (
                                             <>
                                                 <button onClick={() => handleStatusChange(p, 'Draft')} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded" title="Approve"><ShieldCheck size={16}/></button>

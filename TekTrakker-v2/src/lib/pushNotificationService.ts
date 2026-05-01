@@ -131,8 +131,12 @@ export const setupFCMToken = async (userId: string) => {
         } else {
             console.warn('[FCM] Push notification permission denied by user.');
         }
-    } catch (error) {
-        console.error('[FCM] Critical error occurred while retrieving token:', error);
+    } catch (error: any) {
+        if (error?.name === 'AbortError' || error?.message?.includes('Service Worker') || error?.message?.includes('Failed to execute \'subscribe\' on \'PushManager\'')) {
+            console.log('[FCM] Skipped Web Push Notification setup (No valid Service Worker, typical for local development environments).');
+        } else {
+            console.error('[FCM] Critical error occurred while retrieving token:', error);
+        }
     }
 
 };

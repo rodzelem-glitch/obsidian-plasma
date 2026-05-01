@@ -10,7 +10,7 @@ type InternalProposalItem = {
     quantity: number;
     unitPrice: number;
     total: number;
-    type: 'Part' | 'Labor' | 'Service' | 'Fee';
+    type: 'Part' | 'Labor' | 'Service' | 'Fee' | 'Discount';
     tier: 'Good' | 'Better' | 'Best';
     taxable?: boolean;
 };
@@ -50,11 +50,16 @@ const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier
                             />
                             <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-600 dark:text-slate-300 uppercase font-bold tracking-wider self-start">{item.type}</span>
                         </div>
-                        <input 
-                            className="w-full text-xs text-slate-700 dark:text-slate-300 bg-slate-50/30 dark:bg-slate-900/30 border border-slate-100 dark:border-slate-800 rounded px-2 py-1 focus:ring-1 focus:ring-primary-500 placeholder-slate-400"
+                        <textarea 
+                            className="w-full min-h-[60px] h-auto font-medium text-xs text-slate-700 dark:text-slate-300 bg-slate-50/30 dark:bg-slate-900/30 border border-slate-100 dark:border-slate-800 rounded px-2 py-1.5 focus:ring-1 focus:ring-primary-500 placeholder-slate-400 resize-none"
                             value={item.description || ''}
-                            onChange={e => onUpdate(item.id, 'description', e.target.value)}
+                            onChange={e => {
+                                onUpdate(item.id, 'description', e.target.value);
+                                e.target.style.height = 'auto';
+                                e.target.style.height = e.target.scrollHeight + 'px';
+                            }}
                             placeholder="Description..."
+                            rows={2}
                         />
                     </div>
                     
@@ -65,6 +70,8 @@ const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier
                                 type="number" 
                                 className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded text-center font-bold text-sm p-1 text-slate-900 dark:text-white"
                                 value={item.quantity}
+                                aria-label="Item Quantity"
+                                title="Item Quantity"
                                 onChange={e => onUpdate(item.id, 'quantity', parseFloat(e.target.value) || 0)}
                             />
                         </div>
@@ -74,6 +81,8 @@ const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier
                                 type="number" 
                                 className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded text-right font-bold text-sm p-1 text-slate-900 dark:text-white"
                                 value={item.unitPrice}
+                                aria-label="Unit Price"
+                                title="Unit Price"
                                 onChange={e => onUpdate(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
                             />
                         </div>
@@ -83,6 +92,8 @@ const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier
                             <input 
                                 type="checkbox" 
                                 checked={item.taxable !== false} 
+                                aria-label="Is Taxable"
+                                title="Is Taxable"
                                 onChange={e => onUpdate(item.id, 'taxable', e.target.checked)}
                                 className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
                             />
@@ -93,7 +104,7 @@ const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier
                             <span className="font-black text-lg">${(item.total || 0).toFixed(2)}</span>
                         </div>
 
-                        <button onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 transition-colors p-2">
+                        <button aria-label="Delete Item" title="Delete Item" onClick={() => onDelete(item.id)} className="text-slate-300 hover:text-red-500 transition-colors p-2">
                             <TrashIcon size={18}/>
                         </button>
                     </div>

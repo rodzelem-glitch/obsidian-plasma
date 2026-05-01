@@ -1,0 +1,5 @@
+c:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2\android\app\build\intermediates\assets\release\mergeReleaseAssets\public\mascot.png
+c:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2\android\app\src\main\assets\public\mascot.png
+c:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2\public\mascot.png
+c:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2-backup\android\app\src\main\assets\public\mascot.png
+c:\Users\roder\.gemini\antigravity\playground\obsidian-plasma\TekTrakker-v2-backup\ios\App\App\public\mascot.png

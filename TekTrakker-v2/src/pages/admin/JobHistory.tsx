@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -103,9 +104,9 @@ const JobHistory: React.FC = () => {
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
             setViewJob(updatedJob);
             setIsEditing(false);
-            alert("Job record updated.");
+            showToast.warn("Job record updated.");
         } catch (e) {
-            alert("Failed to save changes.");
+            showToast.warn("Failed to save changes.");
         }
     };
 
@@ -119,14 +120,14 @@ const JobHistory: React.FC = () => {
                 dispatch({ type: 'DELETE_JOB', payload: jobId });
                 if (viewJob?.id === jobId) setViewJob(null);
             } catch (error) {
-                alert("Failed to delete job.");
+                showToast.warn("Failed to delete job.");
             }
         }
     };
 
     const handleCopyRef = (jobId: string) => {
         navigator.clipboard.writeText(`#HIST-${jobId}`);
-        alert("Reference Copied! Paste it anywhere to create a smart link.");
+        showToast.warn("Reference Copied! Paste it anywhere to create a smart link.");
     };
 
     const handleShareJob = async () => {
@@ -145,11 +146,11 @@ const JobHistory: React.FC = () => {
                 type: 'internal'
             };
             await db.collection('messages').doc(msgObj.id).set(msgObj);
-            alert("Job shared successfully!");
+            showToast.warn("Job shared successfully!");
             setShareModalJob(null);
             setShareMessageText('');
         } catch (e) {
-            alert("Failed to share.");
+            showToast.warn("Failed to share.");
         } finally {
             setIsSharing(false);
         }
@@ -171,7 +172,7 @@ const JobHistory: React.FC = () => {
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
             setViewJob(updatedJob);
         } catch(e) {
-            alert("Delete failed");
+            showToast.warn("Delete failed");
         }
     };
 
@@ -316,7 +317,7 @@ const JobHistory: React.FC = () => {
                      <select 
                          aria-label="Select Share Recipient"
                          title="Select Share Recipient"
-                         className="w-full border rounded-lg p-2 dark:bg-slate-800 dark:border-slate-700"
+                         className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
                          value={shareTargetId}
                          onChange={e => setShareTargetId(e.target.value)}
                      >
@@ -343,12 +344,7 @@ const JobHistory: React.FC = () => {
                  </div>
              </Modal>
 
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight uppercase">Job History</h2>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium tracking-tight">Complete archive of service records and customer history.</p>
-                </div>
-            </header>
+            
 
             <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
                 <Select label="Filter by Technician" value={techFilter} onChange={e => setTechFilter(e.target.value)}>
@@ -388,6 +384,7 @@ const JobHistory: React.FC = () => {
                                 <button aria-label="View Job Details" title="View Job Details" onClick={(e) => { e.stopPropagation(); handleViewJob(job); }} className="px-4 py-1.5 bg-primary-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-primary-700 transition-colors shadow-sm">View</button>
                                 <button aria-label="Copy Reference" title="Copy Reference" onClick={(e) => { e.stopPropagation(); handleCopyRef(job.id); }} className="p-1 text-slate-400 hover:text-primary-600"><Copy size={16}/></button>
                                 <button aria-label="Share Job" title="Share Job" onClick={(e) => { e.stopPropagation(); setShareModalJob(job); }} className="p-1 text-slate-400 hover:text-primary-600"><Share2 size={16}/></button>
+                                <button aria-label="Delete Job" title="Delete Job" onClick={(e) => { e.stopPropagation(); handleDeleteJob(job.id); }} className="p-1 text-slate-400 hover:text-red-600"><Trash2 size={16}/></button>
                             </td>
                         </tr>
                     ))}

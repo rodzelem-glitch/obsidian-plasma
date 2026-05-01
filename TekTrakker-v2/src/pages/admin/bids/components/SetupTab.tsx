@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import Input from 'components/ui/Input';
@@ -10,6 +11,7 @@ import type { Bid, StoredFile, BidQuestion, BidLineItem } from 'types';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { uploadFileToStorage } from 'lib/storageService';
 import * as mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
 
 interface SetupTabProps {
     bid: Bid;
@@ -33,7 +35,7 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
 
     const handleAnalyze = async () => {
         if (!selectedFiles || selectedFiles.length === 0) {
-            alert("Please select at least one file first.");
+            showToast.warn("Please select at least one file first.");
             return;
         }
 
@@ -45,6 +47,7 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
                 const isDocx = file.name.endsWith('.docx');
+                const isXlsx = file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv');
 
                 // 1. Upload Original File to Firebase Storage (keep original for records)
                 const path = `bids/${bid.organizationId}/${bid.id}/${Date.now()}_${file.name}`;
@@ -60,6 +63,23 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                     const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
                     const extractedText = result.value;
                     
+                    if (!extractedText.trim()) {
+                         throw new Error(`Could not extract text from ${file.name}. It may be empty or corrupted.`);
+                    }
+
+                    // Convert extracted text to Base64 to send to backend as a text file
+                    finalBase64Data = btoa(unescape(encodeURIComponent(extractedText)));
+                    finalMimeType = 'text/plain'; 
+                } else if (isXlsx) {
+                    // PARSE EXCEL ON FRONTEND
+                    const arrayBuffer = await file.arrayBuffer();
+                    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                    let extractedText = "";
+                    for (const sheetName of workbook.SheetNames) {
+                        extractedText += `--- Sheet: ${sheetName} ---\n`;
+                        extractedText += XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+                        extractedText += `\n\n`;
+                    }
                     if (!extractedText.trim()) {
                          throw new Error(`Could not extract text from ${file.name}. It may be empty or corrupted.`);
                     }
@@ -173,13 +193,13 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
             const fileInput = document.getElementById('rfp-file-upload') as HTMLInputElement;
             if (fileInput) fileInput.value = '';
             
-            alert("RFP(s) Analyzed successfully! Inputs and Pricing tabs have been populated.");
+            showToast.warn("RFP(s) Analyzed successfully! Inputs and Pricing tabs have been populated.");
         } catch (error: any) {
             console.error("Error analyzing RFP:", error);
             let message = "Failed to analyze document.";
             if (error.message?.includes("exceeds the maximum")) message += " The files are too large for the AI service.";
             if (error.code === 'functions/internal') message += " AI service error.";
-            alert(`${message} Details: ${error.message}`);
+            showToast.warn(`${message} Details: ${error.message}`);
         } finally {
             setIsAnalyzing(false);
         }
@@ -192,7 +212,7 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                     <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><FileText size={20} /> RFP Document & Analysis</h3>
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upload RFP Document(s) (PDF, TXT, DOCX)</label>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upload RFP Document(s) (PDF, TXT, DOCX, XLSX)</label>
                             <input 
                                 id="rfp-file-upload"
                                 title="Upload RFP Documents"
@@ -210,6 +230,9 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                             {isAnalyzing ? <Spinner size="sm" /> : <Wand2 size={16} />}
                             {isAnalyzing ? 'Analyzing...' : `Analyze ${selectedFiles ? selectedFiles.length : ''} RFP(s)`}
                         </Button>
+                        <p className="text-xs text-gray-500 mt-2 italic text-center">
+                            Note: If analysis fails or times out, please try uploading and analyzing 1 file at a time to reduce the payload size.
+                        </p>
                     </div>
                     
                     {bid.files && bid.files.length > 0 && (

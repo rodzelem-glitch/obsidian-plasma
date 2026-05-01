@@ -1,5 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
 import { 
@@ -12,39 +13,48 @@ import WeatherWidget from './briefing/components/WeatherWidget';
 import ProjectTaskWorkflowModal from './briefing/components/ProjectTaskWorkflowModal';
 import JobWorkflowModal from './briefing/components/JobWorkflowModal';
 
-const JobCard: React.FC<{ job: Job; onOpen: () => void }> = ({ job, onOpen }) => (
-    <div className="mb-4 overflow-hidden border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:border-primary-500 transition-colors group rounded-lg bg-white dark:bg-slate-900" onClick={onOpen}>
-        <div className="p-4 flex justify-between items-center">
-            <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+const JobCard: React.FC<{ job: Job; onOpen: () => void }> = ({ job, onOpen }) => {
+    const timeStr = job.appointmentTime ? new Date(job.appointmentTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+    return (
+    <div className="mb-3 overflow-hidden border border-slate-200 dark:border-slate-700/60 shadow-sm cursor-pointer hover:border-primary-400 active:scale-[0.99] transition-all group rounded-xl bg-white dark:bg-slate-800" onClick={onOpen}>
+        <div className="p-4 flex gap-3 items-center">
+            {timeStr && (
+                <div className="shrink-0 w-16 text-center">
+                    <div className="text-lg font-black text-primary-600 dark:text-primary-400 leading-tight">{timeStr}</div>
+                </div>
+            )}
+            <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
                     {job.customerName}
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${
-                        job.jobStatus === 'Completed' ? 'bg-green-100 text-green-800' : 
-                        job.jobStatus === 'In Progress' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                        job.jobStatus === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 
+                        job.jobStatus === 'In Progress' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                     }`}>
                         {job.jobStatus}
                     </span>
                     {job.assignedPartnerId && (
-                        <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1 rounded border border-indigo-100">External Partner Job</span>
+                        <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 rounded border border-indigo-100">Partner</span>
                     )}
                 </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1 mt-1">
-                    <MapPinIcon size={12}/> {formatAddress(job.address)}
+                <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-1 truncate">
+                    <MapPinIcon size={12} className="shrink-0"/> {formatAddress(job.address)}
                 </p>
-                <div className="flex gap-2 mt-2">
-                     {job.tasks.map((t, i) => <span key={i} className={`text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-600 dark:text-slate-300 font-bold`}>{t}</span>)}
+                <div className="flex gap-1.5 mt-2 flex-wrap">
+                     {job.tasks.map((t, i) => <span key={i} className="text-[10px] bg-slate-100 dark:bg-slate-700/60 px-2 py-0.5 rounded-md text-slate-600 dark:text-slate-300 font-semibold">{t}</span>)}
                 </div>
             </div>
-            <div className="h-10 w-10 bg-primary-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-primary-600 dark:text-primary-400 group-hover:bg-primary-600 group-hover:text-white transition-colors">
-                <Play size={20} className={job.jobStatus === 'In Progress' ? 'animate-pulse' : ''} />
+            <div className="h-10 w-10 bg-primary-50 dark:bg-primary-900/20 rounded-xl flex items-center justify-center text-primary-600 dark:text-primary-400 group-hover:bg-primary-600 group-hover:text-white transition-all shrink-0">
+                <Play size={18} className={job.jobStatus === 'In Progress' ? 'animate-pulse' : ''} />
             </div>
         </div>
     </div>
 );
+};
 
 const DailyBriefing: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { currentUser, jobs, externalJobs, projects, activeJobIdForWorkflow } = state;
+    const navigate = useNavigate();
     const [selectedTaskData, setSelectedTaskData] = useState<{task: ProjectTask, project: Project} | null>(null);
     const [activeJob, setActiveJob] = useState<Job | null>(null);
 
@@ -85,13 +95,20 @@ const DailyBriefing: React.FC = () => {
         return list;
     }, [projects, currentUser]);
 
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
     return (
-        <div className="p-4 pb-24 max-w-3xl mx-auto space-y-6">
-            <header className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Daily Briefing</h1>
-                <div className="text-right">
-                    <p className="text-sm font-bold text-gray-600 dark:text-gray-300">{new Date().toLocaleDateString()}</p>
-                    <p className="text-xs text-gray-500">Hello, {currentUser?.firstName}</p>
+        <div className="p-4 pb-24 max-w-3xl mx-auto space-y-5 animate-fade-in">
+            <header className="flex justify-between items-start">
+                <div>
+                    <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">{greeting}, {currentUser?.firstName}</h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                        {todaysJobs.length > 0 ? `${todaysJobs.length} job${todaysJobs.length > 1 ? 's' : ''} on your schedule` : 'No jobs scheduled — you\'re clear'}
+                    </p>
+                </div>
+                <div className="text-right shrink-0">
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</p>
                 </div>
             </header>
 
@@ -113,6 +130,23 @@ const DailyBriefing: React.FC = () => {
                 </Card>
             )}
 
+            <div className="grid grid-cols-2 gap-4 mb-6">
+                <button 
+                  onClick={() => navigate('/briefing/hr?tab=safety')}
+                  className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center justify-center gap-2 hover:bg-red-100 transition-colors text-red-700 dark:text-red-400 font-bold shadow-sm"
+                >
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                    Report Incident
+                </button>
+                <button 
+                  onClick={() => navigate('/briefing/hr')}
+                  className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors text-blue-700 dark:text-blue-400 font-bold shadow-sm"
+                >
+                    <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                    HR & Handbooks
+                </button>
+            </div>
+
             <div className="space-y-4">
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2"><CheckSquare size={20}/> Today's Schedule</h2>
                 {todaysJobs.length > 0 ? (
@@ -120,8 +154,12 @@ const DailyBriefing: React.FC = () => {
                         <JobCard key={job.id} job={job} onOpen={() => setActiveJob(job)} />
                     ))
                 ) : (
-                    <div className="text-center py-10 bg-gray-50 dark:bg-gray-800 rounded-xl border-2 border-dashed">
-                        <p className="text-gray-500 font-medium">No active jobs assigned.</p>
+                    <div className="text-center py-12 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-600">
+                        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                            <CheckSquare size={28} className="text-slate-400" />
+                        </div>
+                        <p className="text-slate-600 dark:text-slate-300 font-semibold">All clear!</p>
+                        <p className="text-sm text-slate-400 mt-1">No active jobs assigned to you right now.</p>
                     </div>
                 )}
             </div>

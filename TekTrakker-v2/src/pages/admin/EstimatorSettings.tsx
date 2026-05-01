@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -17,7 +18,7 @@ import {
 } from 'lucide-react';
 import { PRICE_BOOKS } from 'pricebooks';
 import { globalConfirm } from "lib/globalConfirm";
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 
 const CATEGORIES = ['Diagnostics', 'Cooling', 'Heating', 'Electrical', 'Plumbing', 'Cleaning', 'Airflow', 'Accessories', 'Maintenance', 'Roofing', 'Painting', 'Contracting', 'Masonry', 'Telecommunications', 'Solar', 'Security', 'Bath Service', 'Grooming', 'Treatment', 'Other'];
 
@@ -66,7 +67,7 @@ const EstimatorSettings: React.FC = () => {
             setIsModalOpen(false);
         } catch (error) {
             console.error(error);
-            alert("Save failed.");
+            showToast.warn("Save failed.");
         }
     };
 
@@ -103,10 +104,10 @@ const EstimatorSettings: React.FC = () => {
             });
             
             await importBatch.commit();
-            alert(`${String(vertical)} Library successfully imported!`);
+            showToast.warn(`${String(vertical)} Library successfully imported!`);
         } catch (e) {
             console.error(e);
-            alert("Import failed. Check console.");
+            showToast.warn("Import failed. Check console.");
         } finally {
             setIsPopulating(null);
         }
@@ -129,7 +130,7 @@ const EstimatorSettings: React.FC = () => {
                  const json: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
                  if (json.length === 0) {
-                     alert("The uploaded file is empty or formatted incorrectly.");
+                     showToast.warn("The uploaded file is empty or formatted incorrectly.");
                      setIsPopulating(null);
                      return;
                  }
@@ -167,10 +168,10 @@ const EstimatorSettings: React.FC = () => {
                  });
                  
                  await batch.commit();
-                 alert(`Successfully imported ${json.length} tasks into your Catalog!`);
+                 showToast.warn(`Successfully imported ${json.length} tasks into your Catalog!`);
             } catch (err) {
                  console.error(err);
-                 alert("File parsing failed. Please ensure it is a valid CSV or XLSX spreadsheet.");
+                 showToast.warn("File parsing failed. Please ensure it is a valid CSV or XLSX spreadsheet.");
             } finally {
                  setIsPopulating(null);
                  // Reset file input
@@ -230,18 +231,14 @@ const EstimatorSettings: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight">Price Book & Estimator</h2>
-                    <p className="text-gray-600 dark:text-gray-400 font-medium">Configure high-speed flat rate pricing and AI generation.</p>
-                </div>
+            <header className="flex flex-col md:flex-row justify-end items-start md:items-center gap-4">
                 <div className="flex gap-2 flex-wrap">
                     <label className="flex items-center gap-2 shadow-lg btn bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded font-bold cursor-pointer transition-colors duration-200">
                          {isPopulating === "CSV/Excel Upload" ? <Sparkles size={18} className="animate-spin" /> : <Book size={18} />}
                          <span className="text-sm">Import CSV / Excel</span>
                          <input type="file" accept=".csv, .xlsx, .xls" onChange={handleImportTargetFile} className="hidden" />
                     </label>
-                    <Button onClick={() => setIsFergusonModalOpen(true)} className="flex items-center gap-2 shadow-lg bg-sky-600 hover:bg-sky-700 text-white border-0"><Search size={18}/> Ferguson Live Catalog</Button>
+                    <Button disabled title="Ferguson API Price Lookup temporarily suspended by provider (Coming Soon)" className="flex items-center gap-2 shadow-lg bg-slate-400 text-white border-0 cursor-not-allowed opacity-75"><Search size={18}/> Ferguson Live Catalog</Button>
                     <Button onClick={() => { setCurrentPreset({ name: '', description: '', baseCost: 0, avgLabor: 0, category: 'Other' }); setIsModalOpen(true); }} className="flex items-center gap-2 shadow-lg"><Plus size={18}/> Custom Task</Button>
                 </div>
             </header>

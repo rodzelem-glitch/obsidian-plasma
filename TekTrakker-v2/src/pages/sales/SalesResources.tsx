@@ -1,5 +1,7 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -8,7 +10,7 @@ import Input from '../../components/ui/Input';
 import Textarea from '../../components/ui/Textarea';
 import { db } from '../../lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { Mail, MessageSquare, Phone, Lightbulb, Plus, Edit, Trash2, Sparkles, Loader2 } from 'lucide-react';
+import { Mail, MessageSquare, Phone, Lightbulb, Plus, Edit, Trash2, Sparkles, Loader2, ArrowLeft } from 'lucide-react';
 import { MOCK_DEMO_RESOURCES } from '../../lib/mockDemoData';
 import { globalConfirm } from "lib/globalConfirm";
 
@@ -35,6 +37,7 @@ export interface SalesResource {
 }
 
 const SalesResources: React.FC = () => {
+    const navigate = useNavigate();
     const { state } = useAppContext();
     const { currentUser, isDemoMode } = state;
     const [activeTab, setActiveTab] = useState<'email' | 'sms' | 'script' | 'idea'>('email');
@@ -72,7 +75,7 @@ const SalesResources: React.FC = () => {
         if (!currentUser) return;
 
         if (isDemoMode) {
-            alert("Changes cannot be saved in Demo Mode.");
+            showToast.warn("Changes cannot be saved in Demo Mode.");
             setIsModalOpen(false);
             return;
         }
@@ -97,13 +100,13 @@ const SalesResources: React.FC = () => {
             setEditingResource({});
         } catch (e) {
             console.error(e);
-            alert("Failed to save resource.");
+            showToast.warn("Failed to save resource.");
         }
     };
 
     const handleDelete = async (id: string) => {
         if (isDemoMode) {
-            alert("Actions disabled in Demo Mode.");
+            showToast.warn("Actions disabled in Demo Mode.");
             return;
         }
         if (!await globalConfirm("Delete this template?")) return;
@@ -126,7 +129,7 @@ Format response as plain text without markdown blocks.`;
 
             const result: any = await callGeminiAI({ 
                 prompt: systemContext,
-                modelName: 'gemini-2.5-pro'
+                modelName: 'gemini-3.1-pro-preview'
             });
 
             const content = result.data.text;
@@ -138,7 +141,7 @@ Format response as plain text without markdown blocks.`;
             setIsModalOpen(true);
             setAiPrompt('');
         } catch (e) {
-            alert("AI generation failed.");
+            showToast.warn("AI generation failed.");
         } finally {
             setIsThinking(false);
         }
@@ -149,10 +152,13 @@ Format response as plain text without markdown blocks.`;
     return (
         <div className="space-y-6">
             <header className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Sales Resources</h2>
-                    <p className="text-slate-500">Industry-leading templates and AI-powered scripts for all trades.</p>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                        <ArrowLeft size={20} />
+                    </button>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Sales Resources</h1>
                 </div>
+                
                 <div className="flex gap-2">
                     <Button onClick={() => setIsAiModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 flex items-center gap-2 shadow-lg">
                         <Sparkles size={18}/> AI Script Assist
@@ -186,15 +192,15 @@ Format response as plain text without markdown blocks.`;
                         <div className="flex justify-between items-start mb-3">
                             <h3 className="font-black text-slate-800 dark:text-white">{res.title}</h3>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => { setEditingResource(res); setIsModalOpen(true); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary-600"><Edit size={14}/></button>
-                                <button onClick={() => handleDelete(res.id)} className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"><Trash2 size={14}/></button>
+                                <button title="Edit Resource" aria-label="Edit Resource" onClick={() => { setEditingResource(res); setIsModalOpen(true); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-primary-600"><Edit size={14}/></button>
+                                <button title="Delete Resource" aria-label="Delete Resource" onClick={() => handleDelete(res.id)} className="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600"><Trash2 size={14}/></button>
                             </div>
                         </div>
                         <div className="flex-1 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono overflow-auto max-h-60 border border-slate-100 dark:border-slate-800">
                             {res.content}
                         </div>
                         <div className="mt-4 pt-4 border-t dark:border-slate-700 flex justify-end">
-                             <Button variant="secondary" className="text-[10px] font-black uppercase tracking-widest h-8" onClick={() => { navigator.clipboard.writeText(res.content); alert("Copied!"); }}>Copy Script</Button>
+                             <Button variant="secondary" className="text-[10px] font-black uppercase tracking-widest h-8" onClick={() => { navigator.clipboard.writeText(res.content); showToast.warn("Copied!"); }}>Copy Script</Button>
                         </div>
                     </Card>
                 ))}

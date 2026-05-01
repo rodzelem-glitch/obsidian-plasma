@@ -60,3 +60,12 @@ export const formatAddress = (address: string | Address | undefined | null): str
     if (typeof address === 'string') return address;
     return `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
 };
+
+export const getBaseUrl = (): string => {
+    const { hostname, protocol, origin } = window.location;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || protocol === 'capacitor:') {
+        return 'https://app.tektrakker.com';
+    }
+    return origin;
+};
+

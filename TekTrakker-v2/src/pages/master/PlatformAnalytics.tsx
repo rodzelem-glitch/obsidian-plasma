@@ -127,8 +127,6 @@ const PlatformAnalytics: React.FC = () => {
         <div className="p-4 sm:p-6 space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Platform Analytics</h1>
-                    <p className="text-slate-500 mt-1">An overview of platform usage, billing, and API metrics from Google Cloud.</p>
                 </div>
                 <div className="flex items-center gap-4">
                     <Button onClick={fetchMetrics} disabled={loading} variant="secondary">

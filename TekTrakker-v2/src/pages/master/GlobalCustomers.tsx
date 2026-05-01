@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -32,24 +33,28 @@ const GlobalCustomers: React.FC = () => {
     const [targetOrgId, setTargetOrgId] = useState('');
     const [isMoving, setIsMoving] = useState(false);
 
-    // --- ACCESS CONTROL: Only Master Admins can view this page ---
+    // --- ACCESS CONTROL: Only Master Admins and Franchise Admins can view this page ---
     useEffect(() => {
-        // Simple check based on role - assuming 'role' is directly on the user object or roles array
-        // Adjust based on your actual user object structure in AppContext
         const user = state.currentUser;
         const isMasterAdmin = user?.role === 'master_admin'; // Fixed property access
+        const isFranchiseAdmin = user?.role === 'franchise_admin';
 
-        if (user && !isMasterAdmin) {
+        if (user && !isMasterAdmin && !isFranchiseAdmin) {
              navigate('/admin/dashboard'); 
-             // alert("Access Denied: You must be a Master Admin to view this page."); // Optional alert
         }
     }, [state.currentUser, navigate]);
 
     // Initial Load - Find Limbo Customers
     useEffect(() => {
         const user = state.currentUser;
-        const isMasterAdmin = user?.role === 'master_admin'; // Fixed property access
+        const isMasterAdmin = user?.role === 'master_admin'; 
+        const isFranchiseAdmin = user?.role === 'franchise_admin';
         
+        if (isFranchiseAdmin && viewMode === 'limbo') {
+            setViewMode('search');
+            return;
+        }
+
         if (isMasterAdmin && viewMode === 'limbo') {
             fetchLimboCustomers();
         } else if (viewMode === 'limbo' && !isMasterAdmin) {
@@ -59,7 +64,7 @@ const GlobalCustomers: React.FC = () => {
 
     const fetchLimboCustomers = async () => {
         const user = state.currentUser;
-        const isMasterAdmin = user?.role === 'master_admin'; // Fixed property access
+        const isMasterAdmin = user?.role === 'master_admin'; 
         
         if (!isMasterAdmin) {
              console.warn("Attempted to fetch limbo customers without master_admin role.");
@@ -131,34 +136,43 @@ const GlobalCustomers: React.FC = () => {
 
     const handleSearch = async () => {
         const user = state.currentUser;
-        const isMasterAdmin = user?.role === 'master_admin'; // Fixed property access
+        const isMasterAdmin = user?.role === 'master_admin';
+        const isFranchiseAdmin = user?.role === 'franchise_admin';
 
-        if (!isMasterAdmin) {
-            console.warn("Attempted to search customers without master_admin role.");
+        if (!isMasterAdmin && !isFranchiseAdmin) {
+            console.warn("Attempted to search customers without master_admin or franchise_admin role.");
             return;
         }
 
         if (!searchTerm) return;
         setLoading(true);
         try {
-            // Simple search by phone or exact email (Firestore doesn't support full text search easily)
-            let snap = await db.collection('customers').where('phone', '==', searchTerm).get();
+            // Scope queries for franchise_admin
+            let customersRef: any = db.collection('customers');
+            let appointmentsRef: any = db.collection('appointments');
+            
+            if (isFranchiseAdmin && user?.franchiseId) {
+                customersRef = customersRef.where('franchiseId', '==', user.franchiseId);
+                appointmentsRef = appointmentsRef.where('franchiseId', '==', user.franchiseId);
+            }
+
+            let snap = await customersRef.where('phone', '==', searchTerm).get();
             if (snap.empty) {
-                snap = await db.collection('customers').where('email', '==', searchTerm).get();
+                snap = await customersRef.where('email', '==', searchTerm).get();
             }
             if (snap.empty) {
-                snap = await db.collection('customers').where('name', '==', searchTerm).get();
+                snap = await customersRef.where('name', '==', searchTerm).get();
             }
             
             // Also search appointments for this term
-             const snapAppt = await db.collection('appointments').where('customerPhone', '==', searchTerm).get();
+             const snapAppt = await appointmentsRef.where('customerPhone', '==', searchTerm).get();
 
-            const list: CustomerWithRequest[] = snap.docs.map(d => ({...d.data(), id: d.id} as CustomerWithRequest));
+            const list: CustomerWithRequest[] = snap.docs.map((d: any) => ({...d.data(), id: d.id} as CustomerWithRequest));
             
             const existingIds = new Set(list.map(c => c.id));
             
             // Add appts if not in customer list
-            snapAppt.forEach(doc => {
+            snapAppt.forEach((doc: any) => {
                 const a = doc.data() as Appointment;
                 if (!existingIds.has(a.customerId)) {
                     existingIds.add(a.customerId);
@@ -190,10 +204,11 @@ const GlobalCustomers: React.FC = () => {
 
     const handleTransfer = async () => {
         const user = state.currentUser;
-        const isMasterAdmin = user?.role === 'master_admin'; // Fixed property access
+        const isMasterAdmin = user?.role === 'master_admin';
+        const isFranchiseAdmin = user?.role === 'franchise_admin';
 
-        if (!isMasterAdmin) {
-            console.warn("Attempted to transfer customers without master_admin role.");
+        if (!isMasterAdmin && !isFranchiseAdmin) {
+            console.warn("Attempted to transfer customers without master_admin or franchise_admin role.");
             return;
         }
 
@@ -252,13 +267,13 @@ const GlobalCustomers: React.FC = () => {
             }
 
             await batch.commit();
-            alert("Transfer Complete!");
+            showToast.warn("Transfer Complete!");
             setCustomers(prev => prev.filter(c => c.id !== cid));
             setSelectedCustomer(null);
             setTargetOrgId('');
         } catch (e: any) {
             console.error(e);
-            alert("Transfer failed: " + e.message);
+            showToast.warn("Transfer failed: " + e.message);
         } finally {
             setIsMoving(false);
         }
@@ -270,9 +285,10 @@ const GlobalCustomers: React.FC = () => {
     };
 
     const user = state.currentUser;
-    const isMasterAdmin = user?.role === 'master_admin'; // Fixed property access
+    const isMasterAdmin = user?.role === 'master_admin';
+    const isFranchiseAdmin = user?.role === 'franchise_admin';
 
-    if (!isMasterAdmin) {
+    if (!isMasterAdmin && !isFranchiseAdmin) {
         return (
             <div className="text-center p-4 md:p-10 text-red-500 font-bold">
                 Access Denied: You do not have permission to view the Global Customer Manager.
@@ -283,14 +299,13 @@ const GlobalCustomers: React.FC = () => {
     return (
         <div className="space-y-6">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Global Customer Manager</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Locate and re-assign customer records across organizations.</p>
-                </div>
+                
                 <div className="flex gap-2">
-                    <Button onClick={() => { setViewMode('limbo'); fetchLimboCustomers(); }} variant="secondary" className={`text-xs ${viewMode === 'limbo' ? 'bg-amber-100 text-amber-800' : ''}`}>
-                        <AlertCircle size={14} className="mr-2"/> View Orphans / Limbo
-                    </Button>
+                    {state.currentUser?.role === 'master_admin' && (
+                        <Button onClick={() => { setViewMode('limbo'); fetchLimboCustomers(); }} variant="secondary" className={`text-xs ${viewMode === 'limbo' ? 'bg-amber-100 text-amber-800' : ''}`}>
+                            <AlertCircle size={14} className="mr-2"/> View Orphans / Limbo
+                        </Button>
+                    )}
                 </div>
             </header>
 
@@ -371,6 +386,8 @@ const GlobalCustomers: React.FC = () => {
                             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Destination Organization</label>
                             <select 
                                 className="w-full p-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                                title="Destination Organization"
+                                aria-label="Destination Organization"
                                 value={targetOrgId}
                                 onChange={e => setTargetOrgId(e.target.value)}
                             >

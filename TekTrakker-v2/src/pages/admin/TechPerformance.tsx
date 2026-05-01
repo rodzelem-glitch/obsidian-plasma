@@ -26,10 +26,7 @@ const TechPerformance: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <header>
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Technician Performance</h2>
-                <p className="text-gray-600 dark:text-gray-400">Revenue leaderboard and job statistics.</p>
-            </header>
+            
 
             <Leaderboard topTechs={stats.slice(0, 3)} />
             <RosterTable stats={stats} />

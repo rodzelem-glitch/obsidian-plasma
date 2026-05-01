@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MarketingFooter } from '../../components/layout/MarketingFooter';
-import { Bot, Sparkles, Zap, Shield, ArrowRight, CheckCircle, Infinity, Clock, DollarSign, Calendar, Package, FileText, ArrowLeft } from 'lucide-react';
+import { Bot, Sparkles, Zap, Shield, ArrowRight, CheckCircle, Infinity as InfinityIcon, Clock, DollarSign, Calendar, Package, FileText, ArrowLeft } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
 import LandingChatbot from '../../components/LandingChatbot';
 
@@ -84,7 +84,7 @@ const VirtualWorkerMarketing: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex items-start gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><Infinity size={24} /></div>
+                                <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><InfinityIcon size={24} /></div>
                                 <div>
                                     <h4 className="font-bold text-lg text-slate-900 mb-1">Infinite Context</h4>
                                     <p className="text-slate-600 text-sm">Understands complex queries comparing jobs, customers, technicians, and timelines holistically.</p>

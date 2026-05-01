@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -27,13 +28,30 @@ const GlobalMembers: React.FC = () => {
         const fetchGlobalAgreements = async () => {
             setLoading(true);
             try {
-                const snap = await db.collection('serviceAgreements').get();
-                const agreements = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as ServiceAgreement));
                 const demoOrgIds = state.allOrganizations
                     .filter(o => {
                         const n = (o.name || '').toLowerCase();
                         return n.includes('test') || n.includes('demo') || (o as any).isDemo;
                     }).map(o => o.id);
+
+                let agreements: ServiceAgreement[] = [];
+
+                if (state.isMasterAdmin) {
+                    const snap = await db.collection('serviceAgreements').get();
+                    agreements = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as ServiceAgreement));
+                } else {
+                    // Franchise admins must request explicitly by their allowed orgs
+                    const validOrgIds = state.allOrganizations.map(o => o.id);
+                    if (validOrgIds.length > 0) {
+                        const chunkArray = (arr: string[], size: number) => Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
+                        const chunks = chunkArray(validOrgIds, 10);
+                        for (const chunk of chunks) {
+                            const snap = await db.collection('serviceAgreements').where('organizationId', 'in', chunk).get();
+                            agreements = [...agreements, ...snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as ServiceAgreement))];
+                        }
+                    }
+                }
+                
                 setAllAgreements(agreements.filter(a => !demoOrgIds.includes(a.organizationId)));
             } catch (e) {
                 console.error("Global fetch failed", e);
@@ -42,7 +60,7 @@ const GlobalMembers: React.FC = () => {
             }
         };
         fetchGlobalAgreements();
-    }, []);
+    }, [state.allOrganizations, state.isMasterAdmin]);
 
     const metrics = useMemo(() => {
         const activeOnly = allAgreements.filter(a => a.status === 'Active');
@@ -89,7 +107,7 @@ const GlobalMembers: React.FC = () => {
                 navigate('/admin/customers');
             }
         } else {
-            alert("Organization details not found.");
+            showToast.warn("Organization details not found.");
         }
     };
 
@@ -98,9 +116,9 @@ const GlobalMembers: React.FC = () => {
         try {
             await db.collection('serviceAgreements').doc(id).delete();
             setAllAgreements(prev => prev.filter(a => a.id !== id));
-            alert("Record deleted.");
+            showToast.warn("Record deleted.");
         } catch (e) {
-            alert("Delete failed.");
+            showToast.warn("Delete failed.");
         }
     };
 
@@ -127,10 +145,7 @@ const GlobalMembers: React.FC = () => {
     return (
         <div className="space-y-6 pb-20">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Global Memberships</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Platform-wide maintenance plan health.</p>
-                </div>
+                
                 <div className="flex gap-2">
                     <Button variant="secondary" onClick={() => window.print()} className="w-auto flex items-center gap-2">
                         Export Report

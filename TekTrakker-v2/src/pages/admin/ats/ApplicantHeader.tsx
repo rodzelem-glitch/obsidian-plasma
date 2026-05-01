@@ -22,21 +22,11 @@ const ApplicantHeader: React.FC<ApplicantHeaderProps> = ({
     return (
         <>
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Applicant Tracking</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Manage candidates and your hiring pipeline.</p>
-                </div>
+                
                 <div className="flex items-center gap-2">
-                    <button 
-                        onClick={() => window.open(`/careers/${orgId}`, '_blank')} 
-                        className="text-sm text-primary-600 underline px-3 disabled:text-gray-400 disabled:no-underline"
-                        disabled={isDemoMode || !orgId}
-                    >
-                        View Public Career Page
-                    </button>
                     <div className="bg-gray-200 dark:bg-gray-700 p-1 rounded-lg flex w-full overflow-x-auto whitespace-nowrap scrollbar-hide">
-                        <button onClick={() => setViewMode('board')} className={`p-2 rounded ${viewMode === 'board' ? 'bg-white dark:bg-gray-600 shadow' : 'text-gray-500'}`}><LayoutGrid size={18}/></button>
-                        <button onClick={() => setViewMode('list')} className={`p-2 rounded ${viewMode === 'list' ? 'bg-white dark:bg-gray-600 shadow' : 'text-gray-500'}`}><LayoutList size={18}/></button>
+                        <button title="Board View" aria-label="Board View" onClick={() => setViewMode('board')} className={`p-2 rounded ${viewMode === 'board' ? 'bg-white dark:bg-gray-600 shadow' : 'text-gray-500'}`}><LayoutGrid size={18}/></button>
+                        <button title="List View" aria-label="List View" onClick={() => setViewMode('list')} className={`p-2 rounded ${viewMode === 'list' ? 'bg-white dark:bg-gray-600 shadow' : 'text-gray-500'}`}><LayoutList size={18}/></button>
                     </div>
                 </div>
             </header>

@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import Modal from 'components/ui/Modal';
@@ -25,7 +26,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, organization
 
     const handleSubmit = async () => {
         if (!organizationId || !customerId || !customerName || !content) {
-            alert('Missing required information to submit a review.');
+            showToast.warn('Missing required information to submit a review.');
             return;
         }
 
@@ -52,7 +53,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, organization
 
         } catch (error) {
             console.error("Error submitting review:", error);
-            alert("There was an error submitting your review. Please try again.");
+            showToast.warn("There was an error submitting your review. Please try again.");
         } finally {
             setIsSubmitting(false);
         }

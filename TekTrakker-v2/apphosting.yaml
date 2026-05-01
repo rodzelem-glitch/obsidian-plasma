@@ -10,3 +10,31 @@ env:
     availability:
       - BUILD
       - RUNTIME
+  - variable: VITE_FIREBASE_API_KEY
+    value: AIzaSyCnuN0Ws8RwYKSesgVpfGeucdNwLwRwSfk
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_AUTH_DOMAIN
+    value: tektrakker.firebaseapp.com
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_PROJECT_ID
+    value: tektrakker
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_STORAGE_BUCKET
+    value: tektrakker.firebasestorage.app
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_MESSAGING_SENDER_ID
+    value: "655867451194"
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_APP_ID
+    value: 1:655867451194:web:3369dc72e1f1c1c849a203
+    availability:
+      - BUILD
+  - variable: VITE_FIREBASE_MEASUREMENT_ID
+    value: G-0Z6FHX8PGZ
+    availability:
+      - BUILD

@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import Button from '../../../../components/ui/Button';
@@ -19,7 +20,7 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
     const handleAddCustomer = async () => {
         if (!state.currentOrganization) return;
         if (!name) {
-            alert("Name is required.");
+            showToast.warn("Name is required.");
             return;
         }
 
@@ -58,7 +59,7 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
             setEmail('');
         } catch (error) {
             console.error("Error creating customer:", error);
-            alert("Failed to create customer. Please check your connection.");
+            showToast.warn("Failed to create customer. Please check your connection.");
         } finally {
             setIsSaving(false);
         }

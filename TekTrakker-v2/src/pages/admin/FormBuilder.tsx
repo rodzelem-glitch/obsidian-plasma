@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
@@ -14,6 +15,7 @@ import { db } from '../../lib/firebase';
 import type { InspectionTemplate, InspectionTemplateItem } from '../../types';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { globalConfirm } from "lib/globalConfirm";
+import { CHECKLISTS } from '../../constants/checklists';
 
 // Define available field types for the form builder
 const FIELD_TYPES: { type: InspectionTemplateItem['type'], icon: React.ElementType, label: string }[] = [
@@ -188,16 +190,46 @@ const FormBuilder: React.FC = () => {
 
         } catch (error) {
             console.error("AI Import Error:", error);
-            alert("Failed to create checklist. Please try again or simplify the request.");
+            showToast.warn("Failed to create checklist. Please try again or simplify the request.");
         } finally {
             setIsThinking(false);
+        }
+    };
+
+    const handleImportTemplates = async () => {
+        const vertical = state.currentOrganization?.primaryNaics || 'General';
+        const templatesToImport = CHECKLISTS[vertical as keyof typeof CHECKLISTS] || CHECKLISTS['General'];
+
+        if (await globalConfirm(`Import ${templatesToImport.length} standard templates for your industry (${vertical})?`)) {
+            setIsSaving(true);
+            try {
+                for (const t of templatesToImport) {
+                    const newId = `insp-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+                    const templateToSave: InspectionTemplate = {
+                        id: newId,
+                        name: t.name,
+                        organizationId: state.currentOrganization?.id || '',
+                        items: t.items.map((item, idx) => ({ ...item, id: `item-${Date.now()}-${idx}` })),
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    };
+                    await db.collection('inspectionTemplates').doc(newId).set(templateToSave);
+                    dispatch({ type: 'ADD_INSPECTION_TEMPLATE', payload: templateToSave });
+                }
+                showToast.warn("Templates imported successfully!");
+            } catch (error) {
+                console.error("Error importing templates", error);
+                showToast.warn("Failed to import templates.");
+            } finally {
+                setIsSaving(false);
+            }
         }
     };
 
     // Save and Delete operations
     const handleSaveTemplate = async () => {
         if (!editingTemplate || !editingTemplate.name) {
-            alert("Please provide a name for the template.");
+            showToast.warn("Please provide a name for the template.");
             return;
         }
         setIsSaving(true);
@@ -219,11 +251,11 @@ const FormBuilder: React.FC = () => {
                 dispatch({ type: 'ADD_INSPECTION_TEMPLATE', payload: templateToSave });
             }
             
-            alert("Template saved successfully!");
+            showToast.warn("Template saved successfully!");
             setEditingTemplate(templateToSave);
         } catch (error) {
             console.error(error);
-            alert("Error saving template.");
+            showToast.warn("Error saving template.");
         } finally {
             setIsSaving(false);
         }
@@ -239,7 +271,7 @@ const FormBuilder: React.FC = () => {
                 }
             } catch (error) {
                 console.error(error);
-                alert("Failed to delete template.");
+                showToast.warn("Failed to delete template.");
             }
         }
     };
@@ -247,11 +279,11 @@ const FormBuilder: React.FC = () => {
     return (
         <div className="flex flex-col h-full">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Forms & Checklists</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Create and manage inspection templates for field use.</p>
-                </div>
+                
                 <div className="flex gap-2">
+                     <Button onClick={handleImportTemplates} variant="outline">
+                        <Copy size={16} className="mr-2" /> Import Templates
+                    </Button>
                      <Button onClick={handleNewTemplate} variant="outline">
                         <PlusCircle size={16} className="mr-2" /> New Template
                     </Button>

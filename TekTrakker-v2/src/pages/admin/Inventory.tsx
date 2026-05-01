@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { useConfirm } from 'context/ConfirmContext';
@@ -11,6 +12,7 @@ import Modal from 'components/ui/Modal';
 import { db } from 'lib/firebase';
 import type { InventoryItem } from 'types';
 import RefrigerantLog from './RefrigerantLog';
+import { BarcodeScannerButton } from 'components/ui/BarcodeScanner';
 
 const Inventory: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -132,6 +134,30 @@ const Inventory: React.FC = () => {
             db.collection('inventory').doc(id).delete();
         }
     };
+
+    const handleConvertToCylinder = async (item: InventoryItem) => {
+        if (!await confirm(`Convert ${item.name} into an EPA Refrigerant Cylinder? This will move it from standard Parts directly into your EPA Log.`)) return;
+        try {
+            const cylId = `cyl-${Date.now()}`;
+            const cylinder = {
+                id: cylId,
+                organizationId: state.currentOrganization?.id || item.organizationId,
+                cylinderNo: item.barcode || item.sku || 'UNKNOWN',
+                type: 'R410A',
+                status: 'In Service',
+                currentWeight: 0,
+                tareWeight: 0,
+                updatedAt: new Date().toISOString()
+            };
+            await db.collection('refrigerantCylinders').doc(cylId).set(cylinder);
+            dispatch({ type: 'DELETE_INVENTORY', payload: item.id });
+            await db.collection('inventory').doc(item.id).delete();
+            setActiveTab('refrigerant');
+        } catch (e) {
+            console.error(e);
+            showToast.warn("Failed to convert item.");
+        }
+    };
     
     const handleTransferInit = (item: InventoryItem) => {
         setTransferItem(item);
@@ -144,7 +170,7 @@ const Inventory: React.FC = () => {
         if (!transferItem || !transferDest) return;
         
         if (transferQty > transferItem.quantity) {
-            alert('Insufficient quantity in source location.');
+            showToast.warn('Insufficient quantity in source location.');
             return;
         }
 
@@ -188,10 +214,7 @@ const Inventory: React.FC = () => {
     return (
         <div className="space-y-6">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Inventory Management</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Track parts, stock levels, and asset locations.</p>
-                </div>
+                
                 {activeTab === 'parts' && (
                     <Button onClick={() => { setEditingItem(initialItem); setIsModalOpen(true); }} className="w-auto">
                         Add New Item
@@ -219,8 +242,11 @@ const Inventory: React.FC = () => {
             ) : (
                 <div className="space-y-4">
                     <div className="flex flex-col md:flex-row gap-4 mb-4">
-                        <div className="flex-1">
-                            <Input label="" placeholder="Search Parts, SKU, or Barcode..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        <div className="flex-1 flex gap-2">
+                            <div className="flex-1">
+                                <Input label="" placeholder="Search Parts, SKU, or Barcode..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            </div>
+                            <BarcodeScannerButton onScan={(text) => setSearchTerm(text)} />
                         </div>
                         <div className="flex gap-4">
                             <div className="w-48">
@@ -262,7 +288,8 @@ const Inventory: React.FC = () => {
                             </td>
                             <td className="px-6 py-4 text-gray-500 dark:text-gray-400 text-sm">${item.cost.toFixed(2)}</td>
                             <td className="px-6 py-4 text-gray-900 dark:text-white font-bold">${item.price.toFixed(2)}</td>
-                            <td className="px-6 py-4 flex gap-2">
+                            <td className="px-6 py-4 flex flex-wrap gap-2">
+                                <button onClick={() => handleConvertToCylinder(item)} className="text-emerald-500 hover:text-emerald-600 hover:underline text-sm font-bold whitespace-nowrap">Make Cylinder</button>
                                 <button onClick={() => handleTransferInit(item)} className="text-blue-500 hover:underline text-sm">Transfer</button>
                                 <button onClick={() => handleEdit(item)} className="text-primary-600 hover:underline text-sm">Edit</button>
                                 <button onClick={() => handleDelete(item.id)} className="text-red-700 dark:text-red-400 hover:underline text-sm font-bold">Delete</button>
@@ -275,16 +302,40 @@ const Inventory: React.FC = () => {
                                 <p className="text-gray-500 dark:text-gray-400 mb-4">No inventory items found matching "{searchTerm}".</p>
                                 {searchTerm && (
                                     <Button 
-                                        onClick={() => {
-                                            setEditingItem({
+                                        disabled={isSaving}
+                                        onClick={async () => {
+                                            const newItem = {
                                                 ...initialItem,
                                                 barcode: searchTerm,
                                                 sku: searchTerm
-                                            });
+                                            };
+                                            
+                                            // If it looks like a barcode (mostly digits), try external lookup
+                                            if (/^\d{8,14}$/.test(searchTerm)) {
+                                                setIsSaving(true);
+                                                try {
+                                                    const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${searchTerm}`);
+                                                    if (res.ok) {
+                                                        const data = await res.json();
+                                                        if (data.items && data.items.length > 0) {
+                                                            const match = data.items[0];
+                                                            newItem.name = match.title || `${match.brand || ''} ${match.model || ''}`.trim();
+                                                            // Optional: prefill description/category if needed
+                                                            showToast.warn(`Found product match: ${newItem.name}`);
+                                                        }
+                                                    }
+                                                } catch (e) {
+                                                    console.error("Lookup failed", e);
+                                                } finally {
+                                                    setIsSaving(false);
+                                                }
+                                            }
+                                            
+                                            setEditingItem(newItem);
                                             setIsModalOpen(true);
                                         }}
                                     >
-                                        + Add "{searchTerm}" to Inventory
+                                        {isSaving ? 'Looking up product data...' : `+ Add "${searchTerm}" to Inventory`}
                                     </Button>
                                 )}
                             </td>
@@ -299,7 +350,12 @@ const Inventory: React.FC = () => {
                         <Input label="Item Name" value={editingItem.name} onChange={e => setEditingItem({...editingItem, name: e.target.value})} required />
                         <Input label="SKU / Part #" value={editingItem.sku} onChange={e => setEditingItem({...editingItem, sku: e.target.value})} required />
                     </div>
-                    <Input label="Barcode / Tag ID" value={editingItem.barcode || ''} onChange={e => setEditingItem({...editingItem, barcode: e.target.value})} placeholder="Scan here..." />
+                    <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                            <Input label="Barcode / Tag ID" value={editingItem.barcode || ''} onChange={e => setEditingItem({...editingItem, barcode: e.target.value})} placeholder="Scan or enter ID..." />
+                        </div>
+                        <BarcodeScannerButton onScan={(text) => setEditingItem({...editingItem, barcode: text})} />
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Select label="Category" value={editingItem.category} onChange={e => setEditingItem({...editingItem, category: e.target.value as any})}>
                             <option value="Parts">Parts</option>

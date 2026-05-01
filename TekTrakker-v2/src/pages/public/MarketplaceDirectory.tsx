@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
-import { Building, MapPin, Search, Award } from 'lucide-react';
+import { Building, MapPin, Search, Award, Briefcase } from 'lucide-react';
 
 const ALL_INDUSTRIES: IndustryVertical[] = [
     'HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General', 
@@ -40,6 +40,7 @@ const MarketplaceDirectory: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedIndustry, setSelectedIndustry] = useState<IndustryVertical | 'all'>('all');
+    const [subcontractingFilter, setSubcontractingFilter] = useState(false);
     const [sortBy, setSortBy] = useState<SortOption>('default');
 
     useEffect(() => {
@@ -66,7 +67,8 @@ const MarketplaceDirectory: React.FC = () => {
                 org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 org.address?.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 org.address?.state.toLowerCase().includes(searchTerm.toLowerCase());
-            return matchesIndustry && matchesSearch;
+            const matchesSubcontract = subcontractingFilter ? org.acceptsSubcontracting === true : true;
+            return matchesIndustry && matchesSearch && matchesSubcontract;
         });
 
         switch (sortBy) {
@@ -78,7 +80,7 @@ const MarketplaceDirectory: React.FC = () => {
             default:
                 return filtered;
         }
-    }, [orgs, searchTerm, selectedIndustry, sortBy]);
+    }, [orgs, searchTerm, selectedIndustry, subcontractingFilter, sortBy]);
 
     return (
         <div className="bg-gray-50 dark:bg-gray-900 min-h-screen">
@@ -117,6 +119,12 @@ const MarketplaceDirectory: React.FC = () => {
                             <option value="name">Sort by: Name (A-Z)</option>
                         </Select>
                     </div>
+                    <div className="mt-4 flex items-center justify-end">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={subcontractingFilter} onChange={(e) => setSubcontractingFilter(e.target.checked)} className="text-primary-600 focus:ring-primary-500 rounded border-slate-300" />
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5"><Briefcase size={14}/> Available for B2B Subcontracting</span>
+                        </label>
+                    </div>
                 </Card>
 
                 {loading ? (
@@ -127,7 +135,13 @@ const MarketplaceDirectory: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {filteredAndSortedOrgs.map(org => (
                             <Link key={org.id} to={`/marketplace/${org.id}`} className="block transform hover:-translate-y-1 transition-all duration-300">
-                                <Card className="h-full flex flex-col hover:shadow-xl">
+                                <Card className="h-full flex flex-col hover:shadow-xl relative">
+                                    {org.acceptsSubcontracting && (
+                                        <div className="absolute top-4 right-4 flex items-center bg-indigo-100 dark:bg-indigo-900/80 text-indigo-800 dark:text-indigo-200 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full shadow-sm z-10 border border-indigo-200 dark:border-indigo-700">
+                                            <Briefcase size={10} className="mr-1" />
+                                            <span>Subcontracting</span>
+                                        </div>
+                                    )}
                                     <div className="p-6">
                                         <div className="flex items-start gap-4">
                                             <div className="h-20 w-20 bg-slate-100 dark:bg-slate-700 rounded-lg flex items-center justify-center overflow-hidden border border-gray-200 dark:border-gray-700">

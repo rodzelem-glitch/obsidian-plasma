@@ -11,10 +11,22 @@ export interface NotificationPayload {
  * Sends a notification by adding it to the 'notifications' collection.
  * This should be picked up by a Firebase Cloud Function to send FCM/Push alerts.
  */
-export const sendNotification = async (userId: string, payload: NotificationPayload) => {
+export const sendNotification = async (userId: string, payload: NotificationPayload, organizationId?: string) => {
     try {
+        let orgId = organizationId;
+        if (!orgId) {
+            try {
+                const u = await db.collection('users').doc(userId).get();
+                orgId = u.data()?.organizationId || 'unaffiliated';
+            } catch (err) {
+                console.warn(`Could not fetch user ${userId} for notification org routing. Defaulting to unaffiliated.`, err);
+                orgId = 'unaffiliated';
+            }
+        }
+
         await db.collection('notifications').add({
             userId,
+            organizationId: orgId,
             ...payload,
             status: 'pending',
             createdAt: new Date().toISOString()

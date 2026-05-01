@@ -1,5 +1,8 @@
+import showToast from "lib/toast";
+import { getBaseUrl } from "lib/utils";
 
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../../../context/AppContext';
 import { db, functions } from '../../../../lib/firebase';
 import type { Subcontractor } from '../../../../types';
@@ -8,12 +11,13 @@ import SubcontractorModal from '../../../../components/modals/AddSubcontractorMo
 import Card from '../../../../components/ui/Card';
 import Input from '../../../../components/ui/Input';
 import Modal from '../../../../components/ui/Modal';
-import { PlusCircle, Copy, Link2, Mail, CheckCircle2, XCircle, Trash2, RefreshCw, Printer, FileText } from 'lucide-react';
+import { PlusCircle, Copy, Link2, Mail, CheckCircle2, XCircle, Trash2, RefreshCw, Printer, FileText, Search } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import Form1099CopyA from '../../../master/components/sales-team/Form1099CopyA';
 import { sendEmail } from 'lib/notificationService';
 
 const SubcontractorsTab: React.FC = () => {
+    const navigate = useNavigate();
     const { state, dispatch } = useAppContext();
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingSub, setEditingSub] = useState<Partial<Subcontractor> | null>(null);
@@ -51,10 +55,11 @@ const SubcontractorsTab: React.FC = () => {
 
         try {
             // 1. Save Local Doc
-            await db.collection('subcontractors').doc(subId).set(subData, { merge: true });
+            const cleanData = Object.fromEntries(Object.entries(subData).filter(([_, v]) => v !== undefined));
+            await db.collection('subcontractors').doc(subId).set(cleanData, { merge: true });
             // Don't dispatch here if we rely on subscription, OR ensure we don't duplicate.
             // Dispatching helps UI responsiveness before sync.
-            dispatch({ type: sub.id ? 'UPDATE_SUBCONTRACTOR' : 'ADD_SUBCONTRACTOR', payload: subData });
+            dispatch({ type: sub.id ? 'UPDATE_SUBCONTRACTOR' : 'ADD_SUBCONTRACTOR', payload: cleanData });
             
             // 2. Send Handshake Request if new link
             if (isNewLink && sub.linkedOrgId) {
@@ -65,13 +70,13 @@ const SubcontractorsTab: React.FC = () => {
                     requestingOrgId: orgId,
                     subcontractorId: subId
                 });
-                alert("Handshake request sent!");
+                showToast.warn("Handshake request sent!");
             }
 
             setModalOpen(false);
         } catch (e: any) {
             console.error(e);
-            alert("Failed to save: " + e.message);
+            showToast.warn("Failed to save: " + e.message);
         } finally {
             setIsProcessing(false);
         }
@@ -92,9 +97,9 @@ const SubcontractorsTab: React.FC = () => {
             // Optimistic update
             const updatedSub = { ...sub, handshakeStatus: 'None' as const };
             dispatch({ type: 'UPDATE_SUBCONTRACTOR', payload: updatedSub });
-            alert("Request cancelled.");
+            showToast.warn("Request cancelled.");
         } catch (e: any) {
-            alert("Error: " + e.message);
+            showToast.warn("Error: " + e.message);
         } finally {
             setIsProcessing(false);
         }
@@ -115,9 +120,9 @@ const SubcontractorsTab: React.FC = () => {
             // Optimistic update
             const updatedSub = { ...sub, handshakeStatus: 'None' as const };
             dispatch({ type: 'UPDATE_SUBCONTRACTOR', payload: updatedSub });
-            alert("Partner unlinked.");
+            showToast.warn("Partner unlinked.");
         } catch (e: any) {
-            alert("Error: " + e.message);
+            showToast.warn("Error: " + e.message);
         } finally {
             setIsProcessing(false);
         }
@@ -136,7 +141,7 @@ const SubcontractorsTab: React.FC = () => {
             dispatch({ type: 'SET_SUBCONTRACTORS', payload: newSubs });
 
         } catch (e: any) {
-            alert("Failed to delete: " + e.message);
+            showToast.warn("Failed to delete: " + e.message);
         }
     };
 
@@ -150,9 +155,9 @@ const SubcontractorsTab: React.FC = () => {
                 requestingOrgId: request.fromOrgId,
                 subcontractorId: request.subcontractorId // ID in THEIR db
             });
-            alert("Approved! The organizations are now linked.");
+            showToast.warn("Approved! The organizations are now linked.");
         } catch (e: any) {
-            alert("Error: " + e.message);
+            showToast.warn("Error: " + e.message);
         } finally {
             setIsProcessing(false);
         }
@@ -169,9 +174,9 @@ const SubcontractorsTab: React.FC = () => {
                 requestingOrgId: request.fromOrgId,
                 subcontractorId: request.subcontractorId
             });
-            alert("Request rejected.");
+            showToast.warn("Request rejected.");
         } catch (e: any) {
-            alert("Error: " + e.message);
+            showToast.warn("Error: " + e.message);
         } finally {
             setIsProcessing(false);
         }
@@ -182,7 +187,7 @@ const SubcontractorsTab: React.FC = () => {
         const normalizedEmail = email.toLowerCase().trim();
         if (!orgName || !orgId || !normalizedEmail) return;
 
-        const inviteLink = `${window.location.origin}/#/register?view=register_business&email=${encodeURIComponent(normalizedEmail)}&oid=${orgId}${withDiscount ? '&promo=true' : ''}`;
+        const inviteLink = `${getBaseUrl()}/#/register?view=register_business&email=${encodeURIComponent(normalizedEmail)}&oid=${orgId}${withDiscount ? '&promo=true' : ''}`;
         const subject = withDiscount ? `10% Discount: Join ${orgName} on TekTrakker` : `Join ${orgName} on TekTrakker`;
 
         const htmlBody = `
@@ -224,14 +229,14 @@ const SubcontractorsTab: React.FC = () => {
                 type: 'Invite',
                 referralMeta: withDiscount ? { referringOrgId: orgId, referredEmail: normalizedEmail } : null
             });
-            alert("Invitation sent successfully!");
-        } catch (e) { alert("Failed to send invite."); }
+            showToast.warn("Invitation sent successfully!");
+        } catch (e) { showToast.warn("Failed to send invite."); }
     };
 
     const handleCopyId = () => {
         if (state.currentOrganization?.id) {
             navigator.clipboard.writeText(state.currentOrganization.id);
-            alert('ID Copied!');
+            showToast.warn('ID Copied!');
         }
     };
 
@@ -290,9 +295,12 @@ const SubcontractorsTab: React.FC = () => {
             )}
 
             {/* Subcontractor List */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h3 className="text-xl font-bold text-slate-800 dark:text-white">Partner Network</h3>
-                <Button onClick={handleNewSub} className="bg-indigo-600"><PlusCircle size={16} className="mr-2"/> Add Subcontractor</Button>
+                <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => navigate('/marketplace')} className="whitespace-nowrap"><Search size={16} className="mr-2"/> Browse Marketplace</Button>
+                    <Button onClick={handleNewSub} className="bg-indigo-600 whitespace-nowrap"><PlusCircle size={16} className="mr-2"/> Add Subcontractor</Button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

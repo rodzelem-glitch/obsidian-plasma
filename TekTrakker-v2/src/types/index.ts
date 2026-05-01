@@ -9,3 +9,4 @@ export * from './organization';
 export * from './tool';
 export * from './user';
 export * from './integration';
+export * from './franchise';

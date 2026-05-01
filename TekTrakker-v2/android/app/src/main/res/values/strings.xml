@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">TekTrakker</string>
     <string name="title_activity_main">TekTrakker</string>
-    <string name="package_name">com.tektrakker.app</string>
-    <string name="custom_url_scheme">com.tektrakker.app</string>
+    <string name="package_name">com.tektrakker</string>
+    <string name="custom_url_scheme">com.tektrakker</string>
+    <string name="server_client_id">655867451194-lsfv2au0832sarq3uor8ch9tj9kmssai.apps.googleusercontent.com</string>
 </resources>

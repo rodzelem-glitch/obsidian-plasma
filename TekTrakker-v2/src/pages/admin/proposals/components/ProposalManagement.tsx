@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -16,7 +17,9 @@ const ProposalManagement: React.FC = () => {
     
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
-    const [viewProposal, setViewProposal] = useState<Proposal | null>(null);
+    const [viewProposalId, setViewProposalId] = useState<string | null>(null);
+
+    const viewProposal = state.proposals.find(p => p.id === viewProposalId);
 
     const filteredProposals = (state.proposals || []).filter(p => {
         const matchesSearch = p.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -37,7 +40,7 @@ const ProposalManagement: React.FC = () => {
         try {
             await db.collection('proposals').doc(id).delete();
         } catch (e) {
-            alert("Delete failed.");
+            showToast.warn("Delete failed.");
         }
     };
 
@@ -45,29 +48,22 @@ const ProposalManagement: React.FC = () => {
         if (!await globalConfirm(`Send proposal to ${p.customerName}?`)) return;
         try {
             await db.collection('proposals').doc(p.id).update({ status: 'Sent' });
-            alert("Status updated to Sent.");
+            showToast.warn("Status updated to Sent.");
         } catch (e) {
-            alert("Update failed.");
+            showToast.warn("Update failed.");
         }
     };
 
     return (
         <div className="space-y-6">
-            {viewProposal && (
+            {viewProposalId && viewProposal && (
                 <DocumentPreview 
                     type="Proposal" 
                     data={viewProposal} 
-                    onClose={() => setViewProposal(null)} 
+                    onClose={() => setViewProposalId(null)} 
                     isInternal={true}
                 />
             )}
-
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Proposal Pipeline</h2>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium">Manage and track sent quotes and estimates.</p>
-                </div>
-            </header>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card className="bg-white dark:bg-slate-800 border-l-4 border-primary-500 shadow-sm">
@@ -112,7 +108,7 @@ const ProposalManagement: React.FC = () => {
             <Card className="p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-lg rounded-2xl">
                 <Table headers={['Date', 'ID', 'Customer', 'Value', 'Status', 'Actions']}>
                     {filteredProposals.map(p => (
-                        <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all cursor-pointer" onClick={() => setViewProposal(p)}>
+                        <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all cursor-pointer" onClick={() => setViewProposalId(p.id)}>
                             <td className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">
                                 {new Date(p.createdAt).toLocaleDateString()}
                             </td>
@@ -137,9 +133,9 @@ const ProposalManagement: React.FC = () => {
                             </td>
                             <td className="px-6 py-4">
                                 <div className="flex gap-2">
-                                    <button onClick={(e) => { e.stopPropagation(); setViewProposal(p); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-primary-600 transition-colors"><Eye size={16}/></button>
-                                    <button onClick={(e) => { e.stopPropagation(); handleSend(p); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"><Send size={16}/></button>
-                                    <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16}/></button>
+                                    <button title="View Proposal" aria-label="View Proposal" onClick={(e) => { e.stopPropagation(); setViewProposalId(p.id); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-primary-600 transition-colors"><Eye size={16}/></button>
+                                    <button title="Send Proposal" aria-label="Send Proposal" onClick={(e) => { e.stopPropagation(); handleSend(p); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"><Send size={16}/></button>
+                                    <button title="Delete Proposal" aria-label="Delete Proposal" onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16}/></button>
                                 </div>
                             </td>
                         </tr>

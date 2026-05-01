@@ -13,7 +13,14 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      {
+        name: 'strip-crossorigin',
+        transformIndexHtml(html) {
+          return html.replace(/ crossorigin/g, '');
+        }
+      },
       VitePWA({
+        injectRegister: null,
         registerType: 'autoUpdate',
         devOptions: { enabled: true },
         manifest: {
@@ -29,17 +36,7 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-          runtimeCaching: [
-             {
-                urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/i,
-                handler: 'NetworkFirst',
-                options: {
-                  cacheName: 'firebase-firestore-cache',
-                  expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
-                  cacheableResponse: { statuses: [0, 200] }
-                }
-             }
-          ]
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
         }
       })
     ],
@@ -69,9 +66,15 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-            'vendor-firebase': ['firebase/compat/app', 'firebase/compat/auth', 'firebase/compat/firestore', 'firebase/compat/functions', 'firebase/compat/storage']
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('react/') || id.includes('react-dom/') || id.includes('react-router-dom/')) {
+                return 'vendor-react';
+              }
+              if (id.includes('firebase/')) {
+                return 'vendor-firebase';
+              }
+            }
           }
         }
       }
@@ -87,3 +90,4 @@ export default defineConfig(({ mode }) => {
     }
   }
 })
+

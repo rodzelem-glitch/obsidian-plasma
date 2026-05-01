@@ -7,7 +7,7 @@ import type {
     IncidentReport, MembershipPlan, ServiceAgreement,
     PlatformSettings, Review, InspectionTemplate, Message,
     PlatformLead, PlatformCommission, RefrigerantCylinder, ToolMaintenanceLog, ProposalPreset,
-    Project, Subcontractor, EquipmentRental, Expense, ShopOrder, ProjectTask, Permit, RefrigerantTransaction, Applicant
+    Project, Subcontractor, EquipmentRental, Expense, ShopOrder, ProjectTask, Permit, RefrigerantTransaction, Applicant, OrganizationTeam, WarrantyClaim
 } from 'types';
 
 export type Action =
@@ -25,6 +25,7 @@ export type Action =
     | { type: 'UPDATE_USER'; payload: User }
     | { type: 'DELETE_USER'; payload: string }
     | { type: 'SET_ALL_ORGANIZATIONS'; payload: Organization[] }
+    | { type: 'SET_FRANCHISES'; payload: any[] }
     | { type: 'UPDATE_ORGANIZATION'; payload: Organization }
     | { type: 'SYNC_ALL_ORGS'; payload: Organization[] }
     | { type: 'SET_CUSTOMERS'; payload: Customer[] }
@@ -139,7 +140,15 @@ export type Action =
     | { type: 'START_DEMO'; payload: any }
     | { type: 'EXIT_DEMO' }
     | { type: 'SET_CUSTOMER_PROFILE'; payload: Customer | null } 
-    | { type: 'SET_ACTIVE_JOB_ID_FOR_WORKFLOW'; payload: string | null };
+    | { type: 'SET_ACTIVE_JOB_ID_FOR_WORKFLOW'; payload: string | null }
+    | { type: 'SET_TEAMS'; payload: OrganizationTeam[] }
+    | { type: 'ADD_TEAM'; payload: OrganizationTeam }
+    | { type: 'UPDATE_TEAM'; payload: OrganizationTeam }
+    | { type: 'DELETE_TEAM'; payload: string }
+    | { type: 'SET_WARRANTY_CLAIMS'; payload: WarrantyClaim[] }
+    | { type: 'ADD_WARRANTY_CLAIM'; payload: WarrantyClaim }
+    | { type: 'UPDATE_WARRANTY_CLAIM'; payload: WarrantyClaim }
+    | { type: 'DELETE_WARRANTY_CLAIM'; payload: string };
 
 export const appReducer = (state: AppState, action: Action): AppState => {
     switch (action.type) {
@@ -183,6 +192,7 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'UPDATE_EMPLOYEE': return { ...state, users: state.users.map(u => u.id === action.payload.id ? { ...u, ...action.payload } : u), currentUser: state.currentUser?.id === action.payload.id ? { ...state.currentUser, ...action.payload } as User : state.currentUser };
         case 'SET_ALL_ORGANIZATIONS':
         case 'SYNC_ALL_ORGS': return { ...state, allOrganizations: action.payload };
+        case 'SET_FRANCHISES': return { ...state, franchises: action.payload };
         case 'UPDATE_ORGANIZATION': return { ...state, currentOrganization: state.currentOrganization?.id === action.payload.id ? action.payload : state.currentOrganization, allOrganizations: state.allOrganizations.map(o => o.id === action.payload.id ? action.payload : o) };
         case 'SET_CUSTOMERS': return { ...state, customers: action.payload };
         case 'ADD_CUSTOMER': return { ...state, customers: [...state.customers, action.payload] };
@@ -291,6 +301,7 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'ADD_SHIFT_LOG': {
             const { userId, log } = action.payload;
             const userLogs = state.shiftLogs[userId] || [];
+            if (userLogs.some(s => s.id === log.id)) return state;
             return { ...state, shiftLogs: { ...state.shiftLogs, [userId]: [...userLogs, log] } };
         }
         case 'SET_SHIFT_LOGS': {
@@ -334,7 +345,9 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         
         // VEHICLE LOGS
         case 'SET_VEHICLE_LOGS': return { ...state, vehicleLogs: action.payload };
-        case 'ADD_VEHICLE_LOG': return { ...state, vehicleLogs: [...state.vehicleLogs, action.payload] };
+        case 'ADD_VEHICLE_LOG': 
+            if (state.vehicleLogs.some(l => l.id === action.payload.id)) return state;
+            return { ...state, vehicleLogs: [...state.vehicleLogs, action.payload] };
         case 'UPDATE_VEHICLE_LOG': return { ...state, vehicleLogs: state.vehicleLogs.map(l => l.id === action.payload.id ? action.payload : l) };
         case 'DELETE_VEHICLE_LOG': return { ...state, vehicleLogs: state.vehicleLogs.filter(l => l.id !== action.payload) };
 
@@ -346,6 +359,16 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'SET_INCIDENTS': return { ...state, incidents: action.payload, incidentReports: action.payload };
         case 'SET_BIDS': return { ...state, bids: action.payload };
         case 'SET_ACTIVE_JOB_ID_FOR_WORKFLOW': return { ...state, activeJobIdForWorkflow: action.payload };
+        
+        case 'SET_TEAMS': return { ...state, teams: action.payload };
+        case 'ADD_TEAM': return { ...state, teams: [...state.teams, action.payload] };
+        case 'UPDATE_TEAM': return { ...state, teams: state.teams.map(t => t.id === action.payload.id ? action.payload : t) };
+        case 'DELETE_TEAM': return { ...state, teams: state.teams.filter(t => t.id !== action.payload) };
+
+        case 'SET_WARRANTY_CLAIMS': return { ...state, warrantyClaims: action.payload };
+        case 'ADD_WARRANTY_CLAIM': return { ...state, warrantyClaims: [...state.warrantyClaims, action.payload] };
+        case 'UPDATE_WARRANTY_CLAIM': return { ...state, warrantyClaims: state.warrantyClaims.map(w => w.id === action.payload.id ? action.payload : w) };
+        case 'DELETE_WARRANTY_CLAIM': return { ...state, warrantyClaims: state.warrantyClaims.filter(w => w.id !== action.payload) };
 
         default: return state;
     }

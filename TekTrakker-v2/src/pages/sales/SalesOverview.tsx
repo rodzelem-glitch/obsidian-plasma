@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
@@ -6,7 +7,7 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import { db } from '../../lib/firebase';
 import type { PlatformLead, CommissionSettings, Organization, User } from '../../types';
-import { DollarSign, Briefcase, Users, PieChart, FileText, Download, PlayCircle, User as UserIcon } from 'lucide-react';
+import { DollarSign, Briefcase, Users, PieChart, FileText, Download, PlayCircle, User as UserIcon, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import EmployeeProfileModal from '../../components/modals/EmployeeProfileModal';
 import SignaturePad, { SignaturePadHandle } from '../../components/ui/SignaturePad';
@@ -132,17 +133,18 @@ const SalesOverview: React.FC = () => {
 
         const win = window.open('', '_blank');
         if (win) {
-            win.document.write(`<html><head><title>Contract</title><style>body { font-family: serif; padding: 40px; line-height: 1.6; max-width: 800px; margin: 0 auto; }</style></head><body>${html}${signatureSection}</body></html>`);
+            const sanitizedBody = DOMPurify.sanitize(html + signatureSection);
+            win.document.write(`<html><head><title>Contract</title><style>body { font-family: serif; padding: 40px; line-height: 1.6; max-width: 800px; margin: 0 auto; }</style></head><body>${sanitizedBody}</body></html>`);
             win.document.close();
             setTimeout(() => { win.focus(); win.print(); }, 500);
         }
     };
 
     const handleSignContract = async () => {
-        if (!currentUser || !sigPadRef.current || sigPadRef.current.isEmpty()) { alert("Please provide signature."); return; }
+        if (!currentUser || !sigPadRef.current || sigPadRef.current.isEmpty()) { showToast.warn("Please provide signature."); return; }
         
         if (isDemoMode) {
-            alert("Contract signing is disabled in Demo Mode.");
+            showToast.warn("Contract signing is disabled in Demo Mode.");
             return;
         }
 
@@ -150,11 +152,11 @@ const SalesOverview: React.FC = () => {
         try {
             const signature = sigPadRef.current.toDataURL();
             const contractContent = currentUser.salesContractContent || (commissionRules ? generateContractHtml(currentUser, commissionRules) : '');
-            const updateData = { salesContractSigned: true, salesContractDate: new Date().toISOString(), salesContractSignature: signature, salesContractContent: contractContent };
+            const updateData = { salesContractSigned: true, salesContractDate: new Date().toISOString(), salesContractSignature: signature, salesContractContent: DOMPurify.sanitize(contractContent) };
             await db.collection('users').doc(currentUser.id).update(updateData);
             dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...currentUser, ...updateData } as User & { id: string } });
-            alert("Contract accepted.");
-        } catch (e) { alert("Failed to save signature."); } finally { setIsSigning(false); }
+            showToast.warn("Contract accepted.");
+        } catch (e) { showToast.warn("Failed to save signature."); } finally { setIsSigning(false); }
     };
 
     if (!currentUser) return null;
@@ -162,9 +164,11 @@ const SalesOverview: React.FC = () => {
     return (
         <div className="space-y-6 pb-12">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Sales Dashboard</h2>
-                    <p className="text-sm md:text-base text-slate-500">Welcome back, {currentUser?.firstName}. Here is your performance overview.</p>
+                <div className="flex items-center gap-2">
+                    <Button variant="ghost" onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <ArrowLeft size={20} />
+                    </Button>
+                    <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Sales Overview</h1>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button onClick={handleLaunchDemo} className="flex items-center gap-2 text-xs bg-indigo-600 hover:bg-indigo-700">

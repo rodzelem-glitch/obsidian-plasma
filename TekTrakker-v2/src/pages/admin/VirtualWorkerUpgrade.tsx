@@ -1,8 +1,35 @@
-import React from 'react';
+import showToast from "lib/toast";
+import React, { useEffect, useState } from 'react';
 import { Bot, Zap, Clock, ShieldCheck, ArrowRight, BrainCircuit, Users, MessageSquareText } from 'lucide-react';
 import Button from '../../components/ui/Button';
+import { Capacitor } from '@capacitor/core';
 
 const VirtualWorkerUpgrade: React.FC = () => {
+    const [isLoadingIAP, setIsLoadingIAP] = useState(true);
+    const [isAvailable, setIsAvailable] = useState(true);
+    const [platform, setPlatform] = useState<string>('web');
+
+    useEffect(() => {
+        const preflightCheck = async () => {
+            try {
+                const currentPlatform = Capacitor.getPlatform();
+                setPlatform(currentPlatform);
+
+                if (currentPlatform === 'ios' || currentPlatform === 'android') {
+                    const { Purchases } = await import('@revenuecat/purchases-capacitor');
+                    const products = await Purchases.getProducts({ productIdentifiers: ['tek_virtual_worker_199'] });
+                    if (products.products.length === 0) {
+                        setIsAvailable(false);
+                    }
+                }
+            } catch (e) {
+                console.error("IAP Check Error", e);
+            } finally {
+                setIsLoadingIAP(false);
+            }
+        };
+        preflightCheck();
+    }, []);
 
     const features = [
         {
@@ -47,14 +74,72 @@ const VirtualWorkerUpgrade: React.FC = () => {
                     Unlock the Virtual Worker AI to automate your dispatching, handle customer communications, and securely invoice clients entirely hands-free.
                 </p>
 
-                <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
-                    <Button size="lg" className="text-lg px-8 py-4 shadow-xl whitespace-nowrap bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500" onClick={() => alert('Contacting Sales/Billing support...')}>
-                        Add to Subscription <ArrowRight className="ml-2 inline" size={20} />
-                    </Button>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8 h-16 items-center">
+                    {isLoadingIAP ? (
+                        <div className="animate-pulse bg-slate-200 dark:bg-slate-800 h-10 w-48 rounded-full"></div>
+                    ) : isAvailable ? (
+                        <Button size="lg" className="text-lg px-8 py-4 shadow-xl whitespace-nowrap bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500" onClick={async () => {
+                            try {
+                                if (platform === 'ios' || platform === 'android') {
+                                    const { Purchases } = await import('@revenuecat/purchases-capacitor');
+                                    const products = await Purchases.getProducts({ productIdentifiers: ['tek_virtual_worker_199'] });
+                                    if (products.products.length > 0) {
+                                        await Purchases.purchaseStoreProduct({ product: products.products[0] });
+                                        showToast.warn('Virtual Worker Subscription Activated!');
+                                        // Normally you would update Firebase doc here, but RevenueCat webhooks would catch this securely
+                                    } else {
+                                        showToast.warn('Error: Product misconfigured. Please contact support.');
+                                    }
+                                } else {
+                                    showToast.warn('Redirecting to Secure Stripe Web Checkout...');
+                                }
+                            } catch (e: any) {
+                                if (!e.userCancelled) showToast.warn('Purchase Failed: ' + e.message);
+                            }
+                        }}>
+                            Add to Subscription <ArrowRight className="ml-2 inline" size={20} />
+                        </Button>
+                    ) : (
+                        <div className="text-sm border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700/30 text-amber-600 dark:text-amber-400 px-6 py-3 rounded-xl flex items-center justify-center font-medium">
+                            <ShieldCheck size={16} className="mr-2" />
+                            Virtual Worker upgrades are temporarily unavailable in your region.
+                        </div>
+                    )}
                 </div>
                 <p className="text-sm text-slate-500 mt-4 flex items-center justify-center gap-1">
                     <ShieldCheck size={16} className="text-emerald-500" /> Includes 10,000,000 AI Operations Actions every month.
                 </p>
+
+                {/* Platform-Specific Subscription Disclosure */}
+                <div className="max-w-2xl mx-auto mt-8 text-[10px] text-slate-500 dark:text-slate-400 text-left leading-relaxed space-y-2 border-t border-slate-200 dark:border-slate-800/50 pt-4">
+                    <p><strong>Virtual Worker Upgrade (1 Month Auto-Renewing Subscription for $199.00/mo)</strong></p>
+                    
+                    {platform === 'ios' && (
+                        <>
+                            <p>Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period.</p>
+                            <p>You can manage and cancel your subscriptions by going to your account settings on the App Store after purchase.</p>
+                        </>
+                    )}
+
+                    {platform === 'android' && (
+                        <>
+                            <p>Payment will be charged to your Google Play account at the confirmation of purchase. Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period.</p>
+                            <p>You can manage and cancel your subscriptions by going to your Google Play subscriptions settings after purchase.</p>
+                        </>
+                    )}
+
+                    {platform === 'web' && (
+                        <>
+                            <p>Payment will be securely processed via Stripe at the confirmation of purchase. Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current billing cycle.</p>
+                            <p>You can manage and cancel your subscriptions by going to the Organization Billing portal after purchase.</p>
+                        </>
+                    )}
+
+                    <div className="flex justify-start gap-4 pt-2">
+                        <a href="/#/eula" target="_blank" rel="noreferrer" className="text-primary-500 hover:text-primary-600 underline">Terms of Use (EULA)</a>
+                        <a href="/#/privacy" target="_blank" rel="noreferrer" className="text-primary-500 hover:text-primary-600 underline">Privacy Policy</a>
+                    </div>
+                </div>
             </div>
 
             {/* Feature Bento Grid */}

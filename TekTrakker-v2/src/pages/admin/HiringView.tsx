@@ -49,10 +49,7 @@ const HiringView: React.FC = () => {
     return (
         <div className="h-full flex flex-col">
             <header className="flex justify-between items-center mb-6">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Applicant Tracking</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Manage recruitment pipeline.</p>
-                </div>
+                
                 <Button onClick={() => setIsModalOpen(true)} className="w-auto">+ Add Candidate</Button>
             </header>
 

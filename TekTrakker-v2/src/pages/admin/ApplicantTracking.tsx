@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -24,6 +25,16 @@ const INDUSTRY_ROLES: Record<string, string[]> = {
     'HVAC': ['HVAC Technician', 'Installer', 'Sales'],
     'Plumbing': ['Plumber', 'Apprentice', 'Sales'],
     'Electrical': ['Electrician', 'Apprentice', 'Sales'],
+    'Landscaping': ['Landscaper', 'Crew Leader', 'Designer', 'Sales'],
+    'Cleaning': ['Cleaner', 'Janitor', 'Supervisor', 'Sales'],
+    'Painting': ['Painter', 'Prep Cook', 'Crew Leader', 'Sales'],
+    'Roofing': ['Roofer', 'Foreman', 'Estimator', 'Sales'],
+    'Contracting': ['Carpenter', 'Project Manager', 'Estimator', 'Laborer'],
+    'Masonry': ['Mason', 'Tender', 'Foreman', 'Estimator'],
+    'Telecommunications': ['Cable Technician', 'Network Installer', 'Support Specialist'],
+    'Solar': ['Solar Installer', 'Electrician', 'Site Surveyor', 'Sales'],
+    'Security': ['Security Technician', 'Installer', 'Sales'],
+    'Pet Grooming': ['Groomer', 'Bather', 'Receptionist'],
     'General': ['Laborer', 'Project Manager', 'Sales'],
 };
 
@@ -81,7 +92,7 @@ const ApplicantTracking: React.FC = () => {
     const handleUpdateStatus = async (status: Applicant['status']) => {
         if (!selectedApplicant) return;
         updateApplicant(selectedApplicant.id, { status });
-        if (state.isDemoMode) return alert('Demo: Status updated!');
+        if (state.isDemoMode) return showToast.warn('Demo: Status updated!');
         await db.collection('applicants').doc(selectedApplicant.id).update({ status });
     };
 
@@ -90,7 +101,7 @@ const ApplicantTracking: React.FC = () => {
         if (!await globalConfirm(`Delete ${selectedApplicant.name}?`)) return;
         setApplicants(prev => prev.filter(a => a.id !== selectedApplicant.id));
         setIsDetailModalOpen(false);
-        if (state.isDemoMode) return alert('Demo: Applicant deleted!');
+        if (state.isDemoMode) return showToast.warn('Demo: Applicant deleted!');
         await db.collection('applicants').doc(selectedApplicant.id).delete();
     };
 
@@ -105,7 +116,7 @@ const ApplicantTracking: React.FC = () => {
         if (!selectedApplicant) return;
         console.log('Offer Details:', details);
         handleUpdateStatus('Offer Sent');
-        if (state.isDemoMode) return alert('Demo: Offer sent!');
+        if (state.isDemoMode) return showToast.warn('Demo: Offer sent!');
         // In live mode, you would also generate and send an email
         // await db.collection('mail').add({ ... });
     };
@@ -114,7 +125,7 @@ const ApplicantTracking: React.FC = () => {
         if (!selectedApplicant) return;
         handleUpdateStatus('Hired');
         setIsDetailModalOpen(false);
-        if (state.isDemoMode) return alert('Demo: Applicant hired!');
+        if (state.isDemoMode) return showToast.warn('Demo: Applicant hired!');
         // In live mode, create a new user/employee record
         // await db.collection('users').add({ ... });
     };
@@ -172,3 +183,4 @@ const ApplicantTracking: React.FC = () => {
 };
 
 export default ApplicantTracking;
+

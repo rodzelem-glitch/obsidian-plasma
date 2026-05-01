@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useEffect } from 'react';
 import { db } from '../../lib/firebase';
 import { useAppContext } from '../../context/AppContext';
@@ -33,33 +34,75 @@ const AiUsageMaster: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (!state.currentUser || state.currentUser.role !== 'master_admin') return;
+    const user = state.currentUser;
+    if (!user || (user.role !== 'master_admin' && user.role !== 'franchise_admin')) return;
+
+    let unsubList: (() => void)[] = [];
 
     // Fetch Orgs for names
     const fetchOrgs = async () => {
-      const snap = await db.collection('organizations').get();
+      let snap;
+      if (user.role === 'franchise_admin') {
+         snap = await db.collection('organizations').where('franchiseId', '==', user.franchiseId).get();
+      } else {
+         snap = await db.collection('organizations').get();
+      }
       const orgData: Record<string, Organization> = {};
+      const orgIds: string[] = [];
       snap.docs.forEach(doc => {
         orgData[doc.id] = { id: doc.id, ...doc.data() } as Organization;
+        orgIds.push(doc.id);
       });
       setOrganizations(orgData);
+      return orgIds;
     };
 
-    // Sub to AI Usage
-    const unsubscribe = db.collection('aiUsage').onSnapshot((snapshot) => {
-      const records = snapshot.docs.map(doc => ({
-        organizationId: doc.id,
-        ...doc.data()
-      })) as AiUsageRecord[];
-      setUsageRecords(records.sort((a, b) => b.totalTokensUsed - a.totalTokensUsed));
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching AI Usage:", error);
-      setLoading(false);
+    fetchOrgs().then((orgIds) => {
+        if (user.role === 'master_admin') {
+            const unsub = db.collection('aiUsage').onSnapshot((snapshot) => {
+              const records = snapshot.docs.map((doc: any) => ({
+                organizationId: doc.id,
+                ...doc.data()
+              })) as AiUsageRecord[];
+              setUsageRecords(records.sort((a, b) => b.totalTokensUsed - a.totalTokensUsed));
+              setLoading(false);
+            }, (error) => {
+              console.error("Error fetching AI Usage:", error);
+              setLoading(false);
+            });
+            unsubList.push(unsub);
+        } else {
+            // Franchise Admin Check
+            if (orgIds.length === 0) {
+                setLoading(false);
+                return;
+            }
+            
+            const currentRecords = new Map<string, AiUsageRecord>();
+            let initialLoadCount = 0;
+            
+            orgIds.forEach(orgId => {
+                const unsub = db.collection('aiUsage').doc(orgId).onSnapshot((doc: any) => {
+                    if (doc.exists) {
+                        currentRecords.set(orgId, { organizationId: doc.id, ...doc.data() } as AiUsageRecord);
+                    } else {
+                        currentRecords.delete(orgId);
+                    }
+                    
+                    initialLoadCount++;
+                    // Only update state after initial wave fires, or immediately on subsequent fires
+                    if (initialLoadCount >= orgIds.length) {
+                        const arr = Array.from(currentRecords.values());
+                        setUsageRecords([...arr.sort((a, b) => b.totalTokensUsed - a.totalTokensUsed)]);
+                        setLoading(false);
+                    }
+                }, (err) => console.log('Err tracking ai metrics for org', orgId));
+                unsubList.push(unsub);
+            });
+        }
     });
 
-    fetchOrgs();
-    return () => unsubscribe();
+    return () => unsubList.forEach(u => u());
   }, [state.currentUser]);
 
   const handleOpenLimitModal = (orgId: string, currentStandard?: number, currentVirtualWorker?: number) => {
@@ -83,7 +126,7 @@ const AiUsageMaster: React.FC = () => {
       setIsLimitModalOpen(false);
     } catch (e) {
       console.error("Failed to update limit", e);
-      alert("Failed to update limit.");
+      showToast.warn("Failed to update limit.");
     } finally {
       setIsSaving(false);
     }
@@ -97,17 +140,7 @@ const AiUsageMaster: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <header className="flex justify-between items-center bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
-        <div className="flex items-center gap-4">
-            <div className="bg-indigo-100 dark:bg-indigo-900 overflow-hidden text-indigo-600 dark:text-indigo-300 p-3 rounded-xl border border-indigo-200 dark:border-indigo-800">
-                <BrainCircuit size={28} />
-            </div>
-            <div>
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">AI Token Usage</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Monitor native AI generative costs and limits globally.</p>
-            </div>
-        </div>
-      </header>
+
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="flex flex-col gap-2 relative">

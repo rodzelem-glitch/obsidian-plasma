@@ -1,8 +1,10 @@
+import showToast from "lib/toast";
+import { getBaseUrl } from "lib/utils";
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
-import type { Job, InvoiceLineItem, Organization, CommissionSettings, PlatformCommission, Proposal } from 'types';
+import type { Job, InvoiceLineItem, Organization } from 'types';
 import { SignaturePadHandle } from 'components/ui/SignaturePad';
 import { formatAddress } from 'lib/utils';
 import { globalConfirm } from "lib/globalConfirm";
@@ -35,6 +37,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     const [partsWarrantyMonths, setPartsWarrantyMonths] = useState<number>(0);
     const [warrantyNotes, setWarrantyNotes] = useState<string>('');
     const [warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed] = useState<boolean>(false);
+    const [membershipEnrollment, setMembershipEnrollment] = useState<any>(null);
 
     const sigPadRef = useRef<SignaturePadHandle>(null);
 
@@ -54,6 +57,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 setPartsWarrantyMonths((job.invoice as any)?.partsWarrantyMonths || 0);
                 setWarrantyNotes((job.invoice as any)?.warrantyNotes || '');
                 setWarrantyDisclaimerAgreed((job.invoice as any)?.warrantyDisclaimerAgreed || false);
+                setMembershipEnrollment((job.invoice as any)?.membershipEnrollment || null);
 
                 if (job.source === 'PlatformAdmin') {
                     db.collection('organizations').doc('platform').get().then(doc => {
@@ -130,11 +134,17 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
 
     const handleImportFromProposal = async (proposalId: string) => {
         const proposal = state.proposals.find(p => p.id === proposalId);
-        if (!proposal) { alert("Proposal not found."); return; }
+        if (!proposal) { showToast.warn("Proposal not found."); return; }
         if (currentJob?.customerId && proposal.customerId && proposal.customerId !== currentJob.customerId) { 
             if(!await globalConfirm("Warning: This proposal appears to be for a different customer. Import anyway?")) return; 
         }
-        const newItems: InvoiceLineItem[] = proposal.items.map(pItem => ({
+
+        let itemsToImport = proposal.items;
+        if (proposal.selectedOption && proposal.selectedOption !== 'None') {
+            itemsToImport = proposal.items.filter(item => !item.tier || item.tier === proposal.selectedOption);
+        }
+
+        const newItems: InvoiceLineItem[] = itemsToImport.map(pItem => ({
             id: `prop-${pItem.id}-${Date.now()}`,
             name: pItem.name || 'Proposal Item',
             description: pItem.description || '',
@@ -168,6 +178,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 warrantyNotes,
                 warrantyDisclaimerAgreed,
                 warrantyIssuedDate: (currentJob.invoice as any)?.warrantyIssuedDate || (workmanshipWarrantyMonths > 0 || partsWarrantyMonths > 0 ? new Date().toISOString() : null),
+                membershipEnrollment: membershipEnrollment || null,
             },
             updatedAt: new Date().toISOString(),
             updatedById: currentUser?.id,
@@ -184,17 +195,65 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             await db.collection('jobs').doc(currentJob.id).update(updatedJob);
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
             onClose();
-        } catch (error) { console.error(error); alert("Failed to save."); } 
+        } catch (error) { console.error(error); showToast.warn("Failed to save."); } 
         finally { setIsSaving(false); }
     };
 
-    const handleMarkPaid = async () => {
+    const handleMarkPaid = async (paymentMethod?: string, proofUrl?: string) => {
         if (!currentJob || !await globalConfirm("Mark as PAID?")) return;
         setIsSaving(true);
         try {
             const updatedJob = getPreviewJob(); 
             if (!updatedJob) throw new Error("Could not build updated job for marking paid.");
             updatedJob.invoice.status = 'Paid';
+            updatedJob.invoice.paidDate = new Date().toISOString();
+            if (paymentMethod) {
+                updatedJob.invoice.paymentMethod = paymentMethod;
+            }
+            if (proofUrl) {
+                updatedJob.invoice.paymentProofUrl = proofUrl;
+                updatedJob.invoice.paymentProofDate = new Date().toISOString();
+            }
+
+            if (paymentMethod === 'Cash') {
+                const amountToAdd = updatedJob.invoice.totalAmount || 0;
+                if (amountToAdd > 0) {
+                    const assignedUserId = updatedJob.assignedTechnicianId || currentUser?.id;
+                    if (assignedUserId) {
+                        try {
+                             const { firebase } = await import('lib/firebase');
+                             await db.collection('users').doc(assignedUserId).update({
+                                 cashBalance: firebase.firestore.FieldValue.increment(amountToAdd)
+                             });
+                        } catch (e) {
+                             console.warn("Cash logger error", e);
+                        }
+                    }
+                }
+            }
+
+            if (updatedJob.invoice.membershipEnrollment && currentJob.customerId) {
+                const enrollment = updatedJob.invoice.membershipEnrollment;
+                const newId = 'm-' + Date.now();
+                const agreement = {
+                    id: newId,
+                    organizationId: currentOrganization?.id || '',
+                    customerId: currentJob.customerId,
+                    customerName: currentJob.customerName,
+                    planName: enrollment.planName,
+                    price: enrollment.price,
+                    billingCycle: enrollment.billingCycle,
+                    startDate: new Date().toISOString(),
+                    endDate: new Date(Date.now() + (enrollment.billingCycle === 'Annual' ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString(),
+                    status: 'Active',
+                    systemCount: enrollment.systemCount,
+                    createdAt: new Date().toISOString()
+                };
+                try {
+                    await db.collection('serviceAgreements').doc(newId).set(agreement);
+                } catch(e) { console.error("Error creating service agreement", e); }
+            }
+
             await db.collection('jobs').doc(currentJob.id).update(updatedJob);
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
             onClose();
@@ -210,9 +269,46 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             if (!updatedJob) throw new Error("Could not build updated job for marking unpaid.");
             updatedJob.invoice.status = 'Unpaid';
             updatedJob.invoice.paidDate = null; 
+            updatedJob.invoice.paymentProofUrl = null;
+            updatedJob.invoice.paymentProofDate = null;
             await db.collection('jobs').doc(currentJob.id).update(updatedJob);
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
             onClose();
+        } catch(e) { console.error(e) }
+        finally { setIsSaving(false); }
+    };
+
+    const handleMarkPending = async (proofUrl?: string, paymentMethod?: string) => {
+        if (!currentJob || !await globalConfirm("Mark as PENDING (Payment verifying/clearing)?")) return;
+        setIsSaving(true);
+        try {
+            const updatedJob = getPreviewJob(); 
+            if (!updatedJob) throw new Error("Could not build updated job for marking pending.");
+            updatedJob.invoice.status = 'Pending';
+            if (proofUrl) {
+                updatedJob.invoice.paymentProofUrl = proofUrl;
+                updatedJob.invoice.paymentProofDate = new Date().toISOString();
+            }
+            if (paymentMethod) {
+                updatedJob.invoice.paymentMethod = paymentMethod;
+            }
+            await db.collection('jobs').doc(currentJob.id).update(updatedJob);
+            dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
+            onClose();
+        } catch(e) { console.error(e) }
+        finally { setIsSaving(false); }
+    };
+
+    const handleAttachProof = async (proofUrl: string) => {
+        if (!currentJob) return;
+        setIsSaving(true);
+        try {
+            const updatedJob = getPreviewJob(); 
+            if (!updatedJob) throw new Error("Could not build updated job for attaching proof.");
+            updatedJob.invoice.paymentProofUrl = proofUrl;
+            updatedJob.invoice.paymentProofDate = new Date().toISOString();
+            await db.collection('jobs').doc(currentJob.id).update(updatedJob);
+            dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
         } catch(e) { console.error(e) }
         finally { setIsSaving(false); }
     };
@@ -229,7 +325,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             });
             setCurrentJob(prev => prev ? { ...prev, invoiceSignature: signature, invoiceSignedDate: new Date().toISOString() } : null);
             setIsSigningOpen(false);
-        } catch (e) { alert("Error saving signature."); }
+        } catch (e) { showToast.warn("Error saving signature."); }
     };
 
     const handleSendInvoice = async () => {
@@ -240,12 +336,12 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         }
 
         if (!currentJob || !await globalConfirm(`Send invoice #${currentJob.invoice.id} to ${email || 'this customer'}?`)) return;
-        if (!email) { alert("Customer email missing. Please update the customer profile with a valid email address."); return; }
+        if (!email) { showToast.warn("Customer email missing. Please update the customer profile with a valid email address."); return; }
         setIsSaving(true);
         try {
             const updatedJob = getPreviewJob();
             if (!updatedJob) throw new Error("Could not prepare invoice for sending.");
-            const link = `${window.location.origin}/#/invoice/${currentJob.id}`;
+            const link = `${getBaseUrl()}/#/invoice/${currentJob.id}`;
             const orgName = currentOrganization?.name || 'Service Provider';
             await db.collection('mail').add({
                 to: [email],
@@ -258,9 +354,9 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 type: 'Invoice',
                 createdAt: new Date().toISOString()
             });
-            alert(`Invoice sent to ${email}!`);
+            showToast.warn(`Invoice sent to ${email}!`);
             onClose();
-        } catch (e) { console.error(e); alert("Error sending invoice."); }
+        } catch (e) { console.error(e); showToast.warn("Error sending invoice."); }
         finally { setIsSaving(false); }
     };
 
@@ -272,7 +368,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         }
 
         if (!currentJob || !await globalConfirm(`Send receipt for invoice #${currentJob.invoice.id} to ${email || 'this customer'}?`)) return;
-        if (!email) { alert("Customer email missing. Please update the customer profile with a valid email address."); return; }
+        if (!email) { showToast.warn("Customer email missing. Please update the customer profile with a valid email address."); return; }
         setIsSaving(true);
         try {
             const updatedJob = getPreviewJob();
@@ -289,14 +385,91 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 type: 'Receipt',
                 createdAt: new Date().toISOString()
             });
-            alert(`Receipt sent to ${email}!`);
-        } catch (e) { console.error(e); alert("Failed to send receipt."); }
+            showToast.warn(`Receipt sent to ${email}!`);
+        } catch (e) { console.error(e); showToast.warn("Failed to send receipt."); }
         finally { setIsSaving(false); }
     };
 
+    const handleSendReminder = async () => {
+        let email = currentJob?.customerEmail;
+        let phone = currentJob?.customerPhone;
+        if (!email && currentJob?.customerId) {
+            const custDoc = await db.collection('customers').doc(currentJob.customerId).get();
+            if (custDoc.exists) {
+                email = custDoc.data()?.email;
+                phone = custDoc.data()?.phone || phone;
+            }
+        }
+
+        if (!currentJob || !await globalConfirm(`Send payment reminder for invoice #${currentJob.invoice.id} to ${email || 'this customer'}?`)) return;
+        if (!email && !phone) { showToast.warn("Customer requires an email or phone number for reminders."); return; }
+        setIsSaving(true);
+        try {
+            const updatedJob = getPreviewJob();
+            if (!updatedJob) throw new Error("Could not prepare invoice for sending.");
+            const link = `${getBaseUrl()}/#/invoice/${currentJob.id}`;
+            const orgName = currentOrganization?.name || 'Service Provider';
+            
+            if (email) {
+                await db.collection('mail').add({
+                    to: [email],
+                    message: {
+                        subject: `Reminder: Invoice #${updatedJob.invoice.id} from ${orgName}`,
+                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;"><h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${customerName},</p><p>This is a friendly reminder that your invoice <strong>#${updatedJob.invoice.id}</strong> for <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                        text: `Reminder: Invoice #${updatedJob.invoice.id} for $${updatedJob.invoice.totalAmount?.toFixed(2)} is outstanding. Pay here: ${link}`
+                    },
+                    organizationId: currentOrganization?.id,
+                    type: 'InvoiceReminder',
+                    createdAt: new Date().toISOString()
+                });
+            }
+
+            if (phone) {
+                await db.collection('messages').add({
+                    to: phone,
+                    body: `Reminder from ${orgName}: Your invoice #${updatedJob.invoice.id} for $${updatedJob.invoice.totalAmount?.toFixed(2)} is outstanding. View and pay securely here: ${link}`,
+                    organizationId: currentOrganization?.id,
+                    status: 'pending',
+                    type: 'sms',
+                    createdAt: new Date().toISOString()
+                });
+            }
+
+            showToast.warn(`Reminder sent via ${email ? 'email' : ''} ${email && phone ? 'and ' : ''}${phone ? 'SMS text' : ''}!`);
+            onClose();
+        } catch (e) { console.error(e); showToast.warn("Error sending reminder."); }
+        finally { setIsSaving(false); }
+    };
+
+    const handleUploadDocumentation = async (urls: string[]) => {
+        if (!currentJob) return;
+        setIsSaving(true);
+        try {
+            const existingUrls = (currentJob as any).documentationUrls || [];
+            const updatedUrls = [...existingUrls, ...urls];
+            await db.collection('jobs').doc(currentJob.id).update({
+                documentationUrls: updatedUrls,
+                updatedAt: new Date().toISOString(),
+                updatedById: currentUser?.id,
+                updatedByName: `${currentUser?.firstName} ${currentUser?.lastName}`
+            });
+            setCurrentJob(prev => prev ? { ...prev, documentationUrls: updatedUrls } : null);
+            showToast.warn("Documentation updated!");
+        } catch (e) {
+            console.error(e);
+            showToast.warn("Failed to update documentation.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const relevantProposals = useMemo(() => {
-        if (!currentJob || !currentJob.customerId) return [];
-        return state.proposals.filter(p => p.customerId === currentJob.customerId);
+        if (!currentJob) return [];
+        return state.proposals.filter(p => 
+            p.jobId === currentJob.id || 
+            (currentJob.customerId && p.customerId === currentJob.customerId) || 
+            (p.customerName && currentJob.customerName && p.customerName.toLowerCase() === currentJob.customerName.toLowerCase())
+        );
     }, [state.proposals, currentJob]);
 
     return {
@@ -310,8 +483,12 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         handleSave,
         handleMarkPaid,
         handleMarkUnpaid,
+        handleMarkPending,
+        handleAttachProof,
         handleSendInvoice,
         handleSendReceipt,
+        handleSendReminder,
+        handleUploadDocumentation,
         getPreviewJob,
         handleSaveSignature,
         sigPadRef,
@@ -330,5 +507,6 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         partsWarrantyMonths, setPartsWarrantyMonths,
         warrantyNotes, setWarrantyNotes,
         warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed,
+        membershipEnrollment, setMembershipEnrollment,
     };
 };

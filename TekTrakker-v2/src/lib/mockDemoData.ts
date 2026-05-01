@@ -88,7 +88,7 @@ export const MOCK_DEMO_USERS: User[] = [
         organizationId: 'platform',
         firstName: 'Sam',
         lastName: 'Sales',
-        email: 'sales@tektrakker.com',
+        email: 'platform@tektrakker.com',
         username: 'sam_sales',
         role: 'platform_sales',
         status: 'active',

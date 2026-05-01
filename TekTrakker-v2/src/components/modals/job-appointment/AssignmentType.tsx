@@ -18,6 +18,8 @@ interface AssignmentTypeProps {
     setShowCrewSelect: (show: boolean) => void;
     assistantIds: string[];
     openAddSubcontractorModal: () => void;
+    partnerPayoutAmount?: number;
+    setPartnerPayoutAmount?: (amount: number | undefined) => void;
 }
 
 const AssignmentType: React.FC<AssignmentTypeProps> = ({ 
@@ -32,7 +34,9 @@ const AssignmentType: React.FC<AssignmentTypeProps> = ({
     showCrewSelect, 
     setShowCrewSelect, 
     assistantIds,
-    openAddSubcontractorModal
+    openAddSubcontractorModal,
+    partnerPayoutAmount,
+    setPartnerPayoutAmount
 }) => {
     return (
         <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
@@ -52,6 +56,7 @@ const AssignmentType: React.FC<AssignmentTypeProps> = ({
                     </div>
                 </div>
             ) : (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Select label="Select Partner Organization" value={partnerId} onChange={e => setPartnerId(e.target.value)}>
                         <option value="">-- Choose Partner --</option>
@@ -62,6 +67,25 @@ const AssignmentType: React.FC<AssignmentTypeProps> = ({
                         <Button type="button" variant="secondary" onClick={openAddSubcontractorModal} className="text-xs h-10 w-full"><Plus size={14} className="mr-2"/> Add Subcontractor</Button>
                     </div>
                 </div>
+                {setPartnerPayoutAmount && (
+                    <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                        <div className="max-w-xs">
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Pass-through Payout (Optional)</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+                                <input 
+                                    type="number" 
+                                    className="w-full pl-7 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring focus:ring-indigo-200"
+                                    placeholder="0.00"
+                                    value={partnerPayoutAmount || ''}
+                                    onChange={(e) => setPartnerPayoutAmount(e.target.value ? Number(e.target.value) : undefined)}
+                                />
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-1">If this is a flat-fee sub-out, enter the exact dollar amount to accrue for their 1099 automatically without extra expensing.</p>
+                        </div>
+                    </div>
+                )}
+            </>
             )}
         </div>
     );

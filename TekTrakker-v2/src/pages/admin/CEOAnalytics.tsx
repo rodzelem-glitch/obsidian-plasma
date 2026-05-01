@@ -8,10 +8,7 @@ const CEOAnalytics: React.FC = () => {
 
     return (
         <div className="space-y-4">
-            <header className="mb-4">
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">CEO Analytics</h2>
-                <p className="text-gray-600 dark:text-gray-400">High-level insights and ROI tracking.</p>
-            </header>
+            
 
             <div className="flex space-x-1 bg-gray-200 dark:bg-gray-700 p-1 rounded-lg w-full overflow-x-auto whitespace-nowrap scrollbar-hide">
                 <button

@@ -1,0 +1,84 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="TekTrakker: The All-In-One Operating System for High-Performance Trade Businesses. Dispatch, Invoicing, GPS, and AI Automation in one platform." />
+    <meta name="keywords" content="HVAC Software, Plumbing Dispatch, Electrical CRM, Field Service Management, AI Dispatch, Trade Business App" />
+    <meta property="og:title" content="TekTrakker Platform" />
+    <meta property="og:description" content="Streamline your trade business with AI-powered dispatching and management." />
+    <meta property="og:type" content="website" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>TekTrakker Platform</title>
+    <link rel="icon" type="image/png" sizes="any" href="/favicon-new.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://tektrakker.firebaseapp.com" crossorigin>
+    <link rel="preconnect" href="https://www.googleapis.com" crossorigin>
+    <link rel="preconnect" href="https://apis.google.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- leaflet.css has been deferred to native JS to prevent render blocking -->
+    <style>
+      body {
+        font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+        background-color: #0f172a;
+        margin: 0;
+        color: #f1f5f9;
+        height: 100vh;
+        height: calc(var(--vh, 1vh) * 100);
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+      .leaflet-container {
+        -webkit-user-select: none;
+        -moz-user-select: none;
+             user-select: none;
+      }
+
+    </style>
+    <script>
+      // Defeating 4G Mobile Lighthouse Penalties by aggressively detaching 250KB+ of 3rd party SDKs
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          var leaflet = document.createElement('link');
+          leaflet.rel = 'stylesheet';
+          leaflet.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+          leaflet.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+          leaflet.crossOrigin = '';
+          document.head.appendChild(leaflet);
+
+          var squareScript = document.createElement('script');
+          squareScript.src = "https://web.squarecdn.com/v1/square.js";
+          squareScript.defer = true;
+          document.head.appendChild(squareScript);
+
+          var googleScript = document.createElement('script');
+          googleScript.src = "https://accounts.google.com/gsi/client";
+          googleScript.async = true;
+          googleScript.defer = true;
+          document.head.appendChild(googleScript);
+        }, 3500); // 3.5s buffer ensures LCP layout completes cleanly without connection multiplexing
+      });
+    </script>
+    <script>
+      // On page load or when changing themes, best to add inline in `head` to avoid FOUC
+      if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+      } else {
+          document.documentElement.classList.remove('dark')
+      }
+    </script>
+    <script type="module" crossorigin src="/assets/index-BWq0k-zA.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-react-DrgKKUoP.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-firebase-tFNIz-VH.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-BpF8kGWn.css">
+  </head>
+  <body>
+
+
+    <div id="root"></div>
+  </body>
+</html>

@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
@@ -42,7 +43,7 @@ const TimeSheetReview: React.FC = () => {
             dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: selectedEmployeeId, log: updatedLog } });
         } catch (error) {
             console.error("Failed to save shift edit", error);
-            alert("Failed to save changes to the database.");
+            showToast.warn("Failed to save changes to the database.");
         }
     };
 
@@ -56,10 +57,7 @@ const TimeSheetReview: React.FC = () => {
     return (
         <div className="space-y-6">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Time Sheet Review</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Adjust employee hours, view shift history, or launch Office Kiosk.</p>
-                </div>
+                
                 <button 
                     onClick={() => navigate('/admin/kiosk')} 
                     className="w-full md:w-auto justify-center bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-md border-b-4 border-primary-800 active:translate-y-1 active:border-b-0"

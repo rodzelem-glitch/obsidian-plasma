@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -6,13 +7,17 @@ import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
 import Modal from 'components/ui/Modal';
 import { db } from 'lib/firebase';
-import { BusinessDocument } from 'types';
+import { BusinessDocument, User } from 'types';
 import { FileText, CheckCircle } from 'lucide-react';
 import DOMPurify from 'dompurify';
 
-const HRHandbookView: React.FC = () => {
+interface HRHandbookViewProps {
+    employee: User;
+    isSelf: boolean;
+}
+
+const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => {
     const { state, dispatch } = useAppContext();
-    const { currentUser } = state;
     
     const policies = useMemo(() => 
         state.documents.filter(d => d.type === 'Policy' || d.type === 'Handbook'),
@@ -22,32 +27,32 @@ const HRHandbookView: React.FC = () => {
     const [signatureName, setSignatureName] = useState('');
 
     const handleSign = async (docId: string) => {
-        if (!currentUser || !signatureName) return;
+        if (!employee || !signatureName) return;
         const timestamp = new Date().toISOString();
         
         const updatedSignedPolicies = {
-            ...(currentUser.signedPolicies || {}),
+            ...(employee.signedPolicies || {}),
             [docId]: timestamp
         };
 
         const legacyUpdate = docId === policies.find(p => p.type === 'Handbook')?.id ? { handbookSignedDate: timestamp } : {};
 
         try {
-            await db.collection('users').doc(currentUser.id).update({ 
+            await db.collection('users').doc(employee.id).update({ 
                 signedPolicies: updatedSignedPolicies,
                 ...legacyUpdate 
             });
 
             dispatch({ 
                 type: 'UPDATE_EMPLOYEE', 
-                payload: { ...currentUser, signedPolicies: updatedSignedPolicies, ...legacyUpdate } 
+                payload: { ...employee, signedPolicies: updatedSignedPolicies, ...legacyUpdate } 
             });
             
-            alert('Document Acknowledged.');
+            showToast.warn('Document Acknowledged.');
             setViewDoc(null);
             setSignatureName('');
         } catch (e) {
-            alert("Failed to save signature.");
+            showToast.warn("Failed to save signature.");
         }
     };
 
@@ -67,7 +72,7 @@ const HRHandbookView: React.FC = () => {
                             )}
                         </div>
                         
-                        {!currentUser?.signedPolicies?.[viewDoc.id] && (
+                        {!employee?.signedPolicies?.[viewDoc.id] && isSelf && (
                             <div className="border-t pt-4">
                                 <p className="text-sm font-bold mb-2">I have read and agree to this policy.</p>
                                 <div className="flex gap-2">
@@ -76,39 +81,44 @@ const HRHandbookView: React.FC = () => {
                                 </div>
                             </div>
                         )}
-                        {currentUser?.signedPolicies?.[viewDoc.id] && (
+                        {!employee?.signedPolicies?.[viewDoc.id] && !isSelf && (
+                            <div className="border-t pt-4">
+                                <p className="text-red-600 font-bold flex items-center gap-2">Employee has not signed this document yet.</p>
+                            </div>
+                        )}
+                        {employee?.signedPolicies?.[viewDoc.id] && (
                             <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded flex items-center gap-2 text-green-700 dark:text-green-400">
                                 <CheckCircle size={20} />
-                                <span>Signed on {new Date(currentUser.signedPolicies[viewDoc.id]).toLocaleDateString()}</span>
+                                <span>Signed on {new Date(employee.signedPolicies[viewDoc.id]).toLocaleDateString()}</span>
                             </div>
                         )}
                     </div>
                 </Modal>
             )}
 
-            <Card>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Required Policies & Handbooks</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-4"><FileText size={16}/> Required Policies & Handbooks</h4>
+                <div className="flex flex-col gap-3">
                     {policies.map(doc => {
-                        const isSigned = !!currentUser?.signedPolicies?.[doc.id];
+                        const isSigned = !!employee?.signedPolicies?.[doc.id];
                         return (
-                            <div key={doc.id} className={`p-4 rounded-lg border flex justify-between items-center ${isSigned ? 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800' : 'bg-white border-gray-200 dark:bg-gray-800 dark:border-gray-700'}`}>
+                            <div key={doc.id} className={`p-4 rounded-lg flex justify-between items-center ${isSigned ? 'bg-green-50 border border-green-200 dark:bg-green-900/10 dark:border-green-800/30' : 'bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
                                 <div className="flex items-center gap-3">
-                                    <FileText className={isSigned ? "text-green-500" : "text-gray-400"} size={24} />
+                                    <FileText className={isSigned ? "text-green-500" : "text-slate-400"} size={20} />
                                     <div>
-                                        <h4 className="font-bold text-gray-900 dark:text-white">{doc.title}</h4>
-                                        <p className="text-xs text-gray-500">Updated: {new Date(doc.createdAt).toLocaleDateString()}</p>
+                                        <h4 className="font-bold text-sm text-slate-900 dark:text-white">{doc.title}</h4>
+                                        <p className="text-[10px] text-slate-500">Updated: {new Date(doc.createdAt).toLocaleDateString()}</p>
                                     </div>
                                 </div>
-                                <Button onClick={() => setViewDoc(doc)} variant="secondary" className="text-xs">
-                                    {isSigned ? 'View' : 'Read & Sign'}
+                                <Button onClick={() => setViewDoc(doc)} variant="secondary" className="text-xs" size="sm">
+                                    {isSigned ? 'View' : (isSelf ? 'Read & Sign' : 'View Document')}
                                 </Button>
                             </div>
                         );
                     })}
-                    {policies.length === 0 && <p className="text-gray-500 italic col-span-2 text-center py-4">No policies assigned.</p>}
+                    {policies.length === 0 && <p className="text-slate-500 text-xs italic py-2">No policies assigned.</p>}
                 </div>
-            </Card>
+            </div>
         </div>
     );
 };

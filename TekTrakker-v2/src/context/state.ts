@@ -1,6 +1,7 @@
 import type { 
     User, 
     Organization, 
+    Franchise,
     Job, 
     Customer, 
     Appointment, 
@@ -31,7 +32,9 @@ import type {
     RefrigerantTransaction,
     ToolMaintenanceLog,
     Lead,
-    Applicant
+    Applicant,
+    OrganizationTeam,
+    WarrantyClaim
 } from 'types';
 
 export interface AppState {
@@ -43,6 +46,7 @@ export interface AppState {
     loading: boolean;
     users: User[];
     allOrganizations: Organization[];
+    franchises: Franchise[];
     customers: Customer[];
     jobs: Job[];
     externalJobs: Job[];
@@ -78,6 +82,8 @@ export interface AppState {
     leads: Lead[];
     activeJobIdForWorkflow: string | null;
     customerProfile: Customer | null; // Added
+    teams: OrganizationTeam[];
+    warrantyClaims: WarrantyClaim[];
     // Deprecated fields - TBD on removal
     marketingCampaigns: MarketingCampaign[]; 
     businessDocuments: BusinessDocument[];
@@ -95,6 +101,7 @@ export const initialState: AppState = {
     loading: true,
     users: [],
     allOrganizations: [],
+    franchises: [],
     customers: [],
     jobs: [],
     externalJobs: [],
@@ -130,6 +137,8 @@ export const initialState: AppState = {
     leads: [],
     activeJobIdForWorkflow: null,
     customerProfile: null, // Added
+    teams: [],
+    warrantyClaims: [],
     // Deprecated
     marketingCampaigns: [],
     businessDocuments: [],

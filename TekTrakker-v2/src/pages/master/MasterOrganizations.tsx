@@ -18,10 +18,18 @@ import { globalConfirm } from "lib/globalConfirm";
 
 const MasterOrganizations: React.FC = () => {
     const { impersonateOrganization, state } = useAppContext();
-    const { currentUser, isMasterAdmin } = state;
+    const { currentUser, isMasterAdmin, allOrganizations } = state;
     const navigate = useNavigate();
-    const [organizations, setOrganizations] = useState<Organization[]>([]);
-    const [loading, setLoading] = useState(true);
+    
+    const sortedOrgs = [...allOrganizations].sort((a, b) => {
+        const getMs = (dateVal: any) => {
+            if (!dateVal) return 0;
+            if (dateVal.seconds) return dateVal.seconds * 1000; // Handle Firebase Timestamp Object
+            return new Date(dateVal).getTime() || 0; // Handle standard ISO string
+        };
+        return getMs(b.createdAt) - getMs(a.createdAt);
+    });
+
     const [creatingOrg, setCreatingOrg] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [editingOrg, setEditingOrg] = useState<Organization | null>(null);
@@ -39,19 +47,8 @@ const MasterOrganizations: React.FC = () => {
     });
     const [showOrgAdminPassword, setShowOrgAdminPassword] = useState(false);
 
-    useEffect(() => {
-        if (!isMasterAdmin) {
-            setLoading(false);
-            return;
-        }
-        const unsubscribe = onSnapshot(collection(db, 'organizations'), (snapshot) => {
-            const orgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Organization));
-            setOrganizations(orgs);
-            setLoading(false);
-        });
-
-        return () => unsubscribe();
-    }, [isMasterAdmin]);
+    // Organizations are now driven by AppContext's state.allOrganizations
+    // to prevent duplicate reads and synchronization drift.
 
     const handleCreateOrg = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -73,6 +70,7 @@ const MasterOrganizations: React.FC = () => {
                 },
                 createdAt: new Date().toISOString(),
                 createdBy: currentUser?.id || 'master_admin',
+                ...(!isMasterAdmin && currentUser?.franchiseId ? { franchiseId: currentUser.franchiseId } : {})
             });
 
             // 2. Create subcollection user (for organization records)
@@ -221,8 +219,8 @@ const MasterOrganizations: React.FC = () => {
 
     const headers = ['Name/Email', 'Plan Info', 'Status', 'Retention/Churn Data', 'Verified', 'Actions'];
 
-    if (loading) return <div>Loading...</div>;
-    if (!isMasterAdmin) return <div className="p-6">You are not authorized to view this page.</div>;
+    const isAllowed = isMasterAdmin || currentUser?.role === 'franchise_admin';
+    if (!isAllowed) return <div className="p-6">You are not authorized to view this page.</div>;
 
     return (
         <div className="p-6">
@@ -236,7 +234,7 @@ const MasterOrganizations: React.FC = () => {
 
             <Card className="overflow-x-auto">
                 <Table headers={headers}>
-                    {organizations.map(org => (
+                    {sortedOrgs.map(org => (
                         <tr key={org.id}>
                             <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm font-medium text-gray-900 dark:text-white">{org.name}</div>

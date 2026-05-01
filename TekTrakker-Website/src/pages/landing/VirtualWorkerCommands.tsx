@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Calendar, ClipboardCheck, Truck, DollarSign, Briefcase, Zap } from 'lucide-react';
+import { ArrowLeft, Users, Calendar, ClipboardCheck, Truck, DollarSign, Briefcase } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
 
 const commands = [

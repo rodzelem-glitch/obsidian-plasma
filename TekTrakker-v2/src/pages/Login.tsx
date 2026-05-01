@@ -1,5 +1,6 @@
-
+import showToast from "lib/toast";
 import React, { useState, useEffect, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { auth, db } from 'lib/firebase';
 import { useAppContext } from 'context/AppContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -155,6 +156,105 @@ const LoginPage: React.FC = () => {
       }
   }, [searchParams, dispatch, state.platformSettings]);
 
+  const processLoggedInUser = async (uid: string, trimmedEmail: string, userData: User) => {
+      // UPDATE LOGIN TIMESTAMP
+      try {
+          await db.collection('users').doc(uid).update({ lastLoginAt: new Date().toISOString() });
+      } catch (updateErr) {
+          console.warn("Failed to update lastLoginAt", updateErr);
+      }
+      
+      // 1. SELF-HEALING: Normalize Email Casing
+      if (userData.email && userData.email !== userData.email.toLowerCase()) {
+          const lcEmail = userData.email.toLowerCase().trim();
+          await db.collection('users').doc(uid).update({ email: lcEmail });
+      }
+
+      // 2. SELF-HEALING: Link Customer Record if missing
+      if (userData.role === 'customer' && userData.organizationId && userData.organizationId !== 'unaffiliated') {
+          try {
+              const searchEmail = (userData.email || trimmedEmail).toLowerCase().trim();
+              const uidDoc = await db.collection('customers').doc(uid).get();
+              if (!uidDoc.exists) {
+                  const linkedSnap = await db.collection('customers').where('userId', '==', uid).get();
+                  if (linkedSnap.empty) {
+                      const orgId = userData.organizationId;
+                      const orgSnap = await db.collection('customers').where('organizationId', '==', orgId).get();
+                      const match = orgSnap.docs.find(d => (d.data().email || '').toLowerCase().trim() === searchEmail);
+                      if (match) {
+                          console.log("Self-healing link during login for:", searchEmail);
+                          await db.collection('customers').doc(match.id).update({ userId: uid });
+                      }
+                  }
+              }
+          } catch (cErr) {
+              console.warn("Customer self-heal link failed", cErr);
+          }
+      }
+
+      if (userData.role === 'platform_sales') {
+          window.location.href = '/#/sales/dashboard';
+          window.location.reload();
+          return;
+      }
+
+      // Account repair check for existing users (Staff/Invite flow)
+      if (userData.role !== 'customer' && (userData.role === 'employee' || !userData.organizationId || userData.organizationId === 'unaffiliated')) {
+          try {
+              let inviteDoc = await db.collection('users').doc(trimmedEmail).get();
+              if (!inviteDoc.exists) {
+                    const qSnap = await db.collection('users').where('email', '==', trimmedEmail).get();
+                    if (!qSnap.empty) {
+                        const found = qSnap.docs.find(d => d.id !== uid);
+                        if (found) inviteDoc = found;
+                    }
+              }
+
+              if (inviteDoc.exists && inviteDoc.id !== uid) {
+                  const inviteData = inviteDoc.data();
+                  if (inviteData && (inviteData.role === 'employee' || inviteData.role === 'admin' || inviteData.role === 'supervisor')) {
+                      if (inviteData.organizationId && inviteData.organizationId !== userData.organizationId) {
+                          console.log("Repairing staff/admin account from invite:", inviteDoc.id);
+                          await db.collection('users').doc(uid).update({
+                              role: inviteData.role || userData.role,
+                              organizationId: inviteData.organizationId,
+                              firstName: inviteData.firstName || userData.firstName,
+                              lastName: inviteData.lastName || userData.lastName
+                          });
+                          await db.collection('users').doc(inviteDoc.id).delete();
+                          window.location.reload(); 
+                          return;
+                      }
+                  }
+              }
+          } catch (repairErr) {
+              console.warn("Account repair check skipped", repairErr);
+          }
+      }
+
+      // Force imperative routing because the global AppContext lifecycle intersection is randomly stalling
+      if (userData.role === 'admin' || userData.role === 'both' || userData.role === 'supervisor') {
+          window.location.href = '/#/admin/dashboard';
+          window.location.reload();
+      } else if (userData.role === 'master_admin' || userData.role === 'franchise_admin') {
+          window.location.href = '/#/master/dashboard';
+          window.location.reload();
+      } else if (userData.role === 'customer') {
+            if (!userData.organizationId || userData.organizationId === 'unaffiliated') {
+                window.location.href = '/#/marketplace';
+            } else {
+                window.location.href = '/#/portal';
+            }
+            window.location.reload();
+      } else if (userData.role === 'employee') {
+          window.location.href = '/#/briefing';
+          window.location.reload();
+      } else {
+          window.location.href = '/#/marketplace';
+          window.location.reload();
+      }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -166,95 +266,12 @@ const LoginPage: React.FC = () => {
         const uid = creds.user?.uid;
 
         if (uid) {
-             // Wrapped in try/catch to safely handle potential permission issues with profile fetching
              try {
                  const userDoc = await db.collection('users').doc(uid).get();
-                 
                  if (userDoc.exists) {
-                     const userData = userDoc.data() as User;
-
-                     // UPDATE LOGIN TIMESTAMP
-                     try {
-                        await db.collection('users').doc(uid).update({
-                            lastLoginAt: new Date().toISOString()
-                        });
-                     } catch (updateErr) {
-                         console.warn("Failed to update lastLoginAt", updateErr);
-                     }
-                     
-                      // 1. SELF-HEALING: Normalize Email Casing
-                      if (userData.email && userData.email !== userData.email.toLowerCase()) {
-                          const lcEmail = userData.email.toLowerCase().trim();
-                          await db.collection('users').doc(uid).update({ email: lcEmail });
-                      }
-
-                      // 2. SELF-HEALING: Link Customer Record if missing
-                      if (userData.role === 'customer' && userData.organizationId && userData.organizationId !== 'unaffiliated') {
-                          try {
-                              const searchEmail = (userData.email || trimmedEmail).toLowerCase().trim();
-                              // Check if already linked via UID doc
-                              const uidDoc = await db.collection('customers').doc(uid).get();
-                              if (!uidDoc.exists) {
-                                  // Check if already linked via userId field
-                                  const linkedSnap = await db.collection('customers').where('userId', '==', uid).get();
-                                  if (linkedSnap.empty) {
-                                      // Not linked! Try to find by email (case-insensitive search in org)
-                                      const orgId = userData.organizationId;
-                                      const orgSnap = await db.collection('customers').where('organizationId', '==', orgId).get();
-                                      const match = orgSnap.docs.find(d => (d.data().email || '').toLowerCase().trim() === searchEmail);
-                                      if (match) {
-                                          console.log("Self-healing link during login for:", searchEmail);
-                                          await db.collection('customers').doc(match.id).update({ userId: uid });
-                                      }
-                                  }
-                              }
-                          } catch (cErr) {
-                              console.warn("Customer self-heal link failed", cErr);
-                          }
-                      }
-
-                     if (userData.role === 'platform_sales') {
-                         window.location.href = '/#/sales/dashboard';
-                         window.location.reload();
-                         return;
-                     }
-
-                     // Account repair check for existing users (Staff/Invite flow)
-                     // Only run if user is NOT yet a fully set up customer or admin
-                     if (userData.role !== 'customer' && (userData.role === 'employee' || !userData.organizationId || userData.organizationId === 'unaffiliated')) {
-                          try {
-                              let inviteDoc = await db.collection('users').doc(trimmedEmail).get();
-                              
-                              if (!inviteDoc.exists) {
-                                   const qSnap = await db.collection('users').where('email', '==', trimmedEmail).get();
-                                   if (!qSnap.empty) {
-                                       const found = qSnap.docs.find(d => d.id !== uid);
-                                       if (found) inviteDoc = found;
-                                   }
-                              }
-
-                              if (inviteDoc.exists && inviteDoc.id !== uid) {
-                                  const inviteData = inviteDoc.data();
-                                  // CRITICAL: Only repair Staff roles. NEVER downgrade a customer to an employee via a stale invite.
-                                  if (inviteData && (inviteData.role === 'employee' || inviteData.role === 'admin' || inviteData.role === 'supervisor')) {
-                                      if (inviteData.organizationId && inviteData.organizationId !== userData.organizationId) {
-                                          console.log("Repairing staff/admin account from invite:", inviteDoc.id);
-                                          await db.collection('users').doc(uid).update({
-                                              role: inviteData.role || userData.role,
-                                              organizationId: inviteData.organizationId,
-                                              firstName: inviteData.firstName || userData.firstName,
-                                              lastName: inviteData.lastName || userData.lastName
-                                          });
-                                          await db.collection('users').doc(inviteDoc.id).delete();
-                                          window.location.reload(); 
-                                          return;
-                                      }
-                                  }
-                              }
-                          } catch (repairErr) {
-                              console.warn("Account repair check skipped", repairErr);
-                          }
-                     }
+                     await processLoggedInUser(uid, trimmedEmail, userDoc.data() as User);
+                 } else {
+                     setError("User profile not properly initialized. Please contact support.");
                  }
              } catch (fetchErr) {
                  console.error("Profile Fetch Error:", fetchErr);
@@ -266,6 +283,131 @@ const LoginPage: React.FC = () => {
         setError(authError.message || "Invalid credentials. Please try again.");
         setIsLoading(false);
     }
+  };
+
+  const handleGoogleLogin = async () => {
+      setError('');
+      setIsLoading(true);
+      try {
+          // Dynamic import of firebase compat bits to prevent module loading issues
+          const importedFb = await import('firebase/compat/app');
+          let result;
+
+          if (Capacitor.isNativePlatform()) {
+              const { SocialLogin } = await import('@capgo/capacitor-social-login');
+
+              // Clear any stale tokens that cause Android Error 16 (Reauth Failed)
+              try {
+                  await SocialLogin.logout({ provider: 'google' });
+              } catch (e) {
+                  // Ignore logout errors if they weren't logged in
+              }
+
+              const authRes = await SocialLogin.login({
+                  provider: 'google',
+                  options: {
+                      scopes: ['profile', 'email']
+                  }
+              });
+
+              if (!authRes.result || !('idToken' in authRes.result) || !authRes.result.idToken) {
+                 throw new Error("Native Google Sign-In failed to return an identity token.");
+              }
+
+              const credential = importedFb.default.auth.GoogleAuthProvider.credential(authRes.result.idToken as string);
+              result = await auth.signInWithCredential(credential);
+          } else {
+              const provider = new importedFb.default.auth.GoogleAuthProvider();
+              result = await auth.signInWithPopup(provider);
+          }
+          
+          const uid = result.user?.uid;
+          const trimmedEmail = (result.user?.email || '').trim().toLowerCase();
+
+          if (uid) {
+              const userDoc = await db.collection('users').doc(uid).get();
+              if (userDoc.exists) {
+                  await processLoggedInUser(uid, trimmedEmail, userDoc.data() as User);
+              } else {
+                  // User does NOT exist yet. Did they have an invite waiting?
+                  let inviteDoc = await db.collection('users').doc(trimmedEmail).get();
+                  if (!inviteDoc.exists) {
+                       const qSnap = await db.collection('users').where('email', '==', trimmedEmail).get();
+                       if (!qSnap.empty) {
+                           const found = qSnap.docs.find(d => d.id !== uid);
+                           if (found) inviteDoc = found;
+                       }
+                  }
+
+                  if (inviteDoc.exists) {
+                       const inviteData = inviteDoc.data() as User;
+                       // Convert invite into a true profile!
+                       const newUserProfile: User = {
+                           id: uid,
+                           uid: uid,
+                           organizationId: inviteData.organizationId || 'unaffiliated',
+                           email: trimmedEmail,
+                           firstName: result.user?.displayName?.split(' ')[0] || inviteData.firstName || trimmedEmail.split('@')[0],
+                           lastName: result.user?.displayName?.split(' ').slice(1).join(' ') || inviteData.lastName || '',
+                           phone: result.user?.phoneNumber || inviteData.phone || '',
+                           role: inviteData.role || 'employee',
+                           status: 'active',
+                           username: trimmedEmail.split('@')[0],
+                           preferences: { theme: 'dark' },
+                           hireDate: inviteData.hireDate || new Date().toISOString(),
+                           payRate: inviteData.payRate || 0,
+                           ptoAccrued: inviteData.ptoAccrued || 0,
+                           marketingConsent: { 
+                               sms: true, 
+                               email: true, 
+                               agreedAt: new Date().toISOString(), 
+                               source: 'GoogleSignIn',
+                               gclid: localStorage.getItem('tt_gclid') || undefined
+                           } as any,
+                           lastLoginAt: new Date().toISOString(),
+                           gclid: localStorage.getItem('tt_gclid') || undefined
+                       };
+
+                       await db.collection('users').doc(uid).set(newUserProfile, { merge: true });
+                       await db.collection('users').doc(inviteDoc.id).delete().catch(() => {});
+                       window.location.reload(); 
+                   } else {
+                       // New Google User - Unaffiliated Customer Default
+                       const newUserProfile: User = {
+                           id: uid,
+                           uid: uid,
+                           organizationId: 'unaffiliated',
+                           email: trimmedEmail,
+                           firstName: result.user?.displayName?.split(' ')[0] || trimmedEmail.split('@')[0],
+                           lastName: result.user?.displayName?.split(' ').slice(1).join(' ') || '',
+                           phone: result.user?.phoneNumber || '',
+                           role: 'customer',
+                           status: 'active',
+                           username: trimmedEmail.split('@')[0],
+                           preferences: { theme: 'dark' },
+                           payRate: 0,
+                           ptoAccrued: 0,
+                           marketingConsent: { 
+                               sms: true, 
+                               email: true, 
+                               agreedAt: new Date().toISOString(), 
+                               source: 'GoogleSignIn',
+                               gclid: localStorage.getItem('tt_gclid') || undefined
+                           } as any,
+                           lastLoginAt: new Date().toISOString(),
+                           gclid: localStorage.getItem('tt_gclid') || undefined
+                       };
+                       await db.collection('users').doc(uid).set(newUserProfile, { merge: true });
+                       window.location.reload();
+                   }
+              }
+          }
+          setIsLoading(false);
+      } catch (err: any) {
+          console.error("Google Login Error:", err);
+          setError(err.message || "Google Single Sign-On failed.");
+          setIsLoading(false);
+      }
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -361,7 +503,8 @@ const LoginPage: React.FC = () => {
                   sms: true,
                   email: true,
                   agreedAt: new Date().toISOString(),
-                  source: 'Registration'
+                  source: 'Registration',
+                  gclid: localStorage.getItem('tt_gclid') || undefined
               };
 
               const newUserProfile: User = {
@@ -382,7 +525,8 @@ const LoginPage: React.FC = () => {
                   handbookSignedDate: existingData?.handbookSignedDate || null,
                   address: safeAddress, // Now guaranteed object or null
                   marketingConsent: marketingConsent as any,
-                  lastLoginAt: new Date().toISOString() // Set initial login time
+                  lastLoginAt: new Date().toISOString(), // Set initial login time
+                  gclid: localStorage.getItem('tt_gclid') || undefined
               };
 
               // CREATE PROFILE (Even if invite failed)
@@ -500,7 +644,7 @@ const LoginPage: React.FC = () => {
                           orgData = { ...orgDoc.data(), id: orgDoc.id } as Organization;
                       }
                   }
-              } catch(e) {}
+              } catch (e) { console.error(e); }
               
               // SUCCESS - Redirect to Login (User's preferred flow)
               // SIGN OUT to ensure clean login
@@ -545,8 +689,10 @@ const LoginPage: React.FC = () => {
   const handleRegisterBusiness = async (e: React.FormEvent) => {
       if (e) e.preventDefault();
       
-      // Validate Step 2 (Only if NOT bypassing)
-      if (!isValidPromo) {
+      const isIOS = Capacitor.getPlatform() === 'ios';
+
+      // Validate Step 2 (Only if NOT bypassing AND NOT on iOS where Apple IAP is mandatory)
+      if (!isValidPromo && !isIOS) {
           if (!ccName || !ccNumber || !ccExp || !ccCvc) {
               setError("All payment information is required for account setup.");
               return;
@@ -573,6 +719,33 @@ const LoginPage: React.FC = () => {
       
       setError('');
       setIsLoading(true);
+
+      // --- APPLE REVENUECAT PURCHASE FLOW ---
+      if (isIOS && !isValidPromo) {
+          try {
+             const { Purchases } = await import('@revenuecat/purchases-capacitor');
+             // Map selectedPlan (starter|growth|enterprise) to the Product IDs Apple approved
+             const productId = `tek_${selectedPlan}_${selectedPlan === 'starter' ? 99 : selectedPlan === 'growth' ? 249 : 499}`;
+             
+             // Get the product object from Apple's servers via RevenueCat
+             const products = await Purchases.getProducts({ productIdentifiers: [productId] });
+             if (products.products.length === 0) {
+                 throw new Error("Product misconfigured in App Store.");
+             }
+             
+             // Trigger native Apple IAP Sheet - Wait for user fingerprint/face ID
+             await Purchases.purchaseStoreProduct({ product: products.products[0] });
+             
+          } catch (err: any) {
+             console.error("Apple Purchase Failed", err);
+             // If user cancels biometric sheet or card declines, halt the account creation!
+             setError("Apple Purchase was cancelled or failed.");
+             setIsLoading(false);
+             return; 
+          }
+      }
+      // --- END REVENUECAT VALIDATION ---
+
       const normalizedEmail = email.trim().toLowerCase();
 
       try {
@@ -613,6 +786,14 @@ const LoginPage: React.FC = () => {
                       memberships: true,
                       documents: true,
                       time_tracking: true
+                  },
+                  gclid: localStorage.getItem('tt_gclid') || undefined,
+                  marketingConsent: {
+                      sms: true,
+                      email: true,
+                      agreedAt: new Date().toISOString(),
+                      source: 'Registration',
+                      gclid: localStorage.getItem('tt_gclid') || undefined
                   }
               };
 
@@ -621,7 +802,8 @@ const LoginPage: React.FC = () => {
                   sms: true,
                   email: true,
                   agreedAt: new Date().toISOString(),
-                  source: 'Registration'
+                  source: 'Registration',
+                  gclid: localStorage.getItem('tt_gclid') || undefined
               };
 
               const newUserProfile: User = {
@@ -632,7 +814,8 @@ const LoginPage: React.FC = () => {
                   status: 'active', username: normalizedEmail.split('@')[0],
                   preferences: { theme: 'dark' }, payRate: 0, ptoAccrued: 0,
                   marketingConsent: marketingConsent as any,
-                  lastLoginAt: new Date().toISOString() // Set initial login time
+                  lastLoginAt: new Date().toISOString(), // Set initial login time
+                  gclid: localStorage.getItem('tt_gclid') || undefined
               };
               
               const batch = db.batch();
@@ -672,17 +855,16 @@ const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-start p-4 font-sans relative overflow-y-auto py-12">
       <style>{`.custom-brand-bg { background-color: ${brandColor}; }`}</style>
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute -top-[20%] -left-[10%] w-[70vw] h-[70vw] rounded-full blur-[120px] mix-blend-screen opacity-20 custom-brand-bg" />
           <div className="absolute bottom-[0%] -right-[10%] w-[60vw] h-[60vw] bg-indigo-600/10 rounded-full blur-[100px] mix-blend-screen" />
           
           {/* Desktop-only Mascot Companion */}
-          <div className="hidden lg:block absolute bottom-0 right-[5%] z-0">
+          <div className="hidden lg:block absolute bottom-0 right-[5%] z-0 pointer-events-none">
               <img 
                  src="/mascot.png" 
-                 alt="" 
-                 className="h-[550px] w-auto object-contain opacity-80 drop-shadow-[0_0_40px_rgba(37,99,235,0.3)] hover:opacity-100 transition-all duration-500" 
-                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                 alt="Antigravity Mascot" 
+                 className="h-[550px] w-auto object-contain opacity-80 drop-shadow-[0_0_40px_rgba(37,99,235,0.3)] transition-all duration-500" 
               />
           </div>
       </div>
@@ -720,7 +902,7 @@ const LoginPage: React.FC = () => {
                 <LoginForm 
                     email={email} setEmail={setEmail} 
                     password={password} setPassword={setPassword} 
-                    handleLogin={handleLogin} isLoading={isLoading} 
+                    handleLogin={handleLogin} handleGoogleLogin={handleGoogleLogin} isLoading={isLoading} 
                     brandColor={brandColor} setView={setView} setUserType={setUserType} 
                 />
             )}
@@ -758,8 +940,26 @@ const LoginPage: React.FC = () => {
                 />
             )}
 
-            <div className="mt-8 text-center text-xs text-slate-500">
-                <p>By continuing, you agree to the <a href="https://tektrakker.com/terms" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Terms of Service</a> and <a href="https://tektrakker.com/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Privacy Policy</a>.</p>
+            <div className="mt-8 text-center text-xs text-slate-500 space-y-3">
+                {Capacitor.getPlatform() === 'ios' && (
+                     <button 
+                         type="button" 
+                         onClick={async () => {
+                             try {
+                                 const { Purchases } = await import('@revenuecat/purchases-capacitor');
+                                 await Purchases.restorePurchases();
+                                 showToast.warn("Your purchases have been restored where applicable.");
+                             } catch (e) {
+                                 console.error(e);
+                                 showToast.warn("No past purchases found or restoration failed.");
+                             }
+                         }}
+                         className="font-bold border-b border-dashed border-slate-500 hover:text-blue-400 transition-colors"
+                     >
+                         Restore App Store Purchases
+                     </button>
+                )}
+                <p>By continuing, you agree to the <button onClick={() => navigate('/terms')} className="text-blue-400 hover:underline">Terms of Service</button> and <button onClick={() => navigate('/privacy')} className="text-blue-400 hover:underline">Privacy Policy</button>.</p>
             </div>
         </div>
 

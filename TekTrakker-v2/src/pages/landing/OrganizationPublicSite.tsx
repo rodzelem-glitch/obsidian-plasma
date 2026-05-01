@@ -11,20 +11,41 @@ const formatAddress = (addr: Address | string | undefined): string => {
     return `${addr.street}, ${addr.city}, ${addr.state} ${addr.zip}`;
 }
 
+interface BlogPost {
+    id: string;
+    title: string;
+    content: string;
+    createdAt: string;
+    published: boolean;
+    slug?: string;
+}
+
 const OrganizationPublicSite: React.FC = () => {
     const { orgId } = useParams<{ orgId: string }>();
     const navigate = useNavigate();
     const [org, setOrg] = useState<Organization | null>(null);
+    const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchOrg = async () => {
+        const fetchOrgAndBlog = async () => {
             if (!orgId) return;
             try {
+                // Fetch Organization
                 const doc = await db.collection('organizations').doc(orgId).get();
                 if (doc.exists) {
                     const data = { ...doc.data(), id: doc.id } as Organization;
                     setOrg(data);
+                    
+                    // Fetch Blog Posts
+                    const postsSnapshot = await db.collection('organizations').doc(orgId).collection('blogPosts')
+                        .where('published', '==', true)
+                        .get();
+                    
+                    const postsData = postsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as BlogPost));
+                    // Sort descending client side
+                    postsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                    setBlogPosts(postsData);
                     
                     const city = data.address?.city || '';
                     const state = data.address?.state || '';
@@ -48,6 +69,12 @@ const OrganizationPublicSite: React.FC = () => {
                         'Landscaping': 'LandscapeService',
                         'Painting': 'HousePainter',
                         'Cleaning': 'HouseCleaning',
+                        'Contracting': 'GeneralContractor',
+                        'Masonry': 'ProfessionalService',
+                        'Telecommunications': 'LocalBusiness',
+                        'Solar': 'ProfessionalService',
+                        'Security': 'ProfessionalService',
+                        'Pet Grooming': 'PetStore',
                         'General': 'GeneralContractor'
                     };
 
@@ -109,7 +136,7 @@ const OrganizationPublicSite: React.FC = () => {
                 setLoading(false);
             }
         };
-        fetchOrg();
+        fetchOrgAndBlog();
         
         return () => {
             document.title = 'TekTrakker Platform';
@@ -136,6 +163,10 @@ const OrganizationPublicSite: React.FC = () => {
 
             {/* Nav */}
             <nav className="border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-md z-50">
+                <style dangerouslySetInnerHTML={{ __html: `
+                    .bg-org-brand { background-color: ${brandColor} !important; }
+                    .text-org-brand { color: ${brandColor} !important; }
+                ` }} />
                 <div className="max-w-6xl mx-auto px-6 h-20 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         {org.logoUrl ? (
@@ -151,8 +182,7 @@ const OrganizationPublicSite: React.FC = () => {
                         </a>
                         <button 
                             onClick={() => navigate(`/book?oid=${org.id}`)}
-                            className="text-white font-bold text-sm px-6 py-3 rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
-                            style={{ backgroundColor: brandColor }}
+                            className="bg-org-brand text-white font-bold text-sm px-6 py-3 rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
                         >
                             Book Online
                         </button>
@@ -180,8 +210,7 @@ const OrganizationPublicSite: React.FC = () => {
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button 
                                 onClick={() => navigate(`/book?oid=${org.id}`)}
-                                className="h-14 px-4 md:px-8 rounded-xl font-bold text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2"
-                                style={{ backgroundColor: brandColor }}
+                                className="bg-org-brand h-14 px-4 md:px-8 rounded-xl font-bold text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2"
                             >
                                 Schedule Service <Calendar size={18} />
                             </button>
@@ -226,7 +255,7 @@ const OrganizationPublicSite: React.FC = () => {
                         ].map((feat, i) => (
                             <div key={i} className="p-4 md:p-8 bg-slate-50 rounded-3xl hover:shadow-lg transition-shadow duration-300">
                                 <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center mb-6 text-slate-900">
-                                    <feat.icon size={24} style={{ color: brandColor }} />
+                                    <feat.icon size={24} className="text-org-brand" />
                                 </div>
                                 <h3 className="text-xl font-bold mb-3">{feat.title}</h3>
                                 <p className="text-slate-500 leading-relaxed">{feat.desc}</p>
@@ -236,9 +265,32 @@ const OrganizationPublicSite: React.FC = () => {
                 </div>
             </section>
 
+            {/* Blog Section */}
+            {blogPosts.length > 0 && (
+                <section className="py-24 px-6 bg-slate-50 border-t border-slate-100">
+                    <div className="max-w-4xl mx-auto">
+                        <div className="text-center mb-16">
+                            <h2 className="text-3xl font-black text-slate-900 mb-4">Latest Articles</h2>
+                            <p className="text-slate-500 max-w-2xl mx-auto">Tips, news, and updates from the {org.name} team.</p>
+                        </div>
+                        <div className="space-y-12">
+                            {blogPosts.map(post => (
+                                <article key={post.id} className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                                    <h3 className="text-2xl font-bold mb-2 text-slate-900">{post.title}</h3>
+                                    <div className="text-sm font-medium text-slate-400 mb-6 uppercase tracking-wider">
+                                        {post.createdAt ? new Date(post.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+                                    </div>
+                                    <div className="prose prose-slate max-w-none prose-a:text-org-brand prose-headings:font-bold" dangerouslySetInnerHTML={{ __html: post.content }} />
+                                </article>
+                            ))}
+                        </div>
+                    </div>
+                </section>
+            )}
+
             {/* CTA Section */}
             <section className="py-24 px-6 relative overflow-hidden">
-                <div className="absolute inset-0 z-0" style={{ backgroundColor: brandColor }}></div>
+                <div className="absolute inset-0 z-0 bg-org-brand"></div>
                 <div className="absolute inset-0 bg-black/10 z-0"></div>
                 <div className="max-w-4xl mx-auto text-center relative z-10 text-white">
                     <h2 className="text-4xl md:text-5xl font-black mb-6">Ready to get started?</h2>
@@ -262,17 +314,17 @@ const OrganizationPublicSite: React.FC = () => {
                         
                         {/* Social Icons */}
                         <div className="flex gap-4 mt-6">
-                            {org.socialLinks?.facebook && <a href={org.socialLinks.facebook} target="_blank" rel="noopener noreferrer" className="hover:text-white"><Facebook size={20}/></a>}
-                            {org.socialLinks?.instagram && <a href={org.socialLinks.instagram} target="_blank" rel="noopener noreferrer" className="hover:text-white"><Instagram size={20}/></a>}
-                            {org.socialLinks?.linkedin && <a href={org.socialLinks.linkedin} target="_blank" rel="noopener noreferrer" className="hover:text-white"><Linkedin size={20}/></a>}
-                            {org.socialLinks?.x && <a href={org.socialLinks.x} target="_blank" rel="noopener noreferrer" className="hover:text-white"><Twitter size={20}/></a>}
-                            {org.socialLinks?.youtube && <a href={org.socialLinks.youtube} target="_blank" rel="noopener noreferrer" className="hover:text-white"><Youtube size={20}/></a>}
+                            {org.socialLinks?.facebook && <a href={org.socialLinks.facebook} title="Facebook" target="_blank" rel="noopener noreferrer" className="hover:text-white"><Facebook size={20}/></a>}
+                            {org.socialLinks?.instagram && <a href={org.socialLinks.instagram} title="Instagram" target="_blank" rel="noopener noreferrer" className="hover:text-white"><Instagram size={20}/></a>}
+                            {org.socialLinks?.linkedin && <a href={org.socialLinks.linkedin} title="LinkedIn" target="_blank" rel="noopener noreferrer" className="hover:text-white"><Linkedin size={20}/></a>}
+                            {org.socialLinks?.x && <a href={org.socialLinks.x} title="X (Twitter)" target="_blank" rel="noopener noreferrer" className="hover:text-white"><Twitter size={20}/></a>}
+                            {org.socialLinks?.youtube && <a href={org.socialLinks.youtube} title="YouTube" target="_blank" rel="noopener noreferrer" className="hover:text-white"><Youtube size={20}/></a>}
                         </div>
                     </div>
                     <div>
                         <h5 className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Company</h5>
                         <ul className="space-y-2 text-sm">
-                            <li><a href="#" className="hover:text-white">About Us</a></li>
+                            <li><a href={org.website || `#/pro/${org.id}`} className="hover:text-white">About Us</a></li>
                             <li><a href={`/careers/${org.id}`} className="hover:text-white">Careers</a></li>
                             {org.reviewLink && (
                                 <li>
@@ -284,9 +336,9 @@ const OrganizationPublicSite: React.FC = () => {
                     <div>
                         <h5 className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Services</h5>
                         <ul className="space-y-2 text-sm">
-                            <li><a href="#" className="hover:text-white">Repairs</a></li>
-                            <li><a href="#" className="hover:text-white">Maintenance</a></li>
-                            <li><a href="#" className="hover:text-white">Installations</a></li>
+                            <li><span className="hover:text-white cursor-default">Repairs</span></li>
+                            <li><span className="hover:text-white cursor-default">Maintenance</span></li>
+                            <li><span className="hover:text-white cursor-default">Installations</span></li>
                         </ul>
                     </div>
                 </div>

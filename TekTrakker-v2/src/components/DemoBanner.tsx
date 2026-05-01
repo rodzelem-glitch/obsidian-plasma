@@ -5,6 +5,36 @@ import { LogOut, ShieldAlert } from 'lucide-react';
 const DemoBanner: React.FC = () => {
     const { state, exitDemo } = useAppContext();
 
+    React.useEffect(() => {
+        if (state.isDemoMode) {
+            document.body.dataset.demoMode = 'true';
+            
+            const handleGlobalClick = (e: MouseEvent) => {
+                const target = e.target as HTMLElement;
+                const button = target.closest('button, [type="submit"], .btn') as HTMLElement;
+                if (button) {
+                    const text = button.innerText?.toLowerCase() || '';
+                    const label = button.getAttribute('aria-label')?.toLowerCase() || '';
+                    const isEditAction = ['save', 'delete', 'add ', 'create', 'update', 'remove'].some(keyword => text.includes(keyword) || label.includes(keyword));
+                    if (isEditAction && !text.includes('demo')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        alert("Action blocked: The demo environment is locked for edits.");
+                    }
+                }
+            };
+            
+            document.addEventListener('click', handleGlobalClick, true);
+            
+            return () => {
+                delete document.body.dataset.demoMode;
+                document.removeEventListener('click', handleGlobalClick, true);
+            };
+        } else {
+            delete document.body.dataset.demoMode;
+        }
+    }, [state.isDemoMode]);
+
     if (!state.isDemoMode) return null;
 
     // Adjust bubble position based on user role to avoid bottom navigation bars

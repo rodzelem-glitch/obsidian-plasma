@@ -55,5 +55,22 @@
 	<string>We need your location to verify job arrivals and track technician progress.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>We need your location to track technician progress even in the background.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>We need your location to reliably dispatch you to nearby jobs while in transit.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We need microphone access so technicians can record audio notes inside job files.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>We need Bluetooth access to connect to mobile receipt printers and other field devices.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>We need Bluetooth access to discover and connect to external hardware like receipt printers.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.655867451194-gk7g5mg1rt145jgpov7utcv9jcqbmn1v</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

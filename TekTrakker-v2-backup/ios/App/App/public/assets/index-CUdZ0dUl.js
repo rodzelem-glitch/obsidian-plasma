@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/web-BdFGxSSM.js","assets/index-BWq0k-zA.js","assets/vendor-react-DrgKKUoP.js","assets/vendor-firebase-tFNIz-VH.js","assets/index-BpF8kGWn.css"])))=>i.map(i=>d[i]);
+import{t,_ as a}from"./index-BWq0k-zA.js";import"./vendor-react-DrgKKUoP.js";import"./vendor-firebase-tFNIz-VH.js";var r;(function(e){e.Light="light",e.Dark="dark"})(r||(r={}));const n=t("SafeArea",{web:()=>a(()=>import("./web-BdFGxSSM.js"),__vite__mapDeps([0,1,2,3,4])).then(e=>new e.SafeAreaWeb)});export{n as SafeArea,r as StatusbarStyle};

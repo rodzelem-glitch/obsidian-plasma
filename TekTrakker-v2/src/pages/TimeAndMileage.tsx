@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useEffect, useMemo } from 'react';
 import type { User, ShiftLog, VehicleLog, ShiftEdit, StoredFile } from 'types';
 import Card from 'components/ui/Card';
@@ -116,12 +117,12 @@ const TimeAndMileage: React.FC = () => {
 
     const handleClockIn = async () => {
         if (state.isDemoMode) {
-            alert("This feature is disabled in demo mode.");
+            showToast.warn("This feature is disabled in demo mode.");
             return;
         }
         const activeOrgId = state.currentOrganization?.id || user?.organizationId;
         if (!user || !activeOrgId) {
-            alert("Session error. Please log in again.");
+            showToast.warn("Session error. Please log in again.");
             return;
         }
 
@@ -142,13 +143,13 @@ const TimeAndMileage: React.FC = () => {
             setTimeout(() => setSaveFeedback(null), 3000);
         } catch (e) {
             console.error(e);
-            alert("Clock-in failed.");
+            showToast.warn("Clock-in failed.");
         }
     };
 
     const handleClockOut = async () => {
         if (state.isDemoMode) {
-            alert("This feature is disabled in demo mode.");
+            showToast.warn("This feature is disabled in demo mode.");
             return;
         }
         if (activeShift && user) {
@@ -165,7 +166,7 @@ const TimeAndMileage: React.FC = () => {
                 setTimeout(() => setSaveFeedback(null), 3000);
             } catch (e) {
                 console.error(e);
-                alert("Clock-out failed.");
+                showToast.warn("Clock-out failed.");
             }
         }
     };
@@ -173,19 +174,19 @@ const TimeAndMileage: React.FC = () => {
     const handleVehicleLogSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (state.isDemoMode) {
-            alert("This feature is disabled in demo mode.");
+            showToast.warn("This feature is disabled in demo mode.");
             return;
         }
         if (!user) return;
         
         const activeOrgId = state.currentOrganization?.id || user.organizationId;
         if (!activeOrgId) {
-            alert("Organization context missing.");
+            showToast.warn("Organization context missing.");
             return;
         }
 
         if (newVehicleLog.type === 'Mileage' && !newVehicleLog.startMiles && !newVehicleLog.endMiles && !newVehicleLog.miles) {
-            alert("Please enter either the odometer reading or the total miles driven.");
+            showToast.warn("Please enter either the odometer reading or the total miles driven.");
             return;
         }
 
@@ -286,7 +287,7 @@ const TimeAndMileage: React.FC = () => {
                 isCompanyVehicle: isCompanyVehicle,
                 notes: newVehicleLog.notes,
                 receiptData: receiptDataValue, 
-                receiptUrl: receiptDataValue ? 'embedded' : null,
+                receiptUrl: receiptUrlValue,
                 location: existingLog?.location || mappedLoc,
                 startLocation: finalStartLocation,
                 endLocation: finalEndLocation
@@ -310,7 +311,7 @@ const TimeAndMileage: React.FC = () => {
             setTimeout(() => setSaveFeedback(null), 3000);
         } catch (e) {
             console.error(e);
-            alert("Error saving log: " + (e as any).message);
+            showToast.warn("Error saving log: " + (e as any).message);
         } finally {
             setUploading(false);
         }
@@ -320,20 +321,22 @@ const TimeAndMileage: React.FC = () => {
         setNewVehicleLog({ 
             id: log.id, 
             type: log.type, 
-            cost: log.cost.toString(), 
+            cost: log.cost ? log.cost.toString() : '0', 
             miles: log.mileage ? log.mileage.toString() : '',
             startMiles: log.startMileage ? log.startMileage.toString() : '',
             endMiles: log.endMileage ? log.endMileage.toString() : '',
-            notes: log.notes 
+            notes: log.notes || ''
         });
         setIsCompanyVehicle(log.isCompanyVehicle ?? false);
         setIsEditMode(true);
-        window.scrollTo(0, 0);
+        setTimeout(() => {
+            document.getElementById('log-form-container')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
     };
 
     const handleDeleteVehicleLog = async (id: string) => {
         if (state.isDemoMode) {
-            alert("This feature is disabled in demo mode.");
+            showToast.warn("This feature is disabled in demo mode.");
             return;
         }
         if (await globalConfirm('Delete log?')) {
@@ -342,7 +345,7 @@ const TimeAndMileage: React.FC = () => {
                 dispatch({ type: 'DELETE_VEHICLE_LOG', payload: id });
             } catch (e) {
                 console.error(e);
-                alert("Delete failed.");
+                showToast.warn("Delete failed.");
             }
         }
     };
@@ -353,7 +356,7 @@ const TimeAndMileage: React.FC = () => {
         } else if (log.receiptData) {
             setViewingReceipt(log.receiptData);
         } else {
-            alert('Receipt not available.');
+            showToast.warn('Receipt not available.');
         }
     };
 
@@ -422,10 +425,7 @@ const TimeAndMileage: React.FC = () => {
             )}
 
             <header className="flex justify-between items-start">
-                <div>
-                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Time & Vehicle Logs</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Track shifts, mileage, and expenses.</p>
-                </div>
+                
                 <div className="flex gap-2">
                     <Button onClick={handlePrintPersonalLogs} variant="secondary" className="w-auto flex items-center gap-2 text-xs font-bold border-slate-200">
                         <Printer size={16} /> Print Personal Logs
@@ -477,7 +477,7 @@ const TimeAndMileage: React.FC = () => {
                 </Card>
             </div>
 
-            <Card>
+            <Card id="log-form-container" className={`transition-all duration-300 ${isEditMode ? 'ring-2 ring-amber-500 dark:ring-amber-400 bg-amber-50/10 dark:bg-amber-900/10 shadow-lg shadow-amber-500/20' : ''}`}>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-primary-600 dark:text-primary-400">{isEditMode ? 'Edit Log' : 'Mileage & Expenses'}</h3>
                     {isEditMode && <button onClick={() => {setIsEditMode(false); setNewVehicleLog({type:'Mileage', cost:'', miles:'', startMiles: '', endMiles: '', notes:'', id:''}); setReceiptFile(null); setCapturedReceiptData(null)}} className="text-xs text-red-700 dark:text-red-400 font-bold hover:underline">Cancel Edit</button>}
@@ -531,7 +531,7 @@ const TimeAndMileage: React.FC = () => {
                         <Input label="Cost ($)" type="number" step="0.01" value={newVehicleLog.cost} onChange={e => setNewVehicleLog({...newVehicleLog, cost: e.target.value})} required isBlock />
                     )}
                     
-                    <Input label="Notes" type="text" value={newVehicleLog.notes} onChange={e => setNewVehicleLog({...newVehicleLog, notes: e.target.value})} required isBlock />
+                    <Input label="Notes / Description" type="text" value={newVehicleLog.notes} onChange={e => setNewVehicleLog({...newVehicleLog, notes: e.target.value})} isBlock />
                     
                     {newVehicleLog.type !== 'Mileage' && (
                         <div className="space-y-4">
@@ -553,7 +553,7 @@ const TimeAndMileage: React.FC = () => {
                                             if (image.base64String) {
                                                 const dataUrl = `data:image/jpeg;base64,${image.base64String}`;
                                                 setCapturedReceiptData(dataUrl);
-                                                alert("Photo captured!");
+                                                showToast.warn("Photo captured!");
                                             }
                                         } catch (e) {
                                             console.error("Camera Cancelled/Failed", e);

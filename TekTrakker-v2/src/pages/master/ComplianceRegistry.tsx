@@ -1,3 +1,4 @@
+import { getBaseUrl } from "lib/utils";
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -26,23 +27,36 @@ const ComplianceRegistry: React.FC = () => {
         const fetchConsents = async () => {
             setLoading(true);
             try {
+                const user = state.currentUser;
+                const isFranchiseAdmin = user?.role === 'franchise_admin';
+                
+                let custQuery: any = db.collection('customers');
+                let userQuery: any = db.collection('users');
+                let appQuery: any = db.collection('applicants');
+                
+                if (isFranchiseAdmin && user?.franchiseId) {
+                    custQuery = custQuery.where('franchiseId', '==', user.franchiseId);
+                    userQuery = userQuery.where('franchiseId', '==', user.franchiseId);
+                    appQuery = appQuery.where('franchiseId', '==', user.franchiseId);
+                }
+
                 // Fetch Customers with Consent
-                const custSnap = await db.collection('customers').get();
+                const custSnap = await custQuery.get();
                 const customers = custSnap.docs
-                    .map(d => ({ ...d.data(), id: d.id, type: 'Customer' } as any))
-                    .filter(c => c.marketingConsent?.sms || c.marketingConsent?.email);
+                    .map((d: any) => ({ ...d.data(), id: d.id, type: 'Customer' } as any))
+                    .filter((c: any) => c.marketingConsent?.sms || c.marketingConsent?.email);
 
                 // Fetch Users with Consent
-                const userSnap = await db.collection('users').get();
+                const userSnap = await userQuery.get();
                 const users = userSnap.docs
-                    .map(d => ({ ...d.data(), id: d.id, type: 'User' } as any))
-                    .filter(u => u.marketingConsent?.sms || u.marketingConsent?.email);
+                    .map((d: any) => ({ ...d.data(), id: d.id, type: 'User' } as any))
+                    .filter((u: any) => u.marketingConsent?.sms || u.marketingConsent?.email);
                 
                 // Fetch Applicants with Consent
-                const appSnap = await db.collection('applicants').get();
+                const appSnap = await appQuery.get();
                 const applicants = appSnap.docs
-                    .map(d => ({ ...d.data(), id: d.id, type: 'Applicant', name: d.data().firstName + ' ' + d.data().lastName } as any))
-                    .filter(a => a.marketingConsent?.sms || a.marketingConsent?.email);
+                    .map((d: any) => ({ ...d.data(), id: d.id, type: 'Applicant', name: d.data().firstName + ' ' + d.data().lastName } as any))
+                    .filter((a: any) => a.marketingConsent?.sms || a.marketingConsent?.email);
 
                 // Combine
                 const allRecords = [...customers, ...users, ...applicants].sort((a,b) => 
@@ -74,9 +88,15 @@ const ComplianceRegistry: React.FC = () => {
             const matchesSource = filterSource === 'All' || r.marketingConsent.source === filterSource;
             const matchesOrg = orgFilter === 'All' || r.organizationId === orgFilter;
 
+            const isFranchiseAdmin = state.currentUser?.role === 'franchise_admin';
+            if (isFranchiseAdmin) {
+                 const allowedOrgIds = state.allOrganizations.map(o => o.id);
+                 if (!allowedOrgIds.includes(r.organizationId)) return false;
+            }
+
             return matchesSearch && matchesSource && matchesOrg;
         });
-    }, [optInRecords, searchTerm, filterSource, orgFilter]);
+    }, [optInRecords, searchTerm, filterSource, orgFilter, state.currentUser?.role, state.allOrganizations]);
 
     const handleExport = () => {
         const csvRows = [
@@ -108,7 +128,7 @@ const ComplianceRegistry: React.FC = () => {
     const generateVerificationLink = () => {
         // In a real scenario, generate a secure token. For now, use a static key.
         // The secure route is '/compliance-view?key=tw-verify-8823'
-        const link = `${window.location.origin}/#/compliance-view?key=tw-verify-8823`;
+        const link = `${getBaseUrl()}/#/compliance-view?key=tw-verify-8823`;
         setVerificationLink(link);
         setIsLinkGenerated(true);
     };
@@ -116,12 +136,7 @@ const ComplianceRegistry: React.FC = () => {
     return (
         <div className="space-y-6 pb-20">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <ShieldCheck className="text-blue-600"/> Compliance Registry
-                    </h2>
-                    <p className="text-gray-600 dark:text-gray-400">Database of users who have explicitly opted-in to communications.</p>
-                </div>
+                
                 <div className="flex gap-2">
                     <Button onClick={handleExport} variant="secondary" className="flex items-center gap-2">
                         <Download size={16}/> Export CSV
@@ -139,7 +154,7 @@ const ComplianceRegistry: React.FC = () => {
                         <p className="text-xs text-blue-600">Share this secure link with Twilio or carriers to prove consent collection mechanisms.</p>
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">
-                        <input readOnly value={verificationLink} className="flex-1 text-xs p-2 rounded border bg-white min-w-[300px]" />
+                        <input readOnly value={verificationLink} className="flex-1 text-xs p-2 rounded border bg-white min-w-[300px]" title="Verification Link" aria-label="Verification Link" placeholder="Verification Link" />
                         <Button onClick={() => window.open(verificationLink, '_blank')} className="text-xs">View</Button>
                     </div>
                 </div>

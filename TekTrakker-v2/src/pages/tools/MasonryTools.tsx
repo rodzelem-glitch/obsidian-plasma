@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import Card from '../../components/ui/Card';
@@ -97,9 +98,9 @@ const MasonryTools: React.FC = () => {
                 dispatch({ type: 'UPDATE_JOB', payload: { ...job, toolReadings: updatedReadings } });
             }
             setIsSaveModalOpen(false);
-            alert("Masonry estimates saved.");
+            showToast.warn("Masonry estimates saved.");
         } catch (e) {
-            alert("Save failed.");
+            showToast.warn("Save failed.");
         } finally {
             setIsSaving(false);
         }
@@ -108,12 +109,7 @@ const MasonryTools: React.FC = () => {
     return (
         <div className="p-4 sm:p-6 pb-32 space-y-6 max-w-5xl mx-auto">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <BrickWall className="text-stone-600" /> Masonry Pro Tools
-                    </h2>
-                    <p className="text-sm text-gray-500">Calculate block, brick, and mortar requirements.</p>
-                </div>
+                
                  {activeJobs.length > 0 && (
                     <Button onClick={() => setIsSaveModalOpen(true)} className="bg-emerald-600">
                         <Save size={18} className="mr-2" /> Save to Active Job
@@ -121,7 +117,7 @@ const MasonryTools: React.FC = () => {
                 )}
             </header>
 
-            <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto custom-scrollbar bg-white dark:bg-slate-900 sticky top-0 z-10 p-1 rounded-t-lg">
+            <div className="flex flex-wrap gap-2 overflow-x-auto custom-scrollbar bg-transparent sticky top-0 z-10 p-1 mb-4">
                 {[
                     { id: 'block', label: 'Concrete Block', icon: Box },
                     { id: 'brick', label: 'Brickwork', icon: Layers },
@@ -130,10 +126,10 @@ const MasonryTools: React.FC = () => {
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)}
-                        className={`flex items-center gap-2 px-6 py-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${
+                        className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold transition-all rounded-xl whitespace-nowrap border-2 ${
                             activeTab === tab.id 
                                 ? 'border-stone-600 text-stone-600 bg-stone-50/50 dark:bg-stone-900/10' 
-                                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-primary-300 dark:hover:border-primary-600 hover:shadow-sm'
                         }`}
                     >
                         <tab.icon size={18} />
@@ -215,4 +211,5 @@ const MasonryTools: React.FC = () => {
 };
 
 export default MasonryTools;
+
 

@@ -6,6 +6,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { useAppContext } from 'context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import showToast from 'lib/toast';
 
 import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
@@ -111,13 +112,13 @@ const FieldProposal: React.FC = () => {
 
     const handleAIEstimate = async () => {
             if (!problemDesc.trim() || !apiKey) {
-                alert("API key or problem description is missing.");
+                showToast.warn("API key or problem description is missing.");
                 return;
             }
             setIsThinking(true);
             try {
                 const ai = new GoogleGenerativeAI(apiKey);
-                const model = ai.getGenerativeModel({ model: "gemini-2.5-pro" });
+                const model = ai.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
                 const prompt = `Expert Service Estimator: Generate tiered repair options for: "${problemDesc}". Return a JSON object with keys "good", "better", "best". Each key should contain an array of objects with properties: name, description, baseCost (number), avgLabor (number). Ensure valid JSON.`;
                 
                 const result = await model.generateContent(prompt);
@@ -135,7 +136,7 @@ const FieldProposal: React.FC = () => {
 
             } catch (error) {
                 console.error("Error generating AI estimate:", error);
-                alert("Failed to generate AI estimate. Please try again or manually create options.");
+                showToast.error("Failed to generate AI estimate. Please try again or manually create options.");
             } finally {
                 setIsThinking(false);
             }
@@ -189,15 +190,15 @@ const FieldProposal: React.FC = () => {
 
     const handleSubmitProposal = async () => {
         if (!selectedOption && manualItems.length === 0) {
-            alert("Please select an AI option or add manual service items.");
+            showToast.warn("Please select an AI option or add manual service items.");
             return;
         }
         if (!customerSignature || !employeeSignature) {
-            alert("Both customer and employee signatures are required.");
+            showToast.warn("Both customer and employee signatures are required.");
             return;
         }
         if (!organization || !state.currentUser || !customer) {
-            alert("Missing organization, user, or customer data.");
+            showToast.error("Missing organization, user, or customer data.");
             return;
         }
 
@@ -238,11 +239,11 @@ const FieldProposal: React.FC = () => {
                 });
             });
 
-            alert("Proposal submitted successfully!");
+            showToast.success("Proposal submitted successfully!");
             navigate('/dashboard'); // Or a confirmation page
         } catch (error) {
             console.error("Error submitting proposal:", error);
-            alert("Failed to submit proposal. Please try again.");
+            showToast.error("Failed to submit proposal. Please try again.");
         } finally {
             setIsSubmitting(false);
         }

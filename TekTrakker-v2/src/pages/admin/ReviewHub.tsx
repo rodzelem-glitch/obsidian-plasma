@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -47,10 +48,10 @@ const ReviewHub: React.FC = () => {
             const syncFn = httpsCallable(functions, 'syncExternalReviews');
             const result = await syncFn({ organizationId: state.currentOrganization?.id });
             const data = result.data as any;
-            alert(`Successfully ingested ${data.ingested} new reviews from Apify!`);
+            showToast.warn(`Successfully ingested ${data.ingested} new reviews from Apify!`);
         } catch(e: any) {
             console.error(e);
-            alert(`Failed to sync reviews: ${e.message}`);
+            showToast.warn(`Failed to sync reviews: ${e.message}`);
         } finally {
             setIsSyncing(false);
         }
@@ -66,7 +67,7 @@ const ReviewHub: React.FC = () => {
             await db.collection('reviews').doc(review.id).update({ aiDraft: data.text });
         } catch(e: any) {
             console.error(e);
-            alert("Failed to generate response.");
+            showToast.warn("Failed to generate response.");
         } finally {
             setGeneratingId(null);
         }
@@ -90,10 +91,7 @@ const ReviewHub: React.FC = () => {
     return (
         <div className="space-y-6">
             <header className="flex justify-between items-center flex-wrap gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Platform Reviews</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Manage and respond to reviews left by your customers on TekTrakker.</p>
-                </div>
+                
                 <Button onClick={handleSyncExternal} disabled={isSyncing} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700">
                     <RefreshCw size={16} className={isSyncing ? "animate-spin text-blue-200" : "text-white"} />
                     {isSyncing ? 'Syncing via Apify...' : 'Sync External Reviews'}

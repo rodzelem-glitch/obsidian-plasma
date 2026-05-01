@@ -1,0 +1,114 @@
+{
+  "project_info": {
+    "project_number": "655867451194",
+    "project_id": "tektrakker",
+    "storage_bucket": "tektrakker.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:655867451194:android:4e9bcdaf809f9f3949a203",
+        "android_client_info": {
+          "package_name": "com.TekTrakker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "655867451194-lfa2ui3op7fp88togi2sb7uc30n9bfb1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.TekTrakker",
+            "certificate_hash": "ef22ad819d760a170aa99ca40a0734088742a47a"
+          }
+        },
+        {
+          "client_id": "655867451194-mk3e1jsos40dgkmik5hm5vetkblfsiop.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.TekTrakker",
+            "certificate_hash": "7367c976112d9d392a2811e83f0fa235e5680410"
+          }
+        },
+        {
+          "client_id": "655867451194-lsfv2au0832sarq3uor8ch9tj9kmssai.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPU7gE52I5N-9zXgapZSjZ241v62ivHW4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "655867451194-3p9dkm7tjb15a2njggqa2jcc64i4vibh.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "655867451194-gk7g5mg1rt145jgpov7utcv9jcqbmn1v.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.tektrakker.tektrakker"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:655867451194:android:4fc9e7c1184c359949a203",
+        "android_client_info": {
+          "package_name": "com.tektrakker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "655867451194-45hlt91ibrv2c9u2ceg7ekb3lavnn2q0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tektrakker",
+            "certificate_hash": "7367c976112d9d392a2811e83f0fa235e5680410"
+          }
+        },
+        {
+          "client_id": "655867451194-lnh3elba6bo14tenmiqig8ps0quct795.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tektrakker",
+            "certificate_hash": "ef22ad819d760a170aa99ca40a0734088742a47a"
+          }
+        },
+        {
+          "client_id": "655867451194-lsfv2au0832sarq3uor8ch9tj9kmssai.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPU7gE52I5N-9zXgapZSjZ241v62ivHW4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "655867451194-3p9dkm7tjb15a2njggqa2jcc64i4vibh.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "655867451194-gk7g5mg1rt145jgpov7utcv9jcqbmn1v.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.tektrakker.tektrakker"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

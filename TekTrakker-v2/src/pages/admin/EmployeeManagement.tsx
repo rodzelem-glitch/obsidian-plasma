@@ -75,10 +75,7 @@ const EmployeeManagement: React.FC = () => {
             />
 
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Employee Management</h2>
-                    <p className="text-gray-600 dark:text-gray-400">Manage technicians and staff.</p>
-                </div>
+                
                 <div className="flex gap-2">
                     <Button onClick={() => setIsMergeModalOpen(true)} variant="secondary" className="w-auto flex items-center gap-2">
                         <GitMerge size={18}/> Merge Duplicates

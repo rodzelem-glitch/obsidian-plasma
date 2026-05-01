@@ -7,14 +7,12 @@ import { db } from '../../lib/firebase';
 import MetricCard from './dashboard/components/MetricCard';
 import PendingAppointments from './dashboard/components/PendingAppointments';
 import LiveOperations from './dashboard/components/LiveOperations';
-import IncidentQueue from './dashboard/components/IncidentQueue';
-import IncidentModal from './dashboard/components/IncidentModal';
-import { ShoppingCart, Bot, ArrowRight } from 'lucide-react';
+import { ShoppingCart, Bot, ArrowRight, Wrench, Network, Megaphone, ShieldCheck } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
+import showToast from "lib/toast";
 
 const AdminDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const [viewIncident, setViewIncident] = useState<any | null>(null);
     const currentUser = state.currentUser;
     
     const employees = useMemo(() => {
@@ -77,6 +75,61 @@ const AdminDashboard: React.FC = () => {
         return internalPending + externalPending;
     }, [state.partOrders, state.shopOrders]);
 
+    // Active Warranties Calculation
+    const activeWarrantiesCount = useMemo(() => {
+        let count = 0;
+        const now = new Date();
+        const addMonths = (d: Date, m: number) => {
+            const r = new Date(d);
+            r.setMonth(r.getMonth() + m);
+            return r;
+        };
+
+        filteredJobs.forEach(job => {
+            const inv = job.invoice as any;
+            if (!inv || !inv.warrantyDisclaimerAgreed) return;
+            const wm = inv.workmanshipWarrantyMonths || 0;
+            const pm = inv.partsWarrantyMonths || 0;
+            if (!wm && !pm) return;
+
+            const issued = new Date(job.appointmentTime);
+            const wExpiry = wm > 0 ? addMonths(issued, wm) : null;
+            const pExpiry = pm > 0 ? addMonths(issued, pm) : null;
+
+            if ((wExpiry && wExpiry > now) || (pExpiry && pExpiry > now)) {
+                count++;
+            }
+        });
+        return count;
+    }, [filteredJobs]);
+
+    // Maintenance Due Calculation
+    const maintenanceDueCount = useMemo(() => {
+        let count = 0;
+        const now = new Date();
+        Object.values(state.customers).forEach(customer => {
+            if(customer.equipment) {
+                customer.equipment.forEach(asset => {
+                    if(asset.warranty?.requiresMaintenance && asset.warranty.maintenanceIntervalMonths) {
+                        let nextDate = new Date();
+                        if(asset.warranty.lastMaintenanceDate) {
+                            nextDate = new Date(asset.warranty.lastMaintenanceDate);
+                        } else if(asset.warranty.manufacturerStartDate) {
+                            nextDate = new Date(asset.warranty.manufacturerStartDate);
+                        } else {
+                            return;
+                        }
+                        nextDate.setMonth(nextDate.getMonth() + asset.warranty.maintenanceIntervalMonths);
+                        const diffTime = nextDate.getTime() - now.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        if(diffDays <= 45) count++;
+                    }
+                });
+            }
+        });
+        return count;
+    }, [state.customers]);
+
     const orgName = state.currentOrganization?.name || 'My Business';
     const openIncidents = (state.incidentReports || []).filter((i: any) => i.status !== 'Resolved');
 
@@ -96,17 +149,6 @@ const AdminDashboard: React.FC = () => {
             return Math.abs(diffHours) < 2;
         }).sort((a: Job, b: Job) => new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime());
     }, [filteredJobs]);
-
-    const handleResolveIncident = () => {
-        if (!viewIncident) return;
-        const updated = {
-            ...viewIncident,
-            status: 'Resolved',
-            resolutionNotes: 'Resolved by Admin via Dashboard'
-        };
-        dispatch({ type: 'UPDATE_INCIDENT', payload: updated });
-        setViewIncident(null);
-    };
 
     const handleAcceptAppointment = async (appt: Appointment) => {
         if (!await globalConfirm(`Accept booking for ${appt.customerName}? This will create a job.`)) return;
@@ -176,10 +218,10 @@ const AdminDashboard: React.FC = () => {
             await db.collection('appointments').doc(appt.id).delete();
             dispatch({ type: 'DELETE_APPOINTMENT', payload: appt.id });
 
-            alert("Appointment Accepted and Job Created!");
+            showToast.success("Appointment accepted — job created!");
         } catch (e) {
             console.error(e);
-            alert("Failed to convert appointment.");
+            showToast.error("Failed to convert appointment.");
         }
     };
 
@@ -194,28 +236,35 @@ const AdminDashboard: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+        <div className="flex flex-col gap-6">
+            <header className="order-1 flex flex-col md:flex-row justify-between items-start md:items-end gap-3">
                 <div>
-                    <h2 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight">
-                        {currentUser?.role === 'supervisor' ? 'Supervisor Dashboard' : 'Admin Dashboard'}
+                    <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                        {(() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; })()}, {currentUser?.firstName}
                     </h2>
-                    <p className="text-gray-600 dark:text-gray-400 font-medium">Operations hub for {orgName}.</p>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium mt-0.5">Operations hub for {orgName}</p>
                 </div>
-                <div className="flex gap-4 items-center">
-                    <div className="bg-primary-600 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary-500/20">
-                        Live Status: Online
+                <div className="flex gap-3 items-center">
+                    <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-3 py-1.5 rounded-lg font-semibold text-sm border border-emerald-200 dark:border-emerald-800">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Live
                     </div>
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="order-2 lg:order-5">
+                <LiveOperations liveOps={liveOps} />
+            </div>
+
+            <div className="order-3 lg:order-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
                 <MetricCard title="Jobs Active" value={jobsInProgress} path="/admin/operations?tab=jobs" icon={TimeLogIcon} color="bg-blue-500" />
                 <MetricCard title="Team Online" value={activeTechnicians} path="/admin/workforce" icon={UsersIcon} color="bg-purple-500" />
                 
                 {currentUser?.role !== 'supervisor' && (
                     <>
+                        <MetricCard title="Maintenance Due" value={maintenanceDueCount} path="/admin/dashboard/maintenance" icon={Wrench} color="bg-indigo-500" />
                         <MetricCard title="Pending Orders" value={pendingOrders} path="/admin/dashboard/orders" icon={ShoppingCart} color="bg-cyan-500" />
+                        <MetricCard title="Active Warranties" value={activeWarrantiesCount} path="/admin/dashboard/active-warranties" icon={ShieldCheck} color="bg-emerald-600" />
                         <MetricCard title="Unpaid Inv" value={unpaidInvoices} path="/admin/financials" icon={FinancialIcon} color="bg-orange-500" />
                         <MetricCard title="Monthly Rev" value={`$${Math.round(mrr).toLocaleString()}`} path="/admin/customers?tab=memberships" icon={FinancialIcon} color="bg-emerald-500" />
                         <MetricCard title="Receivables" value={`$${Math.round(totalReceivables).toLocaleString()}`} path="/admin/financials" icon={FinancialIcon} color="bg-yellow-500" />
@@ -225,48 +274,44 @@ const AdminDashboard: React.FC = () => {
                 <MetricCard title="Hazards" value={openIncidents.length} path="/admin/compliance?tab=incidents" icon={AlertTriangle} color="bg-red-500" />
             </div>
 
-            {currentUser?.role !== 'supervisor' && 
-                <PendingAppointments 
-                    appointments={pendingAppointments} 
-                    onAccept={handleAcceptAppointment} 
-                    onDelete={handleDeleteAppointment} 
-                />
-            }
+            {currentUser?.role !== 'supervisor' && (
+                <div className="order-4 lg:order-3">
+                    <PendingAppointments 
+                        appointments={pendingAppointments} 
+                        onAccept={handleAcceptAppointment} 
+                        onDelete={handleDeleteAppointment} 
+                    />
+                </div>
+            )}
 
             {!state.currentOrganization?.virtualWorkerEnabled && (
-                <div 
-                    onClick={() => window.location.href = '#/admin/ai-worker-upgrade'}
-                    className="relative overflow-hidden bg-gradient-to-r from-slate-900 to-indigo-900 rounded-3xl p-8 cursor-pointer shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-1 transition-all duration-300 group mt-2 mb-6"
-                >
-                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-500 pointer-events-none">
-                        <Bot size={120} className="text-white" />
-                    </div>
-                    
-                    <div className="relative z-10">
-                        <div className="flex items-center gap-3 mb-3">
-                            <span className="bg-primary-500 text-white text-xs font-black px-3 py-1 uppercase tracking-widest rounded-full">New Add-On</span>
-                            <h3 className="text-2xl font-black text-white">Unlock the Virtual AI Worker</h3>
+                <div className="order-5 lg:order-4">
+                    <div 
+                        onClick={() => window.location.href = '#/admin/ai-worker-upgrade'}
+                        className="relative overflow-hidden bg-gradient-to-r from-slate-900 to-indigo-900 rounded-2xl p-6 cursor-pointer shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-0.5 transition-all duration-300 group mt-2 mb-4"
+                    >
+                        <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-500 pointer-events-none">
+                            <Bot size={80} className="text-white" />
                         </div>
-                        <p className="text-indigo-200 mt-2 mb-6 max-w-2xl text-lg">
-                            Automate your dispatching, securely invoice clients, and let your technicians talk to the CRM hands-free. Includes 10,000,000 monthly operations.
-                        </p>
-                        <div className="inline-flex items-center text-white font-bold bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl transition-colors">
-                            View Pricing & Details <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
+                        
+                        <div className="relative z-10">
+                            <div className="flex items-center gap-3 mb-3">
+                                <span className="bg-primary-500 text-white text-xs font-black px-3 py-1 uppercase tracking-widest rounded-full">New Add-On</span>
+                                <h3 className="text-xl font-extrabold text-white">Unlock the Virtual AI Worker</h3>
+                            </div>
+                            <p className="text-indigo-200 mt-2 mb-4 max-w-xl text-sm">
+                                Automate dispatching, invoice clients, and let techs talk to the CRM hands-free.
+                            </p>
+                            <div className="inline-flex items-center text-white font-bold bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl transition-colors">
+                                View Pricing & Details <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <LiveOperations liveOps={liveOps} />
-                <IncidentQueue incidents={openIncidents} onViewIncident={setViewIncident} />
-            </div>
 
-            <IncidentModal 
-                incident={viewIncident} 
-                onClose={() => setViewIncident(null)} 
-                onResolve={handleResolveIncident} 
-            />
+
         </div>
     );
 };

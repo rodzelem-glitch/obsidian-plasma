@@ -5,11 +5,13 @@ import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import { db } from 'lib/firebase';
 import type { PlatformCommission } from 'types';
-import { DollarSign, CheckCircle } from 'lucide-react';
+import { DollarSign, CheckCircle, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const SalesCommissions: React.FC = () => {
     const { state } = useAppContext();
     const { currentUser } = state;
+    const navigate = useNavigate();
     const [commissions, setCommissions] = useState<PlatformCommission[]>([]);
     const [filter, setFilter] = useState<'All' | 'Paid' | 'Pending'>('All');
 
@@ -32,9 +34,14 @@ const SalesCommissions: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <header>
-                <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Commission Ledger</h2>
-                <p className="text-slate-500">Track your earnings and payouts.</p>
+            <header className="flex items-start gap-4">
+                <button onClick={() => navigate(-1)} title="Go Back" aria-label="Go Back" className="mt-1 p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                    <ArrowLeft size={24} />
+                </button>
+                <div>
+                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Commission Ledger</h2>
+                    <p className="text-slate-500">Track your earnings and payouts.</p>
+                </div>
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

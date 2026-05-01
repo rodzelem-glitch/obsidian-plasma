@@ -1,15 +1,17 @@
+import { getBaseUrl } from "lib/utils";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { db, storage } from 'lib/firebase';
 import type { Customer } from 'types';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
-import { Sparkles, Send, Megaphone, Code, Eye, RefreshCw, Layers, Upload, Image as ImageIcon, Search, Filter, Save, BookOpen, BarChart3, Activity, Share2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Sparkles, Send, Megaphone, Code, Eye, RefreshCw, Layers, Upload, Image as ImageIcon, Search, Filter, Save, BookOpen, BarChart3, Activity, Share2, ArrowLeft } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import DOMPurify from 'dompurify';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+import { toast } from 'react-toastify';
 
 const MarketingCampaigns: React.FC = () => {
     const { state } = useAppContext();
@@ -35,10 +37,8 @@ const MarketingCampaigns: React.FC = () => {
     const [filterType, setFilterType] = useState('All');
     
     // Phase 12 States
-    const [viewMode, setViewMode] = useState<'editor' | 'analytics'>(() => {
-        const params = new URLSearchParams(window.location.search);
-        return (params.get('tab') as 'editor' | 'analytics') || 'editor';
-    });
+    const [searchParams] = useSearchParams();
+    const viewMode: 'editor' | 'analytics' = searchParams.get('tab') === 'analytics' ? 'analytics' : 'editor';
     const [campaignHistory, setCampaignHistory] = useState<any[]>([]);
     const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
     const [showTemplatesModal, setShowTemplatesModal] = useState(false);
@@ -150,7 +150,7 @@ const MarketingCampaigns: React.FC = () => {
 
             let absoluteLogoUrl = org?.logoUrl;
             if (absoluteLogoUrl && absoluteLogoUrl.startsWith('/')) {
-                absoluteLogoUrl = `${window.location.origin}${absoluteLogoUrl}`;
+                absoluteLogoUrl = `${getBaseUrl()}${absoluteLogoUrl}`;
             }
 
             const logoInstruction = absoluteLogoUrl 
@@ -219,10 +219,9 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                 aiPrompt,
                 createdAt: new Date().toISOString()
             });
-            setSendSuccess("Template successfully saved to Library!");
-            setTimeout(() => setSendSuccess(''), 4000);
+            toast.success("Template successfully saved to Library!");
         } catch (err: any) {
-            setError("Failed to save template.");
+            toast.error("Failed to save template.");
         }
     };
 
@@ -276,7 +275,7 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                     }
                 } else if (state.currentOrganization.logoUrl.startsWith('/')) {
                     // Map local origins into absolute production URIs relative to the deployed server
-                    const absoluteOriginUrl = `${window.location.origin}${state.currentOrganization.logoUrl}`;
+                    const absoluteOriginUrl = `${getBaseUrl()}${state.currentOrganization.logoUrl}`;
                     deliveryHtml = deliveryHtml.split(state.currentOrganization.logoUrl).join(absoluteOriginUrl);
                 }
             }
@@ -313,12 +312,12 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
 
             await Promise.all(promises);
             
-            setSendSuccess(`Campaign successfully dispatched to ${targetCustomers.length} recipient(s)! Analytics telemetry is live.`);
+            toast.success(`Campaign successfully dispatched to ${targetCustomers.length} recipient(s)! Analytics telemetry is live.`);
             setSelectedCustomerIds(new Set());
             setSubject('');
         } catch (err: any) {
             console.error("Campaign Dispatch Error:", err);
-            setError(err.message || "Failed to dispatch campaign to the mail queue.");
+            toast.error(err.message || "Failed to dispatch campaign to the mail queue.");
         } finally {
             setIsSending(false);
         }
@@ -327,28 +326,27 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
     return (
         <div className="space-y-6 relative">
             <header className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-black flex items-center gap-2"><Megaphone className="text-primary-600" /> Marketing Campaigns</h2>
-                    <p className="text-slate-500 font-medium">Design AI-driven email campaigns and blast them out to your customers.</p>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => navigate('/admin/marketing-hub')} title="Back to Marketing Hub" aria-label="Back to Marketing Hub" className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
+                        <ArrowLeft size={24} />
+                    </button>
+                    <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                        <Megaphone className="text-primary-500" />
+                        {viewMode === 'analytics' ? 'Campaign Analytics' : 'Campaign Studio'}
+                    </h2>
                 </div>
                 <div className="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
                     <button 
-                        onClick={() => setViewMode('editor')}
+                        onClick={() => navigate('/admin/campaigns')}
                         className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-md transition-colors ${viewMode === 'editor' ? 'bg-white dark:bg-slate-900 text-primary-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
-                        <Code size={16}/> Campaign Studio
+                        <Code size={16}/> Studio
                     </button>
                     <button 
-                        onClick={() => setViewMode('analytics')}
+                        onClick={() => navigate('/admin/campaigns?tab=analytics')}
                         className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-md transition-colors ${viewMode === 'analytics' ? 'bg-white dark:bg-slate-900 text-primary-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <BarChart3 size={16}/> Analytics
-                    </button>
-                    <button 
-                        onClick={() => navigate('/admin/social')}
-                        className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-md transition-colors text-slate-500 hover:text-slate-700 hover:bg-white dark:hover:bg-slate-900`}
-                    >
-                        <Share2 size={16}/> Social Media Hub
                     </button>
                 </div>
             </header>
@@ -481,6 +479,8 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                                             <button 
                                                 onClick={() => fileInputRef.current?.click()}
                                                 disabled={uploadingImage}
+                                                title="Upload Image Asset"
+                                                aria-label="Upload Image Asset"
                                                 className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-md text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 hover:border-indigo-300 transition-colors disabled:opacity-50"
                                             >
                                                 {uploadingImage ? <RefreshCw className="animate-spin" size={14}/> : <Upload size={14}/>}
@@ -498,6 +498,8 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
 
                                         <button 
                                             onClick={() => setShowTemplatesModal(true)}
+                                            title="Open Template Library"
+                                            aria-label="Open Template Library"
                                             className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-sm font-bold transition-colors"
                                         >
                                             <BookOpen size={16} /> Template Library
@@ -527,12 +529,16 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                                     <div className="flex items-end gap-2 pb-1">
                                         <button 
                                             onClick={() => setActiveTab('edit')}
+                                            title="Source Editor"
+                                            aria-label="Source Editor"
                                             className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-lg transition-colors ${activeTab === 'edit' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/50 dark:text-primary-400' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
                                         >
                                             <Code size={16}/> Source Editor
                                         </button>
                                         <button 
                                             onClick={() => setActiveTab('preview')}
+                                            title="Live Preview"
+                                            aria-label="Live Preview"
                                             className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-lg transition-colors ${activeTab === 'preview' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/50 dark:text-primary-400' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'}`}
                                         >
                                             <Eye size={16}/> Live Preview

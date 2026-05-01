@@ -9,7 +9,7 @@
     "logs": "firebase functions:log"
   },
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "dependencies": {
@@ -18,14 +18,26 @@
     "@google-cloud/monitoring": "^5.3.1",
     "@google/generative-ai": "^0.24.1",
     "cors": "^2.8.5",
-    "firebase-admin": "^11.11.1",
-    "firebase-functions": "^4.9.0",
+    "firebase-admin": "^13.8.0",
+    "firebase-functions": "^7.2.5",
+    "googleapis": "^171.4.0",
     "intuit-oauth": "^4.2.2",
-    "square": "^44.0.1"
+    "square": "^44.0.1",
+    "twilio": "^5.13.1",
+    "twitter-api-v2": "^1.29.0",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "@types/uuid": "^10.0.0",
+    "@types/xml2js": "^0.4.14",
     "typescript": "^5.5.4"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "uuid": "^14.0.0",
+    "@google-cloud/firestore": "^8.5.0",
+    "retry-request": "^8.0.2",
+    "@tootallnate/once": "^3.0.1",
+    "http-proxy-agent": "^9.0.0"
+  }
 }

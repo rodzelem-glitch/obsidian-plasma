@@ -10,6 +10,8 @@ const MasterDashboard: React.FC = () => {
     const { state } = useAppContext();
     const [excludeTest, setExcludeTest] = useState(false);
     
+    const isMasterAdmin = state.currentUser?.role === 'master_admin';
+    
     // Filter Orgs for Metrics
     const filteredOrgs = useMemo(() => {
         return state.allOrganizations.filter(org => {
@@ -55,9 +57,11 @@ const MasterDashboard: React.FC = () => {
             <DashboardHeader excludeTest={excludeTest} setExcludeTest={setExcludeTest} />
             
             {/* Header Actions (Seed Data only) */}
-            <div className="flex justify-end -mt-24 mb-6">
-                 <DataSeedingActions hidePromoMaker={true} />
-            </div>
+            {isMasterAdmin && (
+                <div className="flex justify-end -mt-24 mb-6">
+                     <DataSeedingActions hidePromoMaker={true} />
+                </div>
+            )}
 
             <SaaSMetrics 
                 totalOrgs={totalOrgs}
@@ -67,11 +71,13 @@ const MasterDashboard: React.FC = () => {
             />
 
             {/* Promo Code Management Section moved under SaaS Metrics */}
-            <div className="mt-8">
-                 <DataSeedingActions hidePromoMaker={false} />
-            </div>
+            {isMasterAdmin && (
+                <div className="mt-8">
+                     <DataSeedingActions hidePromoMaker={false} />
+                </div>
+            )}
 
-            <ApiBillingSection />
+            {isMasterAdmin && <ApiBillingSection />}
         </div>
     );
 };

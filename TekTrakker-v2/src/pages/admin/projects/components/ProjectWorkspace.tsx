@@ -42,7 +42,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = (props) => {
             case 'overview':
                 return <OverviewTab project={props.project} employees={state.users} />;
             case 'tasks':
-                return <TasksTab tasks={props.project.projectTasks || []} employees={state.users} canSeeAllTasks={canSeeAllTasks} onTaskEdit={props.onEditTask} onTaskAdd={props.onNewTask} />;
+                return <TasksTab project={props.project} employees={state.users} canSeeAllTasks={canSeeAllTasks} onTaskEdit={props.onEditTask} onTaskAdd={props.onNewTask} />;
             case 'financials':
                 const projectInvoices = state.jobs.filter(job => job.projectId === props.project.id);
                 const projectExpenses = state.expenses ? state.expenses.filter(e => e.projectId === props.project.id) : [];

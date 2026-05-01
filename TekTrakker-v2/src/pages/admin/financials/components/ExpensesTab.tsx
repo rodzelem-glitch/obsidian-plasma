@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState } from 'react';
 import Card from 'components/ui/Card';
@@ -16,7 +17,7 @@ interface ExpensesTabProps {
     handleEditExpense: (exp: any) => void;
     handleDeleteExpense: (id: string, type: string) => void;
     handleDeleteReceipt: (id: string, type: string) => void;
-    setViewingReceipt: (url: string) => void;
+    setViewingReceipt: (urls: string[]) => void;
     setIsExpenseModalOpen: (val: boolean) => void;
     setNewExpense: (val: any) => void;
     currentUser: any;
@@ -40,7 +41,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
 
     const handleCopyRef = (expId: string) => {
         navigator.clipboard.writeText(`#EXP-${expId}`);
-        alert("Expense Reference Copied! Paste it anywhere to create a smart link.");
+        showToast.warn("Expense Reference Copied! Paste it anywhere to create a smart link.");
     };
 
     const handleShareExpense = async () => {
@@ -59,11 +60,11 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                 type: 'internal'
             };
             await db.collection('messages').doc(msgObj.id).set(msgObj);
-            alert("Expense shared successfully!");
+            showToast.warn("Expense shared successfully!");
             setShareModalExp(null);
             setShareMessageText('');
         } catch (e) {
-            alert("Failed to share.");
+            showToast.warn("Failed to share.");
         } finally {
             setIsSharing(false);
         }
@@ -80,13 +81,13 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
             if (image.base64String && (window as any).handleAttachReceipt) {
                 const dataUrl = `data:image/jpeg;base64,${image.base64String}`;
                 (window as any).handleAttachReceipt(targetLogId, 'expense', dataUrl);
-                alert("Receipt captured and attached!");
+                showToast.warn("Receipt captured and attached!");
             }
         } catch (e: any) {
             console.error("Camera Error:", e);
             // Don't alert on cancel
             if (!e.message?.includes('User cancelled')) {
-                alert(`Error matching: ${e.message}`);
+                showToast.warn(`Error matching: ${e.message}`);
             }
         }
     };
@@ -148,7 +149,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                      <select 
                          aria-label="Select Share Recipient"
                          title="Select Share Recipient"
-                         className="w-full border rounded-lg p-2 dark:bg-slate-800 dark:border-slate-700"
+                         className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
                          value={shareTargetId}
                          onChange={e => setShareTargetId(e.target.value)}
                      >
@@ -194,9 +195,6 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                         </select>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant={reconcileMode ? 'primary' : 'secondary'} onClick={() => setReconcileMode(!reconcileMode)} className={`w-auto text-xs ${reconcileMode ? 'bg-amber-500 hover:bg-amber-600 border-none text-white' : ''}`}>
-                            {reconcileMode ? 'Exit Reconciliation' : 'Find Duplicates'}
-                        </Button>
                         <Button onClick={() => { 
                             setNewExpense({date: new Date().toISOString().split('T')[0], category: 'Materials', description: '', amount: 0, vendor: '', paidBy: currentUser?.firstName || 'Admin', projectId: ''}); 
                             setIsExpenseModalOpen(true); 
@@ -222,16 +220,24 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                             <Table headers={['Date', 'Vendor', 'Description', 'Amount', 'Receipt', 'Actions']}>
                                 {group.map((exp: any) => (
                                     <tr key={exp.id} className="hover:bg-white dark:hover:bg-slate-800">
-                                        <td className="px-6 py-4 text-sm text-gray-500">{exp.date}</td>
-                                        <td className="px-6 py-4 font-medium"><span className="text-xs font-bold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded mr-2">{exp.category}</span>{exp.vendor}</td>
-                                        <td className="px-6 py-4 text-sm text-gray-500">{exp.description}</td>
+                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.date}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white"><span className="text-xs font-bold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded mr-2">{exp.category}</span>{exp.vendor}</td>
+                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.description}</td>
                                         <td className="px-6 py-4 font-bold text-red-600">-${(Number(exp.amount) || 0).toFixed(2)}</td>
                                         <td className="px-6 py-4 text-center">
-                                            {(exp.receiptData || exp.receiptUrl || exp.receipt) ? (
-                                                <button onClick={() => setViewingReceipt(exp.receiptData || exp.receiptUrl || exp.receipt)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
-                                                    <Paperclip size={18} />
-                                                </button>
-                                            ) : <span className="text-xs text-slate-400">No Receipt</span>}
+                                            {(() => {
+                                                const possibleReceipt = exp.receiptData || exp.receiptUrl || exp.receipt;
+                                                const possibleUrls = exp.receiptUrls && exp.receiptUrls.length > 0 ? exp.receiptUrls : (possibleReceipt ? [possibleReceipt] : []);
+                                                if (possibleUrls.length > 0) {
+                                                    return (
+                                                        <button onClick={() => setViewingReceipt(possibleUrls)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
+                                                            <Paperclip size={18} />
+                                                            {possibleUrls.length > 1 && <span className="ml-1 text-[10px] font-bold bg-blue-100 text-blue-800 px-1 rounded-full">{possibleUrls.length}</span>}
+                                                        </button>
+                                                    )
+                                                }
+                                                return <span className="text-xs text-slate-400">No Receipt</span>;
+                                            })()}
                                         </td>
                                         <td className="px-6 py-4 flex flex-wrap gap-2 items-center">
                                             <button onClick={() => handleDeleteExpense(exp.id, exp.type)} className="text-red-500 hover:text-red-700 p-1 flex items-center gap-1 text-xs font-bold" title="Delete Duplicate"><Trash2 size={14}/> Delete</button>
@@ -246,20 +252,23 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                 <Table headers={['Date', 'Vendor', 'Category', 'Description', 'Amount', 'Receipt', 'Actions']}>
                     {sortedExpenses.map((exp: any) => (
                         <tr key={exp.id} title={`Keys: ${Object.keys(exp).join(', ')}`}>
-                            <td className="px-6 py-4 text-sm text-gray-500">{exp.date}</td>
-                            <td className="px-6 py-4 font-medium">{exp.vendor}</td>
-                            <td className="px-6 py-4 text-sm">{exp.category}</td>
-                            <td className="px-6 py-4 text-sm text-gray-500">{exp.description}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.date}</td>
+                            <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{exp.vendor}</td>
+                            <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{exp.category}</td>
+                            <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.description}</td>
                             <td className="px-6 py-4 font-bold text-red-600">-${(Number(exp.amount) || 0).toFixed(2)}</td>
                             <td className="px-6 py-4 text-center group">
                                 <div className="flex items-center justify-center gap-2">
                                     {(() => {
                                         const possibleReceipt = exp.receiptData || exp.receiptUrl || exp.receipt || exp.image || exp.imageUrl || exp.photo || exp.photoUrl || exp.attachment || exp.fileUrl;
-                                        if (possibleReceipt) {
+                                        const possibleUrls = exp.receiptUrls && exp.receiptUrls.length > 0 ? exp.receiptUrls : (possibleReceipt ? [possibleReceipt] : []);
+                                        
+                                        if (possibleUrls.length > 0) {
                                             return (
                                                 <div className="flex items-center gap-2">
-                                                    <button onClick={() => setViewingReceipt(possibleReceipt)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
+                                                    <button onClick={() => setViewingReceipt(possibleUrls)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
                                                         <Paperclip size={18} />
+                                                        {possibleUrls.length > 1 && <span className="ml-1 text-[10px] font-bold bg-blue-100 text-blue-800 px-1 rounded-full">{possibleUrls.length}</span>}
                                                     </button>
                                                     <button onClick={() => handleDeleteReceipt(exp.id, exp.type)} className="text-red-500 hover:text-red-700" title="Delete Receipt">
                                                         <Trash2 size={16} />
@@ -300,7 +309,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                                             const file = e.target.files?.[0];
                                                             if (file && (window as any).handleAttachReceipt) {
                                                                 (window as any).handleAttachReceipt(exp.id, exp.type, file);
-                                                                alert("Receipt uploaded and attached!");
+                                                                showToast.warn("Receipt uploaded and attached!");
                                                             }
                                                         }}
                                                     />

@@ -14,6 +14,7 @@ const EULA = lazy(() => import('../pages/landing/EULA'));
 const FAQ = lazy(() => import('../pages/landing/FAQ'));
 const VirtualWorkerMarketing = lazy(() => import('../pages/landing/VirtualWorkerMarketing'));
 const VirtualWorkerCommands = lazy(() => import('../pages/landing/VirtualWorkerCommands'));
+const ReviewsWidget = lazy(() => import('../pages/landing/ReviewsWidget'));
 
 // Page Components
 const LoginPage = lazy(() => import('../pages/Login'));
@@ -24,10 +25,13 @@ const PublicCareerPage = lazy(() => import('../pages/PublicCareerPage'));
 // Lazy Load Payment Page
 const CustomerPayment = lazy(() => import('../pages/CustomerPayment'));
 const ApexDemo = lazy(() => import('../pages/Pro/ApexDemo'));
+const SaaSCheckoutFunnel = lazy(() => import('../pages/landing/SaaSCheckoutFunnel'));
+const OAuthCallback = lazy(() => import('../pages/OAuthCallback'));
 
 const PublicRoutes: React.FC<{ user: any, getRedirectPath: () => string }> = ({ user, getRedirectPath }) => (
   <Routes>
-    <Route path="/" element={user ? <Navigate to={getRedirectPath()} replace /> : <SaaSMarketing />} />
+    <Route path="/offer" element={<SaaSCheckoutFunnel />} />
+    <Route path="/" element={user ? <Navigate to={getRedirectPath()} replace /> : <Navigate to="/login" replace />} />
     <Route path="/homeowners" element={<PropertyOwnerMarketing />} />
     <Route path="/ai-worker" element={<VirtualWorkerMarketing />} />
     <Route path="/ai-worker-commands" element={<VirtualWorkerCommands />} />
@@ -37,8 +41,14 @@ const PublicRoutes: React.FC<{ user: any, getRedirectPath: () => string }> = ({ 
         </Suspense>
     } />
     <Route path="/site/:orgId" element={<OrganizationPublicSite />} />
+    <Route path="/widgets/reviews/:orgId" element={<ReviewsWidget />} />
     <Route path="/book" element={<PublicBookingPage />} />
     <Route path="/careers/:orgId" element={<PublicCareerPage />} />
+    <Route path="/auth/callback" element={
+        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50 text-gray-500">Processing Authentication...</div>}>
+            <OAuthCallback />
+        </Suspense>
+    } />
     
     <Route path="/compliance-view" element={<ComplianceReport />} />
     <Route path="/privacy" element={<PrivacyPolicy />} />

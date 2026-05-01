@@ -70,9 +70,9 @@ const LandingChatbot: React.FC = () => {
             
             const plans = (state.platformSettings?.plans || {}) as any;
             const pricingContext = `
-                Starter Plan: $${plans.starter?.monthly || 99}/mo. Includes ${plans.starter?.maxUsers || 3} users.
-                Growth Plan: $${plans.growth?.monthly || 249}/mo. Includes ${plans.growth?.maxUsers || 10} users.
-                Enterprise Plan: $${plans.enterprise?.monthly || 499}/mo. Includes ${plans.enterprise?.maxUsers || 20} users.
+                TekTrakker Pro: $${plans.starter?.monthly || 99}/mo. Includes ${plans.starter?.maxUsers || 3} users.
+                TekTrakker Premium: $${plans.growth?.monthly || 249}/mo. Includes ${plans.growth?.maxUsers || 10} users.
+                TekTrakker Unlimited: $${plans.enterprise?.monthly || 499}/mo. Includes ${plans.enterprise?.maxUsers || 20} users.
             `;
 
             const systemPrompt = `

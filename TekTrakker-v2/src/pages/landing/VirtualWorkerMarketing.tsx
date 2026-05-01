@@ -8,7 +8,7 @@ const VirtualWorkerMarketing: React.FC = () => {
     const navigate = useNavigate();
 
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500 selection:text-white pb-20">
+        <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500 selection:text-white">
             {/* Navbar */}
             <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/80">
                 <div className="max-w-7xl mx-auto px-6 h-24 flex justify-between items-center">
@@ -186,6 +186,19 @@ const VirtualWorkerMarketing: React.FC = () => {
                     </div>
                 </div>
             </section>
+
+            <footer className="mt-auto bg-slate-950 border-t border-white/5 py-12 px-6">
+                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+                    <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all"><Logo className="h-8 w-auto" /></div>
+                    <div className="flex gap-8 text-sm text-slate-500 font-medium">
+                        <a href="/#/faq" className="hover:text-white transition-colors">FAQ</a>
+                        <a href="/#/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
+                        <a href="/#/terms" className="hover:text-white transition-colors">Terms of Service</a>
+                        <a href="mailto:platform@tektrakker.com" className="hover:text-white transition-colors">Support</a>
+                    </div>
+                    <div className="text-slate-600 text-xs font-medium">&copy; {new Date().getFullYear()} TekTrakker Inc. All rights reserved.</div>
+                </div>
+            </footer>
 
             <LandingChatbot />
         </div>

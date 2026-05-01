@@ -24,7 +24,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onStartDemo, onStartTrial }) 
                     </h1>
                     
                     <p className="text-xl text-slate-400 max-w-xl mb-10 leading-relaxed font-medium">
-                        You didn't start a business to work 16 hours a day. TekTrakker eliminates the chaos of scheduling, chasing payments, and managing techs so you can finally breathe.
+                        You didn't start a business to work 16 hours a day. Stop being a slave to your backend administration. TekTrakker eliminates the chaos of scheduling, chasing payments, and managing endless paperwork so you can finally breathe.
                     </p>
                     
                     <div className="flex flex-col sm:flex-row gap-4">

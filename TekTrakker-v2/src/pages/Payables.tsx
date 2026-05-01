@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
@@ -49,7 +50,7 @@ const Payables: React.FC = () => {
                 status: 'Paid',
                 paidAt: new Date().toISOString()
             });
-        } catch (e) { alert("Failed to update status."); }
+        } catch (e) { showToast.warn("Failed to update status."); }
     };
 
     const filteredPayables = useMemo(() => {

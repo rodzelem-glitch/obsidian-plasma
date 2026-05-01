@@ -1,3 +1,4 @@
+import showToast from "lib/toast";
 
 import React, { useState, useRef } from 'react';
 import Modal from 'components/ui/Modal';
@@ -83,7 +84,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
             onComplete(qcRecord.id);
         } catch (error) {
             console.error("Save QC Error:", error);
-            alert("Failed to save QC result. Please try again.");
+            showToast.warn("Failed to save QC result. Please try again.");
         } finally {
             setIsSaving(false);
         }
@@ -100,10 +101,10 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
             
             const prompt = "Act as a quality control inspector for a field service company. Analyze this photo of a completed repair/installation. Check for cleanliness, proper connections, and professional finishing. Respond strictly in JSON format: { \"status\": \"pass\" | \"fail\" | \"warning\", \"comments\": \"string\" }";
 
-            // Using gemini-2.5-pro for high-quality vision analysis
+            // Using gemini-3.1-pro-preview for high-quality vision analysis
             const result = await callGeminiAI({ 
                 prompt,
-                modelName: "gemini-2.5-pro",
+                modelName: "gemini-3.1-pro-preview",
                 image: {
                     data: base64Content,
                     mimeType: "image/jpeg"

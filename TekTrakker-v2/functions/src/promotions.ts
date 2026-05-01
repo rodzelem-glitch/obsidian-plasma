@@ -1,6 +1,5 @@
 
-import * as functionsV1 from "firebase-functions/v1";
-import * as functions from "firebase-functions";
+import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 
 const db = admin.firestore();
@@ -30,8 +29,9 @@ const applyReferralDiscount = async (referringOrgId: string, newOrgId: string): 
     }
 };
 
-export const onusercreate = functions.auth.user().onCreate(async (user: any) => {
-    const { email } = user;
+export const onUserRegistration = functions.firestore.document('users/{userId}').onCreate(async (snap, context) => {
+    const userData = snap.data();
+    const email = userData?.email;
 
     if (!email) {
         console.log("User does not have an email address. Skipping referral check.");

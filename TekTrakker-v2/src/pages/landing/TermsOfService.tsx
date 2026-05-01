@@ -4,10 +4,15 @@ import { Logo } from '../../components/ui/Logo';
 
 const TermsOfService: React.FC = () => {
   return (
-    <div className="min-h-screen bg-white text-slate-900 font-sans">
+    <div className="min-h-screen bg-white text-slate-900 font-sans pt-safe">
       <nav className="border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-md z-50">
-          <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
-              <Logo className="h-10 w-auto" />
+          <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
+              <a href="/#/login" className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                  <span className="font-medium font-sans">Back</span>
+              </a>
+              <Logo className="h-8 w-auto" />
+              <div className="w-[72px]"></div> {/* Spacer for centering */}
           </div>
       </nav>
       <div className="max-w-4xl mx-auto px-6 py-12">

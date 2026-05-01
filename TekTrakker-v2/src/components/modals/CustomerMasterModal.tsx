@@ -1,3 +1,4 @@
+import { getBaseUrl } from "lib/utils";
 
 import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
@@ -8,11 +9,16 @@ import Textarea from '../ui/Textarea';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
 import type { Customer, EquipmentAsset, ServiceAgreement, MembershipPlan, Job, StoredFile } from 'types';
-import { MapPinIcon, TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Mail, QrCode, Printer, Sparkles, ShieldCheck, Ban, MessageSquare, CheckCircle, Edit, Share2, Copy } from 'lucide-react';
+import { MapPinIcon, TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Mail, QrCode, Printer, Sparkles, ShieldCheck, Ban, MessageSquare, CheckCircle, Edit, Share2, Copy, Upload } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { globalConfirm } from "lib/globalConfirm";
 import { uploadFileToStorage } from 'lib/storageService';
 import { sendEmail } from 'lib/notificationService';
+import Tesseract from 'tesseract.js';
+import showToast from 'lib/toast';
+import EquipmentHierarchy from 'pages/admin/projects/components/tabs/equipment/EquipmentHierarchy';
+import { EQUIPMENT_OPTIONS } from '@/constants/industryNaming';
+import WarrantySection from 'pages/customer/components/WarrantySection';
 
 interface CustomerMasterModalProps {
     isOpen: boolean;
@@ -20,21 +26,28 @@ interface CustomerMasterModalProps {
     customerId: string;
 }
 
-
-
 const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClose, customerId }) => {
     const { state, dispatch } = useAppContext();
     const customer = state.customers.find(c => c.id === customerId);
     
-    const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'history' | 'financials' | 'docs'>('overview');
+    const industry = state.currentOrganization?.industry || 'HVAC';
+    const equipmentOptions = EQUIPMENT_OPTIONS[industry] || EQUIPMENT_OPTIONS['default'];
+
+    const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'history' | 'financials' | 'docs' | 'warranties'>('overview');
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState<Partial<Customer>>({});
     const [isSendingInvite, setIsSendingInvite] = useState(false);
     
     // Equipment State
-    const [newEquipment, setNewEquipment] = useState<EquipmentAsset>({ id: '', brand: '', model: '', serial: '', type: 'Split System' });
+    const [newEquipment, setNewEquipment] = useState<EquipmentAsset>({ id: '', brand: '', model: '', serial: '', type: equipmentOptions[0] });
     const [isAddingEquip, setIsAddingEquip] = useState(false);
     const [isSavingAsset, setIsSavingAsset] = useState(false); // Fix for duplicates
+    const [selectedReportAssets, setSelectedReportAssets] = useState<string[]>([]);
+    const [isOcrScanning, setIsOcrScanning] = useState(false);
+
+    // Property Location State
+    const [newLocation, setNewLocation] = useState<any>({ name: '', address: '', city: '', state: '', zip: '', notes: '' });
+    const [isAddingLocation, setIsAddingLocation] = useState(false);
 
     // Membership Manual Enrollment State
     const [isEnrolling, setIsEnrolling] = useState(false);
@@ -45,19 +58,32 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
     const [viewQrAsset, setViewQrAsset] = useState<EquipmentAsset | null>(null);
     const [viewingFile, setViewingFile] = useState<StoredFile | null>(null);
 
-    // Share Options
+    // Warranty Registration State
+    const [isRegisteringWarranty, setIsRegisteringWarranty] = useState(false);
+    const [warrantyRegistration, setWarrantyRegistration] = useState({
+        equipmentId: '',
+        manufacturerDurationMonths: 12,
+        manufacturerStartDate: new Date().toISOString().split('T')[0],
+        warrantyNotes: ''
+    });
+
+    // Sharing State
     const [shareModalOpen, setShareModalOpen] = useState(false);
-    const [shareTargetId, setShareTargetId] = useState<string>('');
+    const [shareTargetId, setShareTargetId] = useState('');
     const [shareMessageText, setShareMessageText] = useState('');
     const [isSharing, setIsSharing] = useState(false);
 
-    // Derived Data
-    const customerJobs = useMemo(() => state.jobs.filter(j => j.customerId === customerId).sort((a,b) => new Date(b.appointmentTime).getTime() - new Date(a.appointmentTime).getTime()), [customerId, state.jobs]);
-    const invoices = customerJobs.filter(j => j.invoice).map(j => ({ ...j.invoice, jobDate: j.appointmentTime }));
-    const membership = state.serviceAgreements.find(sa => sa.customerId === customerId && sa.status === 'Active');
-    
-    // Aggregate Files (Customer + Jobs)
-    const allFiles = useMemo(() => {
+    const membership = state.serviceAgreements?.find(a => a.customerId === customerId && a.status === 'Active');
+
+    const customerJobs = useMemo(() => {
+        return state.jobs.filter(j => j.customerId === customerId);
+    }, [state.jobs, customerId]);
+
+    const customerWarranties = useMemo(() => {
+        return state.warrantyClaims?.filter(w => w.customerId === customerId) || [];
+    }, [state.warrantyClaims, customerId]);
+
+    const customerFiles = useMemo(() => {
         const files: StoredFile[] = [];
         if (customer?.files) files.push(...customer.files);
         customerJobs.forEach(j => {
@@ -68,9 +94,15 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
 
     if (!customer) return null;
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, category?: string) => {
         const file = e.target.files?.[0];
         if (!file || !state.currentOrganization) return;
+        
+        if (file.size > 5 * 1024 * 1024) {
+            showToast.warn("File too large — must be under 5MB. Please compress the file.");
+            e.target.value = '';
+            return;
+        }
         
         try {
             const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'doc.pdf';
@@ -86,7 +118,8 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                 fileType: file.type,
                 dataUrl: downloadUrl, // Storing bucket URL instead of Base64
                 createdAt: new Date().toISOString(),
-                uploadedBy: state.currentUser?.id || 'admin'
+                uploadedBy: state.currentUser?.id || 'admin',
+                metadata: category ? { category } : {}
             };
             
             const updatedFiles = [...(customer.files || []), newFile];
@@ -94,19 +127,54 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, files: updatedFiles } });
         } catch (err) {
             console.error(err);
-            alert("Upload failed.");
+            showToast.error("Upload failed.");
+        }
+    };
+
+    const handleSaveWarrantyRegistration = async () => {
+        if (!warrantyRegistration.equipmentId) {
+            showToast.warn("Please select equipment.");
+            return;
+        }
+        try {
+            const updatedEquipment = (customer.equipment || []).map(eq => {
+                if (eq.id === warrantyRegistration.equipmentId) {
+                    return {
+                        ...eq,
+                        warranty: {
+                            ...eq.warranty,
+                            manufacturerDurationMonths: warrantyRegistration.manufacturerDurationMonths,
+                            manufacturerStartDate: warrantyRegistration.manufacturerStartDate,
+                            warrantyNotes: warrantyRegistration.warrantyNotes
+                        }
+                    };
+                }
+                return eq;
+            });
+            await db.collection('customers').doc(customer.id).update({ equipment: updatedEquipment });
+            dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, equipment: updatedEquipment } });
+            showToast.success("Warranty registered successfully.");
+            setIsRegisteringWarranty(false);
+        } catch (e) {
+            console.error(e);
+            showToast.error("Failed to register warranty.");
         }
     };
 
     const handleDeleteCustomer = async () => {
-        if (!await globalConfirm(`PERMANENTLY DELETE ${customer.name}? All history and files will be inaccessible.`)) return;
+        if (!await globalConfirm(`REMOVE ${customer.name}? This customer and all their records will be detached from your organization and moved to the Master Admin Limbo queue.`)) return;
         try {
-            await db.collection('customers').doc(customer.id).delete();
+            await db.collection('customers').doc(customer.id).update({
+                organizationId: 'unaffiliated',
+                isDeleted: true,
+                detachedAt: new Date().toISOString(),
+                originalOrganizationId: state.currentOrganization?.id || ''
+            });
             dispatch({ type: 'DELETE_CUSTOMER', payload: customer.id });
             onClose();
         } catch (e) {
             console.error(e);
-            alert("Delete failed. Please ensure you have permissions.");
+            showToast.error("Removal failed. Please ensure you have permissions.");
         }
     };
 
@@ -115,6 +183,32 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         await db.collection('customers').doc(customer.id).update(updated);
         dispatch({ type: 'UPDATE_CUSTOMER', payload: updated });
         setIsEditing(false);
+    };
+
+    const handleAddLocation = async () => {
+        if (!newLocation.name || !newLocation.address) {
+            showToast.warn("Property Name and Address are required.");
+            return;
+        }
+        let updatedLocations;
+        if (newLocation.id) {
+            updatedLocations = (customer.serviceLocations || []).map((l:any) => l.id === newLocation.id ? newLocation : l);
+        } else {
+            const loc = { ...newLocation, id: `loc-${Date.now()}` };
+            updatedLocations = [...(customer.serviceLocations || []), loc];
+        }
+        await db.collection('customers').doc(customer.id).update({ serviceLocations: updatedLocations });
+        dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, serviceLocations: updatedLocations } });
+        setNewLocation({ name: '', address: '', city: '', state: '', zip: '', notes: '' });
+        setIsAddingLocation(false);
+    };
+
+    const handleDeleteLocation = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!await globalConfirm("Remove this property? Equipment or jobs mapped to it may lose context.")) return;
+        const updatedLocations = (customer.serviceLocations || []).filter((l:any) => l.id !== id);
+        await db.collection('customers').doc(customer.id).update({ serviceLocations: updatedLocations });
+        dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, serviceLocations: updatedLocations } });
     };
 
     const handleAddEquipment = async () => {
@@ -139,12 +233,90 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             await db.collection('customers').doc(customer.id).update({ equipment: updatedEquipment });
             dispatch({ type: 'UPDATE_CUSTOMER', payload: updatedCustomer });
             setIsAddingEquip(false);
-            setNewEquipment({ id: '', brand: '', model: '', serial: '', type: 'Split System' });
+            setNewEquipment({ id: '', brand: '', model: '', serial: '', type: equipmentOptions[0] });
         } catch (e) {
             console.error(e);
-            alert("Failed to save asset.");
+            showToast.error("Failed to save asset.");
         } finally {
             setIsSavingAsset(false);
+        }
+    };
+    const handleAssetPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, photoType: 'serialPhotoUrl' | 'unitTagPhotoUrl' | 'conditionPhotoUrl') => {
+        const file = e.target.files?.[0];
+        if (!file || !state.currentOrganization) return;
+        
+        if (file.size > 5 * 1024 * 1024) {
+            showToast.warn("File too large — asset photos must be under 5MB.");
+            e.target.value = '';
+            return;
+        }
+        
+        try {
+            const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : `photo-${Date.now()}.png`;
+            const path = `organizations/${state.currentOrganization.id}/customers/${customer.id}/equipment/${Date.now()}_${safeName}`;
+            const downloadUrl = await uploadFileToStorage(path, file);
+            
+            // Add reference to customer files so it appears in Docs & Media
+            const newFileReference: StoredFile = {
+                id: `file-${Date.now()}`,
+                organizationId: customer.organizationId,
+                parentId: customer.id,
+                parentType: 'customer',
+                fileName: `Asset Photo - ${safeName}`,
+                dataUrl: downloadUrl,
+                fileType: file.type,
+                createdAt: new Date().toISOString(),
+                uploadedBy: state.currentUser?.id || 'unknown',
+            };
+            const updatedFiles = [...(customer.files || []), newFileReference];
+            if (!state.isDemoMode) {
+                await db.collection('customers').doc(customer.id).update({ files: updatedFiles });
+            }
+            dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, files: updatedFiles } });
+            
+            // Run AI OCR if it's a serial or unit tag photo
+            let extractedSerial = newEquipment.serial;
+            let extractedModel = newEquipment.model;
+
+            if (photoType === 'serialPhotoUrl' || photoType === 'unitTagPhotoUrl') {
+                setIsOcrScanning(true);
+                try {
+                    const result = await Tesseract.recognize(file, 'eng');
+                    const text = result.data.text.toUpperCase();
+                    
+                    const serialMatch = text.match(/(?:S\/?N|SERIAL(?:\s*NO|\s*NUM(?:BER)?)?)\s*[:#\-]?\s*([A-Z0-9]+)/i);
+                    const modelMatch = text.match(/(?:M\/?N|MOD(?:EL)?(?:\s*NO|\s*NUM(?:BER)?)?)\s*[:#\-]?\s*([A-Z0-9\-]+)/i);
+
+                    if (serialMatch && serialMatch[1]) {
+                        extractedSerial = serialMatch[1].toUpperCase();
+                    }
+                    if (modelMatch && modelMatch[1]) {
+                        extractedModel = modelMatch[1].toUpperCase();
+                    }
+                    
+                    // Removed risky fallback mapping that assigned random alphanumeric words.
+                    // Only trust explicit SN/MN/SERIAL/MODEL keys to prevent hallucination.
+                    if (!extractedSerial && !extractedModel) {
+                         console.log("OCR couldn't confidently find a label with SN or MODEL in standard format.");
+                         showToast.warn("Couldn't read serial/model from image. It may be blurry or oddly formatted.");
+                    }
+                } catch (ocrErr) {
+                    console.error("OCR Failed:", ocrErr);
+                } finally {
+                    setIsOcrScanning(false);
+                }
+            }
+
+            setNewEquipment(prev => ({ 
+                ...prev, 
+                [photoType]: downloadUrl,
+                serial: extractedSerial || prev.serial,
+                model: extractedModel || prev.model
+            }));
+
+        } catch (err) {
+            console.error("Photo upload failed:", err);
+            showToast.error("Upload failed.");
         }
     };
 
@@ -158,6 +330,49 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         const updatedEquipment = (customer.equipment || []).filter(e => e.id !== assetId);
         await db.collection('customers').doc(customer.id).update({ equipment: updatedEquipment });
         dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, equipment: updatedEquipment } });
+    };
+
+    const handleSendReport = async () => {
+        const reportUrl = `${getBaseUrl()}/#/report/equipment/${customer.id}${selectedReportAssets.length > 0 ? `?units=${selectedReportAssets.join(',')}` : ''}`;
+        
+        let targetEmail = customer.email;
+        if (!targetEmail) {
+            const promptedEmail = window.prompt("Customer has no email on file. Enter email address to deliver report to:");
+            if (!promptedEmail) return;
+            targetEmail = promptedEmail;
+        } else {
+            const confirmEmail = window.confirm(`Send equipment health report to ${targetEmail}?`);
+            if (!confirmEmail) return;
+        }
+
+        try {
+            await sendEmail(state.currentOrganization, {
+                to: targetEmail,
+                message: {
+                    subject: `Equipment Health Report for ${customer.name}`,
+                    html: `
+                        <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 8px; overflow: hidden;">
+                            <div style="background-color: #0f172a; padding: 20px; text-align: center; color: white;">
+                                <h1 style="margin: 0; font-size: 24px;">Equipment Health Report</h1>
+                            </div>
+                            <div style="padding: 20px; background-color: #fafafa;">
+                                <p style="font-size: 16px;">Hello <strong>${customer.name}</strong>,</p>
+                                <p style="font-size: 16px; line-height: 1.5;">A new equipment health report has been generated for your property. Please click the secure link below to view your full documentation, including condition assessments, asset data, and corresponding photos.</p>
+                                <div style="text-align: center; margin: 40px 0;">
+                                    <a href="${reportUrl}" style="background-color: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">View Secure Report</a>
+                                </div>
+                                <hr style="border: 0; border-top: 1px solid #eee; margin-top: 40px;" />
+                                <p style="font-size: 12px; color: #999; margin-top: 20px; text-align: center;">This report was securely generated by TekTrakker on behalf of ${state.currentOrganization?.name || 'your service provider'}.</p>
+                            </div>
+                        </div>
+                    `
+                }
+            });
+            showToast.success("Report generated and delivered!");
+        } catch (error) {
+            console.error(error);
+            showToast.error("Failed to send report.");
+        }
     };
 
     const handleManualEnroll = async (plan: MembershipPlan) => {
@@ -230,10 +445,10 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             ]);
             setIsEnrolling(false);
             setEnrollSystemCount(1);
-            alert(`Customer enrolled in ${plan.name} for ${enrollSystemCount} systems. Initial invoice created.`);
+            showToast.success(`Enrolled in ${plan.name} for ${enrollSystemCount} systems.`);
         } catch (e) {
             console.error(e);
-            alert("Enrollment failed.");
+            showToast.error("Enrollment failed.");
         } finally {
             setIsProcessingEnrollment(false);
         }
@@ -248,16 +463,16 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                 status: 'Cancelled',
                 endDate: new Date().toISOString() // End immediately
             });
-            alert("Membership cancelled.");
+            showToast.success("Membership cancelled.");
         } catch (e) {
             console.error(e);
-            alert("Failed to cancel membership.");
+            showToast.error("Failed to cancel membership.");
         }
     };
 
     const handleSendInvite = async () => {
         if (!customer.email) {
-            alert("Customer record missing email address.");
+            showToast.warn("Customer record is missing an email address.");
             return;
         }
         
@@ -265,7 +480,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         const org = state.currentOrganization;
         const orgName = org?.name || 'Service Provider';
         const normalizedEmail = customer.email.trim().toLowerCase();
-        const portalLink = `${window.location.origin}/#/register?view=register_user&userType=customer&email=${encodeURIComponent(normalizedEmail)}&name=${encodeURIComponent(customer.name)}&oid=${customer.organizationId}`;
+        const portalLink = `${getBaseUrl()}/#/register?view=register_user&userType=customer&email=${encodeURIComponent(normalizedEmail)}&name=${encodeURIComponent(customer.name)}&oid=${customer.organizationId}`;
         const smtp = org?.smtpConfig;
 
         try {
@@ -288,7 +503,11 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                 preferences: { theme: 'dark' }
             };
 
-            await db.collection('users').doc(normalizedEmail).set(inviteDoc, { merge: true });
+            try {
+                await db.collection('users').doc(normalizedEmail).set(inviteDoc, { merge: true });
+            } catch (err) {
+                console.warn("Could not create stub user invite document due to permissions, but proceeding to send email link:", err);
+            }
             
             // 2. Prepare Email Payload
             const mailPayload = {
@@ -303,9 +522,12 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                             <p style="margin: 30px 0;">
                                 <a href="${portalLink}" style="background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Setup Your Account</a>
                             </p>
-                            <p style="font-size: 12px; color: #666;">If the button above doesn't work, copy and paste this link into your browser:<br/>
-                            <a href="${portalLink}">${portalLink}</a></p>
-                            <p>Please use this email address to register: <strong>${normalizedEmail}</strong></p>
+                            <p style="font-size: 13px; color: #475569;">If the link or button above does not work due to strict email security filters, you can also securely register directly:</p>
+                            <ol style="font-size: 13px; color: #475569; padding-left: 20px;">
+                                <li style="margin-bottom: 4px;">Go to <a href="${getBaseUrl()}/#/register" style="color: #2563eb;">${getBaseUrl()}/#/register</a></li>
+                                <li style="margin-bottom: 4px;">Ensure "Customer" is selected at the top</li>
+                                <li style="margin-bottom: 4px;">Use this email address to create your account: <strong>${normalizedEmail}</strong></li>
+                            </ol>
                             <br/>
                             <p>Thanks,<br/>${orgName}</p>
                         </div>
@@ -317,10 +539,10 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             };
 
             await sendEmail(org, mailPayload);
-            alert(`Invitation sent to ${normalizedEmail}`);
+            showToast.success(`Invitation sent to ${normalizedEmail}`);
         } catch (error) {
             console.error(error);
-            alert("Failed to send invitation.");
+            showToast.error("Failed to send invitation.");
         } finally {
             setIsSendingInvite(false);
         }
@@ -362,7 +584,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
 
     const handleCopyRef = () => {
         navigator.clipboard.writeText(`#CUST-${customer.id}`);
-        alert("Customer Reference Copied! Paste it anywhere to create a smart link.");
+        showToast.success("Customer reference copied!");
     };
 
     const handleShareCustomer = async () => {
@@ -381,11 +603,11 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                 type: 'internal'
             };
             await db.collection('messages').doc(msgObj.id).set(msgObj);
-            alert("Customer record shared successfully!");
+            showToast.warn("Customer record shared successfully!");
             setShareModalOpen(false);
             setShareMessageText('');
         } catch (e) {
-            alert("Failed to share.");
+            showToast.warn("Failed to share.");
         } finally {
             setIsSharing(false);
         }
@@ -461,6 +683,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                         { id: 'equipment', icon: Wrench, label: 'Equipment' },
                         { id: 'history', icon: FileText, label: 'Service History' },
                         { id: 'financials', icon: DollarSign, label: 'Financials' },
+                        { id: 'warranties', icon: ShieldCheck, label: 'Warranties' },
                         { id: 'docs', icon: Image, label: 'Docs & Media' },
                     ].map(tab => (
                         <button
@@ -588,59 +811,77 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                 )}
                             </div>
                             <div className="md:col-span-1">
-                                <div className="bg-gray-200 dark:bg-gray-700 w-full h-40 rounded flex items-center justify-center text-gray-500 text-xs">
-                                    <MapPinIcon className="mr-1"/> Map Preview
+                                <div className="bg-gray-200 dark:bg-gray-700 w-full h-40 rounded flex items-center justify-center text-gray-500 text-xs overflow-hidden border border-gray-300 dark:border-gray-600 mb-4">
+                                    <iframe 
+                                        width="100%" 
+                                        height="100%" 
+                                        className="border-0"
+                                        loading="lazy" 
+                                        allowFullScreen 
+                                        title="Customer Address Map"
+                                        src={`https://maps.google.com/maps?q=${encodeURIComponent(customer.address + ' ' + (customer.city || '') + ' ' + (customer.state || '') + ' ' + (customer.zip || ''))}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                                    ></iframe>
+                                </div>
+                                
+                                <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Site Properties</h4>
+                                        <button title="Add Property" aria-label="Add Property" onClick={() => { setNewLocation({ name: '', address: '', city: '', state: '', zip: '', notes: '' }); setIsAddingLocation(!isAddingLocation); }} className="text-primary-600 hover:text-primary-700">
+                                            <PlusCircle size={18} />
+                                        </button>
+                                    </div>
+                                    
+                                    {isAddingLocation && (
+                                        <div className="space-y-2 mb-4 p-2 bg-white dark:bg-slate-700 rounded border border-slate-200 dark:border-slate-600 shadow-sm animate-in fade-in slide-in-from-top-2">
+                                            <p className="text-xs font-bold text-slate-600 dark:text-slate-300 mb-2">{newLocation.id ? 'Edit Property' : 'Add Property'}</p>
+                                            <Input label="Location Name (e.g. Primary, Warehouse)" value={newLocation.name || ''} onChange={e => setNewLocation({...newLocation, name: e.target.value})} />
+                                            <Input label="Street Address" value={newLocation.address || ''} onChange={e => setNewLocation({...newLocation, address: e.target.value})} />
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <Input label="City" value={newLocation.city || ''} onChange={e => setNewLocation({...newLocation, city: e.target.value})} />
+                                                <Input label="State" value={newLocation.state || ''} onChange={e => setNewLocation({...newLocation, state: e.target.value})} />
+                                            </div>
+                                            <div className="flex justify-end gap-2 mt-2">
+                                                <Button variant="secondary" onClick={() => setIsAddingLocation(false)} className="text-xs py-1.5 px-3 h-auto">Cancel</Button>
+                                                <Button onClick={handleAddLocation} className="text-xs py-1.5 px-3 h-auto">Save Property</Button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2 overflow-y-auto max-h-[30vh] custom-scrollbar pr-1">
+                                        {customer.serviceLocations && customer.serviceLocations.length > 0 ? customer.serviceLocations.map((loc: any) => (
+                                            <div key={loc.id} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded flex justify-between items-start transition-colors hover:border-primary-300">
+                                                <div>
+                                                    <p className="font-bold text-xs text-slate-800 dark:text-slate-100">{loc.name}</p>
+                                                    <p className="text-[10px] text-slate-500 mt-0.5">{loc.address}</p>
+                                                    {loc.city && <p className="text-[10px] text-slate-500">{loc.city}, {loc.state}</p>}
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button title="Edit Property" aria-label="Edit Property" onClick={() => { setNewLocation(loc); setIsAddingLocation(true); }} className="text-slate-400 hover:text-primary-600 transition-colors">
+                                                        <Edit size={14} />
+                                                    </button>
+                                                    <button title="Delete Property" aria-label="Delete Property" onClick={(e) => handleDeleteLocation(loc.id, e)} className="text-slate-400 hover:text-red-500 transition-colors">
+                                                        <TrashIcon size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )) : (
+                                            <p className="text-xs text-slate-500 italic p-2 center text-center">No multiple properties listed. Default address used.</p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     )}
 
                     {activeTab === 'equipment' && (
-                        <div>
+                        <div className="space-y-4">
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-bold text-gray-900 dark:text-white">Assets</h3>
-                                <Button onClick={() => { setIsAddingEquip(true); setNewEquipment({ id: '', brand: '', model: '', serial: '', type: 'Split System' }); }} className="w-auto text-xs py-1">+ Add Equipment</Button>
-                            </div>
-                            
-                            {isAddingEquip && (
-                                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded mb-4 border border-gray-200 dark:border-gray-700">
-                                    <h4 className="text-sm font-bold mb-2 text-gray-700 dark:text-gray-300">{newEquipment.id ? 'Edit Asset' : 'New Asset'}</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                                        <Input label="Brand" value={newEquipment.brand || ''} onChange={e => setNewEquipment({...newEquipment, brand: e.target.value})} />
-                                        <Input label="Model" value={newEquipment.model || ''} onChange={e => setNewEquipment({...newEquipment, model: e.target.value})} />
-                                        <Input label="Serial" value={newEquipment.serial || ''} onChange={e => setNewEquipment({...newEquipment, serial: e.target.value})} />
-                                        <Input label="Location (e.g. Attic)" value={newEquipment.location || ''} onChange={e => setNewEquipment({...newEquipment, location: e.target.value})} />
-                                    </div>
-                                    <div className="flex justify-end gap-2">
-                                        <Button variant="secondary" onClick={() => setIsAddingEquip(false)}>Cancel</Button>
-                                        <Button onClick={handleAddEquipment} disabled={isSavingAsset}>{isSavingAsset ? 'Saving...' : 'Save Asset'}</Button>
-                                    </div>
+                                <h3 className="font-bold text-gray-900 dark:text-white">Assets & Locations</h3>
+                                <div className="flex gap-2">
+                                    <Button onClick={() => window.open(`#/report/equipment/${customer.id}`, '_blank')} className="w-auto text-xs py-1 !bg-indigo-600 hover:!bg-indigo-700 !text-white border-0 flex items-center gap-1"><Printer size={14}/> Equipment Report</Button>
                                 </div>
-                            )}
-
-                            <div className="space-y-3">
-                                {customer.equipment?.map(asset => (
-                                    <div key={asset.id} className="flex justify-between items-center p-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded shadow-sm">
-                                        <div>
-                                            <p className="font-bold text-gray-900 dark:text-white">{asset.brand} {asset.type}</p>
-                                            <p className="text-xs text-gray-500">M: {asset.model} • S: {asset.serial}</p>
-                                            <p className="text-xs text-gray-500">Loc: {asset.location || 'N/A'}</p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => setViewQrAsset(asset)} className="text-blue-500 hover:text-blue-700" title="Generate QR Code">
-                                                <QrCode size={18} />
-                                            </button>
-                                            <button onClick={() => handleEditEquipment(asset)} className="text-slate-500 hover:text-blue-600" title="Edit Asset">
-                                                <Edit size={18} />
-                                            </button>
-                                            <button onClick={() => handleDeleteEquipment(asset.id)} className="text-red-400 hover:text-red-600" title="Delete Asset">
-                                                <TrashIcon size={18}/>
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                                {(!customer.equipment || customer.equipment.length === 0) && <p className="text-center text-gray-500 text-sm py-4">No equipment listed.</p>}
                             </div>
+                            <EquipmentHierarchy customer={customer} />
                         </div>
                     )}
 
@@ -729,30 +970,202 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                             
                             <h4 className="font-bold text-gray-900 dark:text-white mt-6">Billing History</h4>
                             <div className="space-y-2">
-                                {invoices.map((inv, idx) => (
+                                {customerJobs.filter(j => j.invoice).map((job, idx) => {
+                                    const inv = job.invoice as any;
+                                    return (
                                     <div key={idx} className="flex justify-between items-center p-3 bg-white dark:bg-gray-700 border rounded">
                                         <div>
-                                            <p className="font-bold text-sm text-gray-900 dark:text-white">#{inv.id}</p>
-                                            <p className="text-xs text-gray-500">{new Date(inv.jobDate).toLocaleDateString()}</p>
+                                            <p className="font-bold text-sm text-gray-900 dark:text-white">#{inv.id || job.id.slice(0, 8)}</p>
+                                            <p className="text-xs text-gray-500">{new Date(job.createdAt).toLocaleDateString()}</p>
                                         </div>
                                         <div className="text-right">
-                                            <p className="font-bold text-gray-900 dark:text-white">${inv.amount.toFixed(2)}</p>
-                                            <span className={`text-xs font-bold ${inv.status === 'Paid' ? 'text-green-600' : 'text-red-600'}`}>{inv.status}</span>
+                                            <p className="font-bold text-gray-900 dark:text-white">${(inv.total || 0).toFixed(2)}</p>
+                                            <span className={`text-xs font-bold ${inv.status === 'Paid' ? 'text-green-600' : 'text-red-600'}`}>{inv.status || 'Unpaid'}</span>
                                         </div>
                                     </div>
-                                ))}
+                                )})}
                             </div>
                         </div>
+                    )}
+
+                    {activeTab === 'warranties' && (
+                        <div className="space-y-6">
+                            <div>
+                            <div className="flex justify-between items-center mb-4">
+                                <h4 className="font-bold text-gray-900 dark:text-white">Manufacturer Warranty Claims & Docs</h4>
+                                <div className="flex items-center gap-2">
+                                    <Button size="sm" onClick={() => setIsRegisteringWarranty(!isRegisteringWarranty)} className="bg-primary-600 hover:bg-primary-700">
+                                        <PlusCircle size={16} className="mr-1" />
+                                        Register Warranty
+                                    </Button>
+                                    <label className="cursor-pointer bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/40 px-3 py-1.5 rounded text-sm font-medium transition-colors flex items-center gap-2 border border-primary-200 dark:border-primary-800">
+                                        <Upload size={16} />
+                                        Upload Document
+                                        <input type="file" onChange={(e) => handleFileUpload(e, 'warranty')} className="hidden" accept="image/*,application/pdf" />
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            {isRegisteringWarranty && (
+                                <div className="p-4 bg-primary-50 dark:bg-primary-900/10 rounded-lg border border-primary-200 dark:border-primary-800 mb-6 animate-fade-in">
+                                    <h5 className="font-bold text-sm text-primary-800 dark:text-primary-300 mb-3">Register Equipment Warranty</h5>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                        <Select 
+                                            label="Select Equipment" 
+                                            value={warrantyRegistration.equipmentId} 
+                                            onChange={(e) => setWarrantyRegistration({...warrantyRegistration, equipmentId: e.target.value})}
+                                        >
+                                            <option value="">Select equipment...</option>
+                                            {(customer.equipment || []).map(eq => (
+                                                <option key={eq.id} value={eq.id}>{`${eq.brand} ${eq.model} (${eq.serial})`}</option>
+                                            ))}
+                                        </Select>
+                                        <Input 
+                                            type="date"
+                                            label="Installation / Start Date" 
+                                            value={warrantyRegistration.manufacturerStartDate} 
+                                            onChange={(e) => setWarrantyRegistration({...warrantyRegistration, manufacturerStartDate: e.target.value})} 
+                                        />
+                                        <Input 
+                                            type="number"
+                                            label="Duration (Months)" 
+                                            value={warrantyRegistration.manufacturerDurationMonths.toString()} 
+                                            onChange={(e) => setWarrantyRegistration({...warrantyRegistration, manufacturerDurationMonths: parseInt(e.target.value) || 0})} 
+                                        />
+                                        <Input 
+                                            label="Warranty Notes / Terms" 
+                                            value={warrantyRegistration.warrantyNotes} 
+                                            onChange={(e) => setWarrantyRegistration({...warrantyRegistration, warrantyNotes: e.target.value})} 
+                                            placeholder="e.g. Requires annual maintenance"
+                                        />
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                        <Button variant="secondary" onClick={() => setIsRegisteringWarranty(false)} className="text-xs h-8">Cancel</Button>
+                                        <Button onClick={handleSaveWarrantyRegistration} className="text-xs h-8">Save Registration</Button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200 mb-3 border-b pb-2 dark:border-slate-700">Registered Equipment Warranties</h5>
+                                    {customer.equipment?.filter(e => e.warranty?.manufacturerDurationMonths).length === 0 ? (
+                                        <p className="text-xs text-slate-500 italic">No equipment warranties registered.</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {customer.equipment?.filter(e => e.warranty?.manufacturerDurationMonths).map(eq => (
+                                                <div key={eq.id} className="p-3 bg-white dark:bg-slate-800 border rounded text-sm shadow-sm">
+                                                    <p className="font-bold text-slate-900 dark:text-white">{eq.brand} {eq.model}</p>
+                                                    <p className="text-xs text-slate-500 mb-2">S/N: {eq.serial}</p>
+                                                    <div className="flex gap-4 text-xs">
+                                                        <span className="font-medium text-emerald-600">Start: {eq.warranty?.manufacturerStartDate}</span>
+                                                        <span className="font-medium text-blue-600">Duration: {eq.warranty?.manufacturerDurationMonths} mo</span>
+                                                    </div>
+                                                    {eq.warranty?.warrantyNotes && <p className="text-xs text-slate-500 mt-1 italic">{eq.warranty.warrantyNotes}</p>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200 mb-3 border-b pb-2 dark:border-slate-700">Warranty Documents</h5>
+                                    {customerFiles.filter(f => f.metadata?.category === 'warranty').length === 0 ? (
+                                        <p className="text-xs text-slate-500 italic">No warranty documents uploaded.</p>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {customerFiles.filter(f => f.metadata?.category === 'warranty').map(file => (
+                                                <div 
+                                                    key={file.id} 
+                                                    onClick={() => setViewingFile(file)}
+                                                    className="relative group bg-slate-100 dark:bg-slate-700 rounded h-24 overflow-hidden border border-slate-200 dark:border-slate-600 cursor-pointer hover:ring-2 hover:ring-primary-500 transition-all shadow-sm"
+                                                >
+                                                    {file.fileType.includes('image') ? (
+                                                        <img src={file.dataUrl || (file as any).url} alt={file.fileName} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex flex-col items-center justify-center text-[10px] text-slate-500 p-2 text-center">
+                                                            <FileText size={20} className="mb-1 text-slate-400"/>
+                                                            <span className="truncate w-full">{file.fileName}</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="mt-6">
+                                <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200 mb-3 border-b pb-2 dark:border-slate-700">Active Claims</h5>
+                                {customerWarranties.length === 0 ? (
+                                    <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700 text-center text-sm text-gray-500">
+                                        <ShieldCheck size={32} className="mx-auto mb-2 text-gray-300" />
+                                        No manufacturer warranty claims found for this customer.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {customerWarranties.map(claim => {
+                                            const equipment = customer.equipment?.find(e => e.id === claim.equipmentId);
+                                            return (
+                                            <div key={claim.id} className="p-4 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded flex flex-col md:flex-row justify-between gap-4 shadow-sm">
+                                                <div>
+                                                    <p className="font-bold text-sm text-gray-900 dark:text-white">{equipment?.model || 'Unknown Model'}</p>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Mfr: {equipment?.brand || 'Unknown'} | Serial: {equipment?.serial || 'N/A'}</p>
+                                                    {claim.rmaNumber && <p className="text-xs font-mono mt-2 text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 inline-block px-1.5 py-0.5 rounded border border-primary-200 dark:border-primary-800">RMA: {claim.rmaNumber}</p>}
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                                                        claim.status === 'Approved' || claim.status === 'Credit Received' ? 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800' :
+                                                        claim.status === 'Rejected' ? 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800' :
+                                                        'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800'
+                                                    }`}>
+                                                        {claim.status}
+                                                    </span>
+                                                    <p className="font-black text-lg text-gray-900 dark:text-white mt-1">${(claim.amountClaimed || 0).toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                        )})}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
+                                <h4 className="font-bold text-gray-900 dark:text-white mb-4">Warranty Disclaimer Agreements</h4>
+                                <WarrantySection 
+                                    jobs={customerJobs} 
+                                    onAcceptWarranty={async (job) => {
+                                        const inv = job.invoice as any;
+                                        const updatedJob = {
+                                            ...job,
+                                            invoice: {
+                                                ...inv,
+                                                warrantyDisclaimerAgreed: true,
+                                                warrantyAgreedAt: new Date().toISOString(),
+                                                warrantyAgreedBy: 'Staff'
+                                            }
+                                        };
+                                        try {
+                                            await db.collection('jobs').doc(job.id).update({ invoice: updatedJob.invoice });
+                                            dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
+                                            showToast.success("Staff acknowledged warranty disclaimer for customer.");
+                                        } catch (e) {
+                                            showToast.error("Failed to accept warranty.");
+                                            console.error(e);
+                                        }
+                                    }} 
+                                />
+                            </div>
+                        </div>
+                    </div>
                     )}
 
                     {activeTab === 'docs' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 md:grid-cols-4 gap-4">
                             <label className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded flex flex-col items-center justify-center h-32 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-400">
-                                <input type="file" onChange={handleFileUpload} className="hidden" accept="image/*,application/pdf" />
+                                <input type="file" onChange={(e) => handleFileUpload(e, 'document')} className="hidden" accept="image/*,application/pdf" />
                                 <PlusCircle size={24} />
                                 <span className="text-xs mt-2">Upload</span>
                             </label>
-                            {allFiles.map(file => (
+                            {customerFiles.filter(f => f.metadata?.category !== 'warranty').map(file => (
                                 <div 
                                     key={file.id} 
                                     onClick={() => setViewingFile(file)}
@@ -819,7 +1232,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                         <div className="bg-white p-4 rounded border-2 border-black">
                             <QRCodeCanvas 
                                 id="asset-qr-canvas"
-                                value={`${window.location.origin}/#/asset/${customerId}?assetId=${viewQrAsset.id}`} 
+                                value={`${getBaseUrl()}/#/asset/${customerId}?assetId=${viewQrAsset.id}`} 
                                 size={200}
                                 level="H"
                             />

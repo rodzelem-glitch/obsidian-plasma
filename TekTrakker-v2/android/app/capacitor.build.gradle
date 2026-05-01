@@ -9,7 +9,18 @@ android {
 
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
-
+    implementation project(':capacitor-community-bluetooth-le')
+    implementation project(':capacitor-camera')
+    implementation project(':capacitor-filesystem')
+    implementation project(':capacitor-geolocation')
+    implementation project(':capacitor-haptics')
+    implementation project(':capacitor-push-notifications')
+    implementation project(':capacitor-splash-screen')
+    implementation project(':capacitor-status-bar')
+    implementation project(':capgo-capacitor-navigation-bar')
+    implementation project(':capgo-capacitor-printer')
+    implementation project(':capgo-capacitor-social-login')
+    implementation project(':revenuecat-purchases-capacitor')
 
 }
 

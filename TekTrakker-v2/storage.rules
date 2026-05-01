@@ -2,29 +2,129 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Helper: checks if user is authenticated
+    // --- Helper Functions ---
+    
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Helper: checks if user has an organizationId in their token
+    function getFirestoreUser() {
+      let userPath = /databases/(default)/documents/users/$(request.auth.uid);
+      return firestore.exists(userPath) ? firestore.get(userPath).data : null;
+    }
+
     function getOrgId() {
-      return request.auth.token.organizationId;
+      let tokenValue = request.auth.token.get('organizationId', null);
+      let userData = getFirestoreUser();
+      return tokenValue != null ? tokenValue : (userData != null ? userData.organizationId : null);
     }
 
-    // Default: allow users to read/write their own organization's files
-    match /{allPaths=**} {
-      allow read, write: if isSignedIn();
+    function isOrgFranchiseAdmin(orgId) {
+      let orgPath = /databases/(default)/documents/organizations/$(orgId);
+      return firestore.exists(orgPath) && isFranchiseAdmin(firestore.get(orgPath).data.get('franchiseId', 'UNKNOWN'));
     }
 
-    // Specific path for Bids
+    // Identify if the authenticated token belongs to a Tenant organization
+    function isOrgMember(orgId) {
+      return (isSignedIn() && orgId == getOrgId()) || isOrgFranchiseAdmin(orgId);
+    }
+
+    // Is the user an internal staff member? (Exclude external customers from sweeping access)
+    function isInternalStaff() {
+      let tokenRole = request.auth.token.get('role', null);
+      let userData = getFirestoreUser();
+      return isSignedIn() && (
+        (tokenRole != null && tokenRole != 'customer') ||
+        (tokenRole == null && userData != null && userData.role != 'customer')
+      );
+    }
+
+    // Superuser overrides matching firestore.rules parity
+    function isPlatformAdmin() {
+      let tokenRole = request.auth.token.get('role', null);
+      let userData = getFirestoreUser();
+      return isSignedIn() && (
+        (tokenRole != null && (tokenRole == 'master_admin' || tokenRole == 'platform_sales')) ||
+        (tokenRole == null && userData != null && (userData.role == 'master_admin' || userData.role == 'platform_sales'))
+      );
+    }
+
+    function isCustomerOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isFranchiseAdmin(franchiseId) {
+      let tokenRole = request.auth.token.get('role', null);
+      let tokenFranchise = request.auth.token.get('franchiseId', null);
+      let userData = getFirestoreUser();
+      
+      let isRoleMatched = (tokenRole != null && tokenRole == 'franchise_admin') || (userData != null && userData.role == 'franchise_admin');
+      let isFranchiseMatched = (tokenFranchise != null && tokenFranchise == franchiseId) || (userData != null && userData.franchiseId == franchiseId);
+      
+      return isSignedIn() && isRoleMatched && isFranchiseMatched;
+    }
+
+
+    // --- Path Routings ---
+
+    // White-Label Franchise Branding Assets (Logos, Custom Backgrounds)
+    match /franchises/logos/{franchiseId}/{allPaths=**} {
+      // Must be public to render unauthenticated login portals
+      allow read: if true;
+      allow write: if isPlatformAdmin() || isFranchiseAdmin(franchiseId) || franchiseId == 'new';
+    }
+
+    // Public Applicant Portal (Resumes)
+    match /organizations/{orgId}/applicants/{fileName} {
+      allow write: if true; // Anonymous public submissions allowed
+      allow read: if isOrgMember(orgId) || isPlatformAdmin();
+    }
+
+    // Safely isolated User/Employee internal directories
+    match /organizations/{orgId}/users/{userId}/{allPaths=**} {
+      // Employees/Techs can govern their own files natively
+      allow read, write: if (isCustomerOwner(userId) && isInternalStaff()) || isPlatformAdmin() || (isOrgMember(orgId) && isInternalStaff());
+    }
+
+    // Special isolation for Customer-uploaded portal documents
+    match /organizations/{orgId}/customers/{customerId}/{allPaths=**} {
+      allow read, write: if isCustomerOwner(customerId) || (isOrgMember(orgId) && isInternalStaff()) || isPlatformAdmin();
+    }
+
+    // Public Tenant Branding Assets (Logos, Banners)
+    match /organizations/{orgId}/branding/{allPaths=**} {
+      allow read: if true; // Required for landing page public profiles
+      allow write: if (isOrgMember(orgId) && isInternalStaff()) || isPlatformAdmin();
+    }
+
+    // Core Multi-Tenant Organization Isolation
+    match /organizations/{orgId}/{allPaths=**} {
+      // Everyone in the org (including customers reading their invoices) can read org assets
+      allow read: if isOrgMember(orgId) || isPlatformAdmin();
+      // Only internal staff (techs, admins) can indiscriminately write org assets. Customers MUST target their own folder above.
+      allow write: if (isOrgMember(orgId) && isInternalStaff()) || isPlatformAdmin();
+    }
+
+    // Isolated Project Bidding Engine Attachments
     match /bids/{orgId}/{bidId}/{fileName} {
-      allow read, write: if isSignedIn() && (orgId == getOrgId() || request.auth.token.role == 'master_admin');
+      allow read, write: if isOrgMember(orgId) || isPlatformAdmin();
     }
 
-    // AI Chat images
+    // Isolated Virtual Worker & Chat System Logs
     match /ai_chats/{orgId}/{jobId}/{fileName} {
-      allow read, write: if isSignedIn() && (orgId == getOrgId() || request.auth.token.role == 'master_admin');
+      allow read, write: if isOrgMember(orgId) || isPlatformAdmin();
+    }
+
+    // Social Media Attached Assets
+    match /social_media/{orgId}/{allPaths=**} {
+      allow read: if isOrgMember(orgId) || isPlatformAdmin();
+      allow write: if (isOrgMember(orgId) && isInternalStaff()) || isPlatformAdmin();
+    }
+
+    // Global Catch-All Fallback Block
+    match /{allPaths=**} {
+      // Strictly lockdown any unmapped directories strictly to Platform Admins
+      allow read, write: if isPlatformAdmin();
     }
   }
 }

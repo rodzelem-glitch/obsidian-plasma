@@ -1,0 +1,18 @@
+{
+	"appId": "com.tektrakker.app",
+	"appName": "TekTrakker",
+	"webDir": "dist",
+	"plugins": {
+		"StatusBar": {
+			"overlaysWebView": true
+		}
+	},
+	"packageClassList": [
+		"CAPCameraPlugin",
+		"FilesystemPlugin",
+		"GeolocationPlugin",
+		"PushNotificationsPlugin",
+		"StatusBarPlugin",
+		"SafeAreaPlugin"
+	]
+}

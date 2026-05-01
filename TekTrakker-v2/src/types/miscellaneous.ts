@@ -113,6 +113,7 @@ export interface IncidentReport {
     description: string;
     status: 'Open' | 'Resolved';
     resolutionNotes?: string;
+    attachmentUrls?: string[];
     createdAt?: string;
 }
 
@@ -189,7 +190,7 @@ export interface ProposalItem {
     quantity: number;
     price: number;
     total: number;
-    type: 'Labor' | 'Part' | 'Fee';
+    type: 'Labor' | 'Part' | 'Fee' | 'Discount';
     tier: 'Good' | 'Better' | 'Best';
     partCost?: number;
     laborHours?: number;
@@ -232,6 +233,7 @@ export interface Expense {
     projectId?: string | null;
     receiptData?: string | null;
     receiptUrl?: string | null;
+    receiptUrls?: string[];
     createdAt?: string;
     createdById?: string;
     createdByName?: string;
@@ -401,6 +403,8 @@ export interface PlatformSettings {
     excessUserFee: number;
     updatedAt: string;
     platformPaypalClientId?: string;
+    franchiseFeePct?: number;
+    franchiseDiscountCodes?: { code: string; discountPct: number; active: boolean }[];
 }
 
 export interface ProjectNote {
@@ -410,13 +414,92 @@ export interface ProjectNote {
     timestamp: string;
 }
 
+export interface OrganizationTeam {
+    id: string;
+    organizationId: string;
+    name: string;
+    description?: string;
+    memberIds: string[]; // User IDs or Subcontractor IDs
+}
+
+export interface ProjectSubtask {
+    id: string;
+    title: string;
+    status: 'Pending' | 'In Progress' | 'Completed';
+    assignedTo?: string;
+}
+
+export interface TaskComment {
+    id: string;
+    authorId: string;
+    authorName: string;
+    content: string;
+    timestamp: string;
+}
+
 export interface ProjectTask {
     id: string;
     description: string;
-    status: 'Pending' | 'In Progress' | 'Completed';
+    status: 'Pending' | 'In Progress' | 'Blocked' | 'Review' | 'Completed';
     isBenchmark: boolean;
     dueDate?: string;
     assignedTo?: string;
+    subtasks?: ProjectSubtask[];
+    dependencies?: string[]; // Array of Task IDs
+    priority?: 'Low' | 'Medium' | 'High' | 'Critical';
+    swimlane?: string;
+    phaseId?: string;
+    deliverableId?: string;
+    workPackageId?: string;
+    // Scrum/Agile fields
+    storyPoints?: number;           // Fibonacci: 1, 2, 3, 5, 8, 13
+    estimatedHours?: number;        // Time estimate
+    actualHours?: number;           // Time tracking
+    sprintId?: string;              // Which sprint this belongs to
+    labels?: string[];              // Tags: ["plumbing", "urgent", "permit-required"]
+    acceptanceCriteria?: string[];  // Definition of Done checklist
+    comments?: TaskComment[];       // Per-task discussion thread
+    blockedReason?: string;         // If status is Blocked, why
+    completedAt?: string;           // When task was marked done
+    createdAt?: string;             // When task was created
+    order?: number;                 // Position in backlog/board column
+}
+
+export interface WorkPackage {
+    id: string;
+    name: string;
+    description?: string;
+    assignedTeam?: string;
+    tasks: ProjectTask[];
+}
+
+export interface Deliverable {
+    id: string;
+    name: string;
+    description?: string;
+    status: 'Pending' | 'In Progress' | 'Completed';
+    dueDate?: string;
+    workPackages: WorkPackage[];
+}
+
+export interface ProjectPhase {
+    id: string;
+    name: string;
+    description?: string;
+    status: 'Pending' | 'In Progress' | 'Completed';
+    startDate?: string;
+    endDate?: string;
+    deliverables: Deliverable[];
+}
+
+export interface RiskLogEntry {
+    id: string;
+    title: string;
+    description: string;
+    probability: 'Low' | 'Medium' | 'High';
+    impact: 'Low' | 'Medium' | 'High';
+    status: 'Open' | 'Mitigated' | 'Closed';
+    mitigationPlan?: string;
 }
 
 export interface Permit {
@@ -429,6 +512,19 @@ export interface Permit {
     expirationDate?: string;
     notes?: string;
     files?: StoredFile[];
+}
+
+export interface Sprint {
+    id: string;
+    name: string;                    // "Sprint 1", "Week of 4/28"
+    goal?: string;                   // "Complete Building A rough-in"
+    status: 'Planning' | 'Active' | 'Completed' | 'Cancelled';
+    startDate: string;
+    endDate: string;
+    taskIds: string[];               // Tasks committed to this sprint
+    velocity?: number;               // Story points completed
+    retrospectiveNotes?: string;     // What went well / what to improve
+    createdAt?: string;
 }
 
 export interface Project {
@@ -449,9 +545,14 @@ export interface Project {
     tags?: string[];
     createdAt: string;
     notesList?: ProjectNote[];
-    projectTasks?: ProjectTask[];
+    projectTasks?: ProjectTask[]; // Legacy flat tasks or backlog
+    phases?: ProjectPhase[];
+    backlog?: ProjectTask[];
+    sprints?: Sprint[];           // Scrum sprints (time-boxed iterations)
+    riskLog?: RiskLogEntry[];
     permits?: Permit[];
     files?: StoredFile[];
+    defaultView?: 'board' | 'list' | 'wbs';  // User's preferred PM view
 }
 
 export interface Subcontractor {
@@ -501,6 +602,7 @@ export interface BidLineItem {
     unitPrice: number;
     totalPrice: number;
     source?: 'Manual' | 'AI Extracted' | 'Pricebook';
+    aiRecommendedPrice?: number;
 }
 
 export interface BidQuestion {
@@ -508,6 +610,38 @@ export interface BidQuestion {
     question: string;
     answer: string;
     source?: string;
+}
+
+export interface RFPNotice {
+    id: string;
+    organizationId: string; // The GC/Originator
+    title: string;
+    description: string;
+    trade: string; // Legacy/Primary trade
+    trades?: string[]; // Multiple components/trades
+    location: string;
+    budgetRange: string;
+    dueDate: string;
+    status: 'Open' | 'Closed' | 'Partially Awarded' | 'Awarded';
+    awardedTo?: string; // Legacy single awardee
+    awardedToIds?: string[]; // Multiple awardees
+    visibility: 'Public' | 'Private';
+    requirements: string[];
+    files: string[];
+    projectId?: string; // Project to auto-assign winner to
+    createdAt: string;
+}
+
+export interface RFPBidSubmission {
+    id: string;
+    noticeId: string;
+    bidderOrgId: string; // The Subcontractor
+    status: 'Pending' | 'Accepted' | 'Rejected';
+    proposedAmount: number;
+    estimatedDays: number;
+    proposalUrl?: string; // Link to the document or internal reference
+    notes: string;
+    createdAt: string;
 }
 
 export interface BidDoc {
@@ -535,6 +669,8 @@ export interface Bid {
     paymentStatus: 'Pending' | 'Paid';
     totalValue?: number;
     submittedDate?: string;
+    projectId?: string;
+    noticeId?: string;
     createdAt: string;
 }
 

@@ -1,0 +1,19 @@
+User-agent: *
+Allow: /
+Allow: /site/*
+Allow: /book
+Allow: /careers/*
+Disallow: /admin/
+Disallow: /master/
+Disallow: /portal/
+Disallow: /briefing
+Disallow: /timelog
+Disallow: /messages
+Disallow: /payments
+Disallow: /proposal
+
+# Block AI bots from scraping internal API patterns if exposed
+User-agent: GPTBot
+Disallow: /admin/
+
+Sitemap: https://tektrakker.com/sitemap.xml

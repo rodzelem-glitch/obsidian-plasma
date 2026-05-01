@@ -1,10 +1,14 @@
+import showToast from "lib/toast";
 
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
-import { Bot, Send, Mic, MicOff, Volume2, VolumeX, PhoneCall, Loader2, Zap } from 'lucide-react';
+import { Bot, Send, Mic, MicOff, Volume2, VolumeX, PhoneCall, Loader2, Zap, Save } from 'lucide-react';
 import { Job } from '../../../types';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useAppContext } from '../../../context/AppContext';
+import { db } from '../../../lib/firebase';
+import { toast } from 'react-toastify';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -20,7 +24,7 @@ interface LiveAssistModalProps {
 
 const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobContext, job }) => {
     const [messages, setMessages] = useState<Message[]>([
-        { role: 'assistant', content: 'Master Tech Voice Engine active. How can I help you with this repair?' }
+        { role: 'assistant', content: 'Hi, I\'m your assistant. How can I help?' }
     ]);
     const [input, setInput] = useState('');
     const [isThinking, setIsThinking] = useState(false);
@@ -30,7 +34,42 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
     const scrollRef = useRef<HTMLDivElement>(null);
     const recognitionRef = useRef<any>(null);
 
-    const context = jobContext || (job ? `${job.tasks?.join(', ')} for ${job.customerName}. Unit: ${job.hvacBrand || 'Unknown'}` : 'General diagnostics');
+    const { state } = useAppContext();
+    const technicianName = state.currentUser ? `${state.currentUser.firstName} ${state.currentUser.lastName}` : (job?.assignedTechnicianName || 'Technician');
+    const context = jobContext || (job ? `Job for customer ${job.customerName}. Talking to technician: ${technicianName}. Unit: ${job.hvacBrand || 'Unknown'}` : `General diagnostics. Talking to technician: ${technicianName}`);
+
+    const messagesRef = useRef(messages);
+    useEffect(() => {
+        messagesRef.current = messages;
+    }, [messages]);
+
+    const saveTranscriptToJob = async () => {
+        if (!job || !state.currentOrganization?.id || messages.length <= 1) return;
+        try {
+            const transcript = messages.map(m => `${m.role === 'assistant' ? 'AI' : technicianName}: ${m.content}`).join('\n');
+            const newNote = {
+                id: Date.now().toString(),
+                text: `[AI Voice Assistant Log]\n\n${transcript}`,
+                timestamp: new Date().toISOString(),
+                authorName: state.currentUser ? `${state.currentUser.firstName} ${state.currentUser.lastName}` : 'System'
+            };
+            
+            const jobRef = db.collection('jobs').doc(job.id);
+            const jobSnap = await jobRef.get();
+            if (jobSnap.exists) {
+                const jobData = jobSnap.data() as Job;
+                const existingNotes = jobData.notes || [];
+                await jobRef.update({
+                    notes: [...existingNotes, newNote],
+                    updatedAt: new Date().toISOString()
+                });
+                toast.success("Voice transcript saved to job notes!");
+            }
+        } catch (e) {
+            console.error("Failed to save transcript:", e);
+            toast.error("Failed to save transcript to job.");
+        }
+    };
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -47,15 +86,32 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
         
         // Find a female voice
         const voices = window.speechSynthesis.getVoices();
-        // Priorities: Google US English Female -> Microsoft Zira -> Any Female -> First available
-        const femaleVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Zira') || v.name.includes('Female'));
+        // Priorities: Natural/Premium voices -> Google US -> Fallback
+        const premiumVoice = voices.find(v => 
+            v.name.includes('Natural') || 
+            v.name.includes('Premium') || 
+            v.name.includes('Samantha') || 
+            v.name.includes('Google US English')
+        );
         
-        if (femaleVoice) {
-            utterance.voice = femaleVoice;
+        if (premiumVoice) {
+            utterance.voice = premiumVoice;
         }
 
-        utterance.onstart = () => setIsSpeaking(true);
-        utterance.onend = () => setIsSpeaking(false);
+        utterance.onstart = () => {
+            setIsSpeaking(true);
+            // Pause microphone while the AI is talking to avoid echo
+            if (recognitionRef.current) {
+                try { recognitionRef.current.stop(); } catch (e) { console.error(e); }
+            }
+        };
+        utterance.onend = () => {
+            setIsSpeaking(false);
+            // Resume listening if continuous mode is still toggled on
+            if (isVoiceActive && recognitionRef.current) {
+                try { recognitionRef.current.start(); } catch (e) { console.error(e); }
+            }
+        };
         utterance.rate = 1.0;
         utterance.pitch = 1.0;
         window.speechSynthesis.speak(utterance);
@@ -80,12 +136,12 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
             const functions = getFunctions();
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             
-            // Using gemini-3-pro-preview for master-level tech advice
+            // Using gemini-3.1-pro-preview for master-level tech advice
             const result = await callGeminiAI({ 
                 prompt: userMsg,
                 modelName: "gemini-3.1-pro-preview",
                 config: {
-                    systemInstruction: `You are TekTrakker Voice Supervisor, a master field technician coach. Context: ${context}. Your advice will be read aloud to a technician whose hands are busy. Be extremely technical but concise (max 2-3 sentences). Focus on safety and troubleshooting steps.`
+                    systemInstruction: `You are TekTrakker Voice Supervisor, a master field technician coach. Context: ${context}. Address the technician completely naturally by their name (${technicianName}). Your advice will be read aloud over a two-way radio to answers questions. You MUST act like a senior tech advisor. Be highly technical, but keep your responses EXTREMELY short and punchy (1-2 sentences maximum). Give direct instructions or troubleshooting steps without any fluff. E.g. "Check the secondary voltage. If it's zero, trace back to the transformer."`
                 }
             });
 
@@ -114,7 +170,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
         }
 
         if (!('webkitSpeechRecognition' in window)) {
-            alert("Voice recognition is not supported in this browser.");
+            showToast.warn("Voice recognition is not supported in this browser.");
             return;
         }
 
@@ -122,15 +178,20 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
         const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
         const recognition = new SpeechRecognition();
         
-        recognition.continuous = false;
+        recognition.continuous = true;
         recognition.interimResults = false;
         recognition.lang = 'en-US';
 
         recognition.onstart = () => setIsVoiceActive(true);
-        recognition.onend = () => setIsVoiceActive(false);
+        recognition.onend = () => {
+            // Keep it continuous unless explicitly toggled off
+            if (isVoiceActive && !isSpeaking) {
+                try { recognition.start(); } catch (e) { console.error(e); }
+            }
+        };
         
         recognition.onresult = (event: any) => {
-            const transcript = event.results[0][0].transcript;
+            const transcript = event.results[event.results.length - 1][0].transcript;
             if (transcript) {
                 handleSend(transcript);
             }
@@ -138,20 +199,33 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
 
         recognition.onerror = (event: any) => {
             console.error("Speech error:", event.error);
-            setIsVoiceActive(false);
+            if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                setIsVoiceActive(false);
+            }
         };
 
         recognitionRef.current = recognition;
         recognition.start();
     };
 
-    // Cleanup speech on close
+    // Cleanup speech and Auto-Save Temporary Audio Log on close
     useEffect(() => {
         return () => {
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             if (recognitionRef.current) recognitionRef.current.stop();
+
+            if (messagesRef.current.length > 2 && state.currentOrganization?.id) {
+                const finalTranscript = messagesRef.current.map(m => `${m.role === 'assistant' ? 'AI' : technicianName}: ${m.content}`).join('\n');
+                db.collection('organizations').doc(state.currentOrganization.id).collection('aiVoiceLogs').add({
+                    jobId: job?.id || null,
+                    jobName: job?.customerName || 'General Request',
+                    technicianName: technicianName,
+                    transcript: finalTranscript,
+                    createdAt: new Date().toISOString()
+                }).catch(e => console.error("Silent auto-save failed:", e));
+            }
         };
-    }, []);
+    }, [state.currentOrganization?.id, job, technicianName]);
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Live AI Supervisor" size="lg">
@@ -168,6 +242,15 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                         </p>
                     </div>
                     <div className="flex gap-2">
+                        {job && messages.length > 1 && (
+                            <button 
+                                onClick={saveTranscriptToJob}
+                                title="Save Transcript to Job Notes"
+                                className="w-12 h-12 rounded-full flex items-center justify-center transition-all bg-white/20 hover:bg-white/30"
+                            >
+                                <Save size={20} />
+                            </button>
+                        )}
                          <button 
                             onClick={toggleVoice}
                             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${

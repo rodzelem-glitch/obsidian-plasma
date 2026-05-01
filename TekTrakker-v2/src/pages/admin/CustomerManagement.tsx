@@ -71,10 +71,7 @@ const CustomerManagement: React.FC = () => {
             )}
 
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Customer Database</h2>
-                    <p className="text-gray-600 dark:text-gray-400">View and manage client profiles.</p>
-                </div>
+                
                 <Button onClick={() => setIsCreating(!isCreating)} className="w-auto flex items-center gap-2">
                     <PlusCircle size={18} /> Quick Add
                 </Button>

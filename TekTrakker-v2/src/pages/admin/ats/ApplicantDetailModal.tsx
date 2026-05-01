@@ -4,7 +4,7 @@ import Modal from 'components/ui/Modal';
 import Select from 'components/ui/Select';
 import Textarea from 'components/ui/Textarea';
 import Button from 'components/ui/Button';
-import { Trash2, XCircle, Mail, UserPlus } from 'lucide-react';
+import { Trash2, XCircle, Mail, UserPlus, FileText, Download } from 'lucide-react';
 import type { Applicant } from 'types';
 
 interface ApplicantDetailModalProps {
@@ -28,13 +28,27 @@ const ApplicantDetailModal: React.FC<ApplicantDetailModalProps> = ({
         <Modal isOpen={isOpen} onClose={onClose} title="Applicant Details" size="lg">
             <div className="space-y-6">
                 <div className="flex justify-between items-start">
-                    <div>
+                    <div className="flex-1">
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{applicant.name || `${applicant.firstName} ${applicant.lastName}`}</h2>
                         <p className="text-primary-600 dark:text-primary-400 font-medium">{applicant.position}</p>
                         <div className="text-sm text-gray-600 dark:text-gray-400 mt-1 flex gap-4">
                             <a href={`mailto:${applicant.email}`} className="hover:underline">{applicant.email}</a>
                             <a href={`tel:${applicant.phone}`} className="hover:underline">{applicant.phone}</a>
                         </div>
+                        
+                        {applicant.resumeDataUrl && (
+                            <a 
+                                href={applicant.resumeDataUrl} 
+                                download={applicant.resumeFileName || `${applicant.firstName || 'Applicant'}_Resume`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                            >
+                                <FileText size={16} />
+                                <span className="truncate max-w-[200px]">{applicant.resumeFileName || 'View Uploaded Resume'}</span>
+                                <Download size={16} className="ml-1" />
+                            </a>
+                        )}
                     </div>
                     <Select 
                         value={applicant.status} 

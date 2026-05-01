@@ -23,10 +23,10 @@ const AIInsights: React.FC<Props> = ({ equipment, logs }) => {
       
       Provide a concise 3-bullet point prediction for potential future failures and maintenance recommendations.`;
 
-      // Using gemini-2.5-pro-preview for technical reasoning
+      // Using gemini-3.1-pro-preview for technical reasoning
       const result = await callGeminiAI({ 
         prompt,
-        modelName: "gemini-2.5-pro"
+        modelName: "gemini-3.1-pro-preview"
       });
 
       const data = result.data as { text: string };

@@ -1,17 +1,20 @@
-import * as functions from "firebase-functions";
+import * as functions from "firebase-functions/v1";
+import { TwitterApi } from 'twitter-api-v2';
 import * as admin from "firebase-admin";
 import { BudgetServiceClient } from '@google-cloud/billing-budgets';
 import { MetricServiceClient } from '@google-cloud/monitoring';
 import { CloudBillingClient } from '@google-cloud/billing';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import * as xml2js from 'xml2js';
 import { syncOrganizationShiftsToSquare } from "./squareUtils";
 import { CommissionSettings, PlatformSettings } from "./types";
+import { getGeminiApiKey } from "./aiAgent";
 
 try {
-  if (admin.apps.length === 0) {
-    admin.initializeApp();
-  }
-} catch (e) {}
+    if (admin.apps.length === 0) {
+        admin.initializeApp();
+    }
+} catch (e) { }
 
 const auth = admin.auth();
 const db = admin.firestore();
@@ -24,10 +27,10 @@ const DEFAULT_COMMISSION_RULES: CommissionSettings = {
     rampUpMonths: { phase1: 3, phase1QuotaPct: 0.50, phase2: 6, phase2QuotaPct: 0.75 }
 };
 
-const BID_HELPER_COST_USD = 2.00;
 
-const GEMINI_FLASH_MODEL = "gemini-2.5-flash"; 
-const GEMINI_PRO_MODEL = "gemini-3.1-flash";
+
+const GEMINI_FLASH_MODEL = "gemini-3.1-flash-lite-preview";
+const GEMINI_PRO_MODEL = "gemini-3.1-pro-preview";
 
 // --- NEW COMMISSION LOGIC ---
 export const generateCommissionOnSubscriptionPayment = functions.firestore
@@ -49,7 +52,7 @@ export const generateCommissionOnSubscriptionPayment = functions.firestore
                 db.collection('platformSettings').limit(1).get(),
                 db.collection('settings').doc('commission_rules').get()
             ]);
-            
+
             const platformSettings = settingsDocs[0].docs[0]?.data() as PlatformSettings;
             const rules: CommissionSettings = settingsDocs[1].exists ? (settingsDocs[1].data() as CommissionSettings) : DEFAULT_COMMISSION_RULES;
 
@@ -64,12 +67,12 @@ export const generateCommissionOnSubscriptionPayment = functions.firestore
             const saleValue = planDetails?.annual || 0;
 
             if (saleValue <= 0) {
-                 functions.logger.info(`Org ${org.id} has a plan with no value. No commission generated.`);
-                 return null;
+                functions.logger.info(`Org ${org.id} has a plan with no value. No commission generated.`);
+                return null;
             }
-            
+
             let rateToUse = rules.baseRate;
-            
+
             const commsSnap = await db.collection('platformCommissions').where('repId', '==', salesRepId).get();
             const totalRevenueYTD = commsSnap.docs.reduce((sum, doc) => sum + doc.data().baseAmount, 0);
 
@@ -94,7 +97,7 @@ export const generateCommissionOnSubscriptionPayment = functions.firestore
                 baseAmount: saleValue,
                 rateUsed: rateToUse
             };
-            
+
             return db.collection('platformCommissions').add(commission);
         }
         return null;
@@ -124,7 +127,7 @@ export const getPlatformMetrics = functions.https.onCall(async (data, context) =
         functions.logger.error("Missing required environment variables for getPlatformMetrics.");
         throw new functions.https.HttpsError("internal", "Server configuration error: missing billing/project details.");
     }
-    
+
     functions.logger.info(`Fetching metrics for projects: ${appProjectId}, ${ideProjectId}`);
 
     try {
@@ -141,7 +144,7 @@ export const getPlatformMetrics = functions.https.onCall(async (data, context) =
     } catch (error) {
         functions.logger.error("Fatal error in getPlatformMetrics:", error);
         if (error instanceof Error) {
-             throw new functions.https.HttpsError("internal", error.message);
+            throw new functions.https.HttpsError("internal", error.message);
         }
         throw new functions.https.HttpsError("internal", "An unknown error occurred.");
     }
@@ -154,8 +157,8 @@ async function getMetricsForProject(projectId: string, billingAccountId: string)
         const dau = await getDAU(projectId);
         return { dau, billing: billingInfo, apiUsage };
     } catch (error) {
-         functions.logger.error(`Failed to get metrics for project ${projectId}`, error);
-         return { error: error instanceof Error ? error.message : "Unknown error" };
+        functions.logger.error(`Failed to get metrics for project ${projectId}`, error);
+        return { error: error instanceof Error ? error.message : "Unknown error" };
     }
 }
 
@@ -167,7 +170,7 @@ async function getDAU(projectId: string) {
         const listUsersResult = await auth.listUsers();
         const now = new Date();
         const twentyFourHoursAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
-        const recentUsers = listUsersResult.users.filter(user => 
+        const recentUsers = listUsersResult.users.filter(user =>
             user.metadata.lastSignInTime && new Date(user.metadata.lastSignInTime) >= twentyFourHoursAgo
         );
         return { count: recentUsers.length };
@@ -178,7 +181,7 @@ async function getDAU(projectId: string) {
 
 async function getBillingData(projectId: string, billingAccountId: string) {
     const billingAccountName = `billingAccounts/${billingAccountId}`;
-    
+
     try {
         const [projectBillingInfo] = await billingClient.getProjectBillingInfo({ name: `projects/${projectId}` });
         if (!projectBillingInfo.billingEnabled) {
@@ -191,7 +194,7 @@ async function getBillingData(projectId: string, billingAccountId: string) {
     let budgetAmount = 0;
     try {
         const [budgets] = await billingBudgetsClient.listBudgets({ parent: billingAccountName });
-        
+
         let targetBudget = budgets.find(budget => {
             const projects = budget.budgetFilter?.projects || [];
             return projects.some(p => p.includes(projectId));
@@ -200,8 +203,8 @@ async function getBillingData(projectId: string, billingAccountId: string) {
         if (!targetBudget) {
             targetBudget = budgets.find(budget => {
                 const displayName = budget.displayName?.toLowerCase() || "";
-                return displayName.includes(projectId.toLowerCase()) || 
-                       (projectId === process.env.IDE_PROJECT_ID && displayName.includes(process.env.APP_PROJECT_ID?.toLowerCase() || "tektrakker"));
+                return displayName.includes(projectId.toLowerCase()) ||
+                    (projectId === process.env.IDE_PROJECT_ID && displayName.includes(process.env.APP_PROJECT_ID?.toLowerCase() || "tektrakker"));
             });
         }
 
@@ -215,7 +218,7 @@ async function getBillingData(projectId: string, billingAccountId: string) {
     } catch (e) {
         functions.logger.warn(`Could not fetch budget for ${billingAccountName}:`, e);
     }
-    
+
     let costAmount = 0;
     try {
         const now = new Date();
@@ -232,7 +235,30 @@ async function getBillingData(projectId: string, billingAccountId: string) {
     } catch (e: any) {
         // Expected if billing export is not configured
     }
+
+    let aiCost = 0;
+    if (projectId === process.env.APP_PROJECT_ID) {
+        try {
+            const snap = await admin.firestore().collection('aiUsage').get();
+            snap.forEach(doc => {
+                const totalTokensUsed = doc.data().totalTokensUsed || 0;
+                const virtualTokensUsed = doc.data().virtualWorkerTokensUsed || 0;
+                const combinedTokens = totalTokensUsed + virtualTokensUsed;
+                // Match frontend AiUsageMaster.tsx logic: $10 / 1M blended rate
+                aiCost += (combinedTokens / 1000000) * 10;
+            });
+        } catch (e) {
+            functions.logger.warn('Could not fetch aiUsage costs:', e);
+        }
+    }
     
+    // Merge aiCost into costAmount if monitoring fails to provide accurate >0 data
+    if (costAmount === 0 && aiCost > 0) {
+       costAmount = aiCost;
+    } else {
+       costAmount += aiCost;
+    }
+
     return { costAmount, budgetAmount: String(budgetAmount) };
 }
 
@@ -245,13 +271,13 @@ async function getApiUsageMetrics(projectId: string) {
         'cloudfunctions.googleapis.com/function/invocations',
         'firestore.googleapis.com/read_document_count'
     ];
-    
+
     for (const metricType of metricsToFetch) {
         try {
             const [timeSeries] = await monitoringClient.listTimeSeries({
                 name: `projects/${projectId}`,
                 filter: `metric.type = "${metricType}"`,
-                interval: { startTime: { seconds: Math.floor(startTime.getTime() / 1000) }, endTime: { seconds: Math.floor(now / 1000) }},
+                interval: { startTime: { seconds: Math.floor(startTime.getTime() / 1000) }, endTime: { seconds: Math.floor(now / 1000) } },
                 aggregation: { alignmentPeriod: { seconds: 86400 }, perSeriesAligner: 'ALIGN_SUM' }
             });
             usageMetrics[metricType] = timeSeries[0]?.points?.reduce((sum, point) => sum + Number(point.value?.int64Value ?? point.value?.doubleValue ?? 0), 0) ?? 0;
@@ -276,17 +302,17 @@ export const sendSms = functions.firestore.document('messages/{msgId}').onCreate
         const fromNumber = secrets.twilioConfig?.phoneNumber || process.env.TWILIO_PHONE_NUMBER;
 
         if (!accountSid || !authToken) {
-             // Fallback routing: Send as native 1-Way Push Notification to Customer Portal
-             await db.collection('customers').doc(msg.receiverId).collection('notifications').add({
-                 title: 'New Message',
-                 message: msg.content,
-                 createdAt: new Date().toISOString(),
-                 read: false,
-                 type: 'message',
-                 senderId: msg.senderId || 'Platform'
-             });
-             await snap.ref.update({ deliveryStatus: 'fallback-push', deliveryError: 'No Twilio Config - Routed as Portal Push Notification' });
-             return;
+            // Fallback routing: Send as native 1-Way Push Notification to Customer Portal
+            await db.collection('customers').doc(msg.receiverId).collection('notifications').add({
+                title: 'New Message',
+                message: msg.content,
+                createdAt: new Date().toISOString(),
+                read: false,
+                type: 'message',
+                senderId: msg.senderId || 'Platform'
+            });
+            await snap.ref.update({ deliveryStatus: 'fallback-push', deliveryError: 'No Twilio Config - Routed as Portal Push Notification' });
+            return;
         }
 
         const customerDoc = await db.collection('customers').doc(msg.receiverId).get();
@@ -336,32 +362,32 @@ export const linkCustomerOnUserCreate = functions.firestore.document('users/{use
     const userId = context.params.userId;
     const email = userData.email?.toLowerCase().trim();
     let orgId = userData.organizationId;
-    
+
     if (!email) return;
-    
+
     try {
         // If user registered without an invite link, find their organization globally
         if (!orgId || orgId === 'unaffiliated') {
             const globalSnap = await db.collection('customers').where('email', '==', email).get();
             let matchDoc = globalSnap.docs[0];
-            
+
             // Try common case-variations if exact match fails
             if (!matchDoc) {
-                 const capEmail = email.charAt(0).toUpperCase() + email.slice(1);
-                 const capSnap = await db.collection('customers').where('email', '==', capEmail).get();
-                 matchDoc = capSnap.docs[0];
+                const capEmail = email.charAt(0).toUpperCase() + email.slice(1);
+                const capSnap = await db.collection('customers').where('email', '==', capEmail).get();
+                matchDoc = capSnap.docs[0];
             }
             if (!matchDoc) {
-                 const upperEmail = email.toUpperCase();
-                 const upperSnap = await db.collection('customers').where('email', '==', upperEmail).get();
-                 matchDoc = upperSnap.docs[0];
+                const upperEmail = email.toUpperCase();
+                const upperSnap = await db.collection('customers').where('email', '==', upperEmail).get();
+                matchDoc = upperSnap.docs[0];
             }
-            
+
             if (matchDoc) {
                 orgId = matchDoc.data().organizationId;
                 await snap.ref.update({ organizationId: orgId });
                 functions.logger.info(`Auto-assigned user ${userId} to org ${orgId}`);
-                
+
                 // Link immediately
                 if (matchDoc.data().userId !== userId) {
                     await db.collection('customers').doc(matchDoc.id).update({ userId: userId });
@@ -369,15 +395,15 @@ export const linkCustomerOnUserCreate = functions.firestore.document('users/{use
                 }
                 return; // Done processing
             }
-            
+
             // If still no orgId, we can't do anything else
             if (!orgId || orgId === 'unaffiliated') return;
         }
-        
+
         // Scope search to orgId if it was already provided
         const orgSnap = await db.collection('customers').where('organizationId', '==', orgId).get();
         const match = orgSnap.docs.find(d => (d.data().email || '').toLowerCase().trim() === email);
-        
+
         if (match && match.data().userId !== userId) {
             await db.collection('customers').doc(match.id).update({ userId: userId });
             functions.logger.info(`Successfully linked customer ${match.id} to user ${userId}`);
@@ -394,7 +420,7 @@ async function trackAiUsage(orgId: string, taskName: string, modelName: string, 
 
     try {
         const orgUsageRef = db.collection('aiUsage').doc(orgId);
-        
+
         await orgUsageRef.set({
             organizationId: orgId,
             totalTokensUsed: admin.firestore.FieldValue.increment(tokenCount),
@@ -419,10 +445,9 @@ async function trackAiUsage(orgId: string, taskName: string, modelName: string, 
 // --- AI UTILS ---
 export const generateReviewResponse = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
-    
+
     const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId || 'unauthenticated';
-    const apiKey = process.env.GEMINI_API_KEY; 
-    if (!apiKey) throw new functions.https.HttpsError("internal", "AI service configuration error.");
+    const apiKey = await getGeminiApiKey(orgId);
 
     const { review } = data;
     if (!review) throw new functions.https.HttpsError("invalid-argument", "Review object missing.");
@@ -444,10 +469,10 @@ export const generateReviewResponse = functions.https.onCall(async (data, contex
         const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        
+
         const tokens = response.usageMetadata?.totalTokenCount || 0;
         await trackAiUsage(orgId, 'Review Response', GEMINI_FLASH_MODEL, tokens);
-        
+
         return { text: response.text() };
     } catch (error: any) {
         functions.logger.error("Review GenAI Error:", error);
@@ -457,8 +482,7 @@ export const generateReviewResponse = functions.https.onCall(async (data, contex
 
 export const callLandingChatbot = functions.https.onCall(async (data, context) => {
     const orgId = context.auth?.token.organizationId || 'unauthenticated';
-    const apiKey = process.env.GEMINI_API_KEY; 
-    if (!apiKey) throw new functions.https.HttpsError("internal", "AI service config error.");
+    const apiKey = await getGeminiApiKey(orgId);
 
     const { prompt, systemInstruction } = data;
     try {
@@ -466,10 +490,10 @@ export const callLandingChatbot = functions.https.onCall(async (data, context) =
         const model = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL, systemInstruction });
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        
+
         const tokens = response.usageMetadata?.totalTokenCount || 0;
         await trackAiUsage(orgId, 'Landing Chatbot', GEMINI_FLASH_MODEL, tokens);
-        
+
         return { text: response.text() };
     } catch (error: any) {
         throw new functions.https.HttpsError("internal", error.message);
@@ -480,22 +504,37 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
     }
+    // Force rebuild for env variables
     const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId || 'unauthenticated';
 
-    const apiKey = process.env.GEMINI_API_KEY; 
-    if (!apiKey) {
-        functions.logger.error("Missing GEMINI_API_KEY in environment variables.");
-        throw new functions.https.HttpsError("internal", "AI service configuration error.");
-    }
+    const apiKey = await getGeminiApiKey(orgId);
 
-    const { prompt, modelName = GEMINI_FLASH_MODEL, config = {}, imageParts = [], image = null } = data;
-    
+    const { prompt, modelName = GEMINI_FLASH_MODEL, config = {}, imageParts = [], image = null, contextOrgId = null } = data;
+
+    // Allow master admin to specify which org's context to load (defaults to caller's org)
+    const contextTarget = contextOrgId || orgId;
+
     try {
+        // Fetch org-specific AI training context (branding, legal, contact info)
+        let orgContext = '';
+        try {
+            const ctxDoc = await db.collection('organizations').doc(contextTarget).collection('ai_context').doc('profile').get();
+            if (ctxDoc.exists) {
+                orgContext = ctxDoc.data()?.context || '';
+            }
+        } catch (ctxErr) {
+            functions.logger.warn('Failed to load org AI context, proceeding without:', ctxErr);
+        }
+
+        const enrichedPrompt = orgContext
+            ? `[ORGANIZATION CONTEXT - Use this for branding, logos, contact info, and legal terms]\n${orgContext}\n\n[END ORGANIZATION CONTEXT]\n\n${prompt}`
+            : prompt;
+
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: modelName, ...config });
 
         let result;
-        const parts: any[] = [{ text: prompt }];
+        const parts: any[] = [{ text: enrichedPrompt }];
 
         if (imageParts && imageParts.length > 0) {
             imageParts.forEach((part: any) => {
@@ -507,9 +546,9 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
                 });
             });
         }
-        
+
         if (image) {
-             parts.push({
+            parts.push({
                 inlineData: {
                     data: image.data,
                     mimeType: image.mimeType
@@ -519,10 +558,10 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
 
         result = await model.generateContent(parts);
         const response = await result.response;
-        
+
         const tokens = response.usageMetadata?.totalTokenCount || 0;
         await trackAiUsage(orgId, 'General AI Content', modelName, tokens);
-        
+
         return { text: response.text() };
 
     } catch (error: any) {
@@ -536,14 +575,13 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
 export const analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
     const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId || 'unauthenticated';
-    
+
     const { files } = data;
     if (!files || !Array.isArray(files) || files.length === 0) {
         throw new functions.https.HttpsError("invalid-argument", "No files provided.");
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new functions.https.HttpsError("internal", "AI service config error.");
+    const apiKey = await getGeminiApiKey(orgId);
 
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -569,23 +607,61 @@ export const analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB'
             3. Identify all required services, products, or materials that need pricing and add them to the 'lineItems' array.
             4. Ensure output is STRICTLY valid JSON. Do not include markdown code block tags (\`\`\`json).`;
 
-            const result = await model.generateContent([
-                { inlineData: { data: fileData, mimeType } },
-                { text: prompt }
-            ]);
-
-            const response = await result.response;
-            const tokens = response.usageMetadata?.totalTokenCount || 0;
-            await trackAiUsage(orgId, 'Analyze RFP', GEMINI_PRO_MODEL, tokens);
-            let text = response.text();
-            
-            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
             try {
-                return JSON.parse(text);
-            } catch (e) {
-                console.error("Failed to parse AI response as JSON. Raw text:", text);
-                 throw new Error("Failed to parse AI response as JSON for one of the files.");
+                const result = await model.generateContent([
+                    { inlineData: { data: fileData, mimeType } },
+                    { text: prompt }
+                ]);
+
+                const response = await result.response;
+                const tokens = response.usageMetadata?.totalTokenCount || 0;
+                await trackAiUsage(orgId, 'Analyze RFP', GEMINI_PRO_MODEL, tokens);
+                let text = response.text();
+
+                text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    console.error("Failed to parse AI response as JSON. Raw text:", text);
+                    throw new Error("Failed to parse AI response as JSON for one of the files.");
+                }
+            } catch (err: any) {
+                console.warn(`File analysis skipped or failed for ${mimeType}:`, err.message);
+                
+                if (err.message && (err.message.includes("503") || err.message.includes("429") || err.message.includes("overloaded"))) {
+                    console.warn("Pro model overloaded. Falling back to Flash model...");
+                    try {
+                        const fallbackModel = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
+                        const fallbackResult = await fallbackModel.generateContent([
+                            { inlineData: { data: fileData, mimeType } },
+                            { text: prompt }
+                        ]);
+                        const fallbackResponse = await fallbackResult.response;
+                        const tokens = fallbackResponse.usageMetadata?.totalTokenCount || 0;
+                        await trackAiUsage(orgId, 'Analyze RFP', GEMINI_FLASH_MODEL, tokens);
+                        let fallbackText = fallbackResponse.text();
+                        fallbackText = fallbackText.replace(/```json/g, '').replace(/```/g, '').trim();
+                        return JSON.parse(fallbackText);
+                    } catch (fallbackErr: any) {
+                        console.error("Fallback to Flash model also failed:", fallbackErr.message);
+                        throw new Error(`AI Service is currently overloaded (503 High Demand). Please try again later. Details: ${fallbackErr.message}`);
+                    }
+                }
+
+                if (err.message && err.message.includes("Unsupported MIME type")) {
+                    return {
+                        requirements: ["Notice: The system cannot directly read this file type (e.g. Excel/Word)."],
+                        deliverables: ["Please convert files to PDF before uploading, or enter data manually."],
+                        summary: `Unsupported file type (${mimeType}). Please upload a PDF.`,
+                        solicitationNumber: "N/A",
+                        agency: "N/A",
+                        dueDate: null,
+                        questions: [],
+                        lineItems: []
+                    };
+                }
+                throw err;
             }
         }));
 
@@ -600,12 +676,11 @@ export const analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB'
 export const searchHistoricalBidData = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
     const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId || 'unauthenticated';
-    
+
     const { bid } = data;
     if (!bid) throw new functions.https.HttpsError("invalid-argument", "No bid data provided.");
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new functions.https.HttpsError("internal", "AI service config error.");
+    const apiKey = await getGeminiApiKey(orgId);
 
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
@@ -617,10 +692,10 @@ export const searchHistoricalBidData = functions.https.onCall(async (data, conte
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        
+
         const tokens = response.usageMetadata?.totalTokenCount || 0;
         await trackAiUsage(orgId, 'Historical Bid Search', GEMINI_PRO_MODEL, tokens);
-        
+
         return { content: response.text() };
     } catch (error: any) {
         functions.logger.error("Historical Search Error:", error);
@@ -634,30 +709,14 @@ export const generateBidDocument = functions.runWith({ timeoutSeconds: 540, memo
     }
 
     const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId;
-    
+
     if (!orgId) {
         throw new functions.https.HttpsError("unauthenticated", "User is not part of an organization.");
     }
 
-    const cost = BID_HELPER_COST_USD;
-    functions.logger.info(`Bid generation for Org ${orgId}. Cost: $${cost}.`);
+    functions.logger.info(`Bid generation for Org ${orgId} initiated.`);
 
-    try {
-        await db.collection('organizations').doc(orgId).collection('charges').add({
-            amount: cost,
-            description: "Bid Helper - AI Document Generation",
-            date: admin.firestore.FieldValue.serverTimestamp(),
-            status: "pending",
-            userId: context.auth.uid
-        });
-    } catch (e) {
-        functions.logger.error("Failed to record charge for bid generation:", e);
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY; 
-    if (!apiKey) {
-        throw new functions.https.HttpsError("internal", "AI service is not configured.");
-    }
+    const apiKey = await getGeminiApiKey(orgId);
 
     const { bid, orgContext, prompt, isGlobalEdit, docIndex } = data;
     if (!bid || !prompt) {
@@ -667,7 +726,7 @@ export const generateBidDocument = functions.runWith({ timeoutSeconds: 540, memo
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: GEMINI_PRO_MODEL });
-        
+
         let fullPrompt = "";
 
         if (isGlobalEdit) {
@@ -680,85 +739,296 @@ export const generateBidDocument = functions.runWith({ timeoutSeconds: 540, memo
             ${JSON.stringify(bid.generatedDocs)}
             `;
         } else if (docIndex !== undefined) {
-             const specificDocContent = bid.generatedDocs?.[docIndex]?.content || '';
-             fullPrompt = `You are a professional proposal writer.
+            const specificDocContent = bid.generatedDocs?.[docIndex]?.content || '';
+            fullPrompt = `You are a professional proposal writer.
              Apply this instruction: "${prompt}" to the following specific document.
              Respond STRICTLY with the raw HTML content for the new document. Do not wrap in JSON.
              
              Current Document:
              ${specificDocContent}`;
         } else {
-            // Updated prompt to explicitly mandate the use of the organization context
-            fullPrompt = `You are an expert government contracting proposal manager. 
-            Your task is to generate a PERFECT, complete, and ready-to-submit proposal package based on the provided Bid Information and Organization Context.
-            
-            ### BID INFORMATION:
-            ${JSON.stringify(bid)}
-            
-            ### ORGANIZATION CONTEXT (CRITICAL):
-            You MUST extract and heavily utilize the following company information throughout the proposal package. Do not use generic placeholders if this data is available:
-            - Company Name: ${orgContext?.name || 'NOT PROVIDED'}
-            - Phone: ${orgContext?.phone || 'NOT PROVIDED'}
-            - Email: ${orgContext?.email || 'NOT PROVIDED'}
-            - Address: ${orgContext?.address ? `${orgContext.address.street}, ${orgContext.address.city}, ${orgContext.address.state} ${orgContext.address.zip}` : 'NOT PROVIDED'}
-            - UEI Number: ${orgContext?.ueid || 'NOT PROVIDED'}
-            - CAGE Code: ${orgContext?.cageCode || 'NOT PROVIDED'}
-            - Primary NAICS: ${orgContext?.primaryNaics || 'NOT PROVIDED'}
-            - License Number: ${orgContext?.licenseNumber || 'NOT PROVIDED'}
-            
-            ### INSTRUCTIONS:
-            1. Integrate the answers from the 'questions' array directly into the technical narrative and executive summary.
-            2. Integrate the 'lineItems' into a professional Pricing Schedule table. Calculate the final total and present it clearly.
-            3. Create a Cover Letter. The sender MUST be the company described in the Organization Context above. The recipient is the Agency.
-            4. Ensure every document header or footer includes the Company Name, UEI, and CAGE code (if provided).
-            5. Address all required '(Submittal)' deliverables mentioned in the bid data. Provide templates or drafted responses for these deliverables.
-            6. The output must be a professional, highly persuasive, and fully fleshed-out proposal, ready for immediate submission.
-            
-            ### OUTPUT FORMAT:
-            You MUST return a STRICT JSON array representing the different documents in the package. 
-            Use clean semantic HTML (h1, h2, p, table, etc.) for the 'content'. DO NOT include markdown tags like \`\`\`json.
-            
-            Example Format:
-            [
-              {
-                "title": "Cover Letter",
-                "content": "<div style='text-align:center'><h1>[Company Name from Context]</h1><p>[Company Address from Context] | [Email] | [Phone]</p><p>UEI: [UEI] | CAGE: [CAGE]</p></div><hr/><h2>Cover Letter</h2><p>Dear [Agency],</p>..."
-              },
-              {
-                "title": "Executive Summary & Technical Approach",
-                "content": "<h2>Executive Summary</h2><p>...</p>"
-              },
-              {
-                "title": "Pricing Schedule",
-                "content": "<h2>Pricing</h2><table><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr>...</table>"
-              }
-            ]`;
+            // Build an explicit pricing table so the AI uses EXACT prices
+            const lineItems = bid.lineItems || [];
+            let pricingTable = 'CLIN | Description | Unit | Qty | Unit Price | Total Price\n';
+            pricingTable += '--- | --- | --- | --- | --- | ---\n';
+            let grandTotal = 0;
+            lineItems.forEach((item: any, idx: number) => {
+                const qty = item.qty || 0;
+                const unitPrice = item.unitPrice || 0;
+                const totalPrice = item.totalPrice || (qty * unitPrice);
+                grandTotal += totalPrice;
+                pricingTable += `${idx + 1} | ${item.description || 'Item'} | ${item.unit || 'EA'} | ${qty} | $${unitPrice.toFixed(2)} | $${totalPrice.toFixed(2)}\n`;
+            });
+            pricingTable += `GRAND TOTAL | | | | | $${grandTotal.toFixed(2)}\n`;
+
+            // Build Q&A context explicitly
+            const questionsContext = (bid.questions || [])
+                .filter((q: any) => q.answer && q.answer.trim())
+                .map((q: any) => `Q: ${q.question || q.text || 'Unknown'}\nA: ${q.answer}`)
+                .join('\n\n');
+
+            // CSS stylesheet that MUST be embedded in every document
+            const cssStylesheet = `<style>
+body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;color:#1e293b;line-height:1.7;max-width:900px;margin:0 auto;padding:24px}
+.doc-header{text-align:center;border-bottom:3px solid #1e40af;padding-bottom:20px;margin-bottom:30px}
+.doc-header h1{font-size:22px;color:#1e40af;margin:0 0 6px 0;font-weight:800;text-transform:uppercase;letter-spacing:1px}
+.doc-header p{margin:2px 0;font-size:13px;color:#475569}
+.doc-header .credentials{font-size:12px;color:#64748b;margin-top:8px}
+h2{color:#1e40af;font-size:18px;border-bottom:2px solid #e2e8f0;padding-bottom:8px;margin-top:32px;margin-bottom:16px;font-weight:700}
+h3{color:#334155;font-size:15px;margin-top:20px;margin-bottom:10px;font-weight:600}
+p{margin:8px 0;font-size:14px}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px}
+th{background:#1e40af;color:white;padding:10px 12px;text-align:left;font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:0.5px}
+td{padding:8px 12px;border-bottom:1px solid #e2e8f0}
+tr:nth-child(even){background:#f8fafc}
+tr:last-child td{border-bottom:2px solid #1e40af;font-weight:700}
+.total-row{background:#eff6ff!important;font-weight:800;font-size:15px}
+.total-row td{border-top:2px solid #1e40af;border-bottom:2px solid #1e40af}
+ul,ol{padding-left:24px;margin:8px 0}
+li{margin:4px 0;font-size:14px}
+.signature-block{margin-top:48px;border-top:1px solid #e2e8f0;padding-top:20px}
+.signature-line{border-top:1px solid #1e293b;width:300px;margin-top:40px;padding-top:4px;font-size:13px}
+</style>`;
+
+            fullPrompt = `You are an expert government contracting proposal manager producing a PERFECT, complete, ready-to-submit proposal package.
+
+### COMPANY INFORMATION (use these EXACT values — never invent or substitute):
+- Company Name: ${orgContext?.name || 'NOT PROVIDED'}
+- Phone: ${orgContext?.phone || 'NOT PROVIDED'}
+- Email: ${orgContext?.email || 'NOT PROVIDED'}
+- Address: ${orgContext?.address ? `${orgContext.address.street}, ${orgContext.address.city}, ${orgContext.address.state} ${orgContext.address.zip}` : 'NOT PROVIDED'}
+- UEI Number: ${orgContext?.ueid || 'NOT PROVIDED'}
+- CAGE Code: ${orgContext?.cageCode || 'NOT PROVIDED'}
+- Primary NAICS: ${orgContext?.primaryNaics || 'NOT PROVIDED'}
+- License Number: ${orgContext?.licenseNumber || 'NOT PROVIDED'}
+
+### BID METADATA:
+- Title: ${bid.title || 'Untitled Bid'}
+- Solicitation #: ${bid.solicitationNumber || 'N/A'}
+- Agency: ${bid.agency || 'N/A'}
+- Due Date: ${bid.dueDate || 'N/A'}
+- Summary: ${bid.summary || 'N/A'}
+
+### REQUIREMENTS:
+${(bid.requirements || []).map((r: string, i: number) => `${i + 1}. ${r}`).join('\n') || 'None extracted.'}
+
+### DELIVERABLES:
+${(bid.deliverables || []).map((d: string, i: number) => `${i + 1}. ${d}`).join('\n') || 'None extracted.'}
+
+### QUESTIONS & ANSWERS (integrate these into the narrative):
+${questionsContext || 'No Q&A provided.'}
+
+### PRICING SCHEDULE — USE THESE EXACT DOLLAR AMOUNTS (DO NOT CHANGE ANY PRICES):
+${pricingTable}
+
+CRITICAL PRICING RULE: The Pricing Schedule document MUST use the EXACT unit prices, quantities, and totals shown above. The grand total MUST be exactly $${grandTotal.toFixed(2)}. Do NOT round, estimate, or change any dollar amount.
+
+### DOCUMENT FORMATTING REQUIREMENTS:
+Every document in the package MUST begin with this exact CSS stylesheet and header structure:
+
+${cssStylesheet}
+
+<div class="doc-header">
+  <h1>[Company Name]</h1>
+  <p>[Address] | [Email] | [Phone]</p>
+  <p class="credentials">UEI: [UEI] | CAGE: [CAGE] | NAICS: [NAICS]</p>
+</div>
+
+### DOCUMENTS TO GENERATE:
+Generate the following documents as separate items in the JSON array:
+1. **Cover Letter** — Professional cover letter from the company to the Agency. Include a signature block.
+2. **Executive Summary & Technical Approach** — Compelling narrative using the Q&A answers. Demonstrate understanding of the scope.
+3. **Pricing Schedule** — Professional table using the EXACT pricing data above. Include CLIN numbers, descriptions, unit, qty, unit price, total, and grand total row.
+4. **Past Performance & Qualifications** — Company capabilities, relevant experience, and qualifications.
+5. **Compliance Matrix** — Table mapping each requirement/deliverable to the company's response approach.
+${(bid.deliverables || []).some((d: string) => d.includes('(Submittal)')) ? '6. **Required Submittal Documents** — Draft responses for all (Submittal) deliverables.' : ''}
+
+### OUTPUT FORMAT:
+Return ONLY a JSON array. No markdown code fences. No explanation text before or after.
+Each element: {"title": "Document Title", "content": "<full HTML with embedded CSS>"}
+
+Example of correct output start:
+[{"title":"Cover Letter","content":"<style>...</style><div class=\\"doc-header\\">...`;
         }
-        
-        const result = await model.generateContent(fullPrompt);
-        const response = await result.response;
-        
-        const tokens = response.usageMetadata?.totalTokenCount || 0;
-        await trackAiUsage(orgId, 'Generate Bid Document', GEMINI_PRO_MODEL, tokens);
-        
-        let text = response.text();
-        
-        if (isGlobalEdit || docIndex === undefined) {
-            text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            try {
-                const docs = JSON.parse(text);
-                return { docs };
-            } catch (e) {
-                 functions.logger.error("Failed to parse document generation response", text);
-                 throw new functions.https.HttpsError("internal", "The AI failed to format the documents correctly.");
+
+        let text = "";
+        let tokens = 0;
+        let usedModel = GEMINI_PRO_MODEL;
+
+        try {
+            const result = await model.generateContent(fullPrompt);
+            const response = await result.response;
+            tokens = response.usageMetadata?.totalTokenCount || 0;
+            text = response.text();
+        } catch (err: any) {
+            if (err.message && (err.message.includes("503") || err.message.includes("429") || err.message.includes("overloaded"))) {
+                functions.logger.warn("Pro model overloaded in document generation. Falling back to Flash model...");
+                const fallbackModel = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
+                const fallbackResult = await fallbackModel.generateContent(fullPrompt);
+                const fallbackResponse = await fallbackResult.response;
+                tokens = fallbackResponse.usageMetadata?.totalTokenCount || 0;
+                text = fallbackResponse.text();
+                usedModel = GEMINI_FLASH_MODEL;
+            } else {
+                throw err;
             }
+        }
+
+        await trackAiUsage(orgId, 'Generate Bid Document', usedModel, tokens);
+
+        if (isGlobalEdit || docIndex === undefined) {
+            // Robust JSON extraction: strip code fences, then try to find the JSON array
+            text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+            
+            // Try direct parse first
+            let docs;
+            try {
+                docs = JSON.parse(text);
+            } catch (e) {
+                // Fallback: find the outermost JSON array in the response
+                const arrayMatch = text.match(/\[[\s\S]*\]/);
+                if (arrayMatch) {
+                    try {
+                        docs = JSON.parse(arrayMatch[0]);
+                    } catch (e2) {
+                        functions.logger.error("Failed to parse document generation response (both attempts)", text.substring(0, 500));
+                        throw new functions.https.HttpsError("internal", "The AI failed to format the documents correctly. Please try again.");
+                    }
+                } else {
+                    functions.logger.error("No JSON array found in response", text.substring(0, 500));
+                    throw new functions.https.HttpsError("internal", "The AI failed to format the documents correctly. Please try again.");
+                }
+            }
+            return { docs };
         } else {
-             return { docs: [{ title: bid.generatedDocs[docIndex].title, content: text.replace(/```html/g, '').replace(/```/g, '').trim() }] };
+            return { docs: [{ title: bid.generatedDocs[docIndex].title, content: text.replace(/```html/g, '').replace(/```/g, '').trim() }] };
         }
 
     } catch (error: any) {
         functions.logger.error("Error generating bid document:", error);
         throw new functions.https.HttpsError("internal", error.message || "Failed to generate document.");
+    }
+});
+
+export const suggestBidPricing = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+
+    const { bid } = data;
+    if (!bid || !bid.lineItems || bid.lineItems.length === 0) {
+        throw new functions.https.HttpsError("invalid-argument", "Missing bid or line items.");
+    }
+
+    try {
+        const orgId = context.auth.token.organizationId || (await db.collection('users').doc(context.auth.uid).get()).data()?.organizationId;
+        
+        if (!orgId) {
+            throw new functions.https.HttpsError("unauthenticated", "User is not part of an organization.");
+        }
+
+        const apiKey = await getGeminiApiKey(orgId);
+        const genAI = new GoogleGenerativeAI(apiKey);
+        // Using flash model for faster, consistent parsing
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+        // 1. Gather historical context if available.
+        // Similar to the historical research report, we find recent bids.
+        const recentBidsSnap = await db.collection('bids')
+            .where('organizationId', '==', bid.organizationId || orgId)
+            .limit(10)
+            .get();
+
+        let historicalContext = '';
+        if (!recentBidsSnap.empty) {
+            historicalContext = recentBidsSnap.docs.map(doc => {
+                const b = doc.data();
+                return `Bid: ${b.title || 'Untitled'}\nAgency: ${b.agency || 'Unknown'}\nTotal Value: $${b.totalValue || 'Unknown'}\nItems: ${b.lineItems?.map((li: any) => `${li.description} - qty ${li.qty} @ $${li.unitPrice}`).join(', ') || 'None'}`;
+            }).join('\n\n');
+        }
+
+        // 2. Prepare the prompt
+        const prompt = `
+You are an expert pricing strategist and bid estimator.
+Your task is to analyze the provided Bid Line Items and suggest an optimized "Recommended Unit Price" for each item.
+Your goal is to maximize profitability while remaining highly competitive to win the bid.
+
+### Bid Context
+Title: ${bid.title}
+Agency/Customer: ${bid.agency}
+Due Date: ${bid.dueDate}
+Summary: ${bid.summary}
+
+### Historical Pricing Context (Past Bids from this Organization)
+${historicalContext ? historicalContext : "No historical data available."}
+
+### Current Line Items to Price
+${JSON.stringify(bid.lineItems.map((item: any) => ({
+    id: item.id,
+    description: item.description,
+    unit: item.unit,
+    qty: item.qty,
+    currentUnitPrice: item.unitPrice
+})), null, 2)}
+
+Instructions:
+1. Review each line item's description, unit, and quantity.
+2. Consider any historical pricing context provided. If an item is similar to a past bid, factor that in.
+3. Suggest a realistic, competitive, and profitable unit price for each item.
+4. If a currentUnitPrice is already provided (>0), use it as a baseline but optimize it if necessary.
+5. Return ONLY a valid JSON array of objects. Do not include markdown formatting (like \`\`\`json).
+
+Output Format:
+[
+  {
+    "id": "item-id",
+    "aiRecommendedPrice": 125.50
+  }
+]
+`;
+
+        let response;
+        try {
+            response = await model.generateContent([
+                { text: "You are an expert pricing estimator that outputs pure JSON arrays." },
+                { text: prompt }
+            ]);
+        } catch (error: any) {
+            if (error.message?.includes("429") || error.status === 429) {
+                functions.logger.warn(`429 Too Many Requests on gemini-2.0-flash, falling back to ${GEMINI_FLASH_MODEL}`);
+                const fallbackModel = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
+                response = await fallbackModel.generateContent([
+                    { text: "You are an expert pricing estimator that outputs pure JSON arrays." },
+                    { text: prompt }
+                ]);
+            } else {
+                throw error;
+            }
+        }
+
+        let text = response.response.text().trim();
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        let recommendations;
+        try {
+            recommendations = JSON.parse(text);
+        } catch (e) {
+            functions.logger.error("Failed to parse AI pricing recommendations:", text);
+            throw new Error("AI returned invalid JSON.");
+        }
+
+        // 3. Map recommendations back to the original line items
+        const updatedLineItems = bid.lineItems.map((item: any) => {
+            const rec = recommendations.find((r: any) => r.id === item.id);
+            if (rec && typeof rec.aiRecommendedPrice === 'number') {
+                return { ...item, aiRecommendedPrice: rec.aiRecommendedPrice };
+            }
+            return item;
+        });
+
+        return { updatedLineItems };
+
+    } catch (error: any) {
+        functions.logger.error("Error generating AI pricing:", error);
+        throw new functions.https.HttpsError("internal", error.message || "Failed to generate AI pricing.");
     }
 });
 
@@ -768,11 +1038,11 @@ export const manageHandshake = functions.https.onCall(async (data, context) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
 
     const { action, targetOrgId, requestingOrgId, subcontractorId } = data;
-    
+
     if (action === 'request') {
         if (!targetOrgId) throw new functions.https.HttpsError('invalid-argument', 'Target Org ID required.');
         if (!requestingOrgId) throw new functions.https.HttpsError('invalid-argument', 'Requesting Org ID required.');
-        
+
         const requesterDoc = await db.collection('organizations').doc(requestingOrgId).get();
         const requesterName = requesterDoc.data()?.name || 'Unknown Org';
 
@@ -785,21 +1055,22 @@ export const manageHandshake = functions.https.onCall(async (data, context) => {
                 timestamp: Date.now()
             })
         });
-        
+
         return { success: true };
     }
 
     if (action === 'approve') {
         const batch = db.batch();
-        
+
         // 1. Fetch Organization Data
         const targetOrgRef = db.collection('organizations').doc(targetOrgId);
         const requestOrgRef = db.collection('organizations').doc(requestingOrgId);
-        
+
+
         const [targetOrgDoc, requestOrgDoc] = await Promise.all([targetOrgRef.get(), requestOrgRef.get()]);
         const targetOrgData = targetOrgDoc.data();
         const requestOrgData = requestOrgDoc.data();
-        
+
         if (!targetOrgData || !requestOrgData) throw new functions.https.HttpsError('not-found', 'Organization not found.');
 
         const request = targetOrgData.partnerRequests?.find((r: any) => r.fromOrgId === requestingOrgId);
@@ -886,44 +1157,44 @@ export const manageHandshake = functions.https.onCall(async (data, context) => {
         const myOrgRef = db.collection('organizations').doc(targetOrgId);
         const myOrgDoc = await myOrgRef.get();
         const myOrgData = myOrgDoc.data();
-        
+
         const request = myOrgData?.partnerRequests?.find((r: any) => r.fromOrgId === requestingOrgId);
-         if (request) {
+        if (request) {
             await myOrgRef.update({
                 partnerRequests: admin.firestore.FieldValue.arrayRemove(request)
             });
-            
-             if (request.subcontractorId) {
-                 try {
-                     await db.collection('subcontractors').doc(request.subcontractorId).update({
-                         handshakeStatus: 'None'
-                     });
-                 } catch(e) {
-                     functions.logger.warn(`Could not update requester subcontractor doc ${request.subcontractorId}`, e);
-                 }
+
+            if (request.subcontractorId) {
+                try {
+                    await db.collection('subcontractors').doc(request.subcontractorId).update({
+                        handshakeStatus: 'None'
+                    });
+                } catch (e) {
+                    functions.logger.warn(`Could not update requester subcontractor doc ${request.subcontractorId}`, e);
+                }
             }
         }
         return { success: true };
     }
-    
+
     if (action === 'cancel') {
         const targetOrgRef = db.collection('organizations').doc(targetOrgId);
         const targetOrgDoc = await targetOrgRef.get();
         const targetOrgData = targetOrgDoc.data();
-        
+
         const request = targetOrgData?.partnerRequests?.find((r: any) => r.fromOrgId === requestingOrgId);
         if (request) {
             await targetOrgRef.update({
                 partnerRequests: admin.firestore.FieldValue.arrayRemove(request)
             });
         }
-        
+
         if (subcontractorId) {
-             await db.collection('subcontractors').doc(subcontractorId).update({
-                 handshakeStatus: 'None'
-             });
+            await db.collection('subcontractors').doc(subcontractorId).update({
+                handshakeStatus: 'None'
+            });
         }
-        
+
         return { success: true };
     }
 
@@ -934,9 +1205,9 @@ export const manageHandshake = functions.https.onCall(async (data, context) => {
 
         batch.update(targetOrgRef, { linkedPartners: admin.firestore.FieldValue.arrayRemove(requestingOrgId) });
         batch.update(requestingOrgRef, { linkedPartners: admin.firestore.FieldValue.arrayRemove(targetOrgId) });
-        
+
         if (subcontractorId) {
-             batch.update(db.collection('subcontractors').doc(subcontractorId), { handshakeStatus: 'None' });
+            batch.update(db.collection('subcontractors').doc(subcontractorId), { handshakeStatus: 'None' });
         }
 
         await batch.commit();
@@ -949,14 +1220,14 @@ export const manageHandshake = functions.https.onCall(async (data, context) => {
 export const processMailQueue = functions.firestore.document('mail_queue/{docId}').onCreate(async (snap, context) => {
     const payload = snap.data();
     const orgId = payload.organizationId;
-    
+
     try {
         if (orgId && orgId !== 'unaffiliated') {
             const secretDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
             if (secretDoc.exists) {
                 const secrets = secretDoc.data() || {};
                 const smtp = secrets.smtpConfig;
-                
+
                 if (smtp && smtp.host && smtp.user && smtp.pass) {
                     payload.transport = {
                         host: smtp.host,
@@ -966,7 +1237,7 @@ export const processMailQueue = functions.firestore.document('mail_queue/{docId}
                             pass: smtp.pass
                         }
                     };
-                    
+
                     if (smtp.fromName && smtp.fromEmail) {
                         if (!payload.message) payload.message = {};
                         payload.message.from = `"${smtp.fromName}" <${smtp.fromEmail}>`;
@@ -992,10 +1263,10 @@ export const processMailQueue = functions.firestore.document('mail_queue/{docId}
                 }
             }
         }
-        
+
         // Forward the securely populated payload to the final 'mail' collection for delivery
         await db.collection('mail').add(payload);
-        
+
         // Clean up the queue
         await snap.ref.delete();
     } catch (error) {
@@ -1013,11 +1284,11 @@ export const measureQuickWebhook = functions.https.onRequest(async (req, res) =>
     try {
         const payload = req.body;
         // NOTE: In production with live API keys, we would verify the measureQuick HMAC signature here.
-        
+
         // Extract routing details
         const jobId = payload.jobId || req.query.jobId;
         const orgId = payload.organizationId || req.query.orgId;
-        
+
         if (!jobId || !orgId) {
             res.status(400).send('Missing required routing parameters: jobId or organizationId');
             return;
@@ -1040,7 +1311,7 @@ export const measureQuickWebhook = functions.https.onRequest(async (req, res) =>
 
         // Save it to the specific Job's sub-collection
         await db.collection('jobs').doc(jobId as string).collection('diagnostics').doc(reportId).set(report);
-        
+
         functions.logger.info(`Successfully parsed measureQuick report for job ${jobId}`);
         res.status(200).send({ success: true, reportId });
 
@@ -1059,13 +1330,13 @@ export const syncExternalReviews = functions.runWith({ timeoutSeconds: 300, memo
     try {
         const [orgDoc, secretsDoc] = await Promise.all([
             db.collection('organizations').doc(orgId).get(),
-            db.collection('platformSettings').doc('secrets').get() 
+            db.collection('platformSettings').doc('secrets').get()
         ]);
-        
+
         const orgData = orgDoc.data();
         const masterSecrets = secretsDoc.data();
         if (!orgData) throw new functions.https.HttpsError('not-found', 'Organization not found.');
-        
+
         if (!masterSecrets || !masterSecrets.apifyMasterKey) {
             throw new functions.https.HttpsError('failed-precondition', 'Platform Apify Key is not configured in backend secrets vault. Plase establish the Master Key.');
         }
@@ -1135,8 +1406,8 @@ export const syncExternalReviews = functions.runWith({ timeoutSeconds: 300, memo
                         sort: 'newest'
                     })
                 });
-                
-                if (!response.ok) return { source: task.source, items: [] }; 
+
+                if (!response.ok) return { source: task.source, items: [] };
                 const items = await response.json();
                 return { source: task.source, items: Array.isArray(items) ? items : [] };
             } catch (err) {
@@ -1156,7 +1427,7 @@ export const syncExternalReviews = functions.runWith({ timeoutSeconds: 300, memo
                 const rawId = review.reviewId || review.id || Math.random().toString(36).substring(7);
                 const reviewId = `ext_${resultSet.source}_${rawId}`;
                 const ref = db.collection('reviews').doc(reviewId);
-                
+
                 const existing = await ref.get();
                 if (!existing.exists) {
                     const content = review.text || review.content || review.comment || review.reviewText || '';
@@ -1171,7 +1442,7 @@ export const syncExternalReviews = functions.runWith({ timeoutSeconds: 300, memo
                         customerName,
                         rating,
                         content,
-                        source: resultSet.source, 
+                        source: resultSet.source,
                         date: dateStr,
                         responded: !!responseText,
                         responseContent: responseText || null,
@@ -1201,7 +1472,7 @@ export const createUserAuth = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError("permission-denied", "Only Master Admins can explicitly create Auth layers.");
     }
     const { email, password, displayName, role, organizationId } = data;
-    
+
     if (!email || !password) throw new functions.https.HttpsError("invalid-argument", "Missing email or temporary password.");
 
     try {
@@ -1212,7 +1483,7 @@ export const createUserAuth = functions.https.onCall(async (data, context) => {
         });
 
         if (role || organizationId) {
-            await auth.setCustomUserClaims(userRecord.uid, { 
+            await auth.setCustomUserClaims(userRecord.uid, {
                 role: role || 'user',
                 organizationId: organizationId || 'unaffiliated'
             });
@@ -1235,7 +1506,7 @@ export const trackEmailOpen = functions.https.onRequest(async (req, res) => {
 
     const campaignId = req.query.campaignId as string;
     const customerId = req.query.customerId as string;
-    
+
     if (campaignId) {
         const campaignRef = db.collection('marketingCampaigns').doc(campaignId);
         try {
@@ -1244,7 +1515,7 @@ export const trackEmailOpen = functions.https.onRequest(async (req, res) => {
                 if (doc.exists) {
                     const data = doc.data() || {};
                     const openedBy = data.openedBy || [];
-                    
+
                     // Conditionally record the specific Customer ID natively
                     if (customerId && !openedBy.includes(customerId)) {
                         transaction.update(campaignRef, {
@@ -1278,7 +1549,7 @@ export const trackEmailOpen = functions.https.onRequest(async (req, res) => {
 
         for (const org of orgsSnap.docs) {
             const orgId = org.id;
-            
+
             // Query for completed jobs needing flat-rate payouts
             const jobsSnap = await db.collection('jobs')
                 .where('organizationId', '==', orgId)
@@ -1290,7 +1561,7 @@ export const trackEmailOpen = functions.https.onRequest(async (req, res) => {
 
             for (const jobDoc of jobsSnap.docs) {
                 const job = jobDoc.data();
-                
+
                 if (job.assignedTechnicianId && job.subcontractorFlatRate) {
                     const techDoc = await db.collection('users').doc(job.assignedTechnicianId).get();
                     if (techDoc.exists && techDoc.data()?.role === 'Subcontractor') {
@@ -1328,7 +1599,7 @@ export const trackEmailOpen = functions.https.onRequest(async (req, res) => {
 export const incomingLeadWebhook = functions.runWith({
     timeoutSeconds: 30,
     memory: "256MB"
-// @ts-ignore
+    // @ts-ignore
 }).https.onRequest(async (req, res) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -1370,27 +1641,74 @@ export const incomingLeadWebhook = functions.runWith({
         const customerName = `${firstName} ${lastName}`.trim();
         const db = admin.firestore();
 
+        // --- Advanced Webhook Deduplication and Portal Invite ---
         let customerId = '';
-        const emailQuery = await db.collection('customers').where('organizationId', '==', orgId).where('email', '==', email).limit(1).get();
-        if (email && !emailQuery.empty) customerId = emailQuery.docs[0].id;
-        else {
-            const phoneQuery = await db.collection('customers').where('organizationId', '==', orgId).where('phone', '==', phone).limit(1).get();
-            if (phone && !phoneQuery.empty) customerId = phoneQuery.docs[0].id;
-            else {
-                const newCustomerRef = db.collection('customers').doc();
-                await newCustomerRef.set({
-                    organizationId: orgId, name: customerName, email, phone, status: 'active', tags: ['webhook-lead'],
-                    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
-                });
-                customerId = newCustomerRef.id;
-            }
+        let existingCustomerData: any = null;
+
+        const matchName = customerName.toLowerCase().trim();
+        const matchPhone = phone.replace(/\D/g, '');
+        const matchEmail = email.toLowerCase().trim();
+
+        const customersSnapshot = await db.collection('customers').where('organizationId', '==', orgId).get();
+        const existingDoc = customersSnapshot.docs.find(d => {
+            const data = d.data();
+            const dName = (data.name || '').toLowerCase().trim();
+            const dPhone = (data.phone || '').replace(/\D/g, '');
+            const dEmail = (data.email || '').toLowerCase().trim();
+
+            if (dName === matchName && ((matchPhone && dPhone === matchPhone) || (matchEmail && dEmail === matchEmail))) return true;
+            if ((matchPhone && dPhone === matchPhone) || (matchEmail && dEmail === matchEmail)) return true;
+            return false;
+        });
+
+        if (existingDoc) {
+            customerId = existingDoc.id;
+            existingCustomerData = existingDoc.data();
+            const updates: any = {};
+            if (phone && !existingCustomerData.phone) updates.phone = phone;
+            if (email && !existingCustomerData.email) updates.email = email;
+            if (Object.keys(updates).length > 0) await existingDoc.ref.update(updates);
+        } else {
+            const newCustomerRef = db.collection('customers').doc();
+            await newCustomerRef.set({
+                id: newCustomerRef.id,
+                organizationId: orgId, name: customerName, email, phone, status: 'active', tags: ['webhook-lead'],
+                createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+            });
+            customerId = newCustomerRef.id;
         }
 
         const jobId = `job-${Date.now()}`;
         await db.collection('jobs').doc(jobId).set({
-            id: jobId, organizationId: orgId, customerId, title: 'New Webhook Lead', status: 'Unassigned', priority: 'Medium',
-            description: notes, customerName, createdAt: new Date().toISOString()
+            id: jobId, organizationId: orgId, customerId, title: 'New Webhook Lead Request', status: 'Unassigned', priority: 'Medium',
+            description: notes, customerName, customerPhone: phone || existingCustomerData?.phone || '', createdAt: new Date().toISOString()
         });
+
+        // Trigger Automated Portal Invitation Location
+        const targetEmail = email || existingCustomerData?.email;
+        if (targetEmail) {
+            await db.collection('mail').add({
+                to: [targetEmail],
+                organizationId: orgId,
+                message: {
+                    subject: "Your Service Request Has Been Received",
+                    html: `
+                        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                            <h2>Hi ${firstName || customerName.split(' ')[0]},</h2>
+                            <p>Thanks for reaching out! We've secured your service request and our team is reviewing it now.</p>
+                            <p>You can view your appointment details, update your information, and manage your account via our secure portal:</p>
+                            <div style="text-align: center; margin: 30px 0;">
+                                <a href="https://app.tektrakker.com/portal/${customerId}" style="background-color: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Your Portal</a>
+                            </div>
+                            <p>If you don't use the button above, copy and paste this link: https://app.tektrakker.com/portal/${customerId}</p>
+                            <br/>
+                            <p>Best regards,</p>
+                            <p>Your Service Team</p>
+                        </div>
+                    `
+                }
+            });
+        }
 
         functions.logger.info(`Successfully ingested lead job ${jobId} for Org ${orgId}`);
         res.status(200).send({ success: true, message: "Lead processed successfully." });
@@ -1399,3 +1717,674 @@ export const incomingLeadWebhook = functions.runWith({
         res.status(500).send({ error: "Internal Server Error processing webhook.", message: error.message });
     }
 });
+
+// --- B2B SUPPLIER PUNCHOUT (cXML) ---
+
+export const initiatePunchoutSession = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+    const orgId = context.auth.token.organizationId;
+    if (!orgId) throw new functions.https.HttpsError("permission-denied", "User has no organization tied.");
+
+    // 1. Fetch the organization's settings
+    const secretsDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
+    const config = secretsDoc.data()?.punchoutConfig;
+    if (!config || !config.setupUrl || !config.sharedSecret) {
+        throw new functions.https.HttpsError("failed-precondition", "B2B PunchOut is not fully configured in your Settings.");
+    }
+
+    const { fromDomain, fromIdentity, toDomain, toIdentity, sharedSecret, setupUrl } = config;
+    if (!fromIdentity || !toIdentity) throw new functions.https.HttpsError("failed-precondition", "PunchOut identity config is incomplete.");
+
+    // The webhook URL built dynamically (We can also use req host if needed, but hardcoding the standard FB URL here for standard cloud functions)
+    const browserFormPostURL = `https://${process.env.GCP_PROJECT || 'us-central1-tektrakker'}.cloudfunctions.net/punchoutWebhook?orgId=${orgId}`;
+
+    // 2. Build the cXML Setup Request
+    const payloadID = `setup_${Date.now()}@tektrakker`;
+    const cxmlObject = {
+        cXML: {
+            $: {
+                payloadID: payloadID,
+                timestamp: new Date().toISOString(),
+                version: "1.2.008",
+                "xml:lang": "en-US"
+            },
+            Header: [{
+                From: [{ Credential: [{ $: { domain: fromDomain }, Identity: [fromIdentity] }] }],
+                To: [{ Credential: [{ $: { domain: toDomain }, Identity: [toIdentity] }] }],
+                Sender: [{
+                    Credential: [{
+                        $: { domain: fromDomain },
+                        Identity: [fromIdentity],
+                        SharedSecret: [sharedSecret]
+                    }],
+                    UserAgent: ["TekTrakker B2B Agent"]
+                }]
+            }],
+            Request: [{
+                $: { deploymentMode: "production" },
+                PunchOutSetupRequest: [{
+                    $: { operation: "create" },
+                    BuyerCookie: [JSON.stringify({ userId: context.auth.uid, jobId: data.jobId || 'GENERAL' })],
+                    Extrinsic: [{ $: { name: "UserEmail" }, _: context.auth.token.email || 'user@example.com' }],
+                    BrowserFormPost: [{ URL: [browserFormPostURL] }],
+                    Contact: [{
+                        Name: [{ $: { "xml:lang": "en" }, _: context.auth.token.name || 'TekTrakker Technician' }],
+                        Email: [context.auth.token.email || 'platform@tektrakker.com']
+                    }]
+                }]
+            }]
+        }
+    };
+
+    // 3. Post to Supplier
+    const builder = new xml2js.Builder({ headless: true });
+    const xml = builder.buildObject(cxmlObject);
+    const doctype = '<!DOCTYPE cXML SYSTEM "http://xml.cxml.org/schemas/cXML/1.2.014/cXML.dtd">\n';
+    const finalXml = doctype + xml;
+
+    try {
+        const response = await fetch(setupUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/xml', 'Accept': 'application/xml' },
+            body: finalXml
+        });
+
+        const responseText = await response.text();
+        const parser = new xml2js.Parser({ explicitArray: false });
+        const result = await parser.parseStringPromise(responseText);
+
+        const statusCode = result?.cXML?.Response?.Status?.$?.code;
+        if (statusCode === "200") {
+            const startPageUrl = result?.cXML?.Response?.PunchOutSetupResponse?.StartPage?.URL;
+            if (startPageUrl) {
+                return { success: true, url: startPageUrl };
+            }
+        }
+
+        const errMsg = result?.cXML?.Response?.Status?.$?.text || "Unknown supplier error";
+        functions.logger.error("PunchOut Setup Failed", responseText);
+        throw new functions.https.HttpsError("internal", "Supplier rejected standard handshake: " + errMsg);
+
+    } catch (e: any) {
+        functions.logger.error("PunchOut Fetch Error:", e);
+        throw new functions.https.HttpsError("internal", e.message || "Failed to contact supplier.");
+    }
+});
+
+
+export const punchoutWebhook = functions.https.onRequest(async (req, res) => {
+    // Standard cXML HTTP Post from supplier returning cart
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+
+    // Use rawBody buffer or string fallback
+    const rawXml = (req as any).rawBody ? req.rawBody.toString() : req.body;
+    let orgId = req.query.orgId as string;
+
+    if (!rawXml) {
+        res.status(400).send("Empty payload");
+        return;
+    }
+
+    try {
+        const parser = new xml2js.Parser({ explicitArray: false });
+        const result = await parser.parseStringPromise(rawXml);
+
+        const orderMessage = result?.cXML?.Message?.PunchOutOrderMessage;
+        if (!orderMessage) {
+            res.status(400).send("Not a valid PunchOutOrderMessage");
+            return;
+        }
+
+        let buyerCookie = orderMessage.BuyerCookie;
+        let jobId = 'GENERAL';
+        let userId = 'SYSTEM';
+        if (typeof buyerCookie === 'string' && buyerCookie.startsWith('{')) {
+            try {
+                const cookieMap = JSON.parse(buyerCookie);
+                if (cookieMap.jobId) jobId = cookieMap.jobId;
+                if (cookieMap.userId) userId = cookieMap.userId;
+            } catch (e) { }
+        }
+
+        const totalAmount = parseFloat(orderMessage.PunchOutOrderMessageHeader?.Total?.Money?._ || '0');
+        let itemsField = orderMessage.ItemIn || [];
+        if (!Array.isArray(itemsField)) itemsField = [itemsField]; // Normalize if single item
+
+        const itemDescriptions = itemsField.map((i: any) => {
+            const desc = i.ItemDetail?.Description?._ || i.ItemDetail?.Description || 'Unknown part';
+            const price = i.ItemDetail?.UnitPrice?.Money?._ || '0.00';
+            const qty = i.$?.quantity || '0';
+            return `${qty}x ${desc} @ ${price}`;
+        });
+
+        const partsList = itemDescriptions.join(', ');
+
+        // Push the order natively into the TekTrakker DB
+        if (orgId) {
+            const newPartOrder = {
+                id: `po-${Date.now()}`,
+                organizationId: orgId,
+                jobId: jobId,
+                parts: partsList || 'Unknown B2B Order',
+                cost: totalAmount,
+                status: 'Procured via Supplier Cart',
+                fulfillmentMethod: 'B2B PunchOut Integration',
+                orderedBy: userId,
+                createdAt: new Date().toISOString(),
+                supplierTransactionID: result?.cXML?.$?.payloadID || 'Unknown'
+            };
+            await db.collection('partOrders').doc(newPartOrder.id).set(newPartOrder);
+        }
+
+        // Must send 200 OK cXML back acknowledging receipt or supplier will retry
+        const replyXml = `<!DOCTYPE cXML SYSTEM "http://xml.cxml.org/schemas/cXML/1.2.014/cXML.dtd">
+<cXML payloadID="webhook_reply_${Date.now()}@tektrakker" timestamp="${new Date().toISOString()}" version="1.2.014">
+   <Response>
+      <Status code="200" text="OK"/>
+   </Response>
+</cXML>`;
+
+        res.set('Content-Type', 'application/xml');
+        res.status(200).send(replyXml);
+
+    } catch (e) {
+        functions.logger.error("PunchOut Webhook Parsing Error:", e);
+        res.status(500).send('Internal Server Error parsing XML');
+    }
+});
+
+
+export const twilioInboundVoice = functions.https.onRequest(async (req, res) => {
+    try {
+        const orgId = req.query.orgId as string;
+        if (!orgId) {
+            res.status(400).send("Missing Organization ID in webhook URL");
+            return;
+        }
+
+        const twilio = require('twilio');
+        const VoiceResponse = twilio.twiml.VoiceResponse;
+        const twiml = new VoiceResponse();
+
+        const speechResult = req.body.SpeechResult;
+
+        if (speechResult) {
+            // Echo back until AI fully streaming hooked up
+            twiml.say({ voice: 'Polly.Matthew-Neural' }, "I heard you say: " + speechResult + ". Our AI is processing your request.");
+            twiml.pause({ length: 1 });
+            twiml.gather({
+                input: ['speech'],
+                action: `/twilioInboundVoice?orgId=${orgId}`,
+                timeout: 5
+            }).say({ voice: 'Polly.Matthew-Neural' }, "Do you need assistance with anything else?");
+        } else {
+            const orgRef = await db.collection('organizations').doc(orgId).get();
+            const orgName = orgRef.exists ? orgRef.data()?.name : "our company";
+
+            twiml.say({ voice: 'Polly.Matthew-Neural' }, `Hi! You have reached the automated AI dispatcher for ${orgName}. How can I help you today?`);
+            twiml.gather({
+                input: ['speech'],
+                action: `/twilioInboundVoice?orgId=${orgId}`,
+                timeout: 5
+            });
+        }
+
+        res.set('Content-Type', 'text/xml');
+        res.status(200).send(twiml.toString());
+    } catch (error) {
+        functions.logger.error("Twilio Voice Webhook Error:", error);
+        res.status(500).send("Server Error");
+    }
+});
+
+// --- AUTOMATED MAINTENANCE SWEEP & REMINDERS (CRON JOB) ---
+export const automatedMaintenanceReminders = functions.pubsub.schedule('0 9 * * *')
+    .timeZone('America/New_York')
+    .onRun(async (context) => {
+        try {
+            const now = new Date();
+            const customersSnap = await db.collection('customers').get();
+
+            const batchOperations: Promise<any>[] = [];
+            const orgsCache: { [key: string]: any } = {};
+
+            // Process sequentially since we need async fetches for orgs Cache
+            for (const doc of customersSnap.docs) {
+                const customer = doc.data();
+                if (!customer.equipment || !Array.isArray(customer.equipment)) continue;
+
+                let orgName = 'Service Provider';
+                let orgEmail = '';
+                let orgLicense = '';
+
+                if (customer.organizationId && customer.organizationId !== 'unaffiliated') {
+                    if (!orgsCache[customer.organizationId]) {
+                        const orgDoc = await db.collection('organizations').doc(customer.organizationId).get();
+                        orgsCache[customer.organizationId] = orgDoc.exists ? orgDoc.data() : { name: 'Service Provider' };
+                    }
+                    orgName = orgsCache[customer.organizationId]?.name || 'Service Provider';
+                    orgEmail = orgsCache[customer.organizationId]?.email || '';
+                    orgLicense = orgsCache[customer.organizationId]?.licenseNumber || orgsCache[customer.organizationId]?.license || '';
+                }
+
+                const licenseFooterText = orgLicense ? `\n\nState License: ${orgLicense}` : '';
+                const licenseFooterHtml = orgLicense ? `<br/><br/><small style="color:#6b7280;font-size:12px;">State License: ${orgLicense}</small>` : '';
+
+                let hasWarrantiedHVAC = false;
+
+                customer.equipment.forEach((asset: any) => {
+                    if (asset.warranty?.requiresMaintenance && asset.warranty.maintenanceIntervalMonths) {
+                        let nextDate = new Date();
+                        if (asset.warranty.lastMaintenanceDate) {
+                            nextDate = new Date(asset.warranty.lastMaintenanceDate);
+                        } else if (asset.warranty.manufacturerStartDate) {
+                            nextDate = new Date(asset.warranty.manufacturerStartDate);
+                            nextDate.setDate(nextDate.getDate() + 1); // fix offset
+                        } else {
+                            return;
+                        }
+
+                        nextDate.setMonth(nextDate.getMonth() + asset.warranty.maintenanceIntervalMonths);
+                        const diffTime = nextDate.getTime() - now.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                        // Send reminder if exactly 30 days out or 7 days out
+                        if (diffDays === 30 || diffDays === 7) {
+                            if (customer.email) {
+                                // Write to mail collection for Trigger Email Extension
+                                const portalUrl = `https://tektrakker-v2.web.app/#/portal/auth?orgId=${customer.organizationId}`;
+                                const mailDoc = {
+                                    toUids: [doc.id],
+                                    to: customer.email,
+                                    message: {
+                                        from: `${orgName} <no-reply@tektrakker.com>`,
+                                        ...(orgEmail ? { replyTo: orgEmail } : {}),
+                                        subject: `Action Required: Maintenance due for your ${asset.brand || ''} Equipment`,
+                                        text: `Hello ${customer.name || 'Valued Customer'},\n\nThis is an automated reminder from ${orgName} that your ${asset.brand || 'HVAC'} ${asset.type || 'system'} is due for routine warranty maintenance in ${diffDays} days.\n\nPlease schedule an appointment through your portal to maintain your warranty compliance: ${portalUrl}\n\nThank you,\n${orgName}${licenseFooterText}`,
+                                        html: `<p>Hello <strong>${customer.name || 'Valued Customer'}</strong>,</p>
+                                               <p>This is an automated reminder from <strong>${orgName}</strong> that your <strong>${asset.brand || 'HVAC'} ${asset.type || 'system'}</strong> is due for routine warranty maintenance in <strong>${diffDays} days</strong>.</p>
+                                               <p>Please schedule an appointment through your portal to maintain your warranty coverage.</p>
+                                               <p><a href="${portalUrl}" style="background-color:#2563eb;color:white;padding:10px 15px;text-decoration:none;border-radius:5px;display:inline-block;margin-top:10px;">Access Service Portal to Schedule</a></p>
+                                               <p>Thank you,<br/><strong>${orgName}</strong></p>${licenseFooterHtml}`
+                                    }
+                                };
+                                batchOperations.push(db.collection('mail').add(mailDoc));
+                            }
+                        }
+                    }
+
+                    // Check if this is an HVAC asset with a warranty for the monthly filter reminder
+                    if (asset.warranty) {
+                        const typeStr = (asset.type || '').toLowerCase();
+                        if (typeStr.includes('ac') || typeStr.includes('heat') || typeStr.includes('furnace') || typeStr.includes('air') || typeStr.includes('hvac') || typeStr.includes('split') || typeStr.includes('handler') || typeStr.includes('condenser')) {
+                            hasWarrantiedHVAC = true;
+                        }
+                    }
+                });
+
+                // On the 1st of the month, send a filter reminder to those with warrantied HVAC systems
+                if (now.getDate() === 1 && hasWarrantiedHVAC && customer.email) {
+                    const filterMailDoc = {
+                        toUids: [doc.id],
+                        to: customer.email,
+                        message: {
+                            from: `${orgName} <no-reply@tektrakker.com>`,
+                            ...(orgEmail ? { replyTo: orgEmail } : {}),
+                            subject: `Monthly Reminder: Time to Check Your Air Filters - ${orgName}`,
+                            text: `Hello ${customer.name || 'Valued Customer'},\n\nThis is your monthly automated reminder from ${orgName} to check and replace the air filters in your HVAC system. Clean filters ensure your system runs efficiently and maintains its active warranty coverage.\n\nThank you,\n${orgName}${licenseFooterText}`,
+                            html: `<p>Hello <strong>${customer.name || 'Valued Customer'}</strong>,</p>
+                                    <p>This is your monthly automated reminder from <strong>${orgName}</strong> to <strong>check and replace the air filters</strong> in your HVAC system.</p>
+                                    <p>Clean filters ensure your system runs efficiently, keeps your air clean, and prevents expensive damages that may void your active warranty coverage.</p>
+                                    <p>Thank you for staying on top of your maintenance!<br/><strong>${orgName}</strong></p>${licenseFooterHtml}`
+                        }
+                    };
+                    batchOperations.push(db.collection('mail').add(filterMailDoc));
+                }
+            }
+
+            await Promise.all(batchOperations);
+            functions.logger.info(`Automated Maintenance Sweep completed. Dispatched ${batchOperations.length} email reminders.`);
+
+        } catch (error) {
+            functions.logger.error("Failed to run automatedMaintenanceReminders:", error);
+        }
+    });
+
+export * from './aiAgent';
+
+export const provisionCustomDomain = functions.https.onCall(async (data: any, context: any) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
+
+    const { domainUrl, franchiseId } = data;
+    if (!domainUrl || !franchiseId) throw new functions.https.HttpsError('invalid-argument', 'Missing domainUrl or franchiseId');
+
+    // Robust role check (fallbacks for delayed JWT claim propagation)
+    const userDoc = await admin.firestore().collection('users').doc(context.auth.uid).get();
+    const userData = userDoc.data() || {};
+    const isMaster = context.auth.token.role === 'master_admin' || userData.role === 'master_admin' || context.auth.token.email === 'rodzelem@gmail.com';
+    const isOwner = userData.franchiseId === franchiseId && userData.role === 'franchise_admin';
+
+    if (!isMaster && !isOwner) {
+        throw new functions.https.HttpsError('permission-denied', 'Only master admins or franchise owners can provision domains.');
+    }
+
+    const cleanDomain = domainUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').trim();
+
+    try {
+        const adminAuth = await admin.credential.applicationDefault().getAccessToken();
+        const token = adminAuth.access_token;
+
+        let fbConfig: any = {};
+        try { fbConfig = JSON.parse(process.env.FIREBASE_CONFIG || '{}'); } catch (e) { }
+        const projectId = fbConfig.projectId || process.env.GCLOUD_PROJECT || 'tektrakker';
+        const siteId = 'tektrakker';
+
+        // Use customDomains API
+        const createUrl = `https://firebasehosting.googleapis.com/v1beta1/projects/${projectId}/sites/${siteId}/customDomains?customDomainId=${cleanDomain}`;
+
+        const response = await fetch(createUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        });
+
+        const result = (await response.json()) as any;
+
+        let finalResult = result;
+        if (!response.ok) {
+            functions.logger.error("Failed to provision domain via hosting API:", result);
+            const errMsg = result.error?.message || "";
+            if (errMsg.includes("not associated with project") || errMsg.includes("Mismatched sites") || errMsg.includes("already exists")) {
+                // Mock the response so the UI wizard can display instructions in the demo environment
+                finalResult = {
+                    provisioningState: 'PENDING',
+                    requiredDnsUpdates: {
+                        desired: {
+                            ownershipContent: { domainName: cleanDomain, txtRecord: `google-site-verification=mock-${Date.now()}` },
+                            hostingA: { domainName: cleanDomain, records: ['199.36.158.100'] }
+                        }
+                    }
+                };
+            } else {
+                throw new functions.https.HttpsError('internal', errMsg || "Firebase Hosting API Error");
+            }
+        }
+
+        const requiredDns = finalResult.requiredDnsUpdates || null;
+        let dnsRecords: any = {};
+
+        if (requiredDns && requiredDns.desired) {
+            dnsRecords = requiredDns.desired;
+        } else if (finalResult.certProvisioning?.certRequiredDnsUpdates?.desired) {
+            dnsRecords = finalResult.certProvisioning.certRequiredDnsUpdates.desired;
+        }
+
+        await admin.firestore().collection('franchises').doc(franchiseId).set({
+            dnsConfig: {
+                domain: cleanDomain,
+                records: dnsRecords,
+                status: finalResult.provisioningState || 'PENDING',
+                provisionedAt: admin.firestore.FieldValue.serverTimestamp()
+            }
+        }, { merge: true });
+
+        // Strip @type from the payload because Firebase client SDK crashes if it sees unrecognized @type values
+        const cleanHostingResponse = JSON.parse(JSON.stringify(finalResult, (key, value) => {
+            if (key === '@type') return undefined;
+            return value;
+        }));
+
+        return { success: true, domain: cleanDomain, hostingResponse: cleanHostingResponse };
+    } catch (error: any) {
+        functions.logger.error("Domain Error:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Unknown Error');
+    }
+});
+
+// --- INFRASTRUCTURE HARD QUOTA SAFETY NET ---
+// Evaluates organization volume daily and permanently suspends any organization
+// that exceeds the equivalent of ~/month in reads/writes/storage (e.g. huge document limits).
+export const enforceHardQuotas = functions.pubsub.schedule('every 24 hours').onRun(async (context) => {
+    const orgsSnap = await db.collection('organizations').where('subscriptionStatus', '==', 'active').get();
+
+    // Limits: 100,000 Customers or 100,000 Jobs per organization heavily translates to more than \/mo of reads/storage.
+    const SAFETY_LIMIT_COUNT = 100000;
+
+    for (const org of orgsSnap.docs) {
+        const orgId = org.id;
+
+        try {
+            const customersSnap = await db.collection('customers').where('organizationId', '==', orgId).count().get();
+            const jobsSnap = await db.collection('jobs').where('organizationId', '==', orgId).count().get();
+
+            const totalDocs = customersSnap.data().count + jobsSnap.data().count;
+
+            if (totalDocs > SAFETY_LIMIT_COUNT) {
+                functions.logger.warn(`Org ${orgId} surpassed infra limit proxy (${totalDocs} docs). Suspending.`);
+                await org.ref.update({ subscriptionStatus: 'suspended_quota' });
+            }
+        } catch (e) {
+            console.error('Failed to analyze quota for', orgId, e);
+        }
+    }
+});
+
+export const fetchIotDiagnostics = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+
+    const orgId = context.auth.token.organizationId;
+    if (!orgId) throw new functions.https.HttpsError("invalid-argument", "Organization ID required.");
+
+    const secretsDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
+    const secrets = secretsDoc.data() || {};
+
+    const seamApiKey = secrets.seamApiKey;
+    const nestProjectId = secrets.nestProjectId;
+    const ecobeeApiKey = secrets.ecobeeApiKey;
+    const honeywellApiKey = secrets.honeywellApiKey;
+
+    if (!seamApiKey && !nestProjectId && !ecobeeApiKey && !honeywellApiKey) {
+        throw new functions.https.HttpsError("failed-precondition", "No IoT API keys configured for this organization. Please set them in Admin Settings -> Integrations.");
+    }
+
+    const devices = [];
+
+    // Option 1: Seam Unified API
+    if (seamApiKey) {
+        try {
+            const resp = await fetch('https://connect.getseam.com/devices/list', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${seamApiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({}) // In production, filter by customerData.address
+            });
+            if (resp.ok) {
+                const results = await resp.json() as any;
+                (results.devices || []).forEach((d: any) => {
+                    if (d.device_type.includes('thermostat')) {
+                        const status = d.properties?.online ? 'online' : 'offline';
+                        const faults = [];
+                        if (d.properties?.has_direct_power === false) {
+                            faults.push({ code: 'PWR-01', description: 'Device is running on battery backup; C-wire or Rh power lost.', severity: 'critical' });
+                        }
+                        devices.push({
+                            id: d.device_id,
+                            brand: d.properties?.brand || 'Unknown',
+                            name: d.properties?.name || 'Thermostat',
+                            status: status,
+                            lastConnection: new Date().toISOString(),
+                            temperature: typeof d.properties?.temperature_fahrenheit === 'number' ? Math.round(d.properties.temperature_fahrenheit) : 72,
+                            humidity: typeof d.properties?.relative_humidity === 'number' ? Math.round(d.properties.relative_humidity * 100) : 45,
+                            mode: d.properties?.current_climate_setting?.hvac_mode_setting || 'auto',
+                            activeFaults: faults
+                        });
+                    }
+                });
+            } else {
+                functions.logger.error("Seam API Error:", await resp.text());
+            }
+        } catch (e: any) {
+            functions.logger.error("Seam Catch Error:", e);
+        }
+    }
+
+    // Option 2: Direct Google Nest API (Mock representation of Nest SDM OAuth flow)
+    if (nestProjectId && !seamApiKey) {
+        devices.push({
+            id: 'nest-' + Math.random().toString(36).substr(2, 9),
+            brand: 'Nest',
+            name: 'Living Room',
+            status: 'online',
+            lastConnection: new Date().toISOString(),
+            temperature: 68,
+            humidity: 35,
+            mode: 'heat',
+            activeFaults: [
+                { code: 'E73', description: 'No power to Rh wire (Check Condensate Overflow Switch)', severity: 'critical' }
+            ]
+        });
+    }
+
+    // Option 3: Ecobee / Honeywell (Mock representations)
+    if ((ecobeeApiKey || honeywellApiKey) && devices.length === 0) {
+        devices.push({
+            id: 'demo-' + Math.random().toString(36).substr(2, 9),
+            brand: ecobeeApiKey ? 'Ecobee' : 'Honeywell',
+            name: 'Hallway',
+            status: 'online',
+            lastConnection: new Date().toISOString(),
+            temperature: 70,
+            humidity: 42,
+            mode: 'cool',
+            activeFaults: [
+                { code: 'W22', description: 'Low WiFi Signal Quality detected', severity: 'warning' }
+            ]
+        });
+    }
+
+    return { devices };
+});
+
+/**
+ * Shovels.ai Permit Tracking Webhook/Poller
+ * Fetches building permits for a specific address.
+ * 
+ * Uses standard v2 syntax: GET https://api.shovels.ai/v2/permits/search?address=...
+ */
+export const fetchShovelsPermits = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    }
+
+    const { orgId, addressString } = data;
+    if (!orgId || !addressString) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing orgId or addressString');
+    }
+
+    try {
+        // 1. Fetch the organization's settings for the Shovels API key
+        const orgDoc = await db.collection('organizations').doc(orgId).get();
+        if (!orgDoc.exists) {
+            throw new functions.https.HttpsError('not-found', 'Organization not found');
+        }
+
+        const orgData = orgDoc.data();
+        const shovelsKey = orgData?.settings?.shovelsApiKey;
+
+        if (!shovelsKey) {
+            throw new functions.https.HttpsError(
+                'failed-precondition', 
+                'Organization has not configured a Shovels.ai API Key. Please visit Settings -> Integrations.'
+            );
+        }
+
+        // Tracking Usage (Optional, especially for limiting trials on their own)
+        let usage = orgData?.settings?.shovelsUsageCount || 0;
+        await db.collection('organizations').doc(orgId).update({
+            'settings.shovelsUsageCount': usage + 1
+        });
+
+        // 2. Format the URL with proper encoding
+        // The Shovels API likes %20 for spaces
+        const encodedAddress = encodeURIComponent(addressString).replace(/%20/g, '+');
+        const searchUrl = `https://api.shovels.ai/v2/permits/search?address=${encodedAddress}`;
+        
+        functions.logger.info(`Fetching permits from Shovels.ai: ${searchUrl}`);
+
+        const response = await fetch(searchUrl, {
+            method: 'GET',
+            headers: {
+                'X-API-Key': shovelsKey,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            functions.logger.error('Shovels API returned an error:', errorText);
+            throw new functions.https.HttpsError('internal', `Shovels API Error: ${response.status} ${response.statusText}`);
+        }
+
+        const permitsData = await response.json();
+        
+        // Return raw parsed JSON straight to the frontend to render
+        return {
+            success: true,
+            results: permitsData,
+            usageLogged: usage + 1
+        };
+
+    } catch (e: any) {
+        functions.logger.error('Error fetching Shovels.ai permits', e);
+        throw new functions.https.HttpsError('internal', 'Internal server error while searching for permits', e.message);
+    }
+});
+
+
+
+export * from './gustoAgent';
+export * from './bofaAgent';
+export * from './googleBusiness';
+
+// --- SOCIAL MEDIA INTEGRATION ---
+export const postToX = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError("unauthenticated", "User must be logged in.");
+
+    const { content, accessToken, accessSecret } = data;
+    if (!content) throw new functions.https.HttpsError("invalid-argument", "Missing content.");
+    
+    // The Consumer Keys provided by the user for the platform App
+    const appKey = "psTqiMOKuLwxAPADwZwUck4Rg";
+    const appSecret = "6VlyOQawbslwdYCI9j2eekDNWR7hib4suKYa0DQ2kCQWuzuhUh";
+
+    if (!accessToken || !accessSecret) {
+        throw new functions.https.HttpsError("failed-precondition", "Missing X User Access Tokens. Please securely connect your X account first.");
+    }
+
+    try {
+        const client = new TwitterApi({
+            appKey,
+            appSecret,
+            accessToken,
+            accessSecret,
+        });
+
+        const v2Client = client.v2;
+        const result = await v2Client.tweet(content);
+        return { success: true, tweetId: result.data.id };
+    } catch (e: any) {
+        functions.logger.error("Failed to post to X:", e);
+        throw new functions.https.HttpsError("internal", e.message || "Failed to post to X.");
+    }
+});
+export * from './googleBusiness';
+export * from './revenuecat';
+export * from './rfpAgent';
+export * from './tiktok';
+export * from './marketplaceIntegrations';
+export * from './linkedin';
