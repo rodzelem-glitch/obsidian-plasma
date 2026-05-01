@@ -304,44 +304,6 @@ const ROICalculator = () => {
     );
 };
 
-                                Contact Support
-                            </h3>
-                            <p className="text-slate-500 text-sm mb-8">Have a question or need help? Send us a message.</p>
-
-                            <form onSubmit={handleSubmit} className="space-y-5">
-                                <div>
-                                    <label htmlFor="support-name" className="text-xs font-bold text-slate-600">Your Name</label>
-                                    <input
-                                        id="support-name" type="text" value={name} onChange={e => setName(e.target.value)} required title="Your Name" placeholder="Your Name"
-                                        className="w-full mt-1 bg-white border border-slate-300 rounded-lg px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="support-email" className="text-xs font-bold text-slate-600">Your Email</label>
-                                    <input
-                                        id="support-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required title="Your Email" placeholder="Your Email"
-                                        className="w-full mt-1 bg-white border border-slate-300 rounded-lg px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="support-message" className="text-xs font-bold text-slate-600">Message</label>
-                                    <textarea
-                                        id="support-message" value={message} onChange={e => setMessage(e.target.value)} required rows={4} title="Message" placeholder="Type your message here..."
-                                        className="w-full mt-1 bg-white border border-slate-300 rounded-lg px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                    ></textarea>
-                                </div>
-                                <button type="submit" disabled={isSubmitting} className="w-full py-4 rounded-lg bg-primary-600 text-white font-bold hover:bg-primary-700 transition-all shadow-lg shadow-primary-500/25 disabled:opacity-50 disabled:cursor-not-allowed">
-                                    {isSubmitting ? 'Sending...' : 'Send Message'}
-                                </button>
-                            </form>
-                        </>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
 const TikTok = ({ size = 20, className = "" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
         <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5v3a3 3 0 0 1-3-3v11a7 7 0 1 1-7-7" />
@@ -845,7 +807,7 @@ const SaaSMarketing: React.FC = () => {
                                 { role: 'employee', icon: Wrench, label: 'View as Technician', color: 'bg-emerald-600', desc: 'Field App Flow' },
                                 { role: 'customer', icon: Users, label: 'View as Customer', color: 'bg-orange-600', desc: 'Self-Service Portal' }
                             ].map((opt) => (
-                                <button key={opt.role} onClick={() => window.location.href = `https://app.tektrakker.com/pro/apex?role=${opt.role}&source=marketing`} className="p-6 rounded-3xl bg-slate-50 border border-slate-200 hover:border-primary-500 transition-all text-left group flex flex-col h-full hover:bg-slate-100 shadow-sm">
+                                <button key={opt.role} onClick={() => window.location.href = `https://app.tektrakker.com/pro/apex?role=${opt.role}&source=marketing&returnUrl=${encodeURIComponent(window.location.href)}`} className="p-6 rounded-3xl bg-slate-50 border border-slate-200 hover:border-primary-500 transition-all text-left group flex flex-col h-full hover:bg-slate-100 shadow-sm">
                                     <div className={`w-12 h-12 rounded-2xl ${opt.color} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg`}><opt.icon className="text-white" size={24} /></div>
                                     <h4 className="font-bold text-lg mb-2 text-slate-900">{opt.label}</h4>
                                     <p className="text-xs text-slate-500 leading-relaxed mb-6 flex-1">{opt.desc}</p>
@@ -871,7 +833,7 @@ const SaaSMarketing: React.FC = () => {
                         <h2 className="text-2xl font-bold text-slate-500 mb-8">Stop Being a Slave to Paperwork.</h2>
                         <p className="text-xl text-slate-600 max-w-xl mb-10 leading-relaxed font-medium">You didn't start a business to work 16 hours a day. TekTrakker eliminates the chaos of scheduling, chasing payments, and managing techs so you can finally breathe.</p>
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <a href="https://app.tektrakker.com/pro/apex?fresh=true" className="h-16 px-10 rounded-2xl bg-primary-600 text-white font-black text-lg hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 hover:scale-[1.02] flex items-center justify-center gap-2 cursor-pointer">Start Exploring Now <ArrowRight size={20} /></a>
+                            <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-primary-600 text-white font-black text-lg hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 hover:scale-[1.02] flex items-center justify-center gap-2 cursor-pointer">Start Exploring Now <ArrowRight size={20} /></button>
                         </div>
                         <div className="mt-6 flex flex-col sm:flex-row gap-4 sm:items-center">
                             <div className="flex items-center gap-1">

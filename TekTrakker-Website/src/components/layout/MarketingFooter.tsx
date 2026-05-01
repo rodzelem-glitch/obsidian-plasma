@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Facebook } from 'lucide-react';
-import Logo from './Logo';
+import { Logo } from '../ui/Logo';
 
 const TikTok = ({ size = 20, className = "" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
         <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5v3a3 3 0 0 1-3-3v11a7 7 0 1 1-7-7" />
+    </svg>
+);
+
+const Facebook = ({ size = 20, className = "" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
     </svg>
 );
 
