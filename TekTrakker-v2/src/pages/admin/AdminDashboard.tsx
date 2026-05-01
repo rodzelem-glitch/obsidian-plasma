@@ -9,7 +9,7 @@ import PendingAppointments from './dashboard/components/PendingAppointments';
 import LiveOperations from './dashboard/components/LiveOperations';
 import IncidentQueue from './dashboard/components/IncidentQueue';
 import IncidentModal from './dashboard/components/IncidentModal';
-import { ShoppingCart } from 'lucide-react';
+import { ShoppingCart, Bot, ArrowRight } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 
 const AdminDashboard: React.FC = () => {
@@ -232,6 +232,30 @@ const AdminDashboard: React.FC = () => {
                     onDelete={handleDeleteAppointment} 
                 />
             }
+
+            {!state.currentOrganization?.virtualWorkerEnabled && (
+                <div 
+                    onClick={() => window.location.href = '#/admin/ai-worker-upgrade'}
+                    className="relative overflow-hidden bg-gradient-to-r from-slate-900 to-indigo-900 rounded-3xl p-8 cursor-pointer shadow-2xl hover:shadow-indigo-500/20 hover:-translate-y-1 transition-all duration-300 group mt-2 mb-6"
+                >
+                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-500 pointer-events-none">
+                        <Bot size={120} className="text-white" />
+                    </div>
+                    
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 mb-3">
+                            <span className="bg-primary-500 text-white text-xs font-black px-3 py-1 uppercase tracking-widest rounded-full">New Add-On</span>
+                            <h3 className="text-2xl font-black text-white">Unlock the Virtual AI Worker</h3>
+                        </div>
+                        <p className="text-indigo-200 mt-2 mb-6 max-w-2xl text-lg">
+                            Automate your dispatching, securely invoice clients, and let your technicians talk to the CRM hands-free. Includes 10,000,000 monthly operations.
+                        </p>
+                        <div className="inline-flex items-center text-white font-bold bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl transition-colors">
+                            View Pricing & Details <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <LiveOperations liveOps={liveOps} />

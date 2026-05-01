@@ -470,7 +470,8 @@ const LoginPage: React.FC = () => {
                               hvacSystem: { brand: '', type: 'Unknown' },
                               serviceHistory: [],
                               notes: `Joined via Portal. Interest: ${userServiceNeed}`,
-                              marketingConsent: marketingConsent as any
+                              marketingConsent: marketingConsent as any,
+                              isNew: true
                           }, { merge: true });
                       }
                   } catch (custErr) {
@@ -545,9 +546,29 @@ const LoginPage: React.FC = () => {
       if (e) e.preventDefault();
       
       // Validate Step 2 (Only if NOT bypassing)
-      if (!isValidPromo && (!ccNumber || !ccExp || !ccCvc)) {
-          setError("Payment information is required for account setup.");
-          return;
+      if (!isValidPromo) {
+          if (!ccName || !ccNumber || !ccExp || !ccCvc) {
+              setError("All payment information is required for account setup.");
+              return;
+          }
+          
+          // Strict formatting validations
+          const cleanNumber = ccNumber.replace(/\D/g, '');
+          if (cleanNumber.length < 15 || cleanNumber.length > 16) {
+              setError("Please enter a valid 15 or 16-digit credit card number.");
+              return;
+          }
+          
+          if (!/^\d{2}\/\d{2}$/.test(ccExp)) {
+              setError("Please enter a valid expiration date in MM/YY format.");
+              return;
+          }
+          
+          const cleanCvc = ccCvc.replace(/\D/g, '');
+          if (cleanCvc.length < 3 || cleanCvc.length > 4) {
+              setError("Please enter a valid 3 or 4-digit CVC/CVV security code.");
+              return;
+          }
       }
       
       setError('');
@@ -650,9 +671,20 @@ const LoginPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-start p-4 font-sans relative overflow-y-auto py-12">
+      <style>{`.custom-brand-bg { background-color: ${brandColor}; }`}</style>
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-[20%] -left-[10%] w-[70vw] h-[70vw] rounded-full blur-[120px] mix-blend-screen opacity-20" style={{ backgroundColor: brandColor }} />
+          <div className="absolute -top-[20%] -left-[10%] w-[70vw] h-[70vw] rounded-full blur-[120px] mix-blend-screen opacity-20 custom-brand-bg" />
           <div className="absolute bottom-[0%] -right-[10%] w-[60vw] h-[60vw] bg-indigo-600/10 rounded-full blur-[100px] mix-blend-screen" />
+          
+          {/* Desktop-only Mascot Companion */}
+          <div className="hidden lg:block absolute bottom-0 right-[5%] z-0">
+              <img 
+                 src="/mascot.png" 
+                 alt="" 
+                 className="h-[550px] w-auto object-contain opacity-80 drop-shadow-[0_0_40px_rgba(37,99,235,0.3)] hover:opacity-100 transition-all duration-500" 
+                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+          </div>
       </div>
 
       <div className="w-full max-w-lg relative z-10">
@@ -726,6 +758,9 @@ const LoginPage: React.FC = () => {
                 />
             )}
 
+            <div className="mt-8 text-center text-xs text-slate-500">
+                <p>By continuing, you agree to the <a href="https://tektrakker.com/terms" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Terms of Service</a> and <a href="https://tektrakker.com/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">Privacy Policy</a>.</p>
+            </div>
         </div>
 
 

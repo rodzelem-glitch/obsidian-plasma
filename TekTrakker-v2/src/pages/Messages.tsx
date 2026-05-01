@@ -1,15 +1,18 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
 import { db } from 'lib/firebase';
 import type { Message, User as AppUser } from 'types';
-import { User, Users, Mail, MessageSquare, Phone, Search, Send, Clock, AlertCircle, Trash2, ArrowLeft, RefreshCw, CheckCircle2, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { User, Users, Mail, MessageSquare, Phone, Search, Send, Clock, AlertCircle, Trash2, ArrowLeft, RefreshCw, CheckCircle2, AlertTriangle, ShieldAlert, Edit, X, Paperclip } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
+import { sendNotification } from 'lib/notificationService';
 
 const Messages: React.FC = () => {
+    const navigate = useNavigate();
     const { state, dispatch } = useAppContext();
     const { currentUser: user } = state;
 
@@ -27,16 +30,33 @@ const Messages: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'team' | 'customers'>('team');
     
     // Selection State
-    const [selectedPartnerId, setSelectedPartnerId] = useState<'all' | string>('all');
+    const [selectedPartnerId, setSelectedPartnerId] = useState<'all' | string>(() => {
+        const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+        return params.get('partner') || 'all';
+    });
     const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
-    const [isMobileThreadOpen, setIsMobileThreadOpen] = useState(false);
+    const [isMobileThreadOpen, setIsMobileThreadOpen] = useState(() => {
+        const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+        return !!params.get('partner');
+    });
     
     const [newMessage, setNewMessage] = useState('');
+    const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    const [editContent, setEditContent] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const [includeCustomers, setIncludeCustomers] = useState(false);
+    const [broadcastTarget, setBroadcastTarget] = useState<'all' | 'all_admins' | 'all_sales'>('all');
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // --- DATA TRANSFORMATION ---
+    const isMe = (id?: string) => {
+        if (!id) return false;
+        if (id === user?.id) return true;
+        if (user?.role === 'master_admin' && id === 'rodzelem@gmail.com') return true;
+        if (user?.email === 'rodzelem@gmail.com' && id === 'rodzelem@gmail.com') return true;
+        return false;
+    };
 
     const teamPartners = useMemo(() => {
         const currentOrgId = state.currentOrganization?.id;
@@ -46,12 +66,38 @@ const Messages: React.FC = () => {
 
         let otherUsers: AppUser[];
 
-        if (isSales) {
+        if (user?.role === 'master_admin') {
+            otherUsers = state.users.filter(u =>
+                ['admin', 'both', 'supervisor', 'platform_sales'].includes(u.role) &&
+                u.id !== user?.id &&
+                u.status !== 'archived'
+            );
+        } else if (isSales) {
             otherUsers = state.users.filter(u =>
                 (u.role === 'platform_sales' || u.role === 'master_admin') &&
                 u.id !== user?.id &&
                 u.status !== 'archived'
-            );
+            ).map(u => u.role === 'master_admin' ? { ...u, id: 'rodzelem@gmail.com', firstName: 'TekTrakker', lastName: 'Administrator' } : u);
+            
+            // Add Converted Clients (Organizations) as standard contacts for the Sales Rep!
+            const convertedOrgs = state.allOrganizations.filter(org => org.salesRepId === user?.id);
+            convertedOrgs.forEach(org => {
+                const targetId = org.ownerId || org.id;
+                // Avoid duplicating if owner happens to have same ID somehow
+                if (!otherUsers.some(existing => existing.id === targetId)) {
+                    otherUsers.push({
+                        id: targetId,
+                        uid: targetId,
+                        firstName: org.name || 'Converted',
+                        lastName: '(Client)',
+                        role: 'admin',
+                        organizationId: org.id,
+                        username: 'client_org',
+                        payRate: 0,
+                        ptoAccrued: 0
+                    } as any);
+                }
+            });
         } else {
             otherUsers = state.users.filter(u =>
                 u.organizationId === currentOrgId &&
@@ -59,18 +105,70 @@ const Messages: React.FC = () => {
                 u.status !== 'archived' &&
                 u.role !== 'customer'
             );
+            
+            // Inject Master Admin Contact for all organizations
+            if (user?.email && user.email.toLowerCase() !== 'rodzelem@gmail.com') {
+                otherUsers.push({
+                    id: 'rodzelem@gmail.com',
+                    uid: 'rodzelem@gmail.com',
+                    firstName: 'TekTrakker',
+                    lastName: 'Administrator',
+                    role: 'master_admin',
+                    organizationId: 'platform',
+                    username: 'tektrakker_admin',
+                    payRate: 0,
+                    ptoAccrued: 0
+                } as any);
+            }
+
+            // Inject Dedicated Platform Sales Representative Contact
+            if (state.currentOrganization?.salesRepId && user?.id !== state.currentOrganization.salesRepId) {
+                otherUsers.push({
+                    id: state.currentOrganization.salesRepId,
+                    uid: state.currentOrganization.salesRepId,
+                    firstName: 'Your Platform',
+                    lastName: 'Representative',
+                    role: 'platform_sales',
+                    organizationId: 'platform',
+                    username: 'platform_sales_rep',
+                    payRate: 0,
+                    ptoAccrued: 0
+                } as any);
+            }
         }
-        
+
+        // FOR MASTER ADMINS & SALES REPS: Dynamically inject ANY user that has an active conversation thread with them
+        if (user?.role === 'master_admin' || user?.role === 'platform_sales') {
+            const activeChatUserIds = new Set<string>();
+            state.messages.forEach(m => {
+                if (m.senderId === 'rodzelem@gmail.com' && user.role === 'master_admin') activeChatUserIds.add(m.receiverId);
+                if (m.receiverId === 'rodzelem@gmail.com' && user.role === 'master_admin') activeChatUserIds.add(m.senderId);
+                if (m.senderId === user.id) activeChatUserIds.add(m.receiverId);
+                if (m.receiverId === user.id) activeChatUserIds.add(m.senderId);
+            });
+            activeChatUserIds.forEach(id => {
+                if (!otherUsers.some(u => u.id === id) && id !== 'all' && id !== 'rodzelem@gmail.com' && id !== user.id) {
+                    const foundUser = state.users.find(x => x.id === id);
+                    if (foundUser) {
+                        otherUsers.push(foundUser);
+                    } else {
+                        // Fallback generic contact if user somehow doesn't exist in cache yet
+                        otherUsers.push({ id, uid: id, firstName: 'External', lastName: 'User', role: 'admin', organizationId: 'unknown', username: id, payRate: 0, ptoAccrued: 0 } as any);
+                    }
+                }
+            });
+        }
+
         return otherUsers.map(u => {
             const unreadCount = state.messages.filter(msg => 
                 msg.senderId === u.id && 
-                msg.receiverId === user?.id && 
+                isMe(msg.receiverId) && 
                 !msg.read
             ).length;
 
             const threadMsgs = state.messages.filter(m => 
-                (m.senderId === user?.id && m.receiverId === u.id) ||
-                (m.senderId === u.id && m.receiverId === user?.id)
+                (isMe(m.senderId) && m.receiverId === u.id) ||
+                (m.senderId === u.id && isMe(m.receiverId))
             ).sort((a,b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
 
             return { ...u, unreadCount, lastMsg: threadMsgs[0] };
@@ -83,7 +181,7 @@ const Messages: React.FC = () => {
 
     const broadcastUnreadCount = useMemo(() => {
         const lastSeenId = localStorage.getItem(`tt_last_broadcast_${user?.id}`);
-        const broadcasts = state.messages.filter(m => m.receiverId === 'all');
+        const broadcasts = state.messages.filter(m => m.receiverId === 'all' || m.receiverId === 'all_customers');
         if (!lastSeenId) return broadcasts.length;
         
         const lastIndex = broadcasts.findIndex(m => m.id === lastSeenId);
@@ -93,12 +191,33 @@ const Messages: React.FC = () => {
     const threadMessages = useMemo(() => {
         if (activeTab === 'team') {
             if (selectedPartnerId === 'all') {
-                return state.messages.filter(m => m.receiverId === 'all')
-                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                const allBroadcasts = state.messages.filter(m => {
+                    if (user?.role === 'master_admin') {
+                        return ['all', 'all_customers', 'all_admins', 'all_sales'].includes(m.receiverId);
+                    }
+                    if (m.receiverId === 'all') return true;
+                    if (m.receiverId === 'all_admins' && ['master_admin', 'admin', 'both'].includes(user?.role || '')) return true;
+                    if (m.receiverId === 'all_sales' && user?.role === 'platform_sales') return true;
+                    return false;
+                }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    
+                // Deduplicate broadcasts that were fanned out to tenant silos
+                const uniqueBroadcasts: Message[] = [];
+                const seenKeys = new Set<string>();
+                allBroadcasts.forEach(m => {
+                    const key = `${m.timestamp}-${m.content}`;
+                    if (!seenKeys.has(key)) {
+                        seenKeys.add(key);
+                        uniqueBroadcasts.push(m);
+                    }
+                });
+                return uniqueBroadcasts;
             } else {
                 return state.messages.filter(m => 
-                    (m.senderId === user?.id && m.receiverId === selectedPartnerId) ||
-                    (m.senderId === selectedPartnerId && m.receiverId === user?.id)
+                    (isMe(m.senderId) && m.receiverId === selectedPartnerId) ||
+                    (m.senderId === selectedPartnerId && isMe(m.receiverId)) ||
+                    // Allow organization admins to see messages generically sent to their Org ID
+                    (m.senderId === selectedPartnerId && m.receiverId === state.currentOrganization?.id)
                 ).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
             }
         } else {
@@ -152,7 +271,24 @@ const Messages: React.FC = () => {
             }
         }
 
-        const activeOrgId = state.currentOrganization.id;
+        let activeOrgId = state.currentOrganization.id;
+
+        // If a Platform Admin sends a message to a Tenant, we must assign the target Org's ID to the message payload
+        // so the tenant's bounded listener actually detects and downloads the reply.
+        if (state.currentOrganization.id === 'platform') {
+            if (activeTab === 'team' && selectedPartnerId !== 'all') {
+                const targetUser = state.users.find(u => u.id === selectedPartnerId);
+                if (targetUser && targetUser.organizationId) {
+                    activeOrgId = targetUser.organizationId;
+                }
+            } else if (activeTab === 'customers' && selectedCustomerId) {
+                const targetCustomer = state.customers.find(c => c.id === selectedCustomerId);
+                if (targetCustomer && targetCustomer.organizationId) {
+                    activeOrgId = targetCustomer.organizationId;
+                }
+            }
+        }
+
         const msgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         
         // Mark as queued for SMS. The backend Cloud Function should handle delivery.
@@ -160,41 +296,76 @@ const Messages: React.FC = () => {
 
         setIsSending(true);
 
+        const activeReceiverId = (activeTab === 'team' && selectedPartnerId === 'all' && user?.role === 'master_admin') 
+            ? broadcastTarget 
+            : (activeTab === 'team' ? selectedPartnerId : (selectedCustomerId || ''));
+
         const msg: Message = {
             id: msgId,
             organizationId: activeOrgId,
-            senderId: user.id,
-            senderName: `${user.firstName} ${user.lastName}`,
-            receiverId: activeTab === 'team' ? selectedPartnerId : (selectedCustomerId || ''),
+            senderId: user.email === 'rodzelem@gmail.com' ? 'rodzelem@gmail.com' : user.id,
+            senderName: user.email === 'rodzelem@gmail.com' ? 'TekTrakker Administrator' : `${user.firstName} ${user.lastName}`,
+            receiverId: activeReceiverId,
             content: newMessage.trim(),
             timestamp: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
             read: false,
             type: activeTab === 'team' ? 'text' : 'sms',
             deliveryStatus: deliveryStatus
         };
 
         try {
-            await db.collection('messages').doc(msgId).set(msg);
+            // If Master Admin broadcasts, fan out message across all tenant silos so their bounded listeners pick it up natively
+            if (activeTab === 'team' && selectedPartnerId === 'all' && state.currentOrganization.id === 'platform' && user?.role === 'master_admin') {
+                const batch = db.batch();
+                const allOrgIds = Array.from(new Set(['platform', ...(state.allOrganizations || []).map(o => o.id)]));
+                allOrgIds.forEach(orgId => {
+                    const uniqueId = `${msgId}-${orgId}`;
+                    const ref = db.collection('messages').doc(uniqueId);
+                    batch.set(ref, { ...msg, id: uniqueId, organizationId: orgId });
+                });
+                await batch.commit();
+            } else {
+                await db.collection('messages').doc(msgId).set(msg);
+            }
             
             // Trigger Push Notification for Team Messages
             if (activeTab === 'team') {
-                const { sendNotification } = await import('lib/notificationService');
                 if (selectedPartnerId !== 'all') {
                     await sendNotification(selectedPartnerId, {
-                        title: `New Message from ${user.firstName}`,
+                        title: `New Message from ${user.email === 'rodzelem@gmail.com' ? 'TekTrakker Admin' : user.firstName}`,
                         body: newMessage.trim(),
                         type: 'message',
                         data: { senderId: user.id }
                     });
                 } else {
                     // Trigger global broadcast cascade
-                    const promises = teamPartners.map(p => sendNotification(p.id, {
-                        title: `Broadcast from ${user.firstName}`,
+                    // Tenant admins are isolated strictly to their company `teamPartners`. Master Admins can broadcast platform-wide.
+                    let usersToNotify: any[] = teamPartners;
+                    if (state.currentOrganization.id === 'platform' && user?.role === 'master_admin') {
+                        const senderEmail = (user?.email || '').toLowerCase();
+                        // Deduplicate self to prevent multiple push notifications sending to the master admin's alt-tenant accounts
+                        usersToNotify = state.users.filter(u => u.id !== user.id && (u.email || '').toLowerCase() !== senderEmail);
+                        if (broadcastTarget === 'all_admins') {
+                            usersToNotify = usersToNotify.filter(u => ['master_admin', 'admin', 'both'].includes(u.role));
+                        } else if (broadcastTarget === 'all_sales') {
+                            usersToNotify = usersToNotify.filter(u => u.role === 'platform_sales');
+                        }
+                    }
+                           
+                    const promises = usersToNotify.map(p => sendNotification(p.id, {
+                        title: `Broadcast from ${user.email === 'rodzelem@gmail.com' ? 'TekTrakker Admin' : user.firstName}`,
                         body: newMessage.trim(),
                         type: 'broadcast',
                         data: { senderId: user.id }
                     }));
                     await Promise.all(promises);
+                    
+                    // Dispatch secondary explicit customer push explicitly if explicitly requested
+                    if (state.currentOrganization.id === 'platform' && user?.role === 'master_admin' && includeCustomers) {
+                         const custMsg = { ...msg, id: `${msgId}-cust`, receiverId: 'all_customers', type: 'sms' as any };
+                         await db.collection('messages').doc(custMsg.id).set(custMsg);
+                    }
                 }
             }
 
@@ -211,16 +382,47 @@ const Messages: React.FC = () => {
         }
     };
 
-    const handleDeleteMessage = async (msgId: string) => {
+    const handleDeleteMessage = async (msg: Message) => {
         if (!await globalConfirm("Permanently delete this message?")) return;
         try {
-            await db.collection('messages').doc(msgId).delete();
-            // Optimistic Delete
-            const updatedMessages = state.messages.filter(m => m.id !== msgId);
-            dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });
+            if (['all', 'all_admins', 'all_sales', 'all_customers'].includes(msg.receiverId) && msg.senderId === user?.id && state.currentOrganization.id === 'platform') {
+                const snapshot = await db.collection('messages')
+                                        .where('senderId', '==', msg.senderId)
+                                        .where('timestamp', '==', msg.timestamp)
+                                        .get();
+                const batch = db.batch();
+                snapshot.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+                
+                const deletedIds = snapshot.docs.map(d => d.id);
+                const updatedMessages = state.messages.filter(m => !deletedIds.includes(m.id));
+                dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });
+            } else {
+                await db.collection('messages').doc(msg.id).delete();
+                const updatedMessages = state.messages.filter(m => m.id !== msg.id);
+                dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });
+            }
         } catch (e) {
             console.error(e);
             alert("Delete failed.");
+        }
+    };
+
+    const handleSaveEdit = async (msg: Message) => {
+        if (!editContent.trim() || editContent.trim() === msg.content) {
+            setEditingMessageId(null);
+            return;
+        }
+        try {
+            await db.collection('messages').doc(msg.id).update({
+                content: editContent.trim(),
+                isEdited: true
+            });
+            const updatedMessages = state.messages.map(m => m.id === msg.id ? { ...m, content: editContent.trim(), isEdited: true } : m);
+            dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });
+            setEditingMessageId(null);
+        } catch (e) {
+            alert("Edit failed.");
         }
     };
 
@@ -235,6 +437,76 @@ const Messages: React.FC = () => {
     };
 
     const activeCustomer = state.customers.find(c => c.id === selectedCustomerId);
+
+    const role = state.currentUser?.role || '';
+    const isStaffAdmin = ['admin', 'master_admin', 'both', 'supervisor'].includes(role);
+
+    const renderContentWithLinks = (text: string) => {
+        if (!text) return text;
+        const parts = text.split(/(https?:\/\/[^\s]+|#[A-Z]+-[A-Za-z0-9-]+)/g);
+        return parts.map((part, i) => {
+            if (part.match(/^https?:\/\/[^\s]+/)) {
+                return <a key={i} href={part} target="_blank" rel="noreferrer" className="underline hover:opacity-80 break-all text-blue-500">{part}</a>;
+            }
+            if (part.match(/^#JOB-(.+)/)) {
+                const id = part.replace('#JOB-', '');
+                return <button key={i} onClick={(e) => { 
+                    e.preventDefault(); 
+                    if (isStaffAdmin) navigate(`/admin/operations?tab=jobs&jobId=${id}`); 
+                    else navigate(`/briefing/scheduling?jobId=${id}`);
+                }} className="underline font-bold bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
+            }
+            if (part.match(/^#HIST-(.+)/)) {
+                const id = part.replace('#HIST-', '');
+                return <button key={i} onClick={(e) => { 
+                    e.preventDefault(); 
+                    if (isStaffAdmin) navigate(`/admin/records?tab=history&histId=${id}`); 
+                    else alert("Restricted: Historical job records require administrator privileges.");
+                }} className="underline font-bold bg-slate-200 dark:bg-slate-700/50 text-slate-800 dark:text-slate-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
+            }
+            if (part.match(/^#DOC-(.+)/)) {
+                const id = part.replace('#DOC-', '');
+                return <button key={i} onClick={(e) => { 
+                    e.preventDefault(); 
+                    if (isStaffAdmin) navigate(`/admin/records?tab=documents&docId=${id}`);
+                    else alert('Restricted: Documents require administrator privileges.');
+                }} className="underline font-bold bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
+            }
+            if (part.match(/^#INV-(.+)/)) {
+                const id = part.replace('#INV-', '');
+                return <button key={i} onClick={(e) => { 
+                    e.preventDefault(); 
+                    if (isStaffAdmin) navigate(`/admin/financials?tab=invoices&invoiceId=${id}`);
+                    else alert('Restricted: Invoices require administrator privileges.');
+                }} className="underline font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
+            }
+            if (part.match(/^#PROP-(.+)/)) {
+                const id = part.replace('#PROP-', '');
+                return <button key={i} onClick={(e) => { 
+                    e.preventDefault(); 
+                    if (isStaffAdmin) navigate(`/admin/sales?propId=${id}`); 
+                    else navigate(`/briefing/proposal?proposalId=${id}`);
+                }} className="underline font-bold bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
+            }
+            if (part.match(/^#CUST-(.+)/)) {
+                const id = part.replace('#CUST-', '');
+                return <button key={i} onClick={(e) => { 
+                    e.preventDefault(); 
+                    if (isStaffAdmin) navigate(`/admin/customers?custId=${id}`);
+                    else alert('Restricted: Full customer profiles require administrator privileges. Please view customer info assigned to your jobs.');
+                }} className="underline font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
+            }
+            if (part.match(/^#EXP-(.+)/)) {
+                const id = part.replace('#EXP-', '');
+                return <button key={i} onClick={(e) => { 
+                    e.preventDefault(); 
+                    if (isStaffAdmin) navigate(`/admin/financials?tab=expenses&expId=${id}`);
+                    else alert('Restricted: Financial records require administrator privileges.');
+                }} className="underline font-bold bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
+            }
+            return part;
+        });
+    };
 
     return (
         <div className="flex h-[calc(100vh-140px)] flex-col md:flex-row gap-4 p-2 md:p-4 animate-fade-in relative overflow-hidden">
@@ -308,7 +580,7 @@ const Messages: React.FC = () => {
                 {/* Header */}
                 <div className="p-3 md:p-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center h-16 md:h-20 shadow-sm z-10">
                     <div className="flex items-center gap-3 md:gap-4">
-                        <button onClick={() => setIsMobileThreadOpen(false)} className="md:hidden p-2 -ml-2 text-slate-500">
+                        <button onClick={() => setIsMobileThreadOpen(false)} aria-label="Back to threads" title="Back to threads" className="md:hidden p-2 -ml-2 text-slate-500">
                             <ArrowLeft size={20}/>
                         </button>
                         {activeTab === 'team' ? (
@@ -343,25 +615,60 @@ const Messages: React.FC = () => {
                 {/* Feed */}
                 <div className="flex-1 bg-slate-50 dark:bg-slate-950 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 custom-scrollbar" ref={scrollRef}>
                     {threadMessages.map(msg => {
-                        const isMe = msg.senderId === user?.id;
+                        const isOwnMessage = isMe(msg.senderId);
+                        const isEditable = isOwnMessage && ((new Date().getTime() - new Date(msg.timestamp).getTime()) < 15 * 60 * 1000);
+                        const isEditingThis = editingMessageId === msg.id;
+
                         return (
-                            <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} group animate-fade-in`}>
-                                <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-[80%]`}>
-                                    {!isMe && selectedPartnerId === 'all' && <span className="text-[10px] font-black text-slate-400 mb-1 ml-2 uppercase tracking-tighter">{msg.senderName}</span>}
-                                    <div className="relative group/msg">
-                                        <div className={`px-4 md:px-5 py-2 md:py-3 rounded-2xl md:rounded-3xl shadow-sm text-sm leading-relaxed ${isMe ? 'bg-primary-600 text-white rounded-br-none' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-bl-none border border-slate-100 dark:border-slate-700'}`}>
-                                            {msg.content}
+                            <div key={msg.id} className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'} group animate-fade-in`}>
+                                <div className={`flex flex-col ${isOwnMessage ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-[80%] relative`}>
+                                    {!isOwnMessage && selectedPartnerId === 'all' && <span className="text-[10px] font-black text-slate-400 mb-1 ml-2 uppercase tracking-tighter">{msg.senderName}</span>}
+                                    <div className="relative group/msg w-full flex flex-col items-end">
+                                    {isEditingThis ? (
+                                        <div className="flex gap-2 items-center bg-white dark:bg-slate-800 p-2 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700">
+                                            <input 
+                                                title="Edit Message"
+                                                aria-label="Edit Message Content"
+                                                className="bg-slate-100 dark:bg-slate-900 border-none rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 w-48 md:w-64"
+                                                value={editContent}
+                                                onChange={e => setEditContent(e.target.value)}
+                                                autoFocus
+                                            />
+                                            <button title="Save Edit" aria-label="Save Edit" onClick={() => handleSaveEdit(msg)} className="p-1.5 bg-emerald-500 text-white rounded hover:bg-emerald-600 transition-colors">
+                                                <CheckCircle2 size={16}/>
+                                            </button>
+                                            <button title="Cancel Edit" aria-label="Cancel Edit" onClick={() => setEditingMessageId(null)} className="p-1.5 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded hover:bg-slate-300 transition-colors">
+                                                <X size={16}/>
+                                            </button>
                                         </div>
-                                        <button 
-                                            onClick={() => handleDeleteMessage(msg.id)}
-                                            className={`absolute ${isMe ? '-left-8' : '-right-8'} top-1/2 -translate-y-1/2 p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover/msg:opacity-100 transition-opacity`}
-                                            title="Delete Message"
-                                        >
-                                            <Trash2 size={14}/>
-                                        </button>
+                                    ) : (
+                                        <>
+                                            <div className={`px-4 md:px-5 py-2 md:py-3 rounded-2xl md:rounded-3xl shadow-sm text-sm leading-relaxed ${isOwnMessage ? 'bg-primary-600 text-white rounded-br-none' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-bl-none border border-slate-100 dark:border-slate-700'}`}>
+                                                {renderContentWithLinks(msg.content)} {msg.isEdited && <span className="text-[10px] opacity-70 italic ml-1">(edited)</span>}
+                                            </div>
+                                            <div className={`absolute ${isOwnMessage ? '-left-16' : '-right-8'} top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity`}>
+                                                {isEditable && activeTab === 'team' && (
+                                                    <button 
+                                                        onClick={() => { setEditingMessageId(msg.id); setEditContent(msg.content); }}
+                                                        className="p-1.5 text-slate-300 hover:text-blue-500 bg-white dark:bg-slate-800 rounded-full shadow-sm"
+                                                        title="Edit Message (within 15m)"
+                                                    >
+                                                        <Edit size={12}/>
+                                                    </button>
+                                                )}
+                                                <button 
+                                                    onClick={() => handleDeleteMessage(msg)}
+                                                    className="p-1.5 text-slate-300 hover:text-red-500 bg-white dark:bg-slate-800 rounded-full shadow-sm"
+                                                    title="Delete Message"
+                                                >
+                                                    <Trash2 size={12}/>
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
                                     </div>
                                     <div className="flex items-center gap-1.5 mt-1">
-                                        {isMe && msg.type === 'sms' && (
+                                        {isOwnMessage && msg.type === 'sms' && (
                                             <div title={msg.deliveryStatus === 'failed' ? msg.deliveryError : `SMS ${msg.deliveryStatus || 'queued'}`}>
                                                 {msg.deliveryStatus === 'sent' ? (
                                                     <CheckCircle2 size={10} className="text-emerald-500" />
@@ -400,17 +707,60 @@ const Messages: React.FC = () => {
 
                 {/* Input */}
                 <div className="p-3 md:p-4 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
-                    <form onSubmit={handleSend} className="flex gap-2 md:gap-3">
-                        <input 
-                            className="flex-1 bg-slate-100 dark:bg-slate-800 border-none rounded-xl md:rounded-2xl px-4 md:px-6 py-3 md:py-4 text-sm font-medium focus:ring-2 focus:ring-primary-500 transition-all dark:text-white"
-                            placeholder="Type a message..."
-                            value={newMessage}
-                            onChange={e => setNewMessage(e.target.value)}
-                        />
-                        <button type="submit" disabled={!newMessage.trim() || isSending} className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-primary-600 text-white flex items-center justify-center hover:bg-primary-700 shadow-lg transition-all disabled:opacity-50">
-                            {isSending ? <RefreshCw className="animate-spin" size={20}/> : <Send size={20}/>}
-                        </button>
-                    </form>
+                    {selectedPartnerId === 'all' && !['master_admin', 'admin', 'both'].includes(user?.role || '') ? (
+                        <div className="py-3 text-center text-sm font-medium text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/50 rounded-xl md:rounded-2xl border border-slate-100 dark:border-slate-800/80">
+                            Only Administrators can post to the Broadcast channel.
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSend} className="flex flex-col gap-2">
+                            {activeTab === 'team' && (
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={() => setNewMessage(prev => prev + (prev.endsWith(" ") || prev === "" ? "" : " ") + "#JOB-")} className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center gap-1 transition-colors"><Paperclip size={10}/> Ref Job</button>
+                                    <button type="button" onClick={() => setNewMessage(prev => prev + (prev.endsWith(" ") || prev === "" ? "" : " ") + "#DOC-")} className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center gap-1 transition-colors"><Paperclip size={10}/> Ref Doc</button>
+                                </div>
+                            )}
+                            <div className="flex gap-2 md:gap-3">
+                                <input 
+                                    className="flex-1 bg-slate-100 dark:bg-slate-800 border-none rounded-xl md:rounded-2xl px-4 md:px-6 py-3 md:py-4 text-sm font-medium focus:ring-2 focus:ring-primary-500 transition-all dark:text-white"
+                                    placeholder="Type a message..."
+                                    value={newMessage}
+                                    onChange={e => setNewMessage(e.target.value)}
+                                />
+                                <button type="submit" disabled={!newMessage.trim() || isSending} className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-primary-600 text-white flex items-center justify-center hover:bg-primary-700 shadow-lg transition-all disabled:opacity-50">
+                                    {isSending ? <RefreshCw className="animate-spin" size={20}/> : <Send size={20}/>}
+                                </button>
+                            </div>
+                            {selectedPartnerId === 'all' && user?.role === 'master_admin' && (
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-y-2 px-3 py-2 mt-2 bg-slate-50 dark:bg-slate-800/40 rounded-lg">
+                                    <div className="flex items-center">
+                                        <label className="text-[10px] uppercase tracking-[0.1em] font-extrabold text-slate-400 dark:text-slate-500 mr-3">Audience:</label>
+                                        <select
+                                            aria-label="Broadcast Audience Target"
+                                            value={broadcastTarget}
+                                            onChange={e => setBroadcastTarget(e.target.value as any)}
+                                            className="text-xs bg-white dark:bg-slate-800 border-none rounded shadow-sm px-2.5 py-1.5 focus:ring-2 focus:ring-primary-500 font-semibold text-slate-700 dark:text-slate-200 outline-none"
+                                        >
+                                            <option value="all">All Tenant Users</option>
+                                            <option value="all_admins">Admins & Superusers</option>
+                                            <option value="all_sales">Platform Sales Reps</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <input 
+                                            type="checkbox" 
+                                            id="include_customers"
+                                            checked={includeCustomers} 
+                                            onChange={e => setIncludeCustomers(e.target.checked)} 
+                                            className="h-4 w-4 rounded bg-transparent border-slate-300 dark:border-slate-700 text-primary-600 focus:ring-primary-500 cursor-pointer" 
+                                        />
+                                        <label htmlFor="include_customers" className="ml-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 select-none cursor-pointer">
+                                            Include Customers (Global SMS)
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+                        </form>
+                    )}
                 </div>
             </Card>
         </div>

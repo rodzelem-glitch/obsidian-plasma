@@ -5,7 +5,7 @@ import {
     Zap, Shield, BarChart3, Smartphone, 
     CheckCircle, ArrowRight, Play, Cpu, Users, DollarSign,
     Heart, Clock, TrendingUp, Layers, MapPin, Star, X, Mail,
-    UserCircle, Wrench, Layout, HandCoins
+    UserCircle, Wrench, Layout, HandCoins, Bot
 } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
 import { useAppContext } from 'context/AppContext';
@@ -36,21 +36,21 @@ const ROICalculator = () => {
                         <span>Technicians on the road</span>
                         <span className="text-slate-900">{techs}</span>
                     </label>
-                    <input type="range" min="1" max="50" value={techs} onChange={e => setTechs(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"/>
+                    <input aria-label="Technicians on the road" title="Technicians on the road" type="range" min="1" max="50" value={techs} onChange={e => setTechs(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"/>
                 </div>
                 <div>
                     <label className="flex justify-between text-sm font-bold text-slate-600 mb-2">
                         <span>Avg Jobs / Day</span>
                         <span className="text-slate-900">{jobsPerDay}</span>
                     </label>
-                    <input type="range" min="1" max="8" value={jobsPerDay} onChange={e => setJobsPerDay(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"/>
+                    <input aria-label="Avg Jobs per Day" title="Avg Jobs per Day" type="range" min="1" max="8" value={jobsPerDay} onChange={e => setJobsPerDay(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"/>
                 </div>
                 <div>
                     <label className="flex justify-between text-sm font-bold text-slate-600 mb-2">
                         <span>Avg Ticket Size ($)</span>
                         <span className="text-slate-900">${avgTicket}</span>
                     </label>
-                    <input type="range" min="100" max="2000" step="50" value={avgTicket} onChange={e => setAvgTicket(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"/>
+                    <input aria-label="Avg Ticket Size" title="Avg Ticket Size" type="range" min="100" max="2000" step="50" value={avgTicket} onChange={e => setAvgTicket(Number(e.target.value))} className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"/>
                 </div>
             </div>
 
@@ -98,6 +98,8 @@ const SupportModal: React.FC<SupportModalProps> = ({ onClose, onSubmit }) => {
             <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 relative">
                 <button 
                     onClick={onClose} 
+                    aria-label="Close form"
+                    title="Close form"
                     className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors p-2 bg-slate-100 rounded-full"
                 >
                     <X size={24} />
@@ -123,21 +125,21 @@ const SupportModal: React.FC<SupportModalProps> = ({ onClose, onSubmit }) => {
                                 <div>
                                     <label className="text-xs font-bold text-slate-600">Your Name</label>
                                     <input 
-                                        type="text" value={name} onChange={e => setName(e.target.value)} required
+                                        type="text" value={name} onChange={e => setName(e.target.value)} required title="Your Name" placeholder="Your Name"
                                         className="w-full mt-1 bg-white border border-slate-300 rounded-lg px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                                     />
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-slate-600">Your Email</label>
                                     <input 
-                                        type="email" value={email} onChange={e => setEmail(e.target.value)} required
+                                        type="email" value={email} onChange={e => setEmail(e.target.value)} required title="Your Email" placeholder="Your Email"
                                         className="w-full mt-1 bg-white border border-slate-300 rounded-lg px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                                     />
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-slate-600">Message</label>
                                     <textarea
-                                        value={message} onChange={e => setMessage(e.target.value)} required rows={4}
+                                        value={message} onChange={e => setMessage(e.target.value)} required rows={4} title="Message" placeholder="Type your message here..."
                                         className="w-full mt-1 bg-white border border-slate-300 rounded-lg px-4 py-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
                                     ></textarea>
                                 </div>
@@ -183,7 +185,7 @@ const SaaSMarketing: React.FC = () => {
             {showDemoOptions && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
                     <div className="w-full max-w-4xl bg-white rounded-[2.5rem] border border-slate-200 p-4 md:p-8 md:p-12 relative shadow-2xl">
-                        <button onClick={() => setShowDemoOptions(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 bg-slate-100 rounded-full transition-colors"><X size={32}/></button>
+                        <button onClick={() => setShowDemoOptions(false)} aria-label="Close Demo Modal" title="Close" className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 bg-slate-100 rounded-full transition-colors"><X size={32}/></button>
                         <div className="text-center mb-10">
                             <h2 className="text-3xl md:text-4xl font-black mb-4">Choose Your Experience</h2>
                             <p className="text-slate-500">Explore TekTrakker from any perspective. No login required.</p>
@@ -289,76 +291,27 @@ const SaaSMarketing: React.FC = () => {
                 </div>
             </section>
 
-            <section className="py-20 px-6 relative overflow-hidden bg-white">
-                <div className="max-w-4xl mx-auto text-center">
-                    <Star className="text-yellow-400 w-12 h-12 mx-auto mb-6" fill="currentColor" />
-                    <blockquote className="text-3xl md:text-4xl font-black text-slate-900 leading-tight mb-8">"TekTrakker has revolutionized how we do business. We've cut admin time by 50% and increased our monthly revenue by 20% in just six months."</blockquote>
-                    <p className="text-lg font-bold text-primary-600">Sarah Chen, CEO of <span className="text-slate-900">UrbanScape Landscaping</span></p>
-                </div>
-            </section>
 
-            <section className="py-20 px-6 bg-slate-100">
-                <div className="max-w-7xl mx-auto"><h2 className="text-4xl font-black text-slate-900 text-center mb-16">How TekTrakker Gives You Back Your Life</h2>
-                <div className="relative">
-                        <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-300 transform -translate-x-1/2 hidden lg:block"></div>
-                        
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-16 gap-y-12 items-center">
-                            {/* Step 1 */}
-                            <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
-                                <div className="flex-shrink-0 w-16 h-16 bg-primary-600 rounded-full flex items-center justify-center text-3xl font-black shadow-lg">
-                                    <span className="text-white">1</span>
-                                </div>
-                                <div className="lg:text-left">
-                                    <h3 className="text-2xl font-bold text-slate-900 mb-2">Simple Job Creation</h3>
-                                    <p className="text-slate-600">
-                                        Easily create new jobs, add customer details, notes, and required services in minutes. Our intuitive interface makes it a breeze.
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="hidden lg:block"></div> {/* Placeholder for alignment */}
 
-                            {/* Step 2 */}
-                            <div className="hidden lg:block"></div> {/* Placeholder for alignment */}
-                            <div className="flex flex-col lg:flex-row-reverse items-start lg:items-center gap-6">
-                                <div className="flex-shrink-0 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-3xl font-black shadow-lg">
-                                    <span className="text-white">2</span>
+            <section className="py-20 px-6 bg-white">
+                <div className="max-w-7xl mx-auto bg-slate-100 border border-slate-200 p-10 md:p-16 rounded-[2.5rem] shadow-sm">
+                    <h2 className="text-4xl font-black text-slate-900 text-center mb-16">How TekTrakker Gives You Back Your Life</h2>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                        {[
+                            { step: "1", title: "Simple Job Creation", desc: "Easily create new jobs, add customer details, notes, and required services in minutes. Our intuitive interface makes it a breeze.", color: "bg-primary-600" },
+                            { step: "2", title: "Smart Scheduling", desc: "Assign jobs to the right technicians, optimize routes, and dispatch with a click. Technicians get instant updates on their mobile app.", color: "bg-indigo-600" },
+                            { step: "3", title: "On-Site Completion", desc: "Technicians complete checklists, capture signatures, and generate invoices directly from the field. Collect payments instantly.", color: "bg-emerald-600" },
+                            { step: "4", title: "Automated Follow-ups", desc: "TekTrakker handles post-service communications, sends reminders, and solicits customer reviews to boost your reputation.", color: "bg-purple-600" },
+                        ].map((item, idx) => (
+                            <div key={idx} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl hover:-translate-y-2 transition-transform duration-300 flex flex-col items-center text-center">
+                                <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl font-black text-white shadow-lg mb-6 ${item.color}`}>
+                                    {item.step}
                                 </div>
-                                <div className="lg:text-right">
-                                    <h3 className="text-2xl font-bold text-slate-900 mb-2">Smart Scheduling & Dispatch</h3>
-                                    <p className="text-slate-600">
-                                        Assign jobs to the right technicians, optimize routes, and dispatch with a click. Technicians get instant updates on their mobile app.
-                                    </p>
-                                </div>
+                                <h3 className="text-xl font-bold text-slate-900 mb-3">{item.title}</h3>
+                                <p className="text-slate-600 text-sm leading-relaxed flex-1">{item.desc}</p>
                             </div>
-
-                            {/* Step 3 */}
-                            <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
-                                <div className="flex-shrink-0 w-16 h-16 bg-green-600 rounded-full flex items-center justify-center text-3xl font-black shadow-lg">
-                                    <span className="text-white">3</span>
-                                </div>
-                                <div className="lg:text-left">
-                                    <h3 className="text-2xl font-bold text-slate-900 mb-2">On-Site Completion & Invoicing</h3>
-                                    <p className="text-slate-600">
-                                        Technicians complete checklists, capture signatures, and generate invoices directly from the field. Collect payments instantly.
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="hidden lg:block"></div> {/* Placeholder for alignment */}
-
-                            {/* Step 4 */}
-                            <div className="hidden lg:block"></div> {/* Placeholder for alignment */}
-                            <div className="flex flex-col lg:flex-row-reverse items-start lg:items-center gap-6">
-                                <div className="flex-shrink-0 w-16 h-16 bg-purple-600 rounded-full flex items-center justify-center text-3xl font-black shadow-lg">
-                                    <span className="text-white">4</span>
-                                </div>
-                                <div className="lg:text-right">
-                                    <h3 className="text-2xl font-bold text-slate-900 mb-2">Automated Follow-ups & Reviews</h3>
-                                    <p className="text-slate-600">
-                                        TekTrakker handles post-service communications, sends reminders, and solicit customer reviews to boost your reputation.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
             </section>
@@ -372,7 +325,7 @@ const SaaSMarketing: React.FC = () => {
                 </div>
 
                 {/* Property Owners Cross-Pitch */}
-                <div className="max-w-5xl mx-auto bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-3xl p-8 md:p-12 text-left flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group hover:border-blue-300 transition-colors shadow-lg shadow-blue-500/5">
+                <div className="max-w-5xl mx-auto bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-3xl p-8 md:p-12 text-left flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group hover:border-blue-300 transition-colors shadow-lg shadow-blue-500/5 mb-8">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-blue-500/20 transition-all duration-700 pointer-events-none"></div>
                     <div className="flex-1 relative z-10">
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-xs font-bold uppercase tracking-widest mb-4">100% Free For Homeowners</div>
@@ -382,6 +335,29 @@ const SaaSMarketing: React.FC = () => {
                     <div className="relative z-10 w-full md:w-auto shrink-0">
                         <button onClick={() => navigate('/homeowners')} className="w-full md:w-auto px-8 py-4 bg-blue-600 text-white font-black text-lg rounded-xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
                             Explore Property Owner Hub <ArrowRight size={20} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Virtual Worker Pitch */}
+                <div className="max-w-5xl mx-auto bg-slate-900 border border-slate-700 rounded-3xl p-8 md:p-12 text-left flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group hover:border-indigo-500/50 transition-colors shadow-lg shadow-indigo-500/10">
+                    <div className="absolute top-0 left-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 group-hover:bg-indigo-500/30 transition-all duration-700 pointer-events-none"></div>
+                    <div className="relative z-10 w-36 h-36 md:w-48 md:h-48 shrink-0 hidden md:flex items-center justify-center">
+                        <img src="/mascot.png" alt="AI Mascot" className="w-full h-full object-contain filter drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] group-hover:scale-110 transition-transform duration-500 origin-bottom" />
+                    </div>
+                    <div className="flex-1 relative z-10 text-white cursor-pointer" onClick={() => navigate('/ai-worker')}>
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold uppercase tracking-widest mb-4">
+                            AI Powered Agent
+                        </div>
+                        <h3 className="text-3xl font-black mb-4">Scale gracefully with the Virtual Worker Add-On</h3>
+                        <p className="text-lg text-slate-400 mb-0 leading-relaxed">
+                            Stop hiring expensive administrators for data entry. Add a dedicated AI agent to your organization that understands your entire dispatch board, customer history, and financials, available 24/7.
+                        </p>
+                    </div>
+                    <div className="relative z-10 w-full md:w-auto shrink-0 flex flex-col items-center">
+                        <img src="/mascot.png" alt="AI Mascot" className="w-16 h-16 object-contain filter drop-shadow-[0_0_10px_rgba(99,102,241,0.5)] md:hidden mb-4" />
+                        <button disabled className="w-full md:w-auto px-8 py-4 bg-indigo-600/50 text-white/50 font-black text-lg rounded-xl cursor-not-allowed shadow-none flex items-center justify-center gap-2">
+                            Coming Soon <ArrowRight size={20} />
                         </button>
                     </div>
                 </div>

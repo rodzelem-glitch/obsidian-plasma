@@ -27,6 +27,13 @@ const EstimatorSettings: React.FC = () => {
     const [currentPreset, setCurrentPreset] = useState<Partial<ProposalPreset>>({ name: '', description: '', baseCost: 0, avgLabor: 0, category: 'Other' });
     const [searchTerm, setSearchTerm] = useState('');
     
+    // Ferguson API State
+    const [isFergusonModalOpen, setIsFergusonModalOpen] = useState(false);
+    const [fergusonEndpoint, setFergusonEndpoint] = useState('pricing-availability/v1/products');
+    const [fergusonQuery, setFergusonQuery] = useState('');
+    const [fergusonResults, setFergusonResults] = useState<any>(null);
+    const [isFergusonLoading, setIsFergusonLoading] = useState(false);
+    
     // Global Config State
     const [multiplier, setMultiplier] = useState(state.currentOrganization?.marketMultiplier || 1.0);
     const [laborRate, setLaborRate] = useState(120);
@@ -180,6 +187,30 @@ const EstimatorSettings: React.FC = () => {
         }
     };
 
+    const handleSearchFerguson = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsFergusonLoading(true);
+        setFergusonResults(null);
+        try {
+            const { getFunctions, httpsCallable } = await import('firebase/functions');
+            const functions = getFunctions();
+            // Since proxy doesn't handle the full URL string replacement perfectly yet, 
+            // append '?search=' or similar query if requested. 
+            // Note: Users can tweak the precise endpoint in the UI if Ferguson requires '?keyword=' vs '?search='
+            const queryParams = fergusonQuery ? `?keyword=${encodeURIComponent(fergusonQuery)}` : '';
+            const fullEndpoint = fergusonEndpoint.includes('?') ? `${fergusonEndpoint}&keyword=${encodeURIComponent(fergusonQuery)}` : `${fergusonEndpoint}${queryParams}`;
+            
+            const callFergusonAPI = httpsCallable(functions, 'callFergusonAPI');
+            const res = await callFergusonAPI({ endpoint: fullEndpoint });
+            setFergusonResults(res.data);
+        } catch (err: any) {
+            console.error("Ferguson API Error:", err);
+            setFergusonResults({ error: err.message || "Failed to search Ferguson API." });
+        } finally {
+            setIsFergusonLoading(false);
+        }
+    };
+
     const getIcon = (vertical: string) => {
         switch(vertical) {
             case 'HVAC': return <Zap size={18} className="text-blue-600"/>;
@@ -210,6 +241,7 @@ const EstimatorSettings: React.FC = () => {
                          <span className="text-sm">Import CSV / Excel</span>
                          <input type="file" accept=".csv, .xlsx, .xls" onChange={handleImportTargetFile} className="hidden" />
                     </label>
+                    <Button onClick={() => setIsFergusonModalOpen(true)} className="flex items-center gap-2 shadow-lg bg-sky-600 hover:bg-sky-700 text-white border-0"><Search size={18}/> Ferguson Live Catalog</Button>
                     <Button onClick={() => { setCurrentPreset({ name: '', description: '', baseCost: 0, avgLabor: 0, category: 'Other' }); setIsModalOpen(true); }} className="flex items-center gap-2 shadow-lg"><Plus size={18}/> Custom Task</Button>
                 </div>
             </header>
@@ -245,8 +277,8 @@ const EstimatorSettings: React.FC = () => {
                                             ${retail.toFixed(2)}
                                         </td>
                                         <td className="px-6 py-4 flex gap-2">
-                                            <button onClick={() => {setCurrentPreset(preset); setIsModalOpen(true);}} className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"><Plus size={16}/></button>
-                                            <button onClick={() => handleDelete(preset.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                                            <button aria-label="Edit Preset" title="Edit Preset" onClick={() => {setCurrentPreset(preset); setIsModalOpen(true);}} className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"><Plus size={16}/></button>
+                                            <button aria-label="Delete Preset" title="Delete Preset" onClick={() => handleDelete(preset.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
                                         </td>
                                     </tr>
                                 );
@@ -323,6 +355,38 @@ const EstimatorSettings: React.FC = () => {
                     </div>
                     <Button type="submit" className="w-full h-12 shadow-lg shadow-primary-500/20">Save to Pricebook</Button>
                 </form>
+            </Modal>
+
+            {/* Ferguson API Modal */}
+            <Modal isOpen={isFergusonModalOpen} onClose={() => setIsFergusonModalOpen(false)} title="Live Ferguson Parts Catalog">
+                <form onSubmit={handleSearchFerguson} className="space-y-4">
+                    <div className="p-3 bg-sky-50 dark:bg-sky-900/20 text-sky-800 dark:text-sky-300 rounded text-xs font-semibold">
+                        Query live corporate pricing & availability. Modify the API endpoint below exactly as it is written in your Ferguson Developer Portal.
+                    </div>
+                    <Input label="Ferguson API Endpoint" value={fergusonEndpoint} onChange={e => setFergusonEndpoint(e.target.value)} placeholder="e.g. pricing-availability/v1/products" />
+                    <Input label="Search Keyword (Optional)" value={fergusonQuery} onChange={e => setFergusonQuery(e.target.value)} placeholder="e.g. Water Heater or SKU" />
+                    <Button type="submit" className="w-full bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-600/30 text-white border-0" disabled={isFergusonLoading}>
+                        {isFergusonLoading ? 'Querying Ferguson Master Server...' : 'Live Search'}
+                    </Button>
+                </form>
+
+                {fergusonResults && (
+                    <div className="mt-4 p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 max-h-96 overflow-y-auto custom-scrollbar">
+                        <h4 className="font-bold text-sm mb-2 text-slate-500 uppercase tracking-wider">Raw Server Response</h4>
+                        {fergusonResults.error ? (
+                            <div className="text-red-500 font-bold">{fergusonResults.error}</div>
+                        ) : (
+                            <pre className="text-xs text-slate-700 dark:text-slate-300 overflow-x-auto whitespace-pre-wrap">
+                                {JSON.stringify(fergusonResults, null, 2)}
+                            </pre>
+                        )}
+                        {!fergusonResults.error && (
+                            <div className="mt-6 border-t border-slate-200 dark:border-slate-700 pt-4 flex flex-col items-center">
+                                <p className="text-xs font-medium text-slate-500 italic mb-4 text-center">Once you can see your live material data returning in the box above, you can map the specific Fields (like "Price" and "Part Name") to spawn Instantly as Custom Tasks in your Pricebook!</p>
+                            </div>
+                        )}
+                    </div>
+                )}
             </Modal>
         </div>
     );

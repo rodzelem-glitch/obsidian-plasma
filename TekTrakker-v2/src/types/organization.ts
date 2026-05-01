@@ -24,6 +24,7 @@ export interface Organization {
     marketMultiplier?: number;
     ueid?: string | null;
     cageCode?: string | null;
+    hrFileCategories?: string[];
     primaryNaics?: string | null;
     licenseNumber?: string | null;
     letterheadDataUrl?: string | null;
@@ -32,9 +33,13 @@ export interface Organization {
     termsAndConditions?: string | null;
     membershipTerms?: string | null;
     footerImage?: string | null;
-    subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled';
+    subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled' | 'paused';
     subscriptionExpiryDate?: string | null;
     plan?: 'starter' | 'growth' | 'enterprise';
+    cancellationReason?: string;
+    cancellationFeedback?: string;
+    canceledAt?: string;
+    retentionOfferApplied?: string;
     createdAt?: string;
     paymentMethodAttached?: boolean;
     notificationEmails?: string[];
@@ -101,4 +106,5 @@ export interface Organization {
     salesRepId?: string;
     promoCode?: string | null;
     measureQuickApiKey?: string;
+    virtualWorkerEnabled?: boolean;
 }

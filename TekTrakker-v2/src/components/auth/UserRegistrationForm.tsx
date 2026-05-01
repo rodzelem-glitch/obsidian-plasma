@@ -43,7 +43,7 @@ export const UserRegistrationForm: React.FC<UserRegistrationFormProps> = ({
         <InputField id="full-name" name="name" label="Full Name" value={userName} onChange={(e: any) => setUserName(e.target.value)} required brandColor={brandColor} />
         <InputField id="user-phone" name="phone" type="tel" label="Mobile Phone" value={userPhone} onChange={(e: any) => setUserPhone(e.target.value)} required brandColor={brandColor} />
         <InputField id="email" name="email" type="email" label="Email Address" value={email} onChange={(e: any) => setEmail(e.target.value)} required brandColor={brandColor} />
-        <InputField id="password" name="password" type="password" label="Create Password" value={password} onChange={(e: any) => setPassword(e.target.value)} required brandColor={brandColor} />
+        <InputField id="password" name="password" type="password" label="Create Password" value={password} onChange={(e: any) => setPassword(e.target.value)} required autoComplete="new-password" brandColor={brandColor} />
 
         {userType === 'customer' && (
             <div className="space-y-4 pt-4 border-t border-slate-800">
@@ -77,11 +77,11 @@ export const UserRegistrationForm: React.FC<UserRegistrationFormProps> = ({
             </label>
         </div>
 
+        <style>{`.reg-brand-button { background-color: ${brandColor}; }`}</style>
         <button 
             type="submit" 
             disabled={isLoading}
-            className="w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:scale-[1.02] transition-transform mt-6"
-            style={{ backgroundColor: brandColor }}
+            className="w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:scale-[1.02] transition-transform mt-6 reg-brand-button"
         >
             {isLoading ? 'Creating Account...' : 'Register'}
         </button>

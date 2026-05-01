@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { User } from 'types';
 import AdminSidebar from './AdminSidebar';
 import { Logo } from '../ui/Logo';
+import VirtualWorker from '../ui/VirtualWorker';
 
 interface AdminLayoutProps {
   user: User;
@@ -16,7 +17,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-200 font-sans transition-colors">
+    <div className="flex h-screen bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-200 font-sans transition-colors relative">
       <AdminSidebar 
         user={user} 
         onLogout={onLogout} 
@@ -24,13 +25,15 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
         onClose={() => setIsSidebarOpen(false)} 
       />
       
-      <div className="flex-1 flex flex-col overflow-hidden">
-         <header className="bg-white dark:bg-gray-900 shadow-md sm:hidden border-b border-gray-200 dark:border-gray-700 fixed top-0 w-full z-20 transition-colors">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+         <header className="bg-white dark:bg-gray-900 shadow-md sm:hidden border-b border-gray-200 dark:border-gray-700 fixed top-0 w-full z-20 transition-colors pt-safe">
            <div className="px-4 h-16 flex items-center justify-between">
               <div className="flex items-center gap-3">
                   <button 
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                     className="text-gray-500 hover:text-primary-600 focus:outline-none"
+                    aria-label="Toggle Menu"
+                    title="Toggle Menu"
                   >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
@@ -40,11 +43,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
               </div>
            </div>
          </header>
-         
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-800 p-4 sm:p-6 lg:p-8 pt-20 sm:pt-6 transition-colors">
-          {children}
-        </main>
+        <main id="main-scroll-container" className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 dark:bg-gray-800 p-4 sm:p-6 lg:p-8 pt-[calc(5rem+env(safe-area-inset-top,0px))] sm:pt-6 transition-colors">
+            <div className="min-h-full">
+              {children}
+            </div>        </main>
       </div>
+
+      <VirtualWorker />
     </div>
   );
 };

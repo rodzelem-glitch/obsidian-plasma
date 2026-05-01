@@ -8,9 +8,10 @@ import Textarea from '../ui/Textarea';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
 import type { Customer, EquipmentAsset, ServiceAgreement, MembershipPlan, Job, StoredFile } from 'types';
-import { MapPinIcon, TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Mail, QrCode, Printer, Sparkles, ShieldCheck, Ban, MessageSquare, CheckCircle, Edit } from 'lucide-react';
+import { MapPinIcon, TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Mail, QrCode, Printer, Sparkles, ShieldCheck, Ban, MessageSquare, CheckCircle, Edit, Share2, Copy } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { globalConfirm } from "lib/globalConfirm";
+import { uploadFileToStorage } from 'lib/storageService';
 import { sendEmail } from 'lib/notificationService';
 
 interface CustomerMasterModalProps {
@@ -19,35 +20,7 @@ interface CustomerMasterModalProps {
     customerId: string;
 }
 
-const compressFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const result = event.target?.result as string;
-            if (file.type.startsWith('image/')) {
-                const img = new window.Image();
-                img.src = result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
-                    const MAX = 800; 
-                    if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } } 
-                    else { if (height > MAX) { width *= MAX / height; height = MAX; } }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.5)); 
-                };
-            } else {
-                resolve(result);
-            }
-        };
-        reader.onerror = reject;
-    });
-};
+
 
 const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClose, customerId }) => {
     const { state, dispatch } = useAppContext();
@@ -72,6 +45,12 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
     const [viewQrAsset, setViewQrAsset] = useState<EquipmentAsset | null>(null);
     const [viewingFile, setViewingFile] = useState<StoredFile | null>(null);
 
+    // Share Options
+    const [shareModalOpen, setShareModalOpen] = useState(false);
+    const [shareTargetId, setShareTargetId] = useState<string>('');
+    const [shareMessageText, setShareMessageText] = useState('');
+    const [isSharing, setIsSharing] = useState(false);
+
     // Derived Data
     const customerJobs = useMemo(() => state.jobs.filter(j => j.customerId === customerId).sort((a,b) => new Date(b.appointmentTime).getTime() - new Date(a.appointmentTime).getTime()), [customerId, state.jobs]);
     const invoices = customerJobs.filter(j => j.invoice).map(j => ({ ...j.invoice, jobDate: j.appointmentTime }));
@@ -91,18 +70,21 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
+        if (!file || !state.currentOrganization) return;
         
         try {
-            const dataUrl = await compressFile(file);
+            const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'doc.pdf';
+            const path = `organizations/${state.currentOrganization.id}/customers/${customer.id}/files/${Date.now()}_${safeName}`;
+            const downloadUrl = await uploadFileToStorage(path, file);
+
             const newFile: StoredFile = {
                 id: `file-${Date.now()}`,
-                organizationId: state.currentOrganization?.id || '',
+                organizationId: state.currentOrganization.id,
                 parentId: customer.id,
                 parentType: 'customer',
                 fileName: file.name,
                 fileType: file.type,
-                dataUrl: dataUrl,
+                dataUrl: downloadUrl, // Storing bucket URL instead of Base64
                 createdAt: new Date().toISOString(),
                 uploadedBy: state.currentUser?.id || 'admin'
             };
@@ -378,8 +360,71 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         }
     };
 
+    const handleCopyRef = () => {
+        navigator.clipboard.writeText(`#CUST-${customer.id}`);
+        alert("Customer Reference Copied! Paste it anywhere to create a smart link.");
+    };
+
+    const handleShareCustomer = async () => {
+        if (!shareTargetId) return;
+        setIsSharing(true);
+        try {
+            const msgObj: any = {
+                id: `msg-${Date.now()}`,
+                senderId: state.currentUser?.id,
+                senderName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
+                receiverId: shareTargetId,
+                content: `${shareMessageText ? shareMessageText + '\n\n' : ''}Check out this customer: #CUST-${customer.id}`,
+                timestamp: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                organizationId: state.currentOrganization?.id,
+                type: 'internal'
+            };
+            await db.collection('messages').doc(msgObj.id).set(msgObj);
+            alert("Customer record shared successfully!");
+            setShareModalOpen(false);
+            setShareMessageText('');
+        } catch (e) {
+            alert("Failed to share.");
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
     return (
         <>
+            <Modal isOpen={shareModalOpen} onClose={() => setShareModalOpen(false)} title={`Share Customer: ${customer.name}`}>
+                 <div className="space-y-4">
+                     <p className="text-sm text-slate-500">Send this customer record to a staff member.</p>
+                     <select 
+                         aria-label="Select Share Recipient"
+                         title="Select Share Recipient"
+                         className="w-full border rounded-lg p-2 dark:bg-slate-800 dark:border-slate-700"
+                         value={shareTargetId}
+                         onChange={e => setShareTargetId(e.target.value)}
+                     >
+                         <option value="">Select Recipient...</option>
+                         {state.users.filter((u: any) => 
+                             u.organizationId === state.currentOrganization?.id && 
+                             u.id !== state.currentUser?.id && 
+                             u.role !== 'customer'
+                         ).map((u: any) => (
+                             <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
+                         ))}
+                     </select>
+                     <Textarea 
+                         placeholder="Add an optional message..."
+                         value={shareMessageText}
+                         onChange={e => setShareMessageText(e.target.value)}
+                     />
+                     <div className="flex justify-end gap-2">
+                         <Button variant="secondary" onClick={() => setShareModalOpen(false)}>Cancel</Button>
+                         <Button onClick={handleShareCustomer} disabled={!shareTargetId || isSharing}>
+                             {isSharing ? 'Sending...' : 'Send Message'}
+                         </Button>
+                     </div>
+                 </div>
+             </Modal>
             <Modal isOpen={isOpen} onClose={onClose} title="" size="xl">
                 {/* Custom Header */}
                 <div className="flex justify-between items-start mb-6">
@@ -395,11 +440,17 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                             {customer.zip && ` ${customer.zip}`}
                         </p>
                     </div>
-                    <div className="flex gap-2">
-                        <Button onClick={handleSendInvite} disabled={isSendingInvite} variant="secondary" className="text-xs flex items-center gap-2">
+                    <div className="flex gap-2 flex-wrap items-start justify-end">
+                        <Button onClick={handleCopyRef} variant="secondary" aria-label="Copy Reference" title="Copy Reference" className="text-xs p-2 shrink-0">
+                            <Copy size={14} />
+                        </Button>
+                        <Button onClick={() => setShareModalOpen(true)} variant="secondary" aria-label="Share Customer" title="Share Customer" className="text-xs p-2 shrink-0">
+                            <Share2 size={14} />
+                        </Button>
+                        <Button onClick={handleSendInvite} disabled={isSendingInvite} variant="secondary" className="text-xs flex items-center gap-2 shrink-0">
                             <Mail size={14} /> {isSendingInvite ? 'Sending...' : 'Send Portal Invite'}
                         </Button>
-                        <Button onClick={handleDeleteCustomer} className="bg-red-700 text-white hover:bg-red-800 text-xs font-bold shadow-md border-none">Delete Record</Button>
+                        <Button onClick={handleDeleteCustomer} className="bg-red-700 text-white hover:bg-red-800 text-xs font-bold shadow-md border-none shrink-0">Delete</Button>
                     </div>
                 </div>
 

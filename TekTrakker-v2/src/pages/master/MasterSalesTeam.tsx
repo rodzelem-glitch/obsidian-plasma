@@ -51,6 +51,10 @@ const MasterSalesTeam: React.FC = () => {
     const [duplicateId, setDuplicateId] = useState('');
     const [isMerging, setIsMerging] = useState(false);
     const [payoutFilter, setPayoutFilter] = useState<'Pending' | 'Paid'>('Pending');
+    
+    // 1099 Specific State
+    const [taxYear, setTaxYear] = useState<number>(new Date().getFullYear());
+    const [taxAmountOverride, setTaxAmountOverride] = useState<string>('');
 
     useEffect(() => {
         const unsub = db.collection('users').where('role', '==', 'platform_sales').onSnapshot(snap => setSalesReps(snap.docs.map(d => ({ ...d.data(), id: d.id } as User))));
@@ -86,6 +90,14 @@ const MasterSalesTeam: React.FC = () => {
             displayList: payoutFilter === 'Pending' ? pending : paid
         };
     }, [commissions, payoutFilter]);
+
+    const calculatedTaxEarnings = useMemo(() => {
+        if (!viewTaxRep) return 0;
+        const paid = commissions.filter(c => c.repId === viewTaxRep.id && c.status === 'Paid' && new Date(c.dateEarned).getFullYear() === taxYear);
+        return paid.reduce((s, c) => s + c.amount, 0);
+    }, [viewTaxRep, taxYear, commissions]);
+
+    const finalTaxAmount = taxAmountOverride ? parseFloat(taxAmountOverride) : calculatedTaxEarnings;
 
     const handleAddRep = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -256,8 +268,20 @@ const MasterSalesTeam: React.FC = () => {
             )}
             
             {viewTaxRep && (
-                <Modal isOpen={true} onClose={() => setViewTaxRep(null)} title="Tax Form">
-                    <Form1099CopyA recipient={viewTaxRep} amount={repEarnings} year={2024} />
+                <Modal isOpen={true} onClose={() => { setViewTaxRep(null); setTaxAmountOverride(''); }} title="Tax Form 1099-NEC Generation">
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+                            <Input label="Tax Year" type="number" value={taxYear} onChange={e => setTaxYear(parseInt(e.target.value))} />
+                            <Input label="Override Amount ($) (Manual Job)" type="number" value={taxAmountOverride} onChange={e => setTaxAmountOverride(e.target.value)} placeholder={`Aggregate Paid: $${calculatedTaxEarnings.toFixed(2)}`} />
+                        </div>
+                        <div className="text-xs text-slate-500 mb-2 px-2">
+                           The calculated amount inherently includes all commissions marked "Paid" within the selected tax year for this rep. For manually entered job amounts, provide an override.
+                        </div>
+                        <Form1099CopyA recipient={viewTaxRep} amount={finalTaxAmount || 0} year={taxYear} />
+                        <div className="flex justify-end pt-4">
+                            <Button onClick={() => window.print()} className="flex items-center gap-2"><Printer size={16}/> Print Tax Form</Button>
+                        </div>
+                    </div>
                 </Modal>
             )}
 

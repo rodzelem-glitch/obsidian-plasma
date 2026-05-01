@@ -7,11 +7,13 @@ import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import { Check, ArrowRight, Sparkles, PlusCircle, X, Package } from 'lucide-react';
 import { db, firebase } from '../../../lib/firebase';
+import { uploadFileToStorage } from '../../../lib/storageService';
 import { useAppContext } from '../../../context/AppContext';
 import Textarea from '../../../components/ui/Textarea';
 import { useNavigate } from 'react-router-dom';
 import { compressFile } from '../../../lib/utils';
 import InvoiceEditorModal from '../../../components/modals/InvoiceEditorModal';
+import IndustryToolsHub from '../../tools/IndustryToolsHub';
 
 // Sub-components
 import ArrivalStep from './workflow/ArrivalStep';
@@ -91,6 +93,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
     const [isRefrigerantModalOpen, setIsRefrigerantModalOpen] = useState(false);
     const [isToolReadingModalOpen, setIsToolReadingModalOpen] = useState(false);
     const [isPartModalOpen, setIsPartModalOpen] = useState(false);
+    const [isIndustryToolsOpen, setIsIndustryToolsOpen] = useState(false);
     
     const [newReading, setNewReading] = useState({ toolType: '', summary: '' });
     const [refrigerantEntry, setRefrigerantEntry] = useState({ type: 'R-410A', action: 'Added', amount: '', unit: 'oz', cylinderNumber: '' });
@@ -308,7 +311,27 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         setIsRefrigerantModalOpen(false);
     };
 
-    const handleAddPart = () => {
+    const [partPaymentMethod, setPartPaymentMethod] = useState<'inventory' | 'company' | 'personal' | 'other'>('inventory');
+    const [partReceipt, setPartReceipt] = useState<string | null>(null);
+
+    const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsSaving(true);
+        try {
+            const orgId = job.organizationId;
+            const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg';
+            const path = `organizations/${orgId}/jobs/${job.id}/parts/${Date.now()}_${safeName}`;
+            const downloadUrl = await uploadFileToStorage(path, file);
+            setPartReceipt(downloadUrl);
+        } catch (error) {
+            console.error("Receipt process failed:", error);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleAddPart = async () => {
         if (!selectedPart || partQuantity <= 0) return;
         const entry = { 
             id: `p-${Date.now()}`, 
@@ -316,14 +339,43 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
             sku: selectedPart.sku, 
             quantity: partQuantity, 
             location: partLocation,
+            paymentMethod: partPaymentMethod,
+            receiptData: partReceipt,
+            approvalStatus: (partPaymentMethod === 'company' || partPaymentMethod === 'personal' || partPaymentMethod === 'other') ? 'pending' : 'approved',
             unitPrice: selectedPart.price || 0,
-            total: (selectedPart.price || 0) * partQuantity
+            total: (selectedPart.price || 0) * partQuantity,
+            explanation: (selectedPart as any).explanation || ''
         };
         const updatedParts = [...((workflowState as any).partsUsed || []), entry];
         updateWorkflowState('partsUsed' as any, updatedParts as any);
+        
+        if (partPaymentMethod === 'personal' || partPaymentMethod === 'company' || partPaymentMethod === 'other') {
+            try {
+                const expense = {
+                    id: `exp-${Date.now()}`,
+                    organizationId: job.organizationId,
+                    userId: state.currentUser?.id,
+                    date: new Date().toISOString().split('T')[0],
+                    category: 'Materials',
+                    vendor: 'Field Purchase',
+                    description: `${selectedPart.name} - Job: ${job.customerName}${partPaymentMethod === 'other' ? ' (' + (selectedPart as any).explanation + ')' : ''}`,
+                    amount: Number(selectedPart.price || 0) * Number(partQuantity),
+                    paidBy: partPaymentMethod === 'personal' ? state.currentUser?.id : (partPaymentMethod === 'company' ? 'Company Account' : 'Other Sourcing'),
+                    receiptData: partReceipt,
+                    receiptUrl: partReceipt ? 'embedded' : null,
+                    projectId: job.id
+                };
+                if (!state.isDemoMode) await db.collection('expenses').doc(expense.id).set(expense);
+            } catch (e) {
+                console.error("Expense flow failed:", e);
+            }
+        }
+        
         setIsPartModalOpen(false);
         setSelectedPart(null);
         setPartQuantity(1);
+        setPartPaymentMethod('inventory');
+        setPartReceipt(null);
     };
 
     const handleAddReading = () => {
@@ -381,7 +433,10 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
     const processCapturedFile = async (file: File, label: string) => {
         setIsSaving(true);
         try {
-            const base64 = await compressFile(file, 0.6);
+            const orgId = job.organizationId;
+            const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'upload.jpg';
+            const path = `organizations/${orgId}/jobs/${job.id}/workflowFiles/${Date.now()}_${safeName}`;
+            const downloadUrl = await uploadFileToStorage(path, file);
             const newFileId = `file-${Date.now()}`;
             const timestamp = new Date().toISOString();
             const userName = `${state.currentUser?.firstName || ''} ${state.currentUser?.lastName || ''}`.trim() || 'Technician';
@@ -391,9 +446,9 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                 organizationId: String(job.organizationId),
                 parentId: String(job.id),
                 parentType: 'job',
-                fileName: String(file.name),
-                fileType: String(file.type),
-                dataUrl: String(base64),
+                fileName: String(file.name || 'upload.jpg'),
+                fileType: String(file.type || 'image/jpeg'),
+                dataUrl: String(downloadUrl),
                 createdAt: String(timestamp),
                 uploadedBy: String(userName),
                 label: String(label)
@@ -499,6 +554,9 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                         files={files} 
                         onDeletePhoto={handleDeletePhoto} 
                         onViewPhoto={setViewingPhoto} 
+                        toolReadings={workflowState.toolReadings}
+                        onDeleteToolReading={(id) => updateWorkflowState('toolReadings', workflowState.toolReadings.filter(r => r.id !== id))}
+                        onOpenIndustryTools={() => setIsIndustryToolsOpen(true)}
                         hidden={step !== 2} 
                     />
                     <RepairStep 
@@ -622,6 +680,13 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                             ))}
                             {state.inventory.length === 0 && <p className="p-4 text-center text-xs text-slate-400">Inventory is empty.</p>}
                         </div>
+                        {partSearch && state.inventory.filter(i => i.name.toLowerCase().includes(partSearch.toLowerCase())).length === 0 && (
+                            <div className="p-3 bg-white dark:bg-slate-800 text-center border-t border-slate-200 dark:border-slate-700">
+                                <Button variant="secondary" onClick={() => setSelectedPart({ id: 'custom', name: partSearch, sku: 'CUSTOM-PART', price: 0, quantity: 999, minQuantity: 0, location: 'Manual Entry' })} className="w-full text-xs">
+                                    + Add "{partSearch}" Manually
+                                </Button>
+                            </div>
+                        )}
                     </>
                 ) : (
                     <div className="bg-primary-50 dark:bg-primary-900/10 p-4 rounded-xl border border-primary-100 dark:border-primary-900/20">
@@ -630,19 +695,58 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                                 <h4 className="font-black text-primary-600 uppercase tracking-tight">{selectedPart.name}</h4>
                                 <p className="text-xs text-slate-500">Inventory SKU: {selectedPart.sku}</p>
                             </div>
-                            <button onClick={() => setSelectedPart(null)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                            <button title="Clear Selection" onClick={() => setSelectedPart(null)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <Input label="Quantity Used" type="number" value={partQuantity} onChange={e => setPartQuantity(Number(e.target.value))} min={1} />
-                            <Select label="Pulled From" value={partLocation} onChange={e => setPartLocation(e.target.value)}>
-                                <option>Truck</option>
-                                <option>Warehouse</option>
-                                <option>Job Site</option>
-                            </Select>
+                            {selectedPart.id === 'custom' ? (
+                                <Input label="Est. Price (Each)" type="number" step="0.01" value={selectedPart.price || ''} onChange={e => setSelectedPart({...selectedPart, price: parseFloat(e.target.value) || 0})} />
+                            ) : (
+                                <Select label="Pulled From" value={partLocation} onChange={e => setPartLocation(e.target.value)}>
+                                    <option>Truck</option>
+                                    <option>Warehouse</option>
+                                    <option>Job Site</option>
+                                </Select>
+                            )}
                         </div>
+
+                        <div className="mt-4 pt-4 border-t border-primary-100 dark:border-primary-900/20">
+                            <Select label="Payment / Sourcing Workflow" value={partPaymentMethod} onChange={e => setPartPaymentMethod(e.target.value as any)}>
+                                <option value="inventory">Already in Stock (Inventory)</option>
+                                <option value="company">Bought with Company Card (Parts House)</option>
+                                <option value="personal">Bought with Personal Funds (Reimburse Me)</option>
+                                <option value="other">Other Sourcing Method</option>
+                            </Select>
+
+                            {(partPaymentMethod === 'personal' || partPaymentMethod === 'company' || partPaymentMethod === 'other') && (
+                                <div className="mt-4 space-y-4">
+                                    {partPaymentMethod === 'other' && (
+                                        <Textarea 
+                                            label="Explanation" 
+                                            placeholder="Explain payment method..." 
+                                            value={(selectedPart as any).explanation || ''} 
+                                            onChange={e => setSelectedPart({...selectedPart, explanation: e.target.value} as any)} 
+                                        />
+                                    )}
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Upload Receipt / Invoice</label>
+                                        <div className="flex items-center gap-3">
+                                            <input type="file" accept="image/*,application/pdf" onChange={handleReceiptUpload} className="hidden" id="part-receipt" />
+                                            <label htmlFor="part-receipt" className={`cursor-pointer px-4 py-2 ${partReceipt ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-white dark:bg-slate-800 border border-slate-300'} rounded shadow-sm text-sm font-medium hover:bg-opacity-80 transition-colors`}>
+                                                {partReceipt ? 'Receipt Captured ✓' : 'Take Photo / Upload'}
+                                            </label>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1 italic">
+                                            {partPaymentMethod === 'personal' ? 'Required for fast reimbursement.' : 'Required for review and compliance.'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <div className="mt-4 pt-4 border-t border-primary-100 dark:border-primary-900/20 flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setSelectedPart(null)}>Change Part</Button>
-                            <Button onClick={handleAddPart}>Confirm & Add</Button>
+                            <Button variant="secondary" onClick={() => setSelectedPart(null)} className="w-auto">Change Part</Button>
+                            <Button onClick={handleAddPart} className="w-auto">Confirm & Add</Button>
                         </div>
                     </div>
                 )}
@@ -665,9 +769,20 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                     <option>Vacuum Gauge</option>
                 </Select>
                 <Textarea label="Reading Summary" placeholder="e.g. Low Side: 120 PSI, High Side: 350 PSI, Subcool: 12F" value={newReading.summary} onChange={e => setNewReading({...newReading, summary: e.target.value})} />
+                
+                <div className="pt-2">
+                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Attach Reading/Diagnostic Screenshot (Optional)</label>
+                    <div className="flex items-center gap-3">
+                        <input type="file" accept="image/*,application/pdf" onChange={(e) => handlePhotoUpload(e, 'Diagnostic Reading')} className="hidden" id="reading-upload" />
+                        <label htmlFor="reading-upload" className="cursor-pointer px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 rounded shadow-sm text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                            Upload Diagnostic File
+                        </label>
+                    </div>
+                </div>
+
                 <div className="flex justify-end gap-2 pt-4">
                     <Button variant="secondary" onClick={() => setIsToolReadingModalOpen(false)}>Cancel</Button>
-                    <Button onClick={handleAddReading} disabled={!newReading.toolType || !newReading.summary}>Save Reading</Button>
+                    <Button onClick={() => { handleAddReading(); setIsToolReadingModalOpen(false); }} disabled={!newReading.toolType || !newReading.summary}>Save Reading</Button>
                 </div>
             </div>
         </Modal>
@@ -748,7 +863,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         <input 
             type="file" 
             accept="image/*" 
-            capture="environment" 
+            title="Camera upload"
             ref={cameraInputRef} 
             onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -757,6 +872,19 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
             className="hidden" 
         />
         <SmartTechAssistant isOpen={isAssistantOpen} onClose={() => setIsAssistantOpen(false)} jobId={job.id} organizationId={job.organizationId} />
+        
+        {isIndustryToolsOpen && (
+            <div className="fixed inset-0 z-[100] bg-black/50 overflow-y-auto">
+                <div className="min-h-screen p-4 flex items-center justify-center">
+                     <div className="relative w-full max-w-6xl bg-slate-50 dark:bg-slate-950 rounded-3xl overflow-hidden shadow-2xl">
+                         <button aria-label="Close" title="Close" onClick={() => setIsIndustryToolsOpen(false)} className="absolute top-4 right-4 z-10 bg-slate-200 p-2 rounded-full"><X size={20}/></button>
+                         <div className="h-[80vh] overflow-y-auto">
+                             <IndustryToolsHub />
+                         </div>
+                     </div>
+                </div>
+            </div>
+        )}
         </>
     );
 };

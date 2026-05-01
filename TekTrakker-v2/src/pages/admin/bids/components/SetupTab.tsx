@@ -8,8 +8,7 @@ import Spinner from 'components/ui/Spinner';
 import { Wand2, FileText, ListChecks } from 'lucide-react';
 import type { Bid, StoredFile, BidQuestion, BidLineItem } from 'types';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { storage } from 'lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadFileToStorage } from 'lib/storageService';
 import * as mammoth from 'mammoth';
 
 interface SetupTabProps {
@@ -48,9 +47,8 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                 const isDocx = file.name.endsWith('.docx');
 
                 // 1. Upload Original File to Firebase Storage (keep original for records)
-                const storageRef = ref(storage, `bids/${bid.organizationId}/${bid.id}/${Date.now()}_${file.name}`);
-                const uploadSnapshot = await uploadBytes(storageRef, file);
-                const downloadUrl = await getDownloadURL(uploadSnapshot.ref);
+                const path = `bids/${bid.organizationId}/${bid.id}/${Date.now()}_${file.name}`;
+                const downloadUrl = await uploadFileToStorage(path, file);
 
                 // 2. Prepare Data for AI Analysis
                 let finalBase64Data = "";
@@ -197,6 +195,7 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upload RFP Document(s) (PDF, TXT, DOCX)</label>
                             <input 
                                 id="rfp-file-upload"
+                                title="Upload RFP Documents"
                                 type="file" 
                                 multiple
                                 onChange={handleFileChange} 
@@ -236,6 +235,7 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                         <div className="flex flex-col">
                             <label className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-300">Status</label>
                             <select 
+                                title="Select bid status"
                                 className="px-4 py-2 bg-slate-100 dark:bg-slate-700 border-none rounded-lg focus:ring-2 focus:ring-primary-500"
                                 value={bid.status} 
                                 onChange={e => onUpdate({ status: e.target.value as any })}

@@ -161,20 +161,20 @@ const SalesOverview: React.FC = () => {
 
     return (
         <div className="space-y-6 pb-12">
-            <header className="flex justify-between items-center">
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Sales Dashboard</h2>
-                    <p className="text-slate-500">Welcome back, {currentUser?.firstName}. Here is your performance overview.</p>
+                    <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">Sales Dashboard</h2>
+                    <p className="text-sm md:text-base text-slate-500">Welcome back, {currentUser?.firstName}. Here is your performance overview.</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                     <Button onClick={handleLaunchDemo} className="flex items-center gap-2 text-xs bg-indigo-600 hover:bg-indigo-700">
-                        <PlayCircle size={16}/> Launch Demo Mode
+                        <PlayCircle size={16}/> Launch Demo
                     </Button>
                     <Button onClick={() => setViewContract(true)} variant="secondary" className="flex items-center gap-2 text-xs">
-                        <FileText size={16}/> My Contract
+                        <FileText size={16}/> Contract
                     </Button>
                     <Button onClick={() => setIsProfileModalOpen(true)} variant="secondary" className="flex items-center gap-2 text-xs">
-                        <UserIcon size={16}/> My Profile
+                        <UserIcon size={16}/> Profile
                     </Button>
                 </div>
             </header>

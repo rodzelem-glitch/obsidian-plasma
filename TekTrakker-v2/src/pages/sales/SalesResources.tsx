@@ -126,7 +126,7 @@ Format response as plain text without markdown blocks.`;
 
             const result: any = await callGeminiAI({ 
                 prompt: systemContext,
-                modelName: 'gemini-1.5-pro'
+                modelName: 'gemini-2.5-pro'
             });
 
             const content = result.data.text;

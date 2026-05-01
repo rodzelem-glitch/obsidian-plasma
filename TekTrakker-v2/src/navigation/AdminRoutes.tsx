@@ -29,6 +29,9 @@ import ProjectManagement from '../pages/admin/ProjectManagement';
 import Messages from '../pages/Messages';
 import FieldProposal from '../pages/FieldProposal';
 import KioskMode from '../pages/admin/KioskMode';
+import DatabaseMigration from '../pages/admin/DatabaseMigration';
+import TrainingHub from '../pages/TrainingHub';
+import VirtualWorkerUpgrade from '../pages/admin/VirtualWorkerUpgrade';
 
 const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: boolean }> = ({ user, handleLogout, isDemoMode }) => (
   <ProtectedRoute isAllowed={!!user && (user.role === 'master_admin' || user.role === 'admin' || user.role === 'both' || user.role === 'supervisor' || isDemoMode)}>
@@ -60,6 +63,9 @@ const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: 
           <Route path="projects" element={<ProjectManagement />} />
           <Route path="proposal" element={<FieldProposal />} />
           <Route path="kiosk" element={<KioskMode />} />
+          <Route path="training" element={<TrainingHub user={user} />} />
+          <Route path="migrate" element={<DatabaseMigration />} />
+          <Route path="ai-worker-upgrade" element={<VirtualWorkerUpgrade />} />
           <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Routes>
       </AdminLayout>

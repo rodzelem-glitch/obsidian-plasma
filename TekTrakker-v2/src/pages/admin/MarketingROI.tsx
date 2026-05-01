@@ -73,7 +73,7 @@ const MarketingROI: React.FC = () => {
 
             const result = await callGeminiAI({ 
                 prompt,
-                modelName: "gemini-3-pro-preview" 
+                modelName: "gemini-3.1-pro-preview" 
             });
             const data = result.data as { text: string };
             setAiInsights(data.text);
@@ -207,7 +207,7 @@ const MarketingROI: React.FC = () => {
                                     <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                         <div 
                                             className={`h-full ${item.color}`} 
-                                            style={{ width: `${Math.min(100, (item.count / (state.leads?.length || 1)) * 100)}%` }}
+                                            ref={(el) => { if (el) el.style.width = `${Math.min(100, (item.count / (state.leads?.length || 1)) * 100)}%`; }}
                                         />
                                     </div>
                                 </div>

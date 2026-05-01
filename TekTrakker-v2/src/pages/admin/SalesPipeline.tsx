@@ -7,19 +7,38 @@ import { db } from 'lib/firebase';
 import type { Proposal, Job, Notification } from 'types';
 import { 
     DollarSign, Briefcase, CheckCircle, XCircle, 
-    FileText, User, Calendar, ArrowRight, Eye, Edit, Trash2, ShieldCheck, Ban
+    FileText, User, Calendar, ArrowRight, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy
 } from 'lucide-react';
 import DocumentPreview from 'components/ui/DocumentPreview';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { globalConfirm } from "lib/globalConfirm";
+import Modal from 'components/ui/Modal';
+import Textarea from 'components/ui/Textarea';
 
 const SalesPipeline: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [viewProposal, setViewProposal] = useState<Proposal | null>(null);
     const [filterStatus, setFilterStatus] = useState<string>('All');
 
+    // Share Proposal State
+    const [shareModalProp, setShareModalProp] = useState<Proposal | null>(null);
+    const [shareTargetId, setShareTargetId] = useState<string>('');
+    const [shareMessageText, setShareMessageText] = useState('');
+    const [isSharing, setIsSharing] = useState(false);
+
     const proposals = state.proposals;
+
+    React.useEffect(() => {
+        const propId = searchParams.get('propId');
+        if (propId) {
+            const prop = state.proposals.find((p: any) => p.id === propId);
+            if (prop) {
+                setViewProposal(prop);
+            }
+        }
+    }, [searchParams, state.proposals]);
 
     // --- METRICS ---
     const metrics = useMemo(() => {
@@ -35,11 +54,28 @@ const SalesPipeline: React.FC = () => {
     }, [proposals]);
 
     // --- FILTERING ---
+    const [sortBy, setSortBy] = useState('date_desc');
     const filteredProposals = useMemo(() => {
         return (proposals as Proposal[])
             .filter(p => filterStatus === 'All' || p.status === filterStatus)
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    }, [proposals, filterStatus]);
+            .sort((a, b) => {
+                switch (sortBy) {
+                    case 'date_asc':
+                        return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                    case 'name_asc':
+                        return (a.customerName || '').localeCompare(b.customerName || '');
+                    case 'name_desc':
+                        return (b.customerName || '').localeCompare(a.customerName || '');
+                    case 'amount_desc':
+                        return (b.total || 0) - (a.total || 0);
+                    case 'amount_asc':
+                        return (a.total || 0) - (b.total || 0);
+                    case 'date_desc':
+                    default:
+                        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+                }
+            });
+    }, [proposals, filterStatus, sortBy]);
 
     // --- ACTIONS ---
     const handleStatusChange = async (proposal: Proposal, newStatus: Proposal['status']) => {
@@ -143,12 +179,75 @@ const SalesPipeline: React.FC = () => {
         }
     };
 
+    const handleCopyRef = (propId: string) => {
+        navigator.clipboard.writeText(`#PROP-${propId}`);
+        alert("Proposal Reference Copied! Paste it anywhere to create a smart link.");
+    };
+
+    const handleShareProposal = async () => {
+        if (!shareModalProp || !shareTargetId) return;
+        setIsSharing(true);
+        try {
+            const msgObj: any = {
+                id: `msg-${Date.now()}`,
+                senderId: state.currentUser?.id,
+                senderName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
+                receiverId: shareTargetId,
+                content: `${shareMessageText ? shareMessageText + '\n\n' : ''}Check out this proposal: #PROP-${shareModalProp.id}`,
+                timestamp: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                organizationId: state.currentOrganization?.id,
+                type: 'internal'
+            };
+            await db.collection('messages').doc(msgObj.id).set(msgObj);
+            alert("Proposal shared successfully!");
+            setShareModalProp(null);
+            setShareMessageText('');
+        } catch (e) {
+            alert("Failed to share.");
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
     const formatCurrency = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 
     const canApprove = state.currentUser?.role === 'admin' || state.currentUser?.role === 'supervisor' || state.currentUser?.role === 'both' || state.currentUser?.role === 'master_admin';
 
     return (
         <div className="space-y-6 pb-20">
+            <Modal isOpen={!!shareModalProp} onClose={() => setShareModalProp(null)} title={`Share Proposal: ${shareModalProp?.customerName}`}>
+                 <div className="space-y-4">
+                     <p className="text-sm text-slate-500">Send this proposal reference to a staff member.</p>
+                     <select 
+                         aria-label="Select Share Recipient"
+                         title="Select Share Recipient"
+                         className="w-full border rounded-lg p-2 dark:bg-slate-800 dark:border-slate-700"
+                         value={shareTargetId}
+                         onChange={e => setShareTargetId(e.target.value)}
+                     >
+                         <option value="">Select Recipient...</option>
+                         {state.users.filter((u: any) => 
+                             u.organizationId === state.currentOrganization?.id && 
+                             u.id !== state.currentUser?.id && 
+                             u.role !== 'customer'
+                         ).map((u: any) => (
+                             <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
+                         ))}
+                     </select>
+                     <Textarea 
+                         placeholder="Add an optional message..."
+                         value={shareMessageText}
+                         onChange={e => setShareMessageText(e.target.value)}
+                     />
+                     <div className="flex justify-end gap-2">
+                         <Button variant="secondary" onClick={() => setShareModalProp(null)}>Cancel</Button>
+                         <Button onClick={handleShareProposal} disabled={!shareTargetId || isSharing}>
+                             {isSharing ? 'Sending...' : 'Send Message'}
+                         </Button>
+                     </div>
+                 </div>
+             </Modal>
             <header>
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Sales Pipeline</h2>
                 <p className="text-gray-600 dark:text-gray-400">Track estimates, proposals, and conversions.</p>
@@ -196,13 +295,13 @@ const SalesPipeline: React.FC = () => {
 
             {/* MAIN LIST */}
             <Card className="shadow-lg">
-                <div className="flex justify-between items-center mb-4">
-                    <div className="flex space-x-2 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto custom-scrollbar">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                    <div className="flex space-x-2 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto custom-scrollbar flex-1 whitespace-nowrap">
                         {['All', 'Pending Approval', 'Draft', 'Sent', 'Accepted', 'Rejected'].map(status => (
                             <button
                                 key={status}
                                 onClick={() => setFilterStatus(status)}
-                                className={`px-3 py-1 text-xs font-bold rounded-md transition-colors whitespace-nowrap ${
+                                className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${
                                     filterStatus === status 
                                         ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' 
                                         : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
@@ -211,6 +310,22 @@ const SalesPipeline: React.FC = () => {
                                 {status}
                             </button>
                         ))}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm shrink-0">
+                        <label className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
+                        <select 
+                            aria-label="Sort Proposals"
+                            className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                        >
+                            <option value="date_desc">Newest First</option>
+                            <option value="date_asc">Oldest First</option>
+                            <option value="name_asc">Customer (A-Z)</option>
+                            <option value="name_desc">Customer (Z-A)</option>
+                            <option value="amount_desc">Amount (High to Low)</option>
+                            <option value="amount_asc">Amount (Low to High)</option>
+                        </select>
                     </div>
                 </div>
 
@@ -245,7 +360,7 @@ const SalesPipeline: React.FC = () => {
                                     </span>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 items-center flex-wrap">
                                         {p.status === 'Pending Approval' && canApprove && (
                                             <>
                                                 <button onClick={() => handleStatusChange(p, 'Draft')} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded" title="Approve"><ShieldCheck size={16}/></button>
@@ -254,6 +369,8 @@ const SalesPipeline: React.FC = () => {
                                         )}
                                         <button onClick={() => setViewProposal(p)} className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="View"><Eye size={16}/></button>
                                         <button onClick={() => handleEditProposal(p.id)} className="p-2 text-purple-600 hover:bg-purple-50 rounded" title="Edit"><Edit size={16}/></button>
+                                        <button aria-label="Copy Reference" title="Copy Reference" onClick={(e) => { e.stopPropagation(); handleCopyRef(p.id); }} className="p-2 text-slate-400 hover:bg-slate-50 hover:text-primary-600 rounded"><Copy size={16}/></button>
+                                        <button aria-label="Share Proposal" title="Share Proposal" onClick={(e) => { e.stopPropagation(); setShareModalProp(p); }} className="p-2 text-slate-400 hover:bg-slate-50 hover:text-primary-600 rounded"><Share2 size={16}/></button>
                                         <button onClick={() => handleDeleteProposal(p.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Delete"><Trash2 size={16}/></button>
                                     </div>
                                 </td>

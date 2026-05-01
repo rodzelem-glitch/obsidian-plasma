@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
-import { Share2, Image as ImageIcon, Send, Sparkles, RefreshCw } from 'lucide-react';
+import { Share2, Image as ImageIcon, Send, Sparkles, RefreshCw, BarChart3, Code } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import { db, storage } from 'lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useNavigate } from 'react-router-dom';
 
 const SocialMediaHub: React.FC = () => {
     const { state } = useAppContext();
+    const navigate = useNavigate();
     const [content, setContent] = useState('');
     const [mediaUrl, setMediaUrl] = useState('');
     const [isUploading, setIsUploading] = useState(false);
@@ -95,9 +97,31 @@ const SocialMediaHub: React.FC = () => {
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto pb-20 px-4 mt-8 md:mt-2">
-            <header>
-                <h2 className="text-3xl font-black flex items-center gap-2"><Share2 className="text-primary-600" /> Social Media Hub</h2>
-                <p className="text-slate-500 font-medium">Draft and broadcast organic updates across all your unified social properties simultaneously.</p>
+            <header className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                <div>
+                    <h2 className="text-3xl font-black flex items-center gap-2"><Share2 className="text-primary-600" /> Social Media Hub</h2>
+                    <p className="text-slate-500 font-medium">Draft and broadcast organic updates across all your unified social properties simultaneously.</p>
+                </div>
+                <div className="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <button 
+                        onClick={() => navigate('/admin/campaigns')}
+                        className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-md transition-colors text-slate-500 hover:text-slate-700 hover:bg-white dark:hover:bg-slate-900`}
+                    >
+                        <Code size={16}/> Campaign Studio
+                    </button>
+                    <button 
+                        onClick={() => navigate('/admin/campaigns?tab=analytics')}
+                        className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-md transition-colors text-slate-500 hover:text-slate-700 hover:bg-white dark:hover:bg-slate-900`}
+                    >
+                        <BarChart3 size={16}/> Analytics
+                    </button>
+                    <button 
+                        onClick={() => navigate('/admin/social')}
+                        className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-md transition-colors bg-white dark:bg-slate-900 text-primary-600 shadow-sm`}
+                    >
+                        <Share2 size={16}/> Social Media Hub
+                    </button>
+                </div>
             </header>
 
             {errorMsg && <div className="p-4 bg-red-50 text-red-600 rounded-lg text-sm font-bold border border-red-200">{errorMsg}</div>}
@@ -130,7 +154,7 @@ const SocialMediaHub: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer relative">
-                                    <input type="file" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/*" />
+                                    <input type="file" aria-label="Upload media" title="Upload media" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/*" />
                                     <div className="text-center text-slate-500 pointer-events-none">
                                         {isUploading ? <RefreshCw className="animate-spin mx-auto mb-2" /> : <ImageIcon className="mx-auto mb-2 opacity-50" />}
                                         <p className="text-sm font-bold">{isUploading ? 'Uploading...' : 'Click or drag image to attach'}</p>
@@ -143,35 +167,41 @@ const SocialMediaHub: React.FC = () => {
 
                 {/* Right Column (Networks) */}
                 <div className="space-y-6">
-                    <Card className="p-6">
-                        <h3 className="font-bold mb-4 text-slate-900 dark:text-white">Select Networks</h3>
-                        <div className="space-y-3">
-                            <label className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                                <span className="font-bold text-sm text-[#1877F2]">Facebook Page</span>
-                                <input type="checkbox" checked={postToFB} onChange={(e) => setPostToFB(e.target.checked)} className="w-4 h-4 text-primary-600 rounded border-slate-300" />
-                            </label>
-                            <label className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                                <span className="font-bold text-sm text-[#E4405F]">Instagram</span>
-                                <input type="checkbox" checked={postToIG} onChange={(e) => setPostToIG(e.target.checked)} className="w-4 h-4 text-primary-600 rounded border-slate-300" />
-                            </label>
-                            <label className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                                <span className="font-bold text-sm text-[#0A66C2]">LinkedIn</span>
-                                <input type="checkbox" checked={postToLI} onChange={(e) => setPostToLI(e.target.checked)} className="w-4 h-4 text-primary-600 rounded border-slate-300" />
-                            </label>
-                            <label className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                                <span className="font-bold text-sm text-[#EA4335]">Google Business</span>
-                                <input type="checkbox" checked={postToGB} onChange={(e) => setPostToGB(e.target.checked)} className="w-4 h-4 text-primary-600 rounded border-slate-300" />
-                            </label>
+                    <Card className="p-6 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-[2px] z-10 flex items-center justify-center flex-col">
+                            <div className="bg-indigo-600 text-white font-black px-4 py-2 rounded-full shadow-lg transform -rotate-12 mb-2 border-2 border-indigo-400">COMING SOON</div>
+                            <p className="text-sm font-bold text-slate-800 dark:text-slate-200 text-center px-6">Direct API integrations are currently under development.</p>
                         </div>
                         
-                        <Button 
-                            onClick={handlePublish} 
-                            disabled={isPosting || !content.trim()} 
-                            className="w-full mt-6 py-3 font-black flex items-center justify-center gap-2"
-                        >
-                            {isPosting ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
-                            {isPosting ? 'Broadcasting...' : 'Publish Now'}
-                        </Button>
+                        <div className="opacity-40 select-none">
+                            <h3 className="font-bold mb-4 text-slate-900 dark:text-white">Select Networks</h3>
+                            <div className="space-y-3">
+                                <label className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg">
+                                    <span className="font-bold text-sm text-[#1877F2]">Facebook Page</span>
+                                    <input type="checkbox" checked={postToFB} readOnly className="w-4 h-4 text-primary-600 rounded border-slate-300 pointer-events-none" />
+                                </label>
+                                <label className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg">
+                                    <span className="font-bold text-sm text-[#E4405F]">Instagram</span>
+                                    <input type="checkbox" checked={postToIG} readOnly className="w-4 h-4 text-primary-600 rounded border-slate-300 pointer-events-none" />
+                                </label>
+                                <label className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg">
+                                    <span className="font-bold text-sm text-[#0A66C2]">LinkedIn</span>
+                                    <input type="checkbox" checked={postToLI} readOnly className="w-4 h-4 text-primary-600 rounded border-slate-300 pointer-events-none" />
+                                </label>
+                                <label className="flex items-center justify-between p-3 border border-slate-200 dark:border-slate-700 rounded-lg">
+                                    <span className="font-bold text-sm text-[#EA4335]">Google Business</span>
+                                    <input type="checkbox" checked={postToGB} readOnly className="w-4 h-4 text-primary-600 rounded border-slate-300 pointer-events-none" />
+                                </label>
+                            </div>
+                            
+                            <Button 
+                                disabled={true} 
+                                className="w-full mt-6 py-3 font-black flex items-center justify-center gap-2"
+                            >
+                                <Send size={16} />
+                                Publish Now
+                            </Button>
+                        </div>
                     </Card>
                 </div>
             </div>

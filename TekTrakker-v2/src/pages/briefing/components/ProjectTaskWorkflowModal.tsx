@@ -7,37 +7,9 @@ import Button from 'components/ui/Button';
 import { Upload } from 'lucide-react';
 import { db } from 'lib/firebase';
 import { useAppContext } from 'context/AppContext';
+import { uploadFileToStorage } from 'lib/storageService';
 
-// Helper for compression
-const compressFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            if (file.type.startsWith('image/')) {
-                const img = new Image();
-                img.src = event.target?.result as string;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
-                    const MAX = 800; 
-                    if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } } 
-                    else { if (height > MAX) { width *= MAX / height; height = MAX; } }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.5)); 
-                };
-                img.onerror = () => resolve(event.target?.result as string);
-            } else {
-                resolve(event.target?.result as string);
-            }
-        };
-        reader.onerror = reject;
-    });
-};
+
 
 const ProjectTaskWorkflowModal = ({ isOpen, onClose, task, project }: { isOpen: boolean, onClose: () => void, task: ProjectTask, project: Project }) => {
     const { state, dispatch } = useAppContext();
@@ -68,7 +40,9 @@ const ProjectTaskWorkflowModal = ({ isOpen, onClose, task, project }: { isOpen: 
             }
 
             if (file) {
-                const dataUrl = await compressFile(file);
+                const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'upload.jpg';
+                const path = `organizations/${project.organizationId}/projects/${project.id}/files/${Date.now()}_${safeName}`;
+                const downloadUrl = await uploadFileToStorage(path, file);
                 const newFile = {
                     id: `file-${Date.now()}`,
                     organizationId: project.organizationId,
@@ -76,7 +50,7 @@ const ProjectTaskWorkflowModal = ({ isOpen, onClose, task, project }: { isOpen: 
                     parentType: 'project' as const,
                     fileName: file.name,
                     fileType: file.type,
-                    dataUrl,
+                    dataUrl: downloadUrl,
                     createdAt: new Date().toISOString(),
                     uploadedBy: state.currentUser?.id || 'tech',
                     metadata: { taskId: task.id, label: 'Task Update' }

@@ -6,9 +6,9 @@ import Button from 'components/ui/Button';
 import Textarea from 'components/ui/Textarea';
 import { db, storage } from 'lib/firebase';
 import { collection, addDoc, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { useAppContext } from 'context/AppContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { uploadFileToStorage } from 'lib/storageService';
+import { useAppContext } from 'context/AppContext';
 
 interface SmartTechAssistantProps {
     isOpen: boolean;
@@ -114,9 +114,8 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
             let downloadUrl: string | undefined = undefined;
 
             if (imageFile) {
-                const storageRef = ref(storage, `ai_chats/${organizationId}/${jobId}/${Date.now()}_${imageFile.name}`);
-                const snapshot = await uploadBytes(storageRef, imageFile);
-                downloadUrl = await getDownloadURL(snapshot.ref);
+                const path = `ai_chats/${organizationId}/${jobId}/${Date.now()}_${imageFile.name}`;
+                downloadUrl = await uploadFileToStorage(path, imageFile);
 
                 const base64Image = await new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
@@ -141,7 +140,7 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
 
             const result = await callGeminiAI({
                 prompt: userMessage.text || "Analyze this image.",
-                modelName: "gemini-3-pro-image-preview",
+                modelName: "gemini-3.1-pro-preview",
                 image: imagePayload
             });
 
@@ -170,9 +169,7 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
         const file = e.target.files?.[0];
         if (file) {
             setImageFile(file);
-            const reader = new FileReader();
-            reader.onloadend = () => setImagePreview(reader.result as string);
-            reader.readAsDataURL(file);
+            setImagePreview(URL.createObjectURL(file));
         }
     };
 
@@ -223,10 +220,11 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
                         </div>
                     )}
                     <div className="flex items-end space-x-2">
-                        <input type="file" accept="image/*" style={{ display: 'none' }} id={`image-upload-${jobId || 'new'}`} onChange={handleImageChange} />
-                        <Button type="button" variant="secondary" size="icon" onClick={() => document.getElementById(`image-upload-${jobId || 'new'}`)?.click()}><ImageIcon size={20} /></Button>
+                        <label htmlFor={`image-upload-${jobId || 'new'}`} className="sr-only">Upload Image</label>
+                        <input type="file" title="Upload Image" accept="image/*" className="hidden" id={`image-upload-${jobId || 'new'}`} onChange={handleImageChange} />
+                        <Button type="button" variant="secondary" size="icon" onClick={() => document.getElementById(`image-upload-${jobId || 'new'}`)?.click()} title="Upload Image"><ImageIcon size={20} /></Button>
                         <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ask a question..." className="flex-1" onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())} />
-                        <Button onClick={handleSendMessage} disabled={isLoading || (!prompt.trim() && !imageFile)} style={{ backgroundColor: primaryColor }}><Send size={20} /></Button>
+                        <Button onClick={handleSendMessage} disabled={isLoading || (!prompt.trim() && !imageFile)} title="Send Message" className="bg-primary-600 hover:bg-primary-700 text-white"><Send size={20} /></Button>
                     </div>
                 </div>
             </div>

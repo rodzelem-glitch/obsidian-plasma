@@ -1,5 +1,5 @@
-
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { Job, User } from 'types';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
@@ -25,9 +25,22 @@ const ChatBubbleIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 const JobScheduling: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const [searchParams] = useSearchParams();
+    const highlightJobId = searchParams.get('jobId');
+    const tableRef = useRef<HTMLTableElement>(null);
+
     const [isSmsModalOpen, setIsSmsModalOpen] = useState(false);
     const [smsJob, setSmsJob] = useState<Job | null>(null);
     const [smsMessage, setSmsMessage] = useState('');
+
+    useEffect(() => {
+        if (highlightJobId && tableRef.current) {
+            const row = tableRef.current.querySelector(`tr[data-job-id="${highlightJobId}"]`);
+            if (row) {
+                row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }, [highlightJobId, state.jobs]);
 
     const employees = useMemo(() => state.users.filter((u: User) => u.organizationId === state.currentOrganization?.id && (u.role === 'employee' || u.role === 'both' || u.role === 'supervisor')), [state.users, state.currentOrganization]);
 
@@ -185,79 +198,88 @@ const JobScheduling: React.FC = () => {
                 <Button onClick={() => window.open('/#/book', '_blank')} className="w-auto">Open Booking Page</Button>
             </header>
             <Card>
-                <Table headers={['Customer', 'Unit/System', 'Appointment Time', 'Invoice Status', 'Job Status', 'Assigned Technician', 'Actions']}>
-                    {(allJobs as Job[]).map((job: Job) => {
-                        const brandDisplay = job.hvacBrand || '---';
-                        const typeDisplay = job.hvacType || '';
-                        
-                        return (
-                        <tr key={job.id}>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                    {job.customerName}
-                                    {(job.source === 'WebForm') && <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-600 dark:text-purple-400 text-[10px] font-bold">WEB</span>}
-                                </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px] truncate" title={formatAddress(job.address)}>
-                                    {formatAddress(job.address)}
-                                </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm text-gray-700 dark:text-gray-300">
-                                    <div className="font-bold text-blue-600 dark:text-blue-400">{brandDisplay}</div>
-                                    {typeDisplay && <div className="text-xs">{typeDisplay}</div>}
-                                </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                                <input 
-                                    type="datetime-local"
-                                    value={formatDateTimeForInput(job.appointmentTime)}
-                                    onChange={(e) => handleJobUpdate(job.id, 'appointmentTime', new Date(e.target.value).toISOString())}
-                                    className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md py-1.5 px-2 text-gray-900 dark:text-white text-sm focus:ring-primary-500 focus:border-primary-500"
-                                />
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${job.invoice?.status === 'Paid' ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300'}`}>
-                                    {job.invoice?.status || 'Unknown'}
-                                </span>
-                            </td>
-                             <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                <select 
-                                    value={job.jobStatus}
-                                    onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)}
-                                    className={`block w-full border border-gray-300 dark:border-gray-600 rounded-md py-1 px-2 text-sm focus:ring-primary-500 focus:border-primary-500 ${job.jobStatus === 'Completed' ? 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
-                                >
-                                    <option value="Scheduled">Scheduled</option>
-                                    <option value="In Progress">In Progress</option>
-                                    <option value="Completed">Completed</option>
-                                </select>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                <select 
-                                    value={job.assignedTechnicianId || ''}
-                                    onChange={(e) => handleJobUpdate(job.id, 'assignedTechnicianId', e.target.value)}
-                                    className="block w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md py-1.5 px-3 text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                                >
-                                    <option value="">Unassigned</option>
-                                    {employees.map((tech: User) => (
-                                        <option key={tech.id} value={tech.id}>{tech.firstName} {tech.lastName}</option>
-                                    ))}
-                                </select>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 flex gap-2">
-                                <button onClick={() => openSmsModal(job)} className="text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 p-1"><ChatBubbleIcon className="w-5 h-5" /></button>
-                                <button onClick={() => handleDeleteJob(job.id)} className="text-red-700 dark:text-red-400 font-bold hover:text-red-900 dark:hover:text-red-300 p-1 hover:bg-red-100 dark:hover:bg-red-900/40 rounded transition-colors"><TrashIcon className="w-5 h-5" /></button>
-                            </td>
-                        </tr>
-                        );
-                    })}
-                    {allJobs.length === 0 && (
-                        <tr>
-                            <td colSpan={7} className="px-6 py-4 md:py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                                No active jobs found. All completed and paid jobs are in History.
-                            </td>
-                        </tr>
-                    )}
-                </Table>
+                <div ref={tableRef as any}>
+                    <Table headers={['Customer', 'Unit/System', 'Appointment Time', 'Invoice Status', 'Job Status', 'Assigned Technician', 'Actions']}>
+                        {(allJobs as Job[]).map((job: Job) => {
+                            const brandDisplay = job.hvacBrand || '---';
+                            const typeDisplay = job.hvacType || '';
+                            const isHighlighted = job.id === highlightJobId;
+                            
+                            return (
+                            <tr key={job.id} data-job-id={job.id} className={isHighlighted ? "bg-primary-50 dark:bg-primary-900/20" : ""}>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                        {job.customerName}
+                                        {(job.source === 'WebForm') && <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-600 dark:text-purple-400 text-[10px] font-bold">WEB</span>}
+                                    </div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px] truncate" title={formatAddress(job.address)}>
+                                        {formatAddress(job.address)}
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                                        <div className="font-bold text-blue-600 dark:text-blue-400">{brandDisplay}</div>
+                                        {typeDisplay && <div className="text-xs">{typeDisplay}</div>}
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <input 
+                                        type="datetime-local"
+                                        aria-label="Appointment Time"
+                                        title="Appointment Time"
+                                        value={formatDateTimeForInput(job.appointmentTime)}
+                                        onChange={(e) => handleJobUpdate(job.id, 'appointmentTime', new Date(e.target.value).toISOString())}
+                                        className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md py-1.5 px-2 text-gray-900 dark:text-white text-sm focus:ring-primary-500 focus:border-primary-500"
+                                    />
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${job.invoice?.status === 'Paid' ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300'}`}>
+                                        {job.invoice?.status || 'Unknown'}
+                                    </span>
+                                </td>
+                                 <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                    <select 
+                                        aria-label="Job Status"
+                                        title="Job Status"
+                                        value={job.jobStatus}
+                                        onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)}
+                                        className={`block w-full border border-gray-300 dark:border-gray-600 rounded-md py-1 px-2 text-sm focus:ring-primary-500 focus:border-primary-500 ${job.jobStatus === 'Completed' ? 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
+                                    >
+                                        <option value="Scheduled">Scheduled</option>
+                                        <option value="In Progress">In Progress</option>
+                                        <option value="Completed">Completed</option>
+                                    </select>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                                    <select 
+                                        aria-label="Assign Technician"
+                                        title="Assign Technician"
+                                        value={job.assignedTechnicianId || ''}
+                                        onChange={(e) => handleJobUpdate(job.id, 'assignedTechnicianId', e.target.value)}
+                                        className="block w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md py-1.5 px-3 text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                                    >
+                                        <option value="">Unassigned</option>
+                                        {employees.map((tech: User) => (
+                                            <option key={tech.id} value={tech.id}>{tech.firstName} {tech.lastName}</option>
+                                        ))}
+                                    </select>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 flex gap-2">
+                                    <button aria-label="Send SMS Message" title="Send SMS" onClick={() => openSmsModal(job)} className="text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 p-1"><ChatBubbleIcon className="w-5 h-5" /></button>
+                                    <button aria-label="Delete Job" title="Delete Job" onClick={() => handleDeleteJob(job.id)} className="text-red-700 dark:text-red-400 font-bold hover:text-red-900 dark:hover:text-red-300 p-1 hover:bg-red-100 dark:hover:bg-red-900/40 rounded transition-colors"><TrashIcon className="w-5 h-5" /></button>
+                                </td>
+                            </tr>
+                            );
+                        })}
+                        {allJobs.length === 0 && (
+                            <tr>
+                                <td colSpan={7} className="px-6 py-4 md:py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                                    No active jobs found. All completed and paid jobs are in History.
+                                </td>
+                            </tr>
+                        )}
+                    </Table>
+                </div>
             </Card>
         </div>
     );

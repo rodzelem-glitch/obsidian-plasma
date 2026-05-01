@@ -8,8 +8,8 @@ import { Sparkles, Send, Megaphone, Code, Eye, RefreshCw, Layers, Upload, Image 
 import { useNavigate } from 'react-router-dom';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import DOMPurify from 'dompurify';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 
 const MarketingCampaigns: React.FC = () => {
     const { state } = useAppContext();
@@ -35,7 +35,10 @@ const MarketingCampaigns: React.FC = () => {
     const [filterType, setFilterType] = useState('All');
     
     // Phase 12 States
-    const [viewMode, setViewMode] = useState<'editor' | 'analytics'>('editor');
+    const [viewMode, setViewMode] = useState<'editor' | 'analytics'>(() => {
+        const params = new URLSearchParams(window.location.search);
+        return (params.get('tab') as 'editor' | 'analytics') || 'editor';
+    });
     const [campaignHistory, setCampaignHistory] = useState<any[]>([]);
     const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
     const [showTemplatesModal, setShowTemplatesModal] = useState(false);
@@ -473,6 +476,7 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                                                 className="hidden" 
                                                 ref={fileInputRef}
                                                 onChange={handleImageUpload}
+                                                title="Upload Image Asset"
                                             />
                                             <button 
                                                 onClick={() => fileInputRef.current?.click()}
@@ -588,6 +592,7 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                                         value={filterCity}
                                         onChange={(e) => setFilterCity(e.target.value)}
                                         className="px-2 py-1.5 text-xs font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800"
+                                        title="Filter by City"
                                     >
                                         {uniqueCities.map(city => <option key={city} value={city}>{city === 'All' ? 'All Cities' : city}</option>)}
                                     </select>
@@ -595,6 +600,7 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                                         value={filterType}
                                         onChange={(e) => setFilterType(e.target.value)}
                                         className="px-2 py-1.5 text-xs font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800"
+                                        title="Filter by Customer Type"
                                     >
                                         <option value="All">All Types</option>
                                         <option value="Residential">Residential</option>
@@ -617,6 +623,7 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                                                     className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-4 w-4 cursor-pointer"
                                                     checked={filteredCustomers.length > 0 && selectedCustomerIds.size === filteredCustomers.length}
                                                     onChange={handleSelectAll}
+                                                    title="Select All Customers"
                                                 />
                                             </th>
                                             <th className="px-4 py-3 text-[10px] font-black uppercase text-slate-400 border-b border-slate-200 dark:border-slate-700">Customer Name</th>
@@ -643,6 +650,7 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                                                             className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-4 w-4 cursor-pointer"
                                                             checked={selectedCustomerIds.has(customer.id)}
                                                             onChange={(e) => { e.stopPropagation(); handleSelectSingle(customer.id); }}
+                                                            title={`Select ${customer.name || 'Customer'}`}
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3 border-b border-transparent">

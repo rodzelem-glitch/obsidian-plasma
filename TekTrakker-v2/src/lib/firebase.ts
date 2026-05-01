@@ -4,6 +4,7 @@ import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
 import 'firebase/compat/functions';
 import 'firebase/compat/storage';
+import 'firebase/compat/messaging';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -22,16 +23,28 @@ if (!firebase.apps.length) {
 const db = firebase.firestore();
 
 // Activate Physical IndexDB Persistence for Offline Technicians
-db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+db.enablePersistence().catch((err: any) => {
     if (err.code === 'failed-precondition') {
         console.warn('Persistence failed: Multiple identical tabs open.');
     } else if (err.code === 'unimplemented') {
         console.warn('Persistence failed: Browser does not support IndexDB.');
+    } else {
+        console.warn('Firestore Persistence Error:', err);
     }
 });
+
 const auth = firebase.auth();
 const functions = firebase.functions();
 const storage = firebase.storage();
 const app = firebase.app();
 
-export { db, auth, functions, storage, app, firebase };
+let messaging: firebase.messaging.Messaging | null = null;
+try {
+  if (firebase.messaging.isSupported()) {
+    messaging = firebase.messaging();
+  }
+} catch (e) {
+  console.warn('Firebase Messaging not supported:', e);
+}
+
+export { db, auth, functions, storage, app, messaging, firebase };

@@ -16,7 +16,7 @@ const BottomNav: React.FC = () => {
   const location = useLocation();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 shadow-lg z-50">
+    <nav className="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 shadow-lg z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="mx-auto max-w-7xl px-2 sm:px-6 lg:px-8">
         <div className="grid grid-cols-6 h-20">
           {navItems.map((item) => {

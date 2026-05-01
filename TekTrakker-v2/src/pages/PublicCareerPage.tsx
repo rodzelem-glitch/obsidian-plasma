@@ -8,43 +8,8 @@ import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import { BriefcaseIcon, Upload, CheckCircle } from 'lucide-react';
 import type { Applicant } from 'types';
+import { uploadFileToStorage } from 'lib/storageService';
 
-const compressFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const result = event.target?.result as string;
-            // If PDF, just return base64 (cannot canvas resize PDF in browser easily without libs)
-            if (file.type === 'application/pdf') {
-                resolve(result);
-                return;
-            }
-            // If Image, compress
-            if (file.type.startsWith('image/')) {
-                const img = new Image();
-                img.src = result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
-                    const MAX = 800; 
-                    if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } } 
-                    else { if (height > MAX) { width *= MAX / height; height = MAX; } }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.5)); 
-                };
-                img.onerror = () => resolve(result);
-            } else {
-                resolve(result); // Fallback
-            }
-        };
-        reader.onerror = reject;
-    });
-};
 
 const PublicCareerPage: React.FC = () => {
     const { orgId } = useParams<{ orgId: string }>();
@@ -86,12 +51,14 @@ const PublicCareerPage: React.FC = () => {
         try {
             let resumeDataUrl = '';
             if (resumeFile) {
-                if (resumeFile.size > 1024 * 1024 * 1) { // 1MB Limit
-                    alert("File too large. Max 1MB.");
+                if (resumeFile.size > 1024 * 1024 * 10) { // 10MB Limit
+                    alert("File too large. Max 10MB.");
                     setLoading(false);
                     return;
                 }
-                resumeDataUrl = await compressFile(resumeFile);
+                const safeName = resumeFile.name ? resumeFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'resume.pdf';
+                const path = `organizations/${orgId}/applicants/${Date.now()}_${safeName}`;
+                resumeDataUrl = await uploadFileToStorage(path, resumeFile);
             }
 
             const applicant: Applicant = {
@@ -118,6 +85,7 @@ const PublicCareerPage: React.FC = () => {
                 receiverId: 'all', // Broadcast to admins
                 content: `New Job Applicant: ${applicant.firstName} ${applicant.lastName} for ${applicant.position}`,
                 timestamp: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
                 read: false,
                 type: 'alert'
             });

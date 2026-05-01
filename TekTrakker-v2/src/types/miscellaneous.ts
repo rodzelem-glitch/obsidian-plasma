@@ -326,6 +326,7 @@ export interface Message {
     type: 'text' | 'sms' | 'email' | 'customer-log' | 'alert';
     deliveryStatus?: 'queued' | 'sent' | 'failed';
     deliveryError?: string;
+    isEdited?: boolean;
 }
 
 export interface PartOrder {

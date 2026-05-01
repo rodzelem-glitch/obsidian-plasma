@@ -18,6 +18,7 @@ import ComplianceRegistry from '../pages/master/ComplianceRegistry';
 import PlatformAnalytics from '../pages/master/PlatformAnalytics'; 
 import Messages from '../pages/Messages';
 import AiUsageMaster from '../pages/admin/AiUsageMaster';
+import StorageUsageMaster from '../pages/admin/StorageUsageMaster';
 
 const MasterAdminRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({ user, handleLogout }) => {
   const { state } = useAppContext();
@@ -35,6 +36,7 @@ const MasterAdminRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({
           <Route path="compliance" element={<ComplianceRegistry />} />
           <Route path="analytics" element={<PlatformAnalytics />} /> 
           <Route path="ai-usage" element={<AiUsageMaster />} />
+          <Route path="storage-usage" element={<StorageUsageMaster />} />
           <Route path="messages" element={<Messages />} />
           <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Routes>

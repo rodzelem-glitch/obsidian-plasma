@@ -40,13 +40,13 @@ const EditShiftModal: React.FC<EditShiftModalProps> = ({ log, onClose, onSave, c
         if (!log) return;
 
         const newClockInIso = new Date(editClockIn).toISOString();
-        const newClockOutIso = editClockOut ? new Date(editClockOut).toISOString() : undefined;
+        const newClockOutIso = editClockOut ? new Date(editClockOut).toISOString() : null;
 
         const editRecord: ShiftEdit = {
             timestamp: new Date().toISOString(),
             adminName: `${currentUser?.firstName} ${currentUser?.lastName}`,
             originalClockIn: log.clockIn,
-            originalClockOut: log.clockOut || undefined,
+            originalClockOut: log.clockOut || null,
             newClockIn: newClockInIso,
             newClockOut: newClockOutIso,
             reason: editReason

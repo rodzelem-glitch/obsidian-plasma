@@ -17,6 +17,7 @@ const EmployeeRoutes = lazy(() => import('./navigation/EmployeeRoutes'));
 const PublicRoutes = lazy(() => import('./navigation/PublicRoutes'));
 import SaaSMarketing from './pages/landing/SaaSMarketing';
 import LocationTracker from './components/common/LocationTracker';
+import ScrollToTop from './components/common/ScrollToTop';
 
 const FieldProposal = lazy(() => import('./pages/FieldProposal'));
 const PublicProposal = lazy(() => import('./pages/PublicProposal'));
@@ -72,13 +73,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (user?.id) {
       console.log(`[App] Current User: ${user.email}, Role: ${user.role}, Org: ${user.organizationId}`);
-      if (isNative) {
-        import('./lib/pushNotifications').then(module => {
-          module.initializePushNotifications(user.id);
-        });
-      }
+      import('./lib/pushNotificationService').then(module => {
+        module.setupFCMToken(user.id);
+      });
     }
-  }, [user, isNative]);
+  }, [user]);
 
   useEffect(() => {
     if (state.theme === 'dark') {
@@ -87,6 +86,19 @@ const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [state.theme]);
+
+  // Physical Android Webview SafeArea Bypass Hook
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      import('@capacitor/status-bar').then(({ StatusBar }) => {
+         StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
+      });
+
+      // Using native CSS env variables for safe areas which is strictly preferred with Capacitor 8
+      document.documentElement.style.setProperty('--sat', 'env(safe-area-inset-top)');
+      document.documentElement.style.setProperty('--sab', 'env(safe-area-inset-bottom)');
+    }
+  }, []);
 
   const handleLogout = () => {
     auth.signOut();
@@ -111,40 +123,43 @@ const App: React.FC = () => {
         <LocationTracker />
       </BackgroundDelayer>
       
-      <Suspense fallback={<LoadingSpinner />}>
-        <Routes>
-          <Route path="/" element={user ? <Navigate to={getRedirectPath(user, isMasterAdmin)} replace /> : (isNative ? <Navigate to="/login" replace /> : <SaaSMarketing />)} />
+      <div className="safe-area-wrapper min-h-screen w-full flex flex-col">
+        <ScrollToTop />
+        <Suspense fallback={<LoadingSpinner />}>
+          <Routes>
+            <Route path="/" element={user ? <Navigate to={getRedirectPath(user, isMasterAdmin)} replace /> : (isNative ? <Navigate to="/login" replace /> : <SaaSMarketing />)} />
 
-          {/* Marketplace routes - available to all users */}
-          <Route path="/marketplace" element={<MarketplaceDirectory />} />
-          <Route path="/marketplace/:orgId" element={<ProviderProfile />} />
+            {/* Marketplace routes - available to all users */}
+            <Route path="/marketplace" element={<MarketplaceDirectory />} />
+            <Route path="/marketplace/:orgId" element={<ProviderProfile />} />
 
-          {/* Public Document Viewing (Available to guests and authenticated users) */}
-          <Route path="/invoice/:jobId" element={
-              <Suspense fallback={<LoadingSpinner />}>
-                  <CustomerPayment />
-              </Suspense>
-          } />
-          <Route path="/proposal-view/:proposalId" element={<PublicProposal />} />
+            {/* Public Document Viewing (Available to guests and authenticated users) */}
+            <Route path="/invoice/:jobId" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <CustomerPayment />
+                </Suspense>
+            } />
+            <Route path="/proposal-view/:proposalId" element={<PublicProposal />} />
 
-          {user ? (
-            <>
-              {/* Logged In User Routes */}
-              <Route path="/master/*" element={<MasterAdminRoutes user={user} handleLogout={handleLogout} />} />
-              <Route path="/sales/*" element={<SalesRoutes user={user} handleLogout={handleLogout} />} />
-              <Route path="/admin/*" element={<AdminRoutes user={user} handleLogout={handleLogout} isDemoMode={isDemoMode} />} />
-              <Route path="/portal/*" element={<CustomerRoutes user={user} handleLogout={handleLogout} />} />
-              <Route path="/briefing/*" element={<EmployeeRoutes user={user} handleLogout={handleLogout} isDemoMode={isDemoMode} getRedirectPath={() => getRedirectPath(user, isMasterAdmin)} />} />
-              
-              {/* Fallback for any other authenticated route - might redirect to a default page or show a 404 within the user's layout */}
-              <Route path="*" element={<Navigate to={getRedirectPath(user, isMasterAdmin)} replace />} />
-            </>
-          ) : (
-            /* Public Routes - Only accessible when not logged in */
-            <Route path="/*" element={<PublicRoutes user={user} getRedirectPath={() => getRedirectPath(user, isMasterAdmin)} />} />
-          )}
-        </Routes>
-      </Suspense>
+            {user ? (
+              <>
+                {/* Logged In User Routes */}
+                <Route path="/master/*" element={<MasterAdminRoutes user={user} handleLogout={handleLogout} />} />
+                <Route path="/sales/*" element={<SalesRoutes user={user} handleLogout={handleLogout} />} />
+                <Route path="/admin/*" element={<AdminRoutes user={user} handleLogout={handleLogout} isDemoMode={isDemoMode} />} />
+                <Route path="/portal/*" element={<CustomerRoutes user={user} handleLogout={handleLogout} />} />
+                <Route path="/briefing/*" element={<EmployeeRoutes user={user} handleLogout={handleLogout} isDemoMode={isDemoMode} getRedirectPath={() => getRedirectPath(user, isMasterAdmin)} />} />
+                
+                {/* Fallback for any other authenticated route - might redirect to a default page or show a 404 within the user's layout */}
+                <Route path="*" element={<Navigate to={getRedirectPath(user, isMasterAdmin)} replace />} />
+              </>
+            ) : (
+              /* Public Routes - Only accessible when not logged in */
+              <Route path="/*" element={<PublicRoutes user={user} getRedirectPath={() => getRedirectPath(user, isMasterAdmin)} />} />
+            )}
+          </Routes>
+        </Suspense>
+      </div>
     </>
   );
 };

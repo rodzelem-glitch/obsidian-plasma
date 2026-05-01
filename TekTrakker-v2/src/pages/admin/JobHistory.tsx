@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { useConfirm } from 'context/ConfirmContext';
 import Card from 'components/ui/Card';
@@ -11,13 +11,15 @@ import { db } from 'lib/firebase';
 import type { Job } from 'types';
 import InvoiceEditorModal from 'components/modals/InvoiceEditorModal';
 import JobDetailModal from 'components/modals/JobDetailModal';
-import { Printer, FileText, Edit, Trash2, CheckCircle, Clock, MapPin, Wrench } from 'lucide-react';
+import { Printer, FileText, Edit, Trash2, CheckCircle, Clock, MapPin, Wrench, Share2, Copy } from 'lucide-react';
 import Textarea from 'components/ui/Textarea';
 import { formatAddress } from 'lib/utils';
+import { useSearchParams } from 'react-router-dom';
 
 const JobHistory: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { confirm } = useConfirm();
+    const [searchParams] = useSearchParams();
     
     const [viewJob, setViewJob] = useState<Job | null>(null);
     const [techFilter, setTechFilter] = useState('');
@@ -27,6 +29,12 @@ const JobHistory: React.FC = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [editNotes, setEditNotes] = useState('');
     const [editStatus, setEditStatus] = useState<string>('');
+
+    // Share Management
+    const [shareModalJob, setShareModalJob] = useState<Job | null>(null);
+    const [shareTargetId, setShareTargetId] = useState<string>('');
+    const [shareMessageText, setShareMessageText] = useState('');
+    const [isSharing, setIsSharing] = useState(false);
 
     // Pagination
     const [page, setPage] = useState(1);
@@ -57,6 +65,24 @@ const JobHistory: React.FC = () => {
         setEditStatus(job.jobStatus);
         setIsEditing(false);
     };
+
+    useEffect(() => {
+        const histId = searchParams.get('histId');
+        if (histId && state.jobs.length > 0) {
+            const targetJob = state.jobs.find(j => j.id === histId);
+            if (targetJob) {
+                handleViewJob(targetJob);
+                setTimeout(() => {
+                    const el = document.getElementById(`hist-row-${histId}`);
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.classList.add('bg-blue-500/20', 'transition-colors', 'duration-1000');
+                        setTimeout(() => el.classList.remove('bg-blue-500/20'), 3000);
+                    }
+                }, 100);
+            }
+        }
+    }, [searchParams, state.jobs]);
 
     const handleSaveChanges = async () => {
         if (!viewJob) return;
@@ -95,6 +121,37 @@ const JobHistory: React.FC = () => {
             } catch (error) {
                 alert("Failed to delete job.");
             }
+        }
+    };
+
+    const handleCopyRef = (jobId: string) => {
+        navigator.clipboard.writeText(`#HIST-${jobId}`);
+        alert("Reference Copied! Paste it anywhere to create a smart link.");
+    };
+
+    const handleShareJob = async () => {
+        if (!shareModalJob || !shareTargetId) return;
+        setIsSharing(true);
+        try {
+            const msgObj: any = {
+                id: `msg-${Date.now()}`,
+                senderId: state.currentUser?.id,
+                senderName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
+                receiverId: shareTargetId,
+                content: `${shareMessageText ? shareMessageText + '\n\n' : ''}Check out this job history record: #HIST-${shareModalJob.id}`,
+                timestamp: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                organizationId: state.currentOrganization?.id,
+                type: 'internal'
+            };
+            await db.collection('messages').doc(msgObj.id).set(msgObj);
+            alert("Job shared successfully!");
+            setShareModalJob(null);
+            setShareMessageText('');
+        } catch (e) {
+            alert("Failed to share.");
+        } finally {
+            setIsSharing(false);
         }
     };
     
@@ -253,6 +310,39 @@ const JobHistory: React.FC = () => {
                 )}
             </Modal>
 
+            <Modal isOpen={!!shareModalJob} onClose={() => setShareModalJob(null)} title={`Share Job Record: ${shareModalJob?.customerName}`}>
+                 <div className="space-y-4">
+                     <p className="text-sm text-slate-500">Send this job history to a staff member in your organization.</p>
+                     <select 
+                         aria-label="Select Share Recipient"
+                         title="Select Share Recipient"
+                         className="w-full border rounded-lg p-2 dark:bg-slate-800 dark:border-slate-700"
+                         value={shareTargetId}
+                         onChange={e => setShareTargetId(e.target.value)}
+                     >
+                         <option value="">Select Recipient...</option>
+                         {state.users.filter((u: any) => 
+                             u.organizationId === state.currentOrganization?.id && 
+                             u.id !== state.currentUser?.id && 
+                             u.role !== 'customer'
+                         ).map((u: any) => (
+                             <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
+                         ))}
+                     </select>
+                     <Textarea 
+                         placeholder="Add an optional message..."
+                         value={shareMessageText}
+                         onChange={e => setShareMessageText(e.target.value)}
+                     />
+                     <div className="flex justify-end gap-2">
+                         <Button variant="secondary" onClick={() => setShareModalJob(null)}>Cancel</Button>
+                         <Button onClick={handleShareJob} disabled={!shareTargetId || isSharing}>
+                             {isSharing ? 'Sending...' : 'Send Message'}
+                         </Button>
+                     </div>
+                 </div>
+             </Modal>
+
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight uppercase">Job History</h2>
@@ -294,8 +384,10 @@ const JobHistory: React.FC = () => {
                                     {job.invoice?.status || 'Unknown'}
                                 </span>
                             </td>
-                            <td className="px-6 py-4">
-                                <button onClick={(e) => { e.stopPropagation(); handleViewJob(job); }} className="px-4 py-1.5 bg-primary-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-primary-700 transition-colors shadow-sm">View</button>
+                            <td className="px-6 py-4 flex gap-1.5 flex-wrap items-center">
+                                <button aria-label="View Job Details" title="View Job Details" onClick={(e) => { e.stopPropagation(); handleViewJob(job); }} className="px-4 py-1.5 bg-primary-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-primary-700 transition-colors shadow-sm">View</button>
+                                <button aria-label="Copy Reference" title="Copy Reference" onClick={(e) => { e.stopPropagation(); handleCopyRef(job.id); }} className="p-1 text-slate-400 hover:text-primary-600"><Copy size={16}/></button>
+                                <button aria-label="Share Job" title="Share Job" onClick={(e) => { e.stopPropagation(); setShareModalJob(job); }} className="p-1 text-slate-400 hover:text-primary-600"><Share2 size={16}/></button>
                             </td>
                         </tr>
                     ))}

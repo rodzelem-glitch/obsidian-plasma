@@ -2,7 +2,7 @@
 import React, { createContext, useReducer, useContext, useEffect, ReactNode, useRef, useMemo, useCallback } from 'react';
 import { auth, db } from 'lib/firebase';
 import type { 
-    User, Organization, PlatformSettings, Job, Customer, MembershipPlan, Project, Proposal, ServiceAgreement, Expense, EquipmentRental, Subcontractor, Applicant, BusinessDocument, Vehicle, Review
+    User, Organization, PlatformSettings, Job, Customer, MembershipPlan, Project, Proposal, ServiceAgreement, Expense, EquipmentRental, Subcontractor, Applicant, BusinessDocument, Vehicle, Review, Message
 } from 'types';
 import { appReducer, Action } from './reducer';
 import { AppState, initialState } from './state';
@@ -256,16 +256,28 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         } else if (!isCustomer) {
             // Other org members get users from their own org
             const targetOrgId = isSales 
-                ? (currentOrganization?.id && currentOrganization.id !== 'platform' ? currentOrganization.id : undefined)
+                ? (currentOrganization?.id || currentUser.organizationId)
                 : currentUser.organizationId;
             if (targetOrgId) {
                 newSubscriptions.push(db.collection('users').where('organizationId', '==', targetOrgId).onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) })));
             }
         }
 
-        const orgIdForCollections = currentOrganization?.id && currentOrganization.id !== 'platform' 
-            ? currentOrganization.id 
-            : undefined;
+        const orgIdForCollections = (currentOrganization?.id && currentOrganization.id !== 'platform')
+            ? currentOrganization.id
+            : (currentUser.organizationId && currentUser.organizationId !== 'platform' && currentUser.organizationId !== 'unaffiliated' ? currentUser.organizationId : undefined);
+
+        // Platform-Level Admins & Sales Representatives must securely pipe cross-tenant messages dynamically
+        if (currentOrganization?.id === 'platform' && currentUser.id) {
+            const maskedIdentity = currentUser.role === 'master_admin' ? 'rodzelem@gmail.com' : undefined;
+            const receiverIds = Array.from(new Set([currentUser.id, currentUser.email, maskedIdentity, 'all', 'all_sales', 'all_admins'].filter(Boolean)));
+            newSubscriptions.push(db.collection('messages').where('receiverId', 'in', receiverIds)
+                .onSnapshot(s => dispatch({ type: 'MERGE_MESSAGES', payload: s.docs.map(d => ({ ...d.data(), id: d.id })) as Message[] }), e => console.warn(e)));
+                
+            const senderIds = Array.from(new Set([currentUser.id, currentUser.email, maskedIdentity, 'all'].filter(Boolean)));
+            newSubscriptions.push(db.collection('messages').where('senderId', 'in', senderIds)
+                .onSnapshot(s => dispatch({ type: 'MERGE_MESSAGES', payload: s.docs.map(d => ({ ...d.data(), id: d.id })) as Message[] }), e => console.warn(e)));
+        }
         
         if (orgIdForCollections || isCustomer) {
             const collections: Record<string, string> = {
@@ -275,14 +287,14 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 'workSchedules': 'SET_SCHEDULES', 'membershipPlans': 'SET_MEMBERSHIP_PLANS', 'serviceAgreements': 'SET_AGREEMENTS', 'partOrders': 'SET_PART_ORDERS',
                 'shopOrders': 'SET_SHOP_ORDERS', 'marketingCampaigns': 'SET_CAMPAIGNS', 'appointments': 'SET_APPOINTMENTS', 'bids': 'SET_BIDS', 'expenses': 'SET_EXPENSES',
                 'inspectionTemplates': 'SET_INSPECTION_TEMPLATES', 'vehicles': 'SET_VEHICLES', 'applicants': 'SET_APPLICANTS',
-                'subcontractors': 'SET_SUBCONTRACTORS'
+                'subcontractors': 'SET_SUBCONTRACTORS', 'vehicleLogs': 'SET_VEHICLE_LOGS'
             };
 
             const internalOnly = [
                 'inventory', 'refrigerantCylinders', 'refrigerantTransactions', 'toolMaintenanceLogs',
                 'incidentReports', 'proposalPresets', 'projects', 'workSchedules', 'partOrders',
                 'shopOrders', 'marketingCampaigns', 'bids', 'expenses', 'inspectionTemplates', 'vehicles', 'applicants',
-                'users', 'subcontractors'
+                'users', 'subcontractors', 'vehicleLogs', 'shiftLogs'
             ];
 
             const customerPersonalData = ['jobs', 'proposals', 'appointments', 'serviceAgreements', 'messages', 'notifications', 'customers', 'documents', 'reviews'];
@@ -333,6 +345,22 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                         const payload = s.docs.map(d => ({ ...d.data(), id: d.id } as Job));
                         dispatch({ type: 'SET_EXTERNAL_JOBS', payload });
                     }, error => console.error("External jobs subscription failed:", error))
+                );
+
+                // Fetch shift logs
+                newSubscriptions.push(db.collection('shiftLogs')
+                    .where('organizationId', '==', orgIdForCollections)
+                    .onSnapshot(s => {
+                        const payload = s.docs.map(d => ({ ...d.data(), id: d.id } as any));
+                        const groupedByUser = payload.reduce((acc: any, log: any) => {
+                            if (!acc[log.userId]) acc[log.userId] = [];
+                            acc[log.userId].push(log);
+                            return acc;
+                        }, {});
+                        Object.entries(groupedByUser).forEach(([userId, logs]) => {
+                            dispatch({ type: 'SET_SHIFT_LOGS', payload: { userId, logs: logs as any[] } });
+                        });
+                    }, error => console.error("Shift logs subscription failed:", error))
                 );
             }
         }

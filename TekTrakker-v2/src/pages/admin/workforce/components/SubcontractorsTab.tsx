@@ -6,8 +6,11 @@ import type { Subcontractor } from '../../../../types';
 import Button from '../../../../components/ui/Button';
 import SubcontractorModal from '../../../../components/modals/AddSubcontractorModal'; 
 import Card from '../../../../components/ui/Card';
-import { PlusCircle, Copy, Link2, Mail, CheckCircle2, XCircle, Trash2, RefreshCw } from 'lucide-react';
+import Input from '../../../../components/ui/Input';
+import Modal from '../../../../components/ui/Modal';
+import { PlusCircle, Copy, Link2, Mail, CheckCircle2, XCircle, Trash2, RefreshCw, Printer, FileText } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
+import Form1099CopyA from '../../../master/components/sales-team/Form1099CopyA';
 import { sendEmail } from 'lib/notificationService';
 
 const SubcontractorsTab: React.FC = () => {
@@ -15,6 +18,9 @@ const SubcontractorsTab: React.FC = () => {
     const [isModalOpen, setModalOpen] = useState(false);
     const [editingSub, setEditingSub] = useState<Partial<Subcontractor> | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [viewTaxSub, setViewTaxSub] = useState<Subcontractor | null>(null);
+    const [taxYear, setTaxYear] = useState<number>(new Date().getFullYear());
+    const [taxAmountOverride, setTaxAmountOverride] = useState<string>('');
 
     const handleNewSub = () => {
         setEditingSub(null);
@@ -253,7 +259,7 @@ const SubcontractorsTab: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2 bg-white dark:bg-slate-700 p-2 rounded-lg border shadow-sm">
                         <code className="text-sm font-black text-primary-600">{state.currentOrganization?.id}</code>
-                        <button onClick={handleCopyId} className="p-1 hover:text-primary-600 transition-colors"><Copy size={14} /></button>
+                        <button onClick={handleCopyId} aria-label="Copy Handshake ID" title="Copy Handshake ID" className="p-1 hover:text-primary-600 transition-colors"><Copy size={14} /></button>
                     </div>
                 </div>
             </div>
@@ -329,16 +335,35 @@ const SubcontractorsTab: React.FC = () => {
                             ) : (
                                 <div></div>
                             )}
-                            <div className="flex gap-2">
-                                 <button onClick={() => handleDeleteSub(sub)} className="p-1 text-slate-300 hover:text-red-600 transition-colors" title="Delete">
-                                    <Trash2 size={14}/>
-                                 </button>
-                                 <Button variant="secondary" size="sm" onClick={() => handleEditSub(sub)}>Manage</Button>
-                            </div>
+                             <div className="flex gap-2 items-center">
+                                  <button onClick={() => handleDeleteSub(sub)} className="px-2 py-1 text-slate-300 hover:text-red-600 transition-colors" title="Delete">
+                                     <Trash2 size={14}/>
+                                  </button>
+                                  <Button variant="secondary" size="sm" onClick={() => handleEditSub(sub)}>Manage</Button>
+                                  <Button variant="secondary" size="sm" className="bg-indigo-50 border-indigo-200 text-indigo-700" onClick={() => setViewTaxSub(sub as any)}><FileText size={14} className="mr-1"/> 1099</Button>
+                             </div>
                         </div>
                     </Card>
                 ))}
             </div>
+
+            {viewTaxSub && (
+                <Modal isOpen={true} onClose={() => { setViewTaxSub(null); setTaxAmountOverride(''); }} title={`Generate Tax Form 1099-NEC - ${viewTaxSub.companyName}`}>
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+                            <Input label="Tax Year" type="number" value={taxYear} onChange={e => setTaxYear(parseInt(e.target.value))} />
+                            <Input label="Override Amount ($) (Manual Entry)" type="number" value={taxAmountOverride} onChange={e => setTaxAmountOverride(e.target.value)} placeholder="0.00" />
+                        </div>
+                        <div className="text-xs text-slate-500 mb-2 px-2">
+                           Enter the total aggregate amount paid to this subcontractor for the specified tax year. You can optionally pull this from your accounting software or QuickBooks sync.
+                        </div>
+                        <Form1099CopyA recipient={viewTaxSub} amount={parseFloat(taxAmountOverride) || 0} year={taxYear} payerName={state.currentOrganization?.name || 'TekTrakker Platform'} />
+                        <div className="flex justify-end pt-4">
+                            <Button onClick={() => window.print()} className="flex items-center gap-2"><Printer size={16}/> Print Tax Form</Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
 
             <SubcontractorModal 
                 isOpen={isModalOpen} 

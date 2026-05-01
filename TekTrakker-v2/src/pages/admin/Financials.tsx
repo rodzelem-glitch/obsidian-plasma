@@ -11,8 +11,9 @@ import {
     PieChart, Briefcase, Calculator, Plus, User, Search, Paperclip, Users
 } from 'lucide-react';
 import { db } from '../../lib/firebase';
+import { uploadFileToStorage } from '../../lib/storageService';
 import type { Expense, Job, Customer } from '../../types';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import FinancialOverview from './financials/components/FinancialOverview';
 import InvoicesTab from './financials/components/InvoicesTab';
@@ -21,30 +22,7 @@ import PnLTab from './financials/components/PnLTab';
 import SalesPipeline from './SalesPipeline';
 import Payables from '../Payables';
 
-const compressFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            if (file.type.startsWith('image/')) {
-                const img = new Image();
-                img.src = event.target?.result as string;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width; let height = img.height;
-                    const MAX = 800; 
-                    if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } } 
-                    else { if (height > MAX) { width *= MAX / height; height = MAX; } }
-                    canvas.width = width; canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.5)); 
-                };
-            } else { resolve(event.target?.result as string); }
-        };
-        reader.onerror = reject;
-    });
-};
+
 
 const Financials: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -64,10 +42,32 @@ const Financials: React.FC = () => {
     const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
     const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
+    const [searchParams] = useSearchParams();
+
+    React.useEffect(() => {
+        const tab = searchParams.get('tab');
+        const invId = searchParams.get('invoiceId');
+        const expId = searchParams.get('expId');
+        if (tab === 'invoices' && invId) {
+            setView('invoices');
+            const targetJob = state.jobs.find((j: any) => j.id === invId);
+            if (targetJob) {
+                setEditingInvoiceId(targetJob.id);
+            }
+        } else if (tab === 'expenses' && expId) {
+            setView('expenses');
+            const expensesList = state.expenses.map(e => ({...e, type: 'expense', sourceId: e.id}));
+            const targetExp = expensesList.find((e: any) => e.sourceId === expId);
+            if (targetExp) {
+                setEditingExpense(targetExp);
+                setIsExpenseModalOpen(true);
+            }
+        }
+    }, [searchParams, state.jobs, state.expenses]);
 
     const allExpenses = useMemo(() => {
         const expenses = state.expenses.map(e => ({...e, type: 'expense', sourceId: e.id}));
-        const vLogs = state.vehicleLogs.filter(v => v.cost > 0).map(v => ({ id: v.id, organizationId: v.organizationId, date: v.date, category: v.type === 'Fuel' ? 'Vehicle Fuel' : 'Vehicle Maint', description: v.notes, amount: v.cost, vendor: 'Fleet Expense', paidBy: v.userId, receiptData: v.receiptData, receiptUrl: v.receiptUrl, type: 'vehicleLog', sourceId: v.id }));
+        const vLogs = state.vehicleLogs.filter(v => v.cost > 0).map(v => ({ ...v, id: v.id, organizationId: v.organizationId, date: v.date, category: v.type === 'Fuel' ? 'Vehicle Fuel' : 'Vehicle Maint', description: v.notes, amount: v.cost, vendor: 'Fleet Expense', paidBy: v.userId, type: 'vehicleLog', sourceId: v.id }));
         return [...expenses, ...vLogs].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [state.expenses, state.vehicleLogs]);
 
@@ -88,8 +88,14 @@ const Financials: React.FC = () => {
         if (!state.currentOrganization || isSubmittingExpense || !state.currentUser) return;
         setIsSubmittingExpense(true);
         try {
-            let finalReceiptData = receiptPreview;
-            if (receiptFile) finalReceiptData = await compressFile(receiptFile);
+            let finalReceiptData = editingExpense ? (editingExpense.receiptUrl || editingExpense.receiptData) : null;
+            if (receiptFile) {
+                const safeName = receiptFile.name ? receiptFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg';
+                const path = `organizations/${state.currentOrganization.id}/users/${state.currentUser.id}/receipts/${Date.now()}_${safeName}`;
+                finalReceiptData = await uploadFileToStorage(path, receiptFile);
+            } else if (receiptPreview && !finalReceiptData) {
+                 finalReceiptData = receiptPreview;
+            }
 
             const auditData = {
                 updatedAt: new Date().toISOString(),
@@ -103,7 +109,8 @@ const Financials: React.FC = () => {
                         date: newExpense.date, 
                         cost: Number(newExpense.amount), 
                         notes: newExpense.description, 
-                        receiptData: finalReceiptData,
+                        receiptData: null,
+                        receiptUrl: finalReceiptData,
                         ...auditData
                     }); 
                 } else { 
@@ -115,13 +122,15 @@ const Financials: React.FC = () => {
                         vendor: newExpense.vendor, 
                         paidBy: newExpense.paidBy, 
                         projectId: newExpense.projectId || null, 
-                        receiptData: finalReceiptData,
+                        receiptData: null,
+                        receiptUrl: finalReceiptData,
                         ...auditData
                     }); 
                 }
             } else {
-                const exp = { 
-                    id: `exp-${Date.now()}`,
+                const exp = {
+                    ...editingExpense,
+                    id: editingExpense ? editingExpense.id : `exp-${Date.now()}`,
                     organizationId: state.currentOrganization.id,
                     date: newExpense.date,
                     category: newExpense.category,
@@ -130,13 +139,18 @@ const Financials: React.FC = () => {
                     vendor: newExpense.vendor,
                     paidBy: newExpense.paidBy,
                     projectId: newExpense.projectId,
-                    receiptData: finalReceiptData,
-                    createdAt: new Date().toISOString(),
-                    createdById: state.currentUser.id,
-                    createdByName: `${state.currentUser.firstName} ${state.currentUser.lastName}`,
+                    receiptData: null,
+                    receiptUrl: finalReceiptData,
+                    createdAt: editingExpense ? editingExpense.createdAt : new Date().toISOString(),
+                    createdById: editingExpense ? editingExpense.createdById : state.currentUser.id,
+                    createdByName: editingExpense ? editingExpense.createdByName : `${state.currentUser.firstName} ${state.currentUser.lastName}`,
                     ...auditData
                 };
-                await db.collection('expenses').doc(exp.id).set(exp);
+                if (editingExpense) {
+                    await db.collection('expenses').doc(exp.id).update(exp);
+                } else {
+                    await db.collection('expenses').doc(exp.id).set(exp);
+                }
             }
             setIsExpenseModalOpen(false);
         } catch (error) { alert("Error saving expense."); } finally { setIsSubmittingExpense(false); }
@@ -189,15 +203,14 @@ const Financials: React.FC = () => {
     const handleAttachToExisting = async (id: string, type: string, fileOrData: File | string) => {
         if (!state.currentUser) return;
         try {
-            let data: string;
-            if (typeof fileOrData === 'string') {
-                data = fileOrData;
-            } else {
-                data = await compressFile(fileOrData);
-            }
+            const orgId = state.currentOrganization?.id || 'unknown';
+            const safeName = typeof fileOrData === 'string' ? 'capture.jpg' : (fileOrData.name ? fileOrData.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg');
+            const path = `organizations/${orgId}/receipts/${Date.now()}_${safeName}`;
+            const downloadUrl = await uploadFileToStorage(path, fileOrData);
+
             await db.collection(type === 'vehicleLog' ? 'vehicleLogs' : 'expenses').doc(id).update({
-                receiptData: data,
-                receiptUrl: 'embedded',
+                receiptData: null,
+                receiptUrl: downloadUrl,
                 updatedAt: new Date().toISOString(),
                 updatedById: state.currentUser.id,
                 updatedByName: `${state.currentUser.firstName} ${state.currentUser.lastName}`
@@ -298,7 +311,7 @@ const Financials: React.FC = () => {
                     {viewingReceipt && (
                         <div className="flex justify-center bg-slate-900 p-2 md:p-4 rounded-2xl overflow-hidden max-h-[70vh] w-full">
                             <img 
-                                src={viewingReceipt} 
+                                src={viewingReceipt === 'embedded' ? 'https://placehold.co/400x400?text=Receipt+Not+Found' : viewingReceipt} 
                                 className="max-w-full max-h-full object-contain rounded shadow-2xl" 
                                 alt="Expense Receipt" 
                                 onError={(e) => {

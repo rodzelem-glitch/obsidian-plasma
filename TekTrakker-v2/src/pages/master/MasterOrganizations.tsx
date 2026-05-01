@@ -209,7 +209,17 @@ const MasterOrganizations: React.FC = () => {
         }
     };
 
-    const headers = ['Name', 'Email', 'Plan', 'Status', 'Verified', 'Actions'];
+    const handleToggleVirtualWorker = async (org: Organization) => {
+        const orgRef = doc(db, 'organizations', org.id);
+        try {
+            await updateDoc(orgRef, { virtualWorkerEnabled: !org.virtualWorkerEnabled });
+            toast.success(`Virtual Worker status updated for ${org.name}`);
+        } catch (error) {
+            toast.error("Failed to update Virtual Worker status.");
+        }
+    };
+
+    const headers = ['Name/Email', 'Plan Info', 'Status', 'Retention/Churn Data', 'Verified', 'Actions'];
 
     if (loading) return <div>Loading...</div>;
     if (!isMasterAdmin) return <div className="p-6">You are not authorized to view this page.</div>;
@@ -224,29 +234,57 @@ const MasterOrganizations: React.FC = () => {
                 </Button>
             </div>
 
-            <Card>
+            <Card className="overflow-x-auto">
                 <Table headers={headers}>
                     {organizations.map(org => (
                         <tr key={org.id}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{org.name}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{org.email}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{org.plan}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{org.subscriptionStatus}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm font-medium text-gray-900 dark:text-white">{org.name}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">{org.email}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900 dark:text-white uppercase">{org.plan}</div>
+                                {org.customDiscountPct > 0 && <span className="text-xs text-emerald-500 font-bold">{org.customDiscountPct}% Off Applied</span>}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                    org.subscriptionStatus === 'active' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                                    org.subscriptionStatus === 'trial' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' :
+                                    org.subscriptionStatus === 'paused' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' :
+                                    'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                                }`}>
+                                    {org.subscriptionStatus}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 text-sm max-w-xs text-gray-800 dark:text-gray-200">
+                                {org.cancellationReason ? (
+                                    <div className="text-xs">
+                                        <p><span className="font-bold">Reason:</span> {org.cancellationReason}</p>
+                                        {org.cancellationFeedback && <p className="truncate" title={org.cancellationFeedback}><span className="font-bold">Note:</span> {org.cancellationFeedback}</p>}
+                                        {org.retentionOfferApplied && <p className="text-emerald-500 font-bold mt-1">✓ Offer Claimed</p>}
+                                    </div>
+                                ) : (
+                                    <span className="text-gray-400 italic text-xs">No churn data</span>
+                                )}
+                            </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                 <Toggle label="Verified" enabled={!!org.isVerified} onChange={() => handleToggleVerified(org)} />
                                 <div className="mt-2 text-xs">
                                      <Toggle label="Leading Pro" enabled={!!org.isLeadingPro} onChange={() => handleToggleLeadingPro(org)} />
                                 </div>
+                                <div className="mt-2 text-xs">
+                                     <Toggle label="Virtual Worker AI" enabled={!!org.virtualWorkerEnabled} onChange={() => handleToggleVirtualWorker(org)} />
+                                </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                 <div className="flex space-x-1">
-                                    <Button size="sm" onClick={() => handleImpersonate(org)} variant="outline">
+                                    <Button size="sm" onClick={() => handleImpersonate(org)} variant="outline" title="Login as Admin">
                                         <LogIn className="w-4 h-4" />
                                     </Button>
-                                    <Button size="sm" onClick={() => handleEditOrg(org)} variant="outline">
+                                    <Button size="sm" onClick={() => handleEditOrg(org)} variant="outline" title="Edit Organization">
                                         <Edit className="w-4 h-4" />
                                     </Button>
-                                    <Button size="sm" onClick={() => handleDeleteOrg(org.id)} variant="danger">
+                                    <Button size="sm" onClick={() => handleDeleteOrg(org.id)} variant="danger" title="Delete Organization">
                                         <Trash2 className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -268,7 +306,7 @@ const MasterOrganizations: React.FC = () => {
                         {!editingOrg && (
                             <div className="relative">
                                 <Input label="Initial Admin Password" type={showOrgAdminPassword ? "text" : "password"} value={orgForm.adminPassword} onChange={e => setOrgForm({ ...orgForm, adminPassword: e.target.value })} required />
-                                <button type="button" onClick={() => setShowOrgAdminPassword(!showOrgAdminPassword)} className="absolute bottom-2 right-3 text-gray-500">
+                                <button type="button" onClick={() => setShowOrgAdminPassword(!showOrgAdminPassword)} className="absolute bottom-2 right-3 text-gray-500" title="Toggle Password Visibility">
                                     <Eye size={18} />
                                 </button>
                             </div>

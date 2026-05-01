@@ -10,6 +10,7 @@ interface MembershipSectionProps {
     endDate?: string;
     estimatedSavings: number;
     onViewPlans: () => void;
+    onCancelPlan?: () => void;
     completedJobs?: Job[]; // To calculate actual value delivered
     monthlyPrice?: number;
 }
@@ -22,7 +23,7 @@ const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: React.Re
     </div>
 );
 
-const MembershipSection: React.FC<MembershipSectionProps> = ({ membership, endDate, estimatedSavings, onViewPlans, completedJobs = [], monthlyPrice }) => {
+const MembershipSection: React.FC<MembershipSectionProps> = ({ membership, endDate, estimatedSavings, onViewPlans, onCancelPlan, completedJobs = [], monthlyPrice }) => {
     const planStats = useMemo(() => {
         if (!membership) return null;
 
@@ -71,6 +72,11 @@ const MembershipSection: React.FC<MembershipSectionProps> = ({ membership, endDa
                             <p className="font-bold">Renews</p>
                             <p className="font-black text-white text-sm">{new Date(membership.endDate).toLocaleDateString()}</p>
                             <p className="mt-1 text-[10px]">{planStats.monthsRemaining} months remaining</p>
+                            {onCancelPlan && (
+                                <button onClick={onCancelPlan} className="mt-2 text-[10px] text-red-500 hover:text-red-400 font-bold tracking-widest uppercase transition-colors">
+                                    Cancel Subscription
+                                </button>
+                            )}
                         </div>
                     </div>
 

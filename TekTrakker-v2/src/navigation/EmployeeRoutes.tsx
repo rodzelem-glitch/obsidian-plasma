@@ -14,6 +14,8 @@ import TimeAndMileage from '../pages/TimeAndMileage';
 import PaymentsAndOrders from '../pages/PaymentsAndOrders';
 import IndustryToolsHub from '../pages/tools/IndustryToolsHub';
 
+import BillingGate from '../components/BillingGate';
+
 const EmployeeRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: boolean, getRedirectPath: () => string }> = ({ user, handleLogout, isDemoMode, getRedirectPath }) => {
   const { state } = useAppContext();
 
@@ -23,8 +25,9 @@ const EmployeeRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMod
 
   return (
     <ProtectedRoute isAllowed={!!user && (user.role === 'employee' || user.role === 'both' || user.role === 'supervisor' || user.role === 'Technician' || user.role === 'Subcontractor')}>
-        <EmployeeLayout user={user} onLogout={handleLogout}>
-            <Routes>
+        <BillingGate>
+          <EmployeeLayout user={user} onLogout={handleLogout}>
+              <Routes>
                 <Route path="/" element={<DailyBriefing />} />
                 <Route path="/scheduling" element={<JobScheduling />} />
                 <Route path="/proposal" element={<FieldProposal />} />
@@ -33,8 +36,9 @@ const EmployeeRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMod
                 <Route path="/messages" element={<Messages />} />
                 <Route path="/timelog" element={<TimeAndMileage />} />
                 <Route path="*" element={<Navigate to={getRedirectPath()} replace />} />
-            </Routes>
-        </EmployeeLayout>
+              </Routes>
+          </EmployeeLayout>
+        </BillingGate>
     </ProtectedRoute>
   );
 }

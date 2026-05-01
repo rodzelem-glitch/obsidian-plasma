@@ -13,8 +13,12 @@ const RecordsView: React.FC = () => {
 
     useEffect(() => {
         const tab = searchParams.get('tab');
+        const docId = searchParams.get('docId');
         if (tab === 'fleet') setActiveTab('fleet');
         else if (tab === 'inventory') setActiveTab('inventory');
+        else if (tab === 'documents' || docId) setActiveTab('documents');
+        else if (tab === 'forms') setActiveTab('forms');
+        else if (tab === 'history') setActiveTab('history');
     }, [searchParams]);
 
     const handleTabChange = (tab: 'inventory' | 'history' | 'documents' | 'forms' | 'fleet') => {

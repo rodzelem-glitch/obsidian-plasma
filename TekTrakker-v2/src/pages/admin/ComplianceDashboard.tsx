@@ -7,6 +7,7 @@ import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import Modal from 'components/ui/Modal';
 import { db } from 'lib/firebase';
+import { uploadFileToStorage } from 'lib/storageService';
 import type { RefrigerantCylinder, RefrigerantTransaction, ToolMaintenanceLog, BusinessDocument, User } from 'types';
 import { CheckCircle, AlertTriangle, Wrench, Shield, Users, Printer, Flag, Trash2 } from 'lucide-react';
 import { globalConfirm } from 'lib/globalConfirm';
@@ -17,14 +18,6 @@ import PolicyTrackingTab from './compliance/components/PolicyTrackingTab';
 import HRHandbookView from './compliance/components/HRHandbookView';
 import IncidentsTab from './compliance/components/IncidentsTab';
 
-const compressFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => resolve(event.target?.result as string);
-        reader.onerror = reject;
-    });
-};
 
 const ComplianceDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -143,11 +136,15 @@ const ComplianceDashboard: React.FC = () => {
     };
 
     const handleUploadCert = async () => {
-        if (!selectedUserForCert || !certFile || !certName) return;
+        if (!selectedUserForCert || !certFile || !certName || !state.currentOrganization) return;
         setIsUploadingCert(true);
         try {
-            const dataUrl = await compressFile(certFile);
-            const newCert = { name: certName, expiryDate: certExpiry, fileUrl: dataUrl };
+            const orgId = state.currentOrganization.id;
+            const safeName = certFile.name ? certFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'cert.pdf';
+            const path = `organizations/${orgId}/users/${selectedUserForCert.id}/certifications/${Date.now()}_${safeName}`;
+            const downloadUrl = await uploadFileToStorage(path, certFile);
+            
+            const newCert = { name: certName, expiryDate: certExpiry, fileUrl: downloadUrl };
             const updatedCerts = [...(selectedUserForCert.certifications || []), newCert];
             await db.collection('users').doc(selectedUserForCert.id).update({ certifications: updatedCerts });
             setIsCertUploadOpen(false);
@@ -243,7 +240,7 @@ const ComplianceDashboard: React.FC = () => {
                     <Input label="Expiry Date (Optional)" type="date" value={certExpiry} onChange={e => setCertExpiry(e.target.value)} />
                     <div>
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Document Image/PDF</label>
-                        <input type="file" accept="image/*,.pdf" onChange={e => setCertFile(e.target.files?.[0] || null)} className="text-sm text-gray-500" />
+                        <input type="file" title="Upload certification document" accept="image/*,.pdf" onChange={e => setCertFile(e.target.files?.[0] || null)} className="text-sm text-gray-500" />
                     </div>
                     <div className="flex justify-end gap-2 pt-4">
                         <Button variant="secondary" onClick={() => setIsCertUploadOpen(false)}>Cancel</Button>

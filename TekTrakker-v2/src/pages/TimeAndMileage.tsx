@@ -14,6 +14,7 @@ import { db } from 'lib/firebase';
 import { globalConfirm } from "lib/globalConfirm";
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { getCurrentLocation } from 'lib/geolocation';
+import { uploadFileToStorage } from 'lib/storageService';
 
 const TimeAndMileage: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -41,17 +42,32 @@ const TimeAndMileage: React.FC = () => {
     const [isEditMode, setIsEditMode] = useState(false);
     
     const [viewingReceipt, setViewingReceipt] = useState<string | null>(null);
+    const [printHtmlContent, setPrintHtmlContent] = useState<string | null>(null);
 
     // Auto-Calculate Total Miles when Start/End change
     useEffect(() => {
-        if (newVehicleLog.type === 'Mileage' && newVehicleLog.startMiles && newVehicleLog.endMiles) {
-            const start = parseFloat(newVehicleLog.startMiles);
+        if (newVehicleLog.type === 'Mileage') {
+            let start = parseFloat(newVehicleLog.startMiles);
             const end = parseFloat(newVehicleLog.endMiles);
+            
+            // If start is not typed, check for a pending start log
+            if (isNaN(start) && !isNaN(end)) {
+                const pending = [...state.vehicleLogs]
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .find(l => l.userId === user?.id && l.type === 'Mileage' && l.isCompanyVehicle === isCompanyVehicle && l.startMileage && !l.endMileage);
+                if (pending && pending.startMileage) {
+                    start = pending.startMileage;
+                }
+            }
+
             if (!isNaN(start) && !isNaN(end) && end >= start) {
-                setNewVehicleLog(prev => ({...prev, miles: (end - start).toFixed(1) }));
+                const calcMiles = (end - start).toFixed(1);
+                if (newVehicleLog.miles !== calcMiles) {
+                    setNewVehicleLog(prev => ({...prev, miles: calcMiles }));
+                }
             }
         }
-    }, [newVehicleLog.startMiles, newVehicleLog.endMiles, newVehicleLog.type]);
+    }, [newVehicleLog.startMiles, newVehicleLog.endMiles, newVehicleLog.type, state.vehicleLogs, user?.id, isCompanyVehicle]);
 
     // Set default vehicle status based on user profile
     useEffect(() => {
@@ -97,36 +113,6 @@ const TimeAndMileage: React.FC = () => {
         return () => clearInterval(interval);
     }, [activeShift]);
 
-    // Compression Helper
-    const compressFile = (file: File): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = (event) => {
-                if (file.type.startsWith('image/')) {
-                    const img = new Image();
-                    img.src = event.target?.result as string;
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        let width = img.width;
-                        let height = img.height;
-                        const MAX = 800; 
-                        if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } } 
-                        else { if (height > MAX) { width *= MAX / height; height = MAX; } }
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx?.drawImage(img, 0, 0, width, height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.5)); 
-                    };
-                    img.onerror = () => resolve(event.target?.result as string);
-                } else {
-                    resolve(event.target?.result as string);
-                }
-            };
-            reader.onerror = reject;
-        });
-    };
 
     const handleClockIn = async () => {
         if (state.isDemoMode) {
@@ -198,8 +184,8 @@ const TimeAndMileage: React.FC = () => {
             return;
         }
 
-        if (newVehicleLog.type === 'Mileage' && !newVehicleLog.startMiles && !newVehicleLog.endMiles) {
-            alert("Please enter at least a starting or ending odometer reading.");
+        if (newVehicleLog.type === 'Mileage' && !newVehicleLog.startMiles && !newVehicleLog.endMiles && !newVehicleLog.miles) {
+            alert("Please enter either the odometer reading or the total miles driven.");
             return;
         }
 
@@ -207,23 +193,48 @@ const TimeAndMileage: React.FC = () => {
 
         try {
             const loc = await getCurrentLocation();
-            const logId = newVehicleLog.id || `vl-${Date.now()}`;
-            let receiptDataValue: string | null = null;
+            
+            let effectiveIsEditMode = isEditMode;
+            let targetLogId = newVehicleLog.id || `vl-${Date.now()}`;
             let existingLog: VehicleLog | undefined;
-            if (isEditMode) {
-                existingLog = state.vehicleLogs.find(l => l.id === logId);
-                receiptDataValue = existingLog?.receiptData || null;
+            let effectiveStartMiles = newVehicleLog.startMiles;
+            let effectiveEndMiles = newVehicleLog.endMiles;
+            let effectiveMiles = newVehicleLog.miles;
+            
+            if (!effectiveIsEditMode && newVehicleLog.type === 'Mileage' && effectiveEndMiles && !effectiveStartMiles && !effectiveMiles) {
+                // Auto-combine start/end logs if they are submitting an end-only log
+                const pending = [...state.vehicleLogs]
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                    .find(l => l.userId === user.id && l.type === 'Mileage' && l.isCompanyVehicle === isCompanyVehicle && l.startMileage && !l.endMileage);
+                    
+                if (pending) {
+                    effectiveIsEditMode = true;
+                    targetLogId = pending.id;
+                    existingLog = pending;
+                    
+                    effectiveStartMiles = pending.startMileage!.toString();
+                    const parsedStart = pending.startMileage || 0;
+                    const parsedEnd = parseFloat(effectiveEndMiles);
+                    if (!isNaN(parsedEnd) && parsedEnd >= parsedStart) {
+                        effectiveMiles = (parsedEnd - parsedStart).toFixed(1);
+                    }
+                }
+            } else if (effectiveIsEditMode) {
+                existingLog = state.vehicleLogs.find(l => l.id === targetLogId);
             }
 
+            let receiptUrlValue: string | null = existingLog?.receiptUrl || null;
+            let receiptDataValue: string | null = existingLog?.receiptData || null;
+
             if (capturedReceiptData) {
-                receiptDataValue = capturedReceiptData;
+                const path = `organizations/${activeOrgId}/users/${user.id}/receipts/${Date.now()}_capture.jpg`;
+                receiptUrlValue = await uploadFileToStorage(path, capturedReceiptData);
+                receiptDataValue = null;
             } else if (receiptFile) {
-                receiptDataValue = await compressFile(receiptFile);
-                if (receiptDataValue.length > 800000) {
-                    alert("Receipt image too large for database. Please use a smaller image.");
-                    setUploading(false);
-                    return;
-                }
+                const safeName = receiptFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+                const path = `organizations/${activeOrgId}/users/${user.id}/receipts/${Date.now()}_${safeName}`;
+                receiptUrlValue = await uploadFileToStorage(path, receiptFile);
+                receiptDataValue = null;
             }
             
             let finalStartTime = existingLog?.startTime;
@@ -234,39 +245,44 @@ const TimeAndMileage: React.FC = () => {
             const nowIso = new Date().toISOString();
             const mappedLoc = loc ? { lat: loc.latitude, lng: loc.longitude } : undefined;
 
-            if (!isEditMode) {
-                if (newVehicleLog.startMiles) {
+            const companyVehicle = isCompanyVehicle 
+                ? state.vehicles.find(v => v.assignedUserId === user.id) 
+                : null;
+            const assignedVehicleId = isCompanyVehicle ? (companyVehicle ? companyVehicle.id : `unassigned-${user.id}`) : 'personal';
+
+            if (!effectiveIsEditMode) {
+                if (effectiveStartMiles) {
                     finalStartTime = nowIso;
                     finalStartLocation = mappedLoc;
                 }
-                if (newVehicleLog.endMiles) {
+                if (effectiveEndMiles) {
                     finalEndTime = nowIso;
                     finalEndLocation = mappedLoc;
                 }
             } else {
-                if (newVehicleLog.startMiles && !existingLog?.startMileage) {
+                if (effectiveStartMiles && !existingLog?.startMileage) {
                     finalStartTime = nowIso;
                     finalStartLocation = mappedLoc;
                 }
-                if (newVehicleLog.endMiles && !existingLog?.endMileage) {
+                if (effectiveEndMiles && !existingLog?.endMileage) {
                     finalEndTime = nowIso;
                     finalEndLocation = mappedLoc;
                 }
             }
 
             const log: VehicleLog = {
-                id: logId,
+                id: targetLogId,
                 organizationId: activeOrgId,
-                vehicleId: isCompanyVehicle ? `v-${user.id}` : 'personal',
+                vehicleId: assignedVehicleId,
                 userId: user.id,
-                date: isEditMode && existingLog ? existingLog.date : nowIso.split('T')[0],
+                date: effectiveIsEditMode && existingLog ? existingLog.date : nowIso.split('T')[0],
                 startTime: finalStartTime,
                 endTime: finalEndTime,
                 type: newVehicleLog.type,
                 cost: parseFloat(newVehicleLog.cost) || 0,
-                mileage: parseFloat(newVehicleLog.miles) || 0,
-                startMileage: parseFloat(newVehicleLog.startMiles) || 0, 
-                endMileage: parseFloat(newVehicleLog.endMiles) || 0,
+                mileage: parseFloat(effectiveMiles) || 0,
+                startMileage: parseFloat(effectiveStartMiles) || 0, 
+                endMileage: parseFloat(effectiveEndMiles) || 0,
                 isCompanyVehicle: isCompanyVehicle,
                 notes: newVehicleLog.notes,
                 receiptData: receiptDataValue, 
@@ -276,11 +292,13 @@ const TimeAndMileage: React.FC = () => {
                 endLocation: finalEndLocation
             };
 
-            if (isEditMode) {
-                await db.collection('vehicleLogs').doc(log.id).update(log);
+            const safeLog = Object.fromEntries(Object.entries(log).filter(([_, v]) => v !== undefined)) as any;
+
+            if (effectiveIsEditMode) {
+                await db.collection('vehicleLogs').doc(log.id).update(safeLog);
                 dispatch({ type: 'UPDATE_VEHICLE_LOG', payload: log });
             } else {
-                await db.collection('vehicleLogs').doc(log.id).set(log);
+                await db.collection('vehicleLogs').doc(log.id).set(safeLog);
                 dispatch({ type: 'ADD_VEHICLE_LOG', payload: log });
             }
 
@@ -330,18 +348,17 @@ const TimeAndMileage: React.FC = () => {
     };
 
     const handleViewReceipt = (log: VehicleLog) => {
-        if (log.receiptData) {
-            setViewingReceipt(log.receiptData);
-        } else if (log.receiptUrl && log.receiptUrl.startsWith('data:')) {
+        if (log.receiptUrl) {
             setViewingReceipt(log.receiptUrl);
+        } else if (log.receiptData) {
+            setViewingReceipt(log.receiptData);
         } else {
             alert('Receipt not available.');
         }
     };
 
     const handlePrintPersonalLogs = () => {
-        const win = window.open('', '_blank');
-        if (!win || !user) return;
+        if (!user) return;
         
         const html = `
             <html>
@@ -383,12 +400,15 @@ const TimeAndMileage: React.FC = () => {
                         `).join('')}
                     </tbody>
                 </table>
-                <script>window.print();</script>
+                <script>
+                    window.onload = function() {
+                        // setTimeout(function() { window.print(); }, 500);
+                    };
+                </script>
             </body>
             </html>
         `;
-        win.document.write(html);
-        win.document.close();
+        setPrintHtmlContent(html);
     };
 
     if (!user) return null;
@@ -496,8 +516,15 @@ const TimeAndMileage: React.FC = () => {
                                 onChange={e => setNewVehicleLog({...newVehicleLog, endMiles: e.target.value})} 
                                 isBlock
                             />
-                            <div className="col-span-1 md:col-span-2 text-right text-sm text-gray-500">
-                                Total Trip: <span className="font-bold text-gray-900 dark:text-white">{newVehicleLog.miles || 0} miles</span>
+                            <div className="col-span-1 md:col-span-2">
+                                <Input 
+                                    label="Total Miles (if Odometer unknown)" 
+                                    type="number" 
+                                    step="0.1" 
+                                    value={newVehicleLog.miles} 
+                                    onChange={e => setNewVehicleLog({...newVehicleLog, miles: e.target.value})} 
+                                    isBlock
+                                />
                             </div>
                         </div>
                     ) : (
@@ -546,6 +573,8 @@ const TimeAndMileage: React.FC = () => {
                                         }}
                                         className="hidden"
                                         id="manual-file-upload"
+                                        aria-label="Upload Receipt"
+                                        title="Upload Receipt"
                                     />
                                     <Button 
                                         type="button" 
@@ -630,33 +659,85 @@ const TimeAndMileage: React.FC = () => {
                                 const start = new Date(log.clockIn);
                                 const end = log.clockOut ? new Date(log.clockOut) : null;
                                 const duration = end ? ((end.getTime() - start.getTime()) / 3600000).toFixed(2) + ' hrs' : 'Active';
+                                const latestEdit = log.edits && log.edits.length > 0 ? log.edits[0] : null;
                                 return (
-                                    <tr key={log.id}>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{start.toLocaleDateString()}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{end ? end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '-'}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-primary-600">{duration}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="flex gap-2">
-                                                {log.startLocation ? (
-                                                    <a href={`https://maps.google.com/?q=${log.startLocation.lat},${log.startLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline" title="View Clock-In Location">
-                                                        <MapPinIcon className="w-3 h-3"/> In
-                                                    </a>
-                                                ) : <span className="text-xs text-gray-400">No Location</span>}
-                                                {log.endLocation && (
-                                                    <a href={`https://maps.google.com/?q=${log.endLocation.lat},${log.endLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-emerald-600 hover:underline" title="View Clock-Out Location">
-                                                        <MapPinIcon className="w-3 h-3"/> Out
-                                                    </a>
+                                    <React.Fragment key={log.id}>
+                                        <tr className={latestEdit ? "bg-amber-50/30 dark:bg-amber-900/10" : ""}>
+                                            <td className="px-6 py-4 whitespace-normal min-w-[200px] text-sm text-gray-900 dark:text-white">
+                                                {start.toLocaleDateString()}
+                                                {latestEdit && (
+                                                    <div className="mt-1 flex flex-col">
+                                                        <span className="inline-flex items-center w-max max-w-full px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200 shadow-sm border border-amber-200 dark:border-amber-700/50 break-words whitespace-normal" title={`Corrected by: ${latestEdit.adminName || 'Admin'}`}>
+                                                            <span className="font-bold mr-1">Edited:</span> {latestEdit.reason || 'Admin adjustment'}
+                                                        </span>
+                                                    </div>
                                                 )}
-                                            </div>
-                                        </td>
-                                    </tr>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{start.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{end ? end.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '-'}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-primary-600">{duration}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="flex gap-2">
+                                                    {log.startLocation ? (
+                                                        <a href={`https://maps.google.com/?q=${log.startLocation.lat},${log.startLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-blue-600 hover:underline" title="View Clock-In Location">
+                                                            <MapPinIcon className="w-3 h-3"/> In
+                                                        </a>
+                                                    ) : <span className="text-xs text-gray-400">No Location</span>}
+                                                    {log.endLocation && (
+                                                        <a href={`https://maps.google.com/?q=${log.endLocation.lat},${log.endLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-emerald-600 hover:underline" title="View Clock-Out Location">
+                                                            <MapPinIcon className="w-3 h-3"/> Out
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {latestEdit && (
+                                            <tr className="bg-amber-50/50 dark:bg-amber-900/20">
+                                                <td colSpan={5} className="px-6 py-2 text-xs text-amber-800 dark:text-amber-200/80 border-t border-amber-100 dark:border-amber-900/50">
+                                                    <strong>Correction by {latestEdit.adminName || 'Admin'}:</strong> {latestEdit.reason}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
                                 );
                             })}
                         </tbody>
                     </table>
                 </div>
             </Card>
+            {viewingReceipt && (
+                <Modal isOpen={!!viewingReceipt} onClose={() => setViewingReceipt(null)} title="Receipt Viewer" size="xl">
+                    <div className="flex justify-center bg-gray-100 p-4 rounded min-h-[50vh]">
+                        <img src={viewingReceipt} alt="Receipt" className="max-w-full max-h-[70vh] object-contain rounded" />
+                    </div>
+                </Modal>
+            )}
+
+            {printHtmlContent && (
+                <Modal isOpen={!!printHtmlContent} onClose={() => setPrintHtmlContent(null)} title="Print Preview" size="xl">
+                    <div className="flex flex-col h-[75vh]">
+                        <div className="flex-1 overflow-hidden bg-white rounded border border-slate-200">
+                            <iframe 
+                                srcDoc={printHtmlContent} 
+                                className="w-full h-full border-0" 
+                                title="Print Preview"
+                                id="print-iframe"
+                            />
+                        </div>
+                        <div className="mt-4 flex justify-end gap-3">
+                            <Button variant="secondary" onClick={() => setPrintHtmlContent(null)} className="w-auto">Cancel</Button>
+                            <Button onClick={() => {
+                                const iframe = document.getElementById('print-iframe') as HTMLIFrameElement;
+                                if (iframe && iframe.contentWindow) {
+                                    iframe.contentWindow.print();
+                                }
+                            }} className="w-auto">
+                                <Printer size={18} className="mr-2" /> Print Document
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };

@@ -89,7 +89,8 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                             <Input label="Location ID" value={squareLocId} onChange={e => setSquareLocId(e.target.value)} placeholder="L..." />
                         </div>
                         <div className="mt-4">
-                             <Input label="Square Personal Access Token" type="text" value={squareToken} onChange={e => setSquareToken(e.target.value)} placeholder="EAAAE..." />
+                             <Input label="Square Personal Access Token" type="password" value={squareToken} onChange={e => setSquareToken(e.target.value)} placeholder={squareToken ? "••••••••••••..." : "EAAAE..."} />
+                             {squareToken && <p className="text-xs text-blue-600 mt-1">Token securely loaded. Enter a new token to overwrite.</p>}
                         </div>
                     </div>
                 </div>

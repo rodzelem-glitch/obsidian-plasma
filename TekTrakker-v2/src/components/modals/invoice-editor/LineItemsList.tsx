@@ -4,6 +4,7 @@ import { Trash2, PlusCircle, Tag } from 'lucide-react';
 import Button from '../../ui/Button';
 import type { InvoiceLineItem } from '../../../types';
 import Select from '../../ui/Select';
+import Input from '../../ui/Input';
 
 interface LineItemsListProps {
     lineItems: InvoiceLineItem[];
@@ -34,7 +35,7 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                                     placeholder="Item Name (e.g. AC Unit)"
                                 />
                                 <textarea 
-                                    className="w-full font-medium text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 rounded-md p-2.5 text-slate-600 dark:text-slate-300 resize-none shadow-inner"
+                                    className="w-full min-h-[60px] h-auto font-medium text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 rounded-md p-2.5 text-slate-600 dark:text-slate-300 resize-none shadow-inner"
                                     value={item.description || ''}
                                     onChange={(e) => {
                                         handleUpdateItem(item.id, 'description', e.target.value);
@@ -43,7 +44,6 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                                     }}
                                     placeholder="Detailed description..."
                                     rows={2}
-                                    style={{ height: 'auto', minHeight: '60px' }}
                                 />
                             </div>
                             <button 
@@ -57,35 +57,42 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                         
                         <div className="flex flex-wrap items-end justify-between gap-4 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
                             {/* Left-aligned inputs */}
-                            <div className="flex flex-wrap items-end gap-3 text-xs text-slate-600 dark:text-slate-400">
-                                <div className="flex flex-col">
-                                    <label className="mb-1 font-bold">Qty</label>
-                                    <input 
+                            <div className="flex flex-wrap items-end gap-3 text-xs text-slate-600 dark:text-slate-400 [&_.mb-4]:!mb-0">
+                                <div className="w-20">
+                                    <Input 
+                                        label="Qty"
                                         type="number" 
-                                        className="w-20 bg-white dark:bg-slate-700 rounded px-2.5 py-1.5 border border-slate-300 dark:border-slate-600 text-center text-slate-900 dark:text-white"
-                                        value={item.quantity}
+                                        value={item.quantity === 0 ? '' : item.quantity}
                                         onChange={e => handleUpdateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                        onFocus={e => e.target.select()}
+                                        className="h-[34px] !py-0 text-center bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600"
+                                        aria-label="Quantity"
+                                        title="Quantity"
                                     />
                                 </div>
-                                <div className="flex flex-col">
-                                    <label className="mb-1 font-bold">Price ($)</label>
-                                    <input 
+                                <div className="w-28">
+                                    <Input 
+                                        label="Price ($)"
                                         type="number" 
-                                        className="w-28 bg-white dark:bg-slate-700 rounded px-2.5 py-1.5 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white"
-                                        value={item.unitPrice}
+                                        value={item.unitPrice === 0 ? '' : item.unitPrice}
                                         onChange={e => handleUpdateItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                        onFocus={e => e.target.select()}
                                         step="0.01"
+                                        className="h-[34px] !py-0 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600"
+                                        aria-label="Unit Price"
+                                        title="Unit Price"
                                     />
                                 </div>
-                                <div className="w-32">
+                                <div className="w-32 [&_.mb-2]:!mb-0">
                                     <Select 
                                         label="Type"
                                         value={item.type}
                                         onChange={e => handleUpdateItem(item.id, 'type', e.target.value as InvoiceLineItem['type'])}
-                                        className="text-xs bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white h-[34px]"
+                                        className="h-[34px] !py-0 !text-sm bg-white dark:bg-slate-700 sm:text-sm border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white"
                                     >
                                         <option value="Labor">Labor</option>
                                         <option value="Part">Part</option>
+                                        <option value="Part/Labor">Part/Labor</option>
                                         <option value="Fee">Fee</option>
                                         <option value="Discount">Discount</option>
                                     </Select>

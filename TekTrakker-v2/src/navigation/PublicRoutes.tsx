@@ -12,6 +12,8 @@ const PrivacyPolicy = lazy(() => import('../pages/landing/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('../pages/landing/TermsOfService'));
 const EULA = lazy(() => import('../pages/landing/EULA'));
 const FAQ = lazy(() => import('../pages/landing/FAQ'));
+const VirtualWorkerMarketing = lazy(() => import('../pages/landing/VirtualWorkerMarketing'));
+const VirtualWorkerCommands = lazy(() => import('../pages/landing/VirtualWorkerCommands'));
 
 // Page Components
 const LoginPage = lazy(() => import('../pages/Login'));
@@ -27,6 +29,8 @@ const PublicRoutes: React.FC<{ user: any, getRedirectPath: () => string }> = ({ 
   <Routes>
     <Route path="/" element={user ? <Navigate to={getRedirectPath()} replace /> : <SaaSMarketing />} />
     <Route path="/homeowners" element={<PropertyOwnerMarketing />} />
+    <Route path="/ai-worker" element={<VirtualWorkerMarketing />} />
+    <Route path="/ai-worker-commands" element={<VirtualWorkerCommands />} />
     <Route path="/pro/apex" element={
         <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-900 text-white">Loading Demo...</div>}>
             <ApexDemo />

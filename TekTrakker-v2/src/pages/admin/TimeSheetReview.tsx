@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
+import { db } from 'lib/firebase';
+import { globalConfirm } from 'lib/globalConfirm';
 import Card from 'components/ui/Card';
 import type { ShiftLog, ShiftEdit, User } from 'types';
 import EmployeeSelector from './timesheets/components/EmployeeSelector';
@@ -32,9 +34,23 @@ const TimeSheetReview: React.FC = () => {
         dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: selectedEmployeeId, log: { ...log, isApproved: true } } });
     };
 
-    const handleSaveEdit = (updatedLog: ShiftLog, editRecord: ShiftEdit) => {
+    const handleSaveEdit = async (updatedLog: ShiftLog, editRecord: ShiftEdit) => {
         if (!selectedEmployeeId) return;
-        dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: selectedEmployeeId, log: updatedLog } });
+        try {
+            const { id, ...updateData } = updatedLog;
+            await db.collection('shiftLogs').doc(id).update(updateData);
+            dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: selectedEmployeeId, log: updatedLog } });
+        } catch (error) {
+            console.error("Failed to save shift edit", error);
+            alert("Failed to save changes to the database.");
+        }
+    };
+
+    const handleDelete = async (log: ShiftLog) => {
+        const confirmed = await globalConfirm('Are you sure you want to permanently delete this shift log? This cannot be undone.', 'Delete Shift');
+        if (confirmed) {
+            await db.collection('shiftLogs').doc(log.id).delete();
+        }
     };
 
     return (
@@ -71,6 +87,7 @@ const TimeSheetReview: React.FC = () => {
                         logs={employeeLogs}
                         handleApprove={handleApprove}
                         handleEditClick={(log) => setEditingLog(log)}
+                        handleDeleteClick={handleDelete}
                     />
                 )}
             </Card>

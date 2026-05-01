@@ -13,6 +13,8 @@ import InvoiceEditorModal from 'components/modals/InvoiceEditorModal';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Briefcase, Wrench, Edit, Trash2, Plus, CreditCard, Send, CheckCircle, RefreshCw, Search, User } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
+import { uploadFileToStorage } from 'lib/storageService';
+
 
 const PaymentsAndOrders: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -37,6 +39,13 @@ const PaymentsAndOrders: React.FC = () => {
     const [priceChecked, setPriceChecked] = useState(false);
     const [orderStatus, setOrderStatus] = useState('');
     const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+    
+    // Purchase specific state
+    const [paymentMethod, setPaymentMethod] = useState<'Company Credit' | 'Personal Funds' | 'Other'>('Company Credit');
+    const [paymentExplanation, setPaymentExplanation] = useState('');
+    const [receiptFile, setReceiptFile] = useState<File | null>(null);
+
+
 
     // --- FILTERED LISTS ---
     const filteredInvoices = useMemo(() => {
@@ -203,6 +212,35 @@ const PaymentsAndOrders: React.FC = () => {
                 createdAt: new Date().toISOString()
             };
 
+            if (fulfillmentMethod === 'Purchase') {
+                let receiptUrl = null;
+                if (receiptFile) {
+                    const safeName = receiptFile.name ? receiptFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg';
+                    const path = `organizations/${state.currentOrganization?.id || 'unknown'}/expenses/${Date.now()}_${safeName}`;
+                    receiptUrl = await uploadFileToStorage(path, receiptFile);
+                }
+                
+                const newExpense = {
+                    id: `exp-${Date.now()}`,
+                    organizationId: state.currentOrganization?.id || '',
+                    date: new Date().toISOString().split('T')[0],
+                    category: paymentMethod === 'Personal Funds' ? 'Reimbursable' : (paymentMethod === 'Company Credit' ? 'Materials' : 'Needs Review'),
+                    description: `Parts House Purchase: ${partsList}${paymentExplanation ? ` - ${paymentExplanation}` : ''}`,
+                    amount: cost,
+                    vendor: 'Parts House',
+                    paidBy: paymentMethod === 'Company Credit' ? 'Company' : state.currentUser?.id,
+                    projectId: null,
+                    receiptData: null,
+                    receiptUrl: receiptUrl,
+                    createdAt: new Date().toISOString(),
+                    createdById: state.currentUser?.id,
+                    createdByName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
+                    status: 'Pending Review'
+                };
+                await db.collection('expenses').doc(newExpense.id).set(newExpense);
+                newPartOrder.expenseId = newExpense.id;
+            }
+
             await db.collection('partOrders').doc(newPartOrder.id).set(newPartOrder);
             
             setOrderStatus(`Order submitted successfully.`);
@@ -210,6 +248,9 @@ const PaymentsAndOrders: React.FC = () => {
             setPartCost('');
             setPriceChecked(false);
             setFulfillmentMethod('Truck Stock');
+            setPaymentMethod('Company Credit');
+            setPaymentExplanation('');
+            setReceiptFile(null);
             setTimeout(() => setOrderStatus(''), 5000);
         } catch (error) {
             console.error("Error submitting part order:", error);
@@ -425,6 +466,34 @@ const PaymentsAndOrders: React.FC = () => {
                                 <option value="Purchase">Purchase at Supply House</option>
                                 <option value="Special Order">Request Special Order (From Office)</option>
                             </Select>
+
+                            {fulfillmentMethod === 'Purchase' && (
+                                <div className="p-4 bg-slate-50 dark:bg-slate-800 border rounded-lg space-y-4">
+                                    <h4 className="font-bold text-sm">Payment Details</h4>
+                                    <Select label="Method of Payment" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as any)}>
+                                        <option value="Company Credit">Company Credit/Card</option>
+                                        <option value="Personal Funds">Paid out of pocket (Reimbursable)</option>
+                                        <option value="Other">Other</option>
+                                    </Select>
+                                    
+                                    {paymentMethod === 'Other' && (
+                                        <Input label="Explanation" value={paymentExplanation} onChange={e => setPaymentExplanation(e.target.value)} required placeholder="Explain payment structure..." />
+                                    )}
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Upload Receipt Image (Required)</label>
+                                        <input 
+                                            type="file" 
+                                            title="Upload Receipt Image"
+                                            accept="image/*" 
+                                            onChange={e => setReceiptFile(e.target.files?.[0] || null)}
+                                            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                            required
+                                        />
+                                    </div>
+                                    <p className="text-xs text-slate-500">This will automatically log an expense for admin review.</p>
+                                </div>
+                            )}
 
                             <Textarea id="parts-list" label="Parts Description" value={partsList} onChange={e => setPartsList(e.target.value)} required placeholder="e.g. 1/2 inch copper pipe, 10ft" />
                             <Input id="part-cost" label="Charge to Customer ($)" type="number" step="0.01" value={partCost} onChange={e => setPartCost(e.target.value)} required className="dark:text-white" />

@@ -117,7 +117,7 @@ const FieldProposal: React.FC = () => {
             setIsThinking(true);
             try {
                 const ai = new GoogleGenerativeAI(apiKey);
-                const model = ai.getGenerativeModel({ model: "gemini-pro" });
+                const model = ai.getGenerativeModel({ model: "gemini-2.5-pro" });
                 const prompt = `Expert Service Estimator: Generate tiered repair options for: "${problemDesc}". Return a JSON object with keys "good", "better", "best". Each key should contain an array of objects with properties: name, description, baseCost (number), avgLabor (number). Ensure valid JSON.`;
                 
                 const result = await model.generateContent(prompt);
@@ -267,8 +267,13 @@ const FieldProposal: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-100 p-4 md:p-8">
+            <style>{`
+                .brand-border { border-color: ${brandColor} !important; }
+                .brand-bg { background-color: ${brandColor} !important; }
+                .brand-text { color: ${brandColor} !important; }
+            `}</style>
             <div className="max-w-4xl mx-auto bg-white rounded-lg shadow-xl p-4 md:p-8">
-                <h1 className="text-3xl font-bold text-gray-900 mb-6 border-b pb-4" style={{ borderColor: brandColor }}>
+                <h1 className="text-3xl font-bold text-gray-900 mb-6 border-b pb-4 brand-border">
                     Create Service Proposal
                 </h1>
 
@@ -301,8 +306,7 @@ const FieldProposal: React.FC = () => {
                     <Button
                         onClick={handleAIEstimate}
                         disabled={isThinking || !problemDesc.trim()}
-                        className="mt-4 w-full"
-                        style={{ backgroundColor: brandColor }}
+                        className="mt-4 w-full brand-bg"
                     >
                         {isThinking ? (
                             <span className="flex items-center justify-center">
@@ -329,7 +333,7 @@ const FieldProposal: React.FC = () => {
                                     className={`cursor-pointer border-2 ${selectedOption?.name === option.name ? `border-blue-500 shadow-lg` : 'border-gray-200 hover:border-gray-300'}`}
                                     onClick={() => handleOptionSelect(option)}
                                 >
-                                    <h3 className="font-bold text-lg mb-2" style={{ color: brandColor }}>{option.name}</h3>
+                                    <h3 className="font-bold text-lg mb-2 brand-text">{option.name}</h3>
                                     <p className="text-sm text-gray-600 mb-3">{option.description}</p>
                                     <p className="text-xl font-bold text-gray-900">${calculateTotal(option).toFixed(2)}</p>
                                     <p className="text-xs text-gray-500">Includes materials & labor</p>
@@ -435,7 +439,7 @@ const FieldProposal: React.FC = () => {
                     />
                     <div className="mt-4 flex justify-end gap-2">
                         <Button variant="secondary" onClick={() => setShowServiceItemModal(false)}>Cancel</Button>
-                        <Button onClick={confirmAddServiceItem} style={{ backgroundColor: brandColor }}>Add Item</Button>
+                        <Button onClick={confirmAddServiceItem} className="brand-bg">Add Item</Button>
                     </div>
                 </div>
             </Modal>
@@ -449,16 +453,16 @@ const FieldProposal: React.FC = () => {
                 size="lg"
             >
                 <div className="p-4 overflow-auto max-h-[80vh]">
-                    <div className="bg-white p-4 md:p-8 shadow-lg mx-auto" ref={proposalRef} style={{ width: '210mm', minHeight: '297mm' }}>
+                    <div className="bg-white p-4 md:p-8 shadow-lg mx-auto w-[210mm] min-h-[297mm]" ref={proposalRef}>
                         {/* Proposal Content for PDF */}
                         <div className="text-center mb-8">
                             {organization?.logoUrl && <img src={organization.logoUrl} alt="Logo" className="h-16 mx-auto mb-4" />}
-                            <h1 className="text-3xl font-bold" style={{ color: brandColor }}>{organization?.name}</h1>
+                            <h1 className="text-3xl font-bold brand-text">{organization?.name}</h1>
                             <p className="text-gray-600">{formatAddress(organization?.address)}</p>
                             <p className="text-gray-600">{organization?.phone} | {organization?.email}</p>
                         </div>
 
-                        <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2" style={{ borderColor: brandColor }}>Service Proposal</h2>
+                        <h2 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2 brand-border">Service Proposal</h2>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 text-sm">
                             <div>
@@ -477,22 +481,22 @@ const FieldProposal: React.FC = () => {
                         </div>
 
                         <div className="mb-6">
-                            <h3 className="font-bold text-lg mb-2" style={{ color: brandColor }}>Problem/Service Description:</h3>
+                            <h3 className="font-bold text-lg mb-2 brand-text">Problem/Service Description:</h3>
                             <p className="text-gray-700">{problemDesc}</p>
                         </div>
 
                         {(selectedOption || manualItems.length > 0) && (
                             <div className="mb-6">
-                                <h3 className="font-bold text-lg mb-2" style={{ color: brandColor }}>Proposed Solution:</h3>
+                                <h3 className="font-bold text-lg mb-2 brand-text">Proposed Solution:</h3>
                                 {selectedOption && (
-                                    <div className="border p-4 rounded-lg mb-4" style={{ borderColor: brandColor }}>
+                                    <div className="border p-4 rounded-lg mb-4 brand-border">
                                         <h4 className="font-semibold text-lg">{selectedOption.name}</h4>
                                         <p className="text-gray-700">{selectedOption.description}</p>
                                         <p className="font-bold text-xl mt-2">Price: ${calculateTotal(selectedOption).toFixed(2)}</p>
                                     </div>
                                 )}
                                 {manualItems.length > 0 && (
-                                    <div className="border p-4 rounded-lg" style={{ borderColor: brandColor }}>
+                                    <div className="border p-4 rounded-lg brand-border">
                                         <h4 className="font-semibold text-lg mb-2">Custom Items:</h4>
                                         {manualItems.map((item, index) => (
                                             <div key={index} className="flex justify-between py-1 text-gray-700">
@@ -508,12 +512,12 @@ const FieldProposal: React.FC = () => {
 
                         {notes && (
                             <div className="mb-6">
-                                <h3 className="font-bold text-lg mb-2" style={{ color: brandColor }}>Additional Notes:</h3>
+                                <h3 className="font-bold text-lg mb-2 brand-text">Additional Notes:</h3>
                                 <p className="text-gray-700">{notes}</p>
                             </div>
                         )}
 
-                        <div className="flex justify-between items-center border-t pt-4 mt-8" style={{ borderColor: brandColor }}>
+                        <div className="flex justify-between items-center border-t pt-4 mt-8 brand-border">
                             <span className="text-2xl font-bold text-gray-900">
                                 Grand Total: ${(selectedOption ? calculateTotal(selectedOption) : manualItems.reduce((acc, item) => acc + (item.cost || 0) * (item.quantity || 1), 0)).toFixed(2)}
                             </span>
@@ -539,7 +543,7 @@ const FieldProposal: React.FC = () => {
                 </div>
                 <div className="p-4 border-t flex justify-end gap-2">
                     <Button variant="secondary" onClick={() => setShowPreviewModal(false)}>Close</Button>
-                    <Button onClick={generatePdf} disabled={isSubmitting} style={{ backgroundColor: brandColor }}>
+                    <Button onClick={generatePdf} disabled={isSubmitting} className="brand-bg">
                         {isSubmitting ? <Spinner size="sm" /> : 'Download PDF'}
                     </Button>
                 </div>

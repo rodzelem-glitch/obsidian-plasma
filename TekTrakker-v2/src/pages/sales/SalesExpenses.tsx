@@ -9,6 +9,7 @@ import Modal from 'components/ui/Modal';
 import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import { db } from 'lib/firebase';
+import { uploadFileToStorage } from 'lib/storageService';
 import type { Expense, BusinessDocument } from 'types';
 import { Receipt, Plus, Trash2, FileText, Download, PenTool, Paperclip } from 'lucide-react';
 import { formatAddress } from 'lib/utils';
@@ -23,98 +24,39 @@ const SalesExpenses: React.FC = () => {
     const [isUploadingToExpenseId, setIsUploadingToExpenseId] = useState<string | null>(null);
     
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [newExpenseFile, setNewExpenseFile] = useState<File | null>(null);
     const [newExpense, setNewExpense] = useState<Partial<Expense>>({
         date: new Date().toISOString().split('T')[0],
         category: 'Travel',
         amount: 0,
         description: '',
         vendor: '',
-        receiptData: ''
+        receiptData: null,
+        receiptUrl: null
     });
 
     const handleAttachToExisting = async (e: React.ChangeEvent<HTMLInputElement>, expId: string) => {
         const file = e.target.files?.[0];
-        if (!file) return;
+        if (!file || !currentUser) return;
         setIsUploadingToExpenseId(expId);
         
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const img = new Image();
-            img.onload = async () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-                const MAX_DIM = 800;
-
-                if (width > height) {
-                    if (width > MAX_DIM) {
-                        height *= MAX_DIM / width;
-                        width = MAX_DIM;
-                    }
-                } else {
-                    if (height > MAX_DIM) {
-                        width *= MAX_DIM / height;
-                        height = MAX_DIM;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx?.drawImage(img, 0, 0, width, height);
-
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                
-                try {
-                    await db.collection('expenses').doc(expId).update({ receiptData: dataUrl });
-                } catch (err) {
-                    console.error("Failed to update receipt", err);
-                    alert("Upload failed. Image may be too large.");
-                } finally {
-                    setIsUploadingToExpenseId(null);
-                }
-            };
-            img.src = reader.result as string;
-        };
-        reader.readAsDataURL(file);
+        try {
+            const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg';
+            const path = `organizations/platform/users/${currentUser.id}/receipts/${Date.now()}_${safeName}`;
+            const downloadUrl = await uploadFileToStorage(path, file);
+            await db.collection('expenses').doc(expId).update({ receiptUrl: downloadUrl, receiptData: null });
+        } catch (err) {
+            console.error("Failed to update receipt", err);
+            alert("Upload failed.");
+        } finally {
+            setIsUploadingToExpenseId(null);
+        }
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-                const MAX_DIM = 800;
-
-                if (width > height) {
-                    if (width > MAX_DIM) {
-                        height *= MAX_DIM / width;
-                        width = MAX_DIM;
-                    }
-                } else {
-                    if (height > MAX_DIM) {
-                        width *= MAX_DIM / height;
-                        height = MAX_DIM;
-                    }
-                }
-
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx?.drawImage(img, 0, 0, width, height);
-
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                setNewExpense(prev => ({ ...prev, receiptData: dataUrl }));
-            };
-            img.src = reader.result as string;
-        };
-        reader.readAsDataURL(file);
+        setNewExpenseFile(file);
     };
 
     // W-9 State
@@ -168,6 +110,17 @@ const SalesExpenses: React.FC = () => {
         e.preventDefault();
         if (!currentUser) return;
         
+        let receiptUrl = null;
+        if (newExpenseFile) {
+            try {
+                const safeName = newExpenseFile.name ? newExpenseFile.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg';
+                const path = `organizations/platform/users/${currentUser.id}/receipts/${Date.now()}_${safeName}`;
+                receiptUrl = await uploadFileToStorage(path, newExpenseFile);
+            } catch (err) {
+                console.error('Failed to upload receipt', err);
+            }
+        }
+
         const expense: Expense = {
             id: `exp-${Date.now()}`,
             organizationId: 'platform',
@@ -176,9 +129,10 @@ const SalesExpenses: React.FC = () => {
             amount: Number(newExpense.amount),
             description: newExpense.description || '',
             vendor: newExpense.vendor || '',
-            paidBy: currentUser.firstName, // Use name for simple matching
+            paidBy: currentUser.firstName, 
             projectId: 'SalesExpense',
-            receiptData: newExpense.receiptData || null
+            receiptData: null,
+            receiptUrl: receiptUrl
         };
 
         try {
@@ -394,16 +348,16 @@ const SalesExpenses: React.FC = () => {
                                     <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded">Pending</span>
                                 </td>
                                 <td className="px-6 py-4 flex items-center gap-3">
-                                    {exp.receiptData ? (
-                                        <button onClick={() => setViewingReceipt(exp.receiptData!)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
+                                    {(exp.receiptData || exp.receiptUrl) ? (
+                                        <button onClick={() => setViewingReceipt(exp.receiptUrl || exp.receiptData!)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
                                             <Receipt size={16}/>
                                         </button>
                                     ) : null}
-                                    <label htmlFor={`receipt-upload-${exp.id}`} className={`cursor-pointer ${isUploadingToExpenseId === exp.id ? 'text-blue-400 animate-pulse' : 'text-slate-500 hover:text-primary-600'}`} title={exp.receiptData ? "Replace Receipt" : "Attach Receipt"}>
-                                        <input type="file" id={`receipt-upload-${exp.id}`} className="hidden" accept="image/*" capture="environment" onChange={(e) => handleAttachToExisting(e, exp.id)} />
+                                    <label htmlFor={`receipt-upload-${exp.id}`} className={`cursor-pointer ${isUploadingToExpenseId === exp.id ? 'text-blue-400 animate-pulse' : 'text-slate-500 hover:text-primary-600'}`} title={(exp.receiptData || exp.receiptUrl) ? "Replace Receipt" : "Attach Receipt"}>
+                                        <input type="file" title="Upload receipt" id={`receipt-upload-${exp.id}`} className="hidden" accept="image/*" onChange={(e) => handleAttachToExisting(e, exp.id)} />
                                         <Paperclip size={16} />
                                     </label>
-                                    <button onClick={() => handleDeleteExpense(exp.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16}/></button>
+                                    <button onClick={() => handleDeleteExpense(exp.id)} className="text-red-500 hover:text-red-700" title="Delete Expense"><Trash2 size={16}/></button>
                                 </td>
                             </tr>
                         ))}
@@ -454,11 +408,11 @@ const SalesExpenses: React.FC = () => {
                     <Input label="Description" value={newExpense.description} onChange={e => setNewExpense({...newExpense, description: e.target.value})} placeholder="Client lunch, Flight to HQ..." />
                     
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Receipt Image (Optional)</label>
-                        <input type="file" accept="image/*" onChange={handleFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/40 dark:text-slate-300 dark:file:text-blue-400" />
-                        {newExpense.receiptData && (
+                        <label htmlFor="receipt-upload-new" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Receipt Image (Optional)</label>
+                        <input id="receipt-upload-new" type="file" accept="image/*" title="Upload receipt image" onChange={handleFileUpload} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/40 dark:text-slate-300 dark:file:text-blue-400" />
+                        {newExpenseFile && (
                             <div className="mt-2 text-emerald-600 text-xs flex items-center gap-1">
-                                <Receipt size={14} /> Receipt attached
+                                <Receipt size={14} /> Receipt attached: {newExpenseFile.name}
                             </div>
                         )}
                     </div>

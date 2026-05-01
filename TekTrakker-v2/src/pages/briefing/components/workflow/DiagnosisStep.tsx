@@ -26,6 +26,9 @@ interface DiagnosisStepProps {
     onDeletePhoto: (file: StoredFile) => void;
     onViewPhoto: (file: StoredFile) => void;
     setIsToolModalOpen: (open: boolean) => void;
+    toolReadings?: {id: string, toolType: string, summary: string, date: string}[];
+    onDeleteToolReading?: (id: string) => void;
+    onOpenIndustryTools?: () => void;
     hidden?: boolean;
 }
 
@@ -43,12 +46,15 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
     files,
     onDeletePhoto,
     onViewPhoto,
+    toolReadings = [],
+    onDeleteToolReading,
+    onOpenIndustryTools,
     hidden
 }) => {
     if (hidden) return null;
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Button variant="secondary" onClick={() => setIsWaiverOpen(true)} className="flex items-center justify-center gap-2">
                     <FileSignature size={16}/> Sign Waivers
                 </Button>
@@ -56,9 +62,37 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                     <Sparkles size={16}/> Build Proposal
                 </Button>
                 <Button variant="secondary" onClick={() => setIsToolModalOpen(true)} className="flex items-center justify-center gap-2 border-primary-200 text-primary-600">
-                    <ClipboardList size={16}/> Add Measurement
+                    <ClipboardList size={16}/> Ext. Tool
                 </Button>
+                {onOpenIndustryTools && (
+                    <Button variant="secondary" onClick={onOpenIndustryTools} className="flex items-center justify-center gap-2 border-indigo-200 text-indigo-600">
+                        <Sparkles size={16} /> App Tools
+                    </Button>
+                )}
             </div>
+            
+            {toolReadings.length > 0 && (
+                <Card>
+                    <h4 className="font-bold mb-2 flex items-center gap-2">
+                        <ClipboardList size={18} className="text-primary-600"/> Tool Readings & Diagnostics
+                    </h4>
+                    <div className="space-y-2">
+                        {toolReadings.map(t => (
+                            <div key={t.id} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg flex justify-between items-start border border-slate-200 dark:border-slate-700">
+                                <div>
+                                    <p className="font-bold text-sm text-slate-800 dark:text-blue-300">{t.toolType}</p>
+                                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">{t.summary}</p>
+                                </div>
+                                {onDeleteToolReading && (
+                                    <button onClick={() => onDeleteToolReading(t.id)} className="text-slate-400 hover:text-red-500 mt-1" aria-label="Remove reading">
+                                        <X size={14} />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            )}
             
             <Card>
                 <div className="flex justify-between items-center mb-4">
@@ -111,6 +145,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                         type="button"
                         onClick={takeNativePhoto}
                         className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors bg-white w-full"
+                        title="Camera"
                     >
                         <Camera size={24} className="text-slate-400 mb-1"/>
                         <span className="text-[10px] font-bold text-slate-500">Camera</span>
@@ -133,6 +168,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                             <button 
                                 onClick={(e) => { e.stopPropagation(); onDeletePhoto(f); }}
                                 className="absolute top-1 right-1 p-1 bg-red-700 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm shadow-black/20"
+                                title="Delete Photo"
                             >
                                 <X size={10}/>
                             </button>

@@ -83,7 +83,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
             // Using gemini-3-pro-preview for master-level tech advice
             const result = await callGeminiAI({ 
                 prompt: userMsg,
-                modelName: "gemini-3-pro-preview",
+                modelName: "gemini-3.1-pro-preview",
                 config: {
                     systemInstruction: `You are TekTrakker Voice Supervisor, a master field technician coach. Context: ${context}. Your advice will be read aloud to a technician whose hands are busy. Be extremely technical but concise (max 2-3 sentences). Focus on safety and troubleshooting steps.`
                 }
@@ -199,6 +199,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                                 {msg.content}
                                 {msg.role === 'assistant' && (
                                     <button 
+                                        title="Speak Answer"
                                         onClick={() => speakText(msg.content)}
                                         className="block mt-2 text-indigo-500 hover:text-indigo-600 transition-colors"
                                     >

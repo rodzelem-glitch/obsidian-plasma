@@ -1,5 +1,5 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
@@ -14,10 +14,11 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { compressFile } from '../../lib/utils';
 import {
     FileText, Wand2, Download, Trash2, Save, Upload, Printer, Edit3, Copy, 
-    Clipboard, File as FileIcon, User as UserIcon, DollarSign, Mail, BookOpen, Layers, Archive
+    Clipboard, File as FileIcon, User as UserIcon, DollarSign, Mail, BookOpen, Layers, Archive, Share2
 } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import DOMPurify from 'dompurify';
+import Form1099CopyA from '../../pages/master/components/sales-team/Form1099CopyA';
 
 const DocumentCreator: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -44,16 +45,38 @@ const DocumentCreator: React.FC = () => {
     const [is1099ModalOpen, setIs1099ModalOpen] = useState(false);
     const [selected1099User, setSelected1099User] = useState<string>('');
     const [amount1099, setAmount1099] = useState('');
+    const [checkedPayoutIds, setCheckedPayoutIds] = useState<string[]>([]);
+
+    // --- SHARE MANAGEMENT ---
+    const [shareModalDoc, setShareModalDoc] = useState<BusinessDocument | null>(null);
+    const [shareTargetId, setShareTargetId] = useState<string>('');
+    const [shareMessageText, setShareMessageText] = useState('');
+    const [isSharing, setIsSharing] = useState(false);
+
+    const [searchParams] = useSearchParams();
 
     const contentEditableRef = useRef<HTMLDivElement>(null);
 
-    // --- DATA FILTERING ---
     const filteredDocuments = useMemo(() => {
         const lowerSearch = searchTerm.toLowerCase();
         return state.documents
             .filter(doc => doc.title.toLowerCase().includes(lowerSearch))
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [state.documents, searchTerm]);
+
+    useEffect(() => {
+        const targetDocId = searchParams.get('docId');
+        if (targetDocId) {
+            setTimeout(() => {
+                const el = document.getElementById(`doc-row-${targetDocId}`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.classList.add('ring-4', 'ring-primary-500', 'ring-offset-2');
+                    setTimeout(() => el.classList.remove('ring-4', 'ring-primary-500', 'ring-offset-2'), 3000);
+                }
+            }, 500);
+        }
+    }, [searchParams]);
 
     const getDocsForTab = (tab: typeof activeTab) => {
         switch (tab) {
@@ -145,7 +168,7 @@ const DocumentCreator: React.FC = () => {
             const systemInstruction = "You are a business operations assistant. Format your response as clean, well-structured HTML using elements like <h2>, <p>, <ul>, and <li> for easy readability. Do not include ```html blocks.";
             const fullPrompt = `${systemInstruction}\n\n${aiPrompt}`;
             
-            const result = await callGeminiAI({ prompt: fullPrompt, modelName: "gemini-3-pro-preview" }); 
+            const result = await callGeminiAI({ prompt: fullPrompt, modelName: "gemini-3.1-pro-preview" }); 
             const data = result.data as { text: string };
             
             setEditingDoc(prev => prev ? { ...prev, content: data.text } : null);
@@ -194,55 +217,67 @@ const DocumentCreator: React.FC = () => {
     };
     
     // --- 1099-NEC GENERATOR ---
-    const handleGenerate1099 = async () => {
-        const user = state.users.find(u => u.id === selected1099User);
-        if (!user || !amount1099 || !state.currentOrganization) return;
+    const selectedRecipient = useMemo(() => {
+        if (!selected1099User) return null;
+        let u = state.users.find(x => x.id === selected1099User);
+        if (u) return u;
+        let s = state.subcontractors?.find(x => x.id === selected1099User);
+        if (s) return s;
+        return null;
+    }, [selected1099User, state.users, state.subcontractors]);
 
-        const org = state.currentOrganization;
-        const htmlContent = `
-            <div style="border: 1px solid #ccc; padding: 20px; max-width: 800px; margin: auto; font-family: sans-serif;">
-                <h1 style="text-align: center; color: #333;">Form 1099-NEC</h1>
-                <h2 style="text-align: center; color: #555;">Nonemployee Compensation</h2>
-                <hr>
-                <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-                    <tr>
-                        <td style="border: 1px solid #ddd; padding: 8px;">
-                            <strong>PAYER'S NAME, STREET ADDRESS, CITY, STATE, ZIP CODE, AND TELEPHONE NO</strong><br>
-                            ${org.name}<br>${org.address?.street || ''}<br>${org.address?.city || ''}, ${org.address?.state || ''} ${org.address?.zip || ''}<br>${org.phone || ''}
-                        </td>
-                        <td style="border: 1px solid #ddd; padding: 8px;">
-                            <strong>1. Nonemployee compensation</strong><br>
-                            <span style="font-size: 1.2em; font-weight: bold;">$${parseFloat(amount1099).toFixed(2)}</span>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="border: 1px solid #ddd; padding: 8px;">
-                            <strong>PAYER'S TIN</strong><br>${org.taxId || 'XX-XXXXXXX'}
-                        </td>
-                        <td style="border: 1px solid #ddd; padding: 8px;">
-                            <strong>RECIPIENT'S TIN</strong><br>${user.taxId || 'XXX-XX-XXXX'}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td colspan="2" style="border: 1px solid #ddd; padding: 8px;">
-                            <strong>RECIPIENT'S NAME, STREET ADDRESS, CITY, STATE, AND ZIP CODE</strong><br>
-                            ${user.firstName} ${user.lastName}<br>${user.address?.street || ''}<br>${user.address?.city || ''}, ${user.address?.state || ''} ${user.address?.zip || ''}
-                        </td>
-                    </tr>
-                </table>
-                <p style="font-size: 0.8em; color: #777; margin-top: 20px;">This is an important tax document and is being furnished to the Internal Revenue Service.</p>
-            </div>
-        `;
+    const aggregatedPayouts = useMemo(() => {
+        if (!selected1099User || !selectedRecipient) return [];
+        const payouts: { id: string; date: string; description: string; amount: number; type: 'Expense' | 'Job' }[] = [];
+        
+        // 1. Expenses assigned to this user
+        (state.expenses || []).forEach(e => {
+            const payeeMatches = e.paidById === selected1099User;
+            const vendorMatches = e.vendor === (selectedRecipient as any).companyName || e.vendor === `${(selectedRecipient as any).firstName} ${(selectedRecipient as any).lastName}`;
+            if (payeeMatches || vendorMatches) {
+                payouts.push({
+                    id: e.id,
+                    date: e.date || new Date().toISOString().split('T')[0],
+                    description: `Logged Expense: ${e.category} - ${e.description}`,
+                    amount: parseFloat(e.amount as any) || 0,
+                    type: 'Expense'
+                });
+            }
+        });
 
-        const doc: Partial<BusinessDocument> = {
-            title: `1099-NEC for ${user.firstName} ${user.lastName} - ${new Date().getFullYear()}`,
-            content: htmlContent,
-            type: '1099-NEC'
-        };
+        // 2. Jobs assigned
+        (state.jobs || []).forEach(j => {
+            if (j.assignedTechnicianId === selected1099User || j.assignedPartnerId === selected1099User) {
+                let jobAmount = 0;
+                if ((selectedRecipient as any).paymentType === 'percentage') {
+                    jobAmount = (j.invoice?.totalAmount || 0) * (((selectedRecipient as any).paymentPercentage || 0) / 100);
+                } else if ((selectedRecipient as any).commissionRate) {
+                    jobAmount = (j.invoice?.totalAmount || 0) * (((selectedRecipient as any).commissionRate || 0) / 100);
+                }
+                
+                if (jobAmount > 0) {
+                     payouts.push({
+                         id: j.id,
+                         date: j.appointmentTime?.split('T')[0] || new Date().toISOString().split('T')[0],
+                         description: `Job Revenue Share: ${j.customerName}`,
+                         amount: jobAmount,
+                         type: 'Job'
+                     });
+                }
+            }
+        });
 
-        setEditingDoc(doc);
-        setIs1099ModalOpen(false);
-        setIsEditorOpen(true);
+        return payouts.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [selected1099User, selectedRecipient, state.expenses, state.jobs]);
+
+    const handleTogglePayout = (id: string, amount: number) => {
+        const isChecked = checkedPayoutIds.includes(id);
+        let newChecked = isChecked ? checkedPayoutIds.filter(x => x !== id) : [...checkedPayoutIds, id];
+        setCheckedPayoutIds(newChecked);
+        
+        // Recalculate amount
+        const newTotal = aggregatedPayouts.filter(p => newChecked.includes(p.id)).reduce((sum, p) => sum + p.amount, 0);
+        setAmount1099(newTotal > 0 ? newTotal.toFixed(2) : '');
     };
 
     const handlePrint = () => {
@@ -251,6 +286,37 @@ const DocumentCreator: React.FC = () => {
         win?.document.write(`<html><head><title>${editingDoc?.title || 'Document'}</title></head><body>${content}</body></html>`);
         win?.document.close();
         win?.print();
+    };
+
+    const handleCopyRef = (docId: string) => {
+        navigator.clipboard.writeText(`#DOC-${docId}`);
+        alert("Reference Copied! Paste it anywhere to create a smart link.");
+    };
+
+    const handleShareDoc = async () => {
+        if (!shareModalDoc || !shareTargetId) return;
+        setIsSharing(true);
+        try {
+            const msgObj: any = {
+                id: `msg-${Date.now()}`,
+                senderId: state.currentUser?.id,
+                senderName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
+                receiverId: shareTargetId,
+                content: `${shareMessageText ? shareMessageText + '\n\n' : ''}Check out this document: #DOC-${shareModalDoc.id}`,
+                timestamp: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                organizationId: state.currentOrganization?.id,
+                type: 'internal'
+            };
+            await db.collection('messages').doc(msgObj.id).set(msgObj);
+            alert("Document shared successfully!");
+            setShareModalDoc(null);
+            setShareMessageText('');
+        } catch (e) {
+            alert("Failed to share.");
+        } finally {
+            setIsSharing(false);
+        }
     };
 
     const TABS = [
@@ -322,14 +388,16 @@ const DocumentCreator: React.FC = () => {
             <div className="min-h-[400px]">
                 <Table headers={['Title', 'Type', 'Created', 'Actions']}>
                     {getDocsForTab(activeTab).map(doc => (
-                        <tr key={doc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <tr id={`doc-row-${doc.id}`} key={doc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                             <td className="px-6 py-4 font-bold"><FileText size={16} className="inline-block mr-2 text-gray-400" />{doc.title}</td>
                             <td className="px-6 py-4"><span className="px-2 py-1 rounded text-xs font-bold bg-blue-100 text-blue-800">{doc.type}</span></td>
                             <td className="px-6 py-4 text-sm">{new Date(doc.createdAt).toLocaleDateString()}</td>
-                            <td className="px-6 py-4 flex gap-2">
+                            <td className="px-6 py-4 flex gap-1.5 flex-wrap">
                                 <Button size="sm" variant="outline" onClick={() => handleEdit(doc)}>View/Edit</Button>
-                                {doc.context && doc.type === 'Master Upload' && <a href={doc.context} download={doc.title}><Button size="sm" variant="ghost"><Download size={14}/></Button></a>}
-                                <Button size="sm" variant="danger" onClick={() => handleDelete(doc.id)}><Trash2 size={14}/></Button>
+                                {doc.context && doc.type === 'Master Upload' && <a href={doc.context} download={doc.title} aria-label="Download Document" title="Download Document"><Button size="sm" variant="ghost"><Download size={14}/></Button></a>}
+                                <Button size="sm" variant="ghost" onClick={() => handleCopyRef(doc.id)} aria-label="Copy Reference" title="Copy Reference"><Copy size={16}/></Button>
+                                <Button size="sm" variant="ghost" onClick={() => setShareModalDoc(doc)} aria-label="Share Document" title="Share Document"><Share2 size={16}/></Button>
+                                <Button size="sm" variant="danger" onClick={() => handleDelete(doc.id)} aria-label="Delete Document" title="Delete Document"><Trash2 size={14}/></Button>
                             </td>
                         </tr>
                     ))}
@@ -405,40 +473,136 @@ const DocumentCreator: React.FC = () => {
             </Modal>
 
             {/* 1099-NEC Modal */}
-            <Modal isOpen={is1099ModalOpen} onClose={() => setIs1099ModalOpen(false)} title="Generate 1099-NEC Form">
+            <Modal isOpen={is1099ModalOpen} onClose={() => {setIs1099ModalOpen(false); setSelected1099User(''); setAmount1099(''); setCheckedPayoutIds([]);}} title="Generate Tax Form 1099-NEC">
                 <div className="space-y-4">
-                    <label className="block">
-                        <span className="text-sm font-medium">Select Employee/Contractor</span>
-                        <select 
-                            value={selected1099User}
-                            onChange={e => setSelected1099User(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                        >
-                            <option value="">-- Select a User --</option>
-                            <optgroup label="Internal Staff">
-                                {state.users.filter(u => ['employee', 'both', 'supervisor', 'admin', 'master_admin', 'Technician', 'Subcontractor'].includes(u.role)).map(user => (
-                                    <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+                        <label className="block">
+                            <span className="text-sm font-medium mb-1 block">Select Recipient</span>
+                            <select 
+                                value={selected1099User}
+                                onChange={e => setSelected1099User(e.target.value)}
+                                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 py-2 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                            >
+                                <option value="">-- Select Recipient --</option>
+                                <optgroup label="Internal Staff">
+                                    {state.users.filter(u => ['employee', 'both', 'supervisor', 'admin', 'master_admin', 'Technician', 'Subcontractor'].includes(u.role)).map(user => (
+                                        <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>
+                                    ))}
+                                </optgroup>
+                                <optgroup label="Subcontractors & Partners">
+                                    {(state.subcontractors || []).map(sub => (
+                                        <option key={sub.id} value={sub.id}>{sub.companyName} ({sub.contactName})</option>
+                                    ))}
+                                </optgroup>
+                            </select>
+                        </label>
+                        <Input 
+                            label="Taxable Compensation Amount"
+                            type="number"
+                            value={amount1099}
+                            onChange={e => setAmount1099(e.target.value)}
+                            placeholder="e.g., 5000.00"
+                        />
+                    </div>
+                    
+                    {selectedRecipient && aggregatedPayouts.length > 0 && (
+                        <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg overflow-hidden shadow-sm">
+                            <div className="bg-slate-100 dark:bg-slate-900 border-b dark:border-slate-700 px-4 py-2 flex justify-between items-center">
+                                <h4 className="font-bold text-sm text-slate-700 dark:text-slate-300">Detected Payouts & Earnings</h4>
+                                <Button size="sm" variant="outline" onClick={() => {
+                                    if (checkedPayoutIds.length === aggregatedPayouts.length) {
+                                        setCheckedPayoutIds([]);
+                                        setAmount1099('');
+                                    } else {
+                                        const allIds = aggregatedPayouts.map(p => p.id);
+                                        setCheckedPayoutIds(allIds);
+                                        const total = aggregatedPayouts.reduce((sum, p) => sum + p.amount, 0);
+                                        setAmount1099(total.toFixed(2));
+                                    }
+                                }}>
+                                    {checkedPayoutIds.length === aggregatedPayouts.length ? 'Deselect All' : 'Select All'}
+                                </Button>
+                            </div>
+                            <div className="max-h-48 overflow-y-auto p-2 space-y-1">
+                                {aggregatedPayouts.map(p => (
+                                    <label key={p.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded cursor-pointer transition-colors">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={checkedPayoutIds.includes(p.id)}
+                                            onChange={() => handleTogglePayout(p.id, p.amount)}
+                                            className="rounded text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <div className="flex-1 flex justify-between items-center">
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{p.description}</p>
+                                                <p className="text-xs text-slate-500">{new Date(p.date).toLocaleDateString()}</p>
+                                            </div>
+                                            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                                                ${p.amount.toFixed(2)}
+                                            </p>
+                                        </div>
+                                    </label>
                                 ))}
-                            </optgroup>
-                            <optgroup label="Subcontractors & Partners">
-                                {(state.subcontractors || []).map(sub => (
-                                    <option key={sub.id} value={sub.id}>{sub.companyName} ({sub.contactName})</option>
-                                ))}
-                            </optgroup>
-                        </select>
-                    </label>
-                    <Input 
-                        label="Nonemployee Compensation Amount"
-                        type="number"
-                        value={amount1099}
-                        onChange={e => setAmount1099(e.target.value)}
-                        placeholder="e.g., 600.00"
-                    />
-                    <Button onClick={handleGenerate1099} disabled={!selected1099User || !amount1099} className="w-full">
-                        Generate 1099 Document
-                    </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {selectedRecipient && aggregatedPayouts.length === 0 && (
+                        <div className="text-center py-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-dashed border-slate-300 dark:border-slate-600">
+                            <p className="text-sm text-slate-500">No recorded payouts or job earnings found for this recipient.</p>
+                            <p className="text-xs text-slate-400 mt-1">You may manually enter an amount above.</p>
+                        </div>
+                    )}
+                    
+                    {selectedRecipient && parseFloat(amount1099) >= 0 && (
+                        <div className="mt-4">
+                             <Form1099CopyA 
+                                 recipient={selectedRecipient} 
+                                 amount={parseFloat(amount1099) || 0} 
+                                 year={new Date().getFullYear()} 
+                                 payerName={state.currentOrganization?.name || 'TekTrakker Platform'} 
+                             />
+                             <div className="flex justify-end pt-4 border-t mt-4 gap-2">
+                                 <Button onClick={() => window.print()} className="flex items-center gap-2"><Printer size={16}/> Print Valid Tax Form</Button>
+                             </div>
+                        </div>
+                    )}
                 </div>
             </Modal>
+
+            {/* Share Document Modal */}
+            <Modal isOpen={!!shareModalDoc} onClose={() => setShareModalDoc(null)} title={`Share Document: ${shareModalDoc?.title}`}>
+                 <div className="space-y-4">
+                     <p className="text-sm text-slate-500">Send this document to a supervisor or admin in your organization.</p>
+                     <select 
+                         aria-label="Select Share Recipient"
+                         title="Select Share Recipient"
+                         className="w-full border rounded-lg p-2 dark:bg-slate-800 dark:border-slate-700"
+                         value={shareTargetId}
+                         onChange={e => setShareTargetId(e.target.value)}
+                     >
+                         <option value="">Select Recipient...</option>
+                         {state.users.filter((u: any) => 
+                             u.organizationId === state.currentOrganization?.id && 
+                             u.id !== state.currentUser?.id && 
+                             u.role !== 'customer'
+                         ).map((u: any) => (
+                             <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
+                         ))}
+                     </select>
+                     <Textarea 
+                         placeholder="Add an optional message..."
+                         value={shareMessageText}
+                         onChange={e => setShareMessageText(e.target.value)}
+                     />
+                     <div className="flex justify-end gap-2">
+                         <Button variant="secondary" onClick={() => setShareModalDoc(null)}>Cancel</Button>
+                         <Button onClick={handleShareDoc} disabled={!shareTargetId || isSharing}>
+                             {isSharing ? 'Sending...' : 'Send Message'}
+                         </Button>
+                     </div>
+                 </div>
+             </Modal>
         </div>
     );
 };

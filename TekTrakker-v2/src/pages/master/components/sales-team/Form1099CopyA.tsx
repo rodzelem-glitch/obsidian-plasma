@@ -4,12 +4,13 @@ import type { User } from 'types';
 import { formatAddress } from 'lib/utils';
 
 interface Form1099CopyAProps {
-    recipient: User;
+    recipient: any;
     amount: number;
     year: number;
+    payerName?: string;
 }
 
-const Form1099CopyA: React.FC<Form1099CopyAProps> = ({ recipient, amount, year }) => (
+const Form1099CopyA: React.FC<Form1099CopyAProps> = ({ recipient, amount, year, payerName = 'TekTrakker Platform' }) => (
     <div className="border-2 border-red-800 text-red-900 font-serif max-w-3xl mx-auto my-4 relative p-4 md:p-8 bg-white print:block">
         <div className="absolute top-2 left-2 text-[10px]">DO NOT CUT OR SEPARATE FORMS ON THIS PAGE</div>
         <div className="text-center border-b-2 border-red-800 pb-4 mb-4">
@@ -21,16 +22,16 @@ const Form1099CopyA: React.FC<Form1099CopyAProps> = ({ recipient, amount, year }
             <div className="space-y-4 text-black">
                 <div className="border border-red-300 p-2">
                     <p className="text-[10px] uppercase">Payer's Info</p>
-                    <p className="font-bold">TekTrakker Platform</p>
+                    <p className="font-bold">{payerName}</p>
                     <p>EIN: 12-3456789</p>
                 </div>
                 <div className="border border-red-300 p-2">
                     <p className="text-[10px] uppercase">Recipient's TIN</p>
-                    <p>{recipient.ssn || 'XXX-XX-XXXX'}</p>
+                    <p>{recipient.taxId || recipient.ssn || 'XXX-XX-XXXX'}</p>
                 </div>
                 <div className="border border-red-300 p-2">
                     <p className="text-[10px] uppercase">Recipient's Name</p>
-                    <p>{recipient.firstName} {recipient.lastName}</p>
+                    <p>{recipient.companyName || `${recipient.firstName} ${recipient.lastName}`}</p>
                     <p>{formatAddress(recipient.address) || 'Address on File'}</p>
                 </div>
             </div>

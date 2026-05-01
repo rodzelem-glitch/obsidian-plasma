@@ -59,12 +59,19 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
         if (!result && !overrideStatus) return;
         setIsSaving(true);
         try {
+            let finalImageUrl = image;
+            if (image && image.startsWith('data:')) {
+                const { uploadFileToStorage } = await import('../../../lib/storageService');
+                const path = `organizations/${organizationId}/jobs/${jobId}/qc/${Date.now()}.jpg`;
+                finalImageUrl = await uploadFileToStorage(path, image);
+            }
+
             const qcRecord = {
                 id: `qc-${Date.now()}`,
                 status: overrideStatus || result?.status,
                 comments: result?.comments || (overrideStatus === 'manual' ? 'Manually overridden by technician.' : ''),
                 timestamp: new Date().toISOString(),
-                imageUrl: image
+                imageUrl: finalImageUrl
             };
 
             const { db, firebase } = await import('../../../lib/firebase');
@@ -93,10 +100,10 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
             
             const prompt = "Act as a quality control inspector for a field service company. Analyze this photo of a completed repair/installation. Check for cleanliness, proper connections, and professional finishing. Respond strictly in JSON format: { \"status\": \"pass\" | \"fail\" | \"warning\", \"comments\": \"string\" }";
 
-            // Using gemini-3.1-pro-image-preview for high-quality vision analysis
+            // Using gemini-2.5-pro for high-quality vision analysis
             const result = await callGeminiAI({ 
                 prompt,
-                modelName: "gemini-3.1-pro-image-preview",
+                modelName: "gemini-2.5-pro",
                 image: {
                     data: base64Content,
                     mimeType: "image/jpeg"
@@ -156,7 +163,8 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center bg-slate-50 dark:bg-slate-900/50 py-2 rounded-full">
                             AI will audit for compliance & quality
                         </p>
-                        <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
+                        <label htmlFor="qc-upload" className="sr-only">Upload Quality Photo</label>
+                        <input type="file" id="qc-upload" title="Upload Quality Photo" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
                     </div>
                 ) : (
                     <div className="space-y-6 animate-fade-in">
@@ -164,6 +172,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
                             <img src={image} className="w-full h-full object-cover" alt="QC Work" />
                             <button 
                                 onClick={reset}
+                                title="Reset"
                                 className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 backdrop-blur-md"
                             >
                                 <X size={20}/>

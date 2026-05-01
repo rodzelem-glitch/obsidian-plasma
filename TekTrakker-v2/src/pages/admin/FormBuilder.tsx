@@ -104,9 +104,9 @@ const FormBuilder: React.FC = () => {
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             
             // Dynamically select model based on input type
-            let modelName = "gemini-3-pro-preview"; // Default for text/reasoning
+            let modelName = "gemini-3.1-pro-preview"; // Default for text/reasoning
             if (aiImportMode === 'image') {
-                modelName = "gemini-3-pro-image-preview"; // For vision tasks
+                modelName = "gemini-3.1-pro-preview"; // For vision tasks
             }
 
             let promptPayload: any = {
@@ -284,7 +284,7 @@ const FormBuilder: React.FC = () => {
                                         <h4 className="font-bold text-sm text-gray-900 dark:text-white">{template.name}</h4>
                                         <p className="text-xs text-gray-500">{template.items.length} items</p>
                                     </div>
-                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template.id); }} className="text-gray-400 hover:text-red-500 p-1 rounded-full">
+                                    <button title="Delete Template" onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(template.id); }} className="text-gray-400 hover:text-red-500 p-1 rounded-full">
                                         <Trash2 size={14} />
                                     </button>
                                 </div>
@@ -321,9 +321,9 @@ const FormBuilder: React.FC = () => {
                                     {editingTemplate.items?.map((item, idx) => (
                                         <div key={item.id} className="group relative bg-slate-50 dark:bg-slate-800/70 p-4 rounded-lg border border-slate-200 dark:border-slate-700 flex gap-3">
                                             <div className="flex flex-col items-center justify-center text-slate-400">
-                                                <button onClick={() => moveField(idx, 'up')} className="hover:text-primary-500 disabled:opacity-30" disabled={idx === 0}><ChevronUp size={16}/></button>
+                                                <button title="Move up" onClick={() => moveField(idx, 'up')} className="hover:text-primary-500 disabled:opacity-30" disabled={idx === 0}><ChevronUp size={16}/></button>
                                                 <GripVertical size={16} className="cursor-move text-slate-300" />
-                                                <button onClick={() => moveField(idx, 'down')} className="hover:text-primary-500 disabled:opacity-30" disabled={idx === editingTemplate.items!.length - 1}><ChevronDown size={16}/></button>
+                                                <button title="Move down" onClick={() => moveField(idx, 'down')} className="hover:text-primary-500 disabled:opacity-30" disabled={idx === editingTemplate.items!.length - 1}><ChevronDown size={16}/></button>
                                             </div>
                                             <div className="flex-1 space-y-2">
                                                 <Input value={item.label} onChange={e => updateField(item.id, { label: e.target.value })} placeholder="Field Label" className="font-semibold"/>
@@ -337,7 +337,7 @@ const FormBuilder: React.FC = () => {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <button onClick={() => removeField(item.id)} className="absolute top-2 right-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16} /></button>
+                                            <button title="Remove Field" onClick={() => removeField(item.id)} className="absolute top-2 right-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16} /></button>
                                         </div>
                                     ))}\
                                     {(!editingTemplate.items || editingTemplate.items.length === 0) && (

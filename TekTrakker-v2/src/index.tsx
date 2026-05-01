@@ -5,19 +5,7 @@ import App from './App';
 import { AppProvider } from './context/AppContext';
 import { ConfirmProvider } from './context/ConfirmContext';
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
-import { registerSW } from 'virtual:pwa-register';
 import './styles/index.css';
-
-// Register PWA Service Worker
-if ('serviceWorker' in navigator) {
-  registerSW({
-    immediate: true,
-    onOfflineReady() {
-      console.log('TekTrakker: PWA ready to work offline');
-    },
-  });
-}
-
 // Register Capacitor PWA Elements
 defineCustomElements(window);
 

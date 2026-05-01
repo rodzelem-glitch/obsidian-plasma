@@ -57,9 +57,12 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
             starter: cfg?.plans?.starter?.monthly || 49,
             growth: cfg?.plans?.growth?.monthly || 149,
             enterprise: cfg?.plans?.enterprise?.monthly || 299,
-            starterUsers: cfg?.plans?.starter?.maxUsers || 5,
-            growthUsers: cfg?.plans?.growth?.maxUsers || 15,
-            enterpriseUsers: cfg?.plans?.enterprise?.maxUsers || 15,
+            starterUsers: cfg?.plans?.starter?.unlimitedUsers ? 'Unlimited' : `Up to ${cfg?.plans?.starter?.maxUsers || 5}`,
+            growthUsers: cfg?.plans?.growth?.unlimitedUsers ? 'Unlimited' : `Up to ${cfg?.plans?.growth?.maxUsers || 15}`,
+            enterpriseUsers: cfg?.plans?.enterprise?.unlimitedUsers ? 'Unlimited' : `Up to ${cfg?.plans?.enterprise?.maxUsers || 15}`,
+            starterRibbon: cfg?.plans?.starter?.ribbonText || '',
+            growthRibbon: cfg?.plans?.growth?.ribbonText || '',
+            enterpriseRibbon: cfg?.plans?.enterprise?.ribbonText || '',
             userFee: cfg?.excessUserFee || 25
         };
     }, [platformSettings]);
@@ -75,7 +78,7 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                             <InputField id="biz-phone" name="businessPhone" type="tel" label="Phone" value={businessPhone} onChange={(e: any) => setBusinessPhone(e.target.value)} required brandColor={brandColor} />
                             <InputField id="email" name="email" type="email" label="Email" value={email} onChange={(e: any) => setEmail(e.target.value)} required brandColor={brandColor} />
                         </div>
-                        <InputField id="password" name="password" type="password" label="Create Password" value={password} onChange={(e: any) => setPassword(e.target.value)} required brandColor={brandColor} />
+                        <InputField id="password" name="password" type="password" label="Create Password" value={password} onChange={(e: any) => setPassword(e.target.value)} required autoComplete="new-password" brandColor={brandColor} />
                         
                         <div className="pt-2">
                              <div className="flex gap-2">
@@ -108,9 +111,9 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                     <div>
                         <label className="block text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Select Plan</label>
                         <div className="space-y-3">
-                            <PlanCard id="starter" name="Starter" price={planPrices.starter} users={`Up to ${planPrices.starterUsers}`} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
-                            <PlanCard id="growth" name="Growth" price={planPrices.growth} users={`Up to ${planPrices.growthUsers}`} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
-                            <PlanCard id="enterprise" name="Enterprise" price={planPrices.enterprise} users={`Up to ${planPrices.enterpriseUsers}`} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                            <PlanCard id="starter" name="Starter" price={planPrices.starter} users={`${planPrices.starterUsers} Users Included`} ribbonText={planPrices.starterRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                            <PlanCard id="growth" name="Growth" price={planPrices.growth} users={`${planPrices.growthUsers} Users Included`} ribbonText={planPrices.growthRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                            <PlanCard id="enterprise" name="Enterprise" price={planPrices.enterprise} users={`${planPrices.enterpriseUsers} Users Included`} ribbonText={planPrices.enterpriseRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
                         </div>
                     </div>
 

@@ -29,35 +29,7 @@ const ALL_INDUSTRIES: IndustryVertical[] = [
 
 const DEFAULT_GOOGLE_CLIENT_ID = "655867451194-3p9dkm7tjb15a2njggqa2jcc64i4vibh.apps.googleusercontent.com";
 
-const compressFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            if (file.type.startsWith('image/')) {
-                const img = new window.Image();
-                img.src = event.target?.result as string;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
-                    const MAX = 1200;
-                    if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } } 
-                    else { if (height > MAX) { width *= MAX / height; height = MAX; } }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.8)); 
-                };
-                img.onerror = () => resolve(event.target?.result as string);
-            } else {
-                resolve(event.target?.result as string);
-            }
-        };
-        reader.onerror = reject;
-    });
-};
+
 
 const Settings: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -91,6 +63,7 @@ const Settings: React.FC = () => {
     const [primaryNaics, setPrimaryNaics] = useState('');
     const [marketMultiplier, setMarketMultiplier] = useState('1.0');
     const [aiPricebookEnabled, setAiPricebookEnabled] = useState(true);
+    const [virtualWorkerEnabled, setVirtualWorkerEnabled] = useState(false);
     
     // HR
     const [customPositions, setCustomPositions] = useState<string[]>([]);
@@ -201,6 +174,7 @@ const Settings: React.FC = () => {
             setPrimaryNaics(org.primaryNaics || '');
             setMarketMultiplier(org.marketMultiplier?.toString() || '1.0');
             setAiPricebookEnabled(org.aiPricebookEnabled !== false);
+            setVirtualWorkerEnabled(org.virtualWorkerEnabled || false);
             setCustomPositions(org.customPositions || []);
             setRequiredCerts(org.requiredCertifications || []);
             setTermsAndConditions(org.termsAndConditions || '');
@@ -280,7 +254,9 @@ const Settings: React.FC = () => {
             activeUsers: activeUsers,
             isExpired: org.subscriptionExpiryDate ? new Date(org.subscriptionExpiryDate) < new Date() : false,
             isTrial: org.subscriptionStatus === 'trial',
-            isFree: org.isFreeAccess
+            isFree: org.isFreeAccess,
+            isPaused: org.subscriptionStatus === 'paused',
+            isCancelled: org.subscriptionStatus === 'cancelled' || (org.subscriptionStatus as any) === 'canceled'
         };
     }, [state.currentOrganization, state.platformSettings, state.users]);
 
@@ -310,6 +286,7 @@ const Settings: React.FC = () => {
             paypalClientId, stripePublicKey, squareApplicationId: squareAppId, squareLocationId: squareLocId,
             marketMultiplier: parseFloat(marketMultiplier) || 1.0,
             aiPricebookEnabled,
+            virtualWorkerEnabled,
             quickbooksConnected,
             settings: {
                 ...(state.currentOrganization.settings || {}),
@@ -456,7 +433,15 @@ const Settings: React.FC = () => {
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, setter: (url: string) => void) => {
         const file = e.target.files?.[0];
-        if (file) { try { const base64 = await compressFile(file); setter(base64); } catch (err) { alert("Upload error"); } }
+        if (file && state.currentOrganization) { 
+            try { 
+                const { uploadFileToStorage } = await import('lib/storageService');
+                const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'upload.jpg';
+                const path = `organizations/${state.currentOrganization.id}/branding/${Date.now()}_${safeName}`;
+                const downloadUrl = await uploadFileToStorage(path, file);
+                setter(downloadUrl); 
+            } catch (err) { alert("Upload error"); } 
+        }
     };
 
     const handleSendTestEmail = async () => {
@@ -533,6 +518,28 @@ const Settings: React.FC = () => {
         alert(`${type} code copied!`);
     };
 
+    const handleReactivate = async () => {
+        if (!state.currentOrganization) return;
+        if (await globalConfirm("Are you sure you want to reactivate your subscription?")) {
+            setIsSaving(true);
+            try {
+                await db.collection('organizations').doc(state.currentOrganization.id).update({
+                    subscriptionStatus: 'active'
+                });
+                dispatch({ 
+                    type: 'UPDATE_ORGANIZATION', 
+                    payload: { ...state.currentOrganization, subscriptionStatus: 'active' } 
+                });
+                alert("Subscription Reactivated Successfully!");
+            } catch (error) {
+                console.error(error);
+                alert("Failed to reactivate. Please contact support.");
+            } finally {
+                setIsSaving(false);
+            }
+        }
+    };
+
     return (
         <div className="space-y-6 pb-24">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -545,7 +552,7 @@ const Settings: React.FC = () => {
                 </Button>
             </header>
 
-            <div className="flex overflow-x-auto gap-1 border-b border-gray-200 dark:border-gray-700 pb-1 mb-6 scrollbar-hide">
+            <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 mb-6">
                 {[
                     { id: 'profile', label: 'Identity', icon: Building },
                     { id: 'social', label: 'Social & Reviews', icon: Globe },
@@ -567,13 +574,13 @@ const Settings: React.FC = () => {
             <div className="animate-fade-in">
                 {activeTab === 'profile' && <ProfileTab {...{ orgName, setOrgName, email, setEmail, phone, setPhone, website, setWebsite, notificationEmails, setNotificationEmails, industry, setIndustry, supportedTrades, handleTradeToggle, allIndustries: ALL_INDUSTRIES }} />}
                 {activeTab === 'social' && <SocialTab {...{ socialLinks, setSocialLinks, reviewLinks, setReviewLinks }} />}
-                {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled }} />}
+                {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled }} />}
                 {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
                 {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths }} />}
                 {activeTab === 'integrations' && <IntegrationsTab {...{ paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, webhookSecretKey, setWebhookSecretKey, orgId: state.currentOrganization?.id || '' }} />}
                 {activeTab === 'accounting' && <AccountingTab {...{ quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks }} />}
                 {activeTab === 'branding' && <BrandingTab {...{ brandingColor, setBrandingColor, financingLink, setFinancingLink, logoUrl, setLogoUrl, publicLogoUrl, setPublicLogoUrl, letterheadUrl, setLetterheadUrl, footerImageUrl, setFooterImageUrl, bannerUrl, setBannerUrl, handleFileUpload, publicProfileEnabled, setPublicProfileEnabled, publicDescription, setPublicDescription, publicCredentials, setPublicCredentials, publicServices, setPublicServices }} />}
-                {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling }} />}
+                {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling, handleReactivate }} />}
                 {activeTab === 'data' && <DataTab {...{ handleExportData, handleDetectDuplicates, handleCleanupRecords, handleFlushCache, handleImportFile: () => {}, handleDownloadTemplate }} />}
             </div>
 

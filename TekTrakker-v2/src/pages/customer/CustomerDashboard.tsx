@@ -12,7 +12,7 @@ import {
     DollarSign, SettingsIcon, LogOut, HelpCircle, TrashIcon, Link as LinkIcon, 
     Search, Printer, Shield
 } from '@constants';
-import { db } from 'lib/firebase';
+import { db, auth } from 'lib/firebase';
 import type { Customer, MembershipPlan, ServiceAgreement, Job, Proposal, User as AppUser, Organization, BusinessDocument } from 'types';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import SignaturePad, { SignaturePadHandle } from 'components/ui/SignaturePad';
@@ -34,35 +34,8 @@ import PhotosDocumentsSection from './components/PhotosDocumentsSection';
 import WarrantySection from './components/WarrantySection';
 import JobDetailModal from 'components/modals/JobDetailModal';
 import type { StoredFile } from 'types';
+import { uploadFileToStorage } from 'lib/storageService';
 
-const compressFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            if (file.type.startsWith('image/')) {
-                const img = new Image();
-                img.src = event.target?.result as string;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    let width = img.width;
-                    let height = img.height;
-                    const MAX = 500;
-                    if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } }
-                    else { if (height > MAX) { width *= MAX / height; height = MAX; } }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.6));
-                };
-            } else {
-                resolve(event.target?.result as string);
-            }
-        };
-        reader.onerror = reject;
-    });
-};
 
 const CustomerDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -78,6 +51,7 @@ const CustomerDashboard: React.FC = () => {
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [isCancelPlanModalOpen, setIsCancelPlanModalOpen] = useState(false);
     const [isPlanSelectionModalOpen, setIsPlanSelectionModalOpen] = useState(false);
     const [isSigningProposal, setIsSigningProposal] = useState(false);
 
@@ -282,7 +256,11 @@ const CustomerDashboard: React.FC = () => {
         setIsSubmitting(true);
         try {
             let photoUrl = activeCustomerRecord.profilePhotoUrl;
-            if (uploadProfilePic) photoUrl = await compressFile(uploadProfilePic);
+            if (uploadProfilePic) {
+                const safeName = uploadProfilePic.name ? uploadProfilePic.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'profile.jpg';
+                const path = `organizations/${activeOrg?.id || 'unknown'}/customers/${activeCustomerRecord.id}/profile_${Date.now()}_${safeName}`;
+                photoUrl = await uploadFileToStorage(path, uploadProfilePic);
+            }
             const updatedData = { ...profileData, profilePhotoUrl: photoUrl || null };
             await db.collection('customers').doc(activeCustomerRecord.id).update(updatedData);
             setActiveCustomerRecord({ ...activeCustomerRecord, ...updatedData } as Customer);
@@ -484,6 +462,42 @@ const CustomerDashboard: React.FC = () => {
         }
     };
 
+    const handleDeleteAccount = async () => {
+        setIsSubmitting(true);
+        try {
+            if (activeCustomerRecord) {
+                await db.collection('customers').doc(activeCustomerRecord.id).update({ isDeleted: true });
+            }
+            if (auth.currentUser) {
+                await auth.currentUser.delete();
+            }
+        } catch (error: any) {
+            console.error("Account Deletion Error:", error);
+            if (error.code === 'auth/requires-recent-login') {
+                alert("For security purposes, please log out and log back in to authenticate before deleting your account.");
+            } else {
+                alert("Failed to delete account. Please contact support.");
+            }
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleCancelPlan = async () => {
+        if (!membership) return;
+        setIsSubmitting(true);
+        try {
+            // Unset auto-billing visually and cancel the plan agreement
+            await db.collection('serviceAgreements').doc(membership.id).update({ status: 'Cancelled' });
+            setIsCancelPlanModalOpen(false);
+            alert("Your membership has been successfully cancelled. You will not be billed again.");
+        } catch (e) {
+            console.error("Cancel plan error:", e);
+            alert("Failed to cancel membership plan. Please try again or contact support.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     if (!currentUser || !activeCustomerRecord) {
         if (hasTimedOut) {
             return (
@@ -597,8 +611,8 @@ const CustomerDashboard: React.FC = () => {
               <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
                   <div className="flex items-center gap-3">
                       <div className="relative">
-                          {activeCustomerRecord.profilePhotoUrl ? <img src={activeCustomerRecord.profilePhotoUrl} className="w-16 h-16 rounded-full object-cover" /> : <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center"><UserIcon size={32}/></div>}
-                          <button onClick={handleOpenProfile} className="absolute bottom-0 right-0 p-1.5 bg-primary-600 text-white rounded-full"><SettingsIcon size={12} /></button>
+                          {activeCustomerRecord.profilePhotoUrl ? <img src={activeCustomerRecord.profilePhotoUrl} className="w-16 h-16 rounded-full object-cover" alt="Profile avatar" title="Profile avatar" /> : <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center" aria-label="Default avatar"><UserIcon size={32}/></div>}
+                          <button onClick={handleOpenProfile} className="absolute bottom-0 right-0 p-1.5 bg-primary-600 text-white rounded-full" title="Settings" aria-label="Settings"><SettingsIcon size={12} /></button>
                       </div>
                       <div>
                           <h1 className="text-3xl font-black text-slate-900 dark:text-white">Welcome, {activeCustomerRecord.firstName || activeCustomerRecord.name.split(' ')[0]}</h1>
@@ -607,7 +621,7 @@ const CustomerDashboard: React.FC = () => {
                   </div>
                   <div className="flex flex-col items-end gap-3">
                        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-                           <select value={activeOrg?.id} onChange={(e) => handleSwitchProvider(e.target.value)} className="bg-white dark:bg-slate-700 rounded text-sm font-bold py-1 px-3">
+                           <select value={activeOrg?.id} onChange={(e) => handleSwitchProvider(e.target.value)} className="bg-white dark:bg-slate-700 rounded text-sm font-bold py-1 px-3" title="Switch organization">
                                {linkedProfiles.map(p => <option key={p.org.id} value={p.org.id}>{p.org.name}</option>)}
                            </select>
                            <button onClick={() => navigate('/marketplace')} className="text-[10px] font-black uppercase text-primary-600 px-2">Link New</button>
@@ -623,7 +637,7 @@ const CustomerDashboard: React.FC = () => {
             <div className="max-w-7xl mx-auto w-full px-6 mt-8 space-y-8">
                 {assignedTech && activeJob && (activeJob.jobStatus === 'Scheduled' || activeJob.jobStatus === 'In Progress') && (
                     <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border-2 border-primary-500 shadow-xl flex items-center gap-6">
-                        <div className="w-24 h-24 rounded-2xl overflow-hidden">{assignedTech.profilePicUrl ? <img src={assignedTech.profilePicUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-100 flex items-center justify-center"><UserIcon size={32}/></div>}</div>
+                        <div className="w-24 h-24 rounded-2xl overflow-hidden">{assignedTech.profilePicUrl ? <img src={assignedTech.profilePicUrl} className="w-full h-full object-cover" alt="Technician profile" /> : <div className="w-full h-full bg-slate-100 flex items-center justify-center"><UserIcon size={32}/></div>}</div>
                         <div>
                             <h3 className="text-2xl font-black">{assignedTech.firstName} {assignedTech.lastName}</h3>
                             <p className="text-sm font-bold uppercase text-slate-500">{assignedTech.role} • Verified</p>
@@ -660,6 +674,7 @@ const CustomerDashboard: React.FC = () => {
                             membership={membership}
                             estimatedSavings={estimatedSavings}
                             onViewPlans={() => setIsPlanSelectionModalOpen(true)}
+                            onCancelPlan={() => setIsCancelPlanModalOpen(true)}
                             completedJobs={myJobs.filter(j => j.jobStatus === 'Completed')}
                             monthlyPrice={membership?.price}
                         />
@@ -727,9 +742,9 @@ const CustomerDashboard: React.FC = () => {
                     <div className="flex items-center gap-6 mb-6">
                         <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-200 bg-slate-100 flex items-center justify-center relative group">
                             {uploadProfilePic ? (
-                                <img src={URL.createObjectURL(uploadProfilePic)} className="w-full h-full object-cover" />
+                                <img src={URL.createObjectURL(uploadProfilePic)} className="w-full h-full object-cover" alt="Profile Upload Preview" title="Profile Upload Preview" />
                             ) : activeCustomerRecord.profilePhotoUrl ? (
-                                <img src={activeCustomerRecord.profilePhotoUrl} className="w-full h-full object-cover" />
+                                <img src={activeCustomerRecord.profilePhotoUrl} className="w-full h-full object-cover" alt="Profile" title="Profile View" />
                             ) : <UserIcon size={40} className="text-slate-400"/>}
                             <label className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity text-white text-xs font-bold">
                                 Change <input type="file" className="hidden" accept="image/*" onChange={e => setUploadProfilePic(e.target.files?.[0] || null)} />
@@ -752,13 +767,43 @@ const CustomerDashboard: React.FC = () => {
                         </div>
                     </div>
                      <div className="flex justify-between items-center pt-4 border-t">
-                        <button type="button" onClick={() => setIsDeleteModalOpen(true)} className="text-red-500 text-xs hover:underline flex items-center gap-1"><LogOut size={12}/> Delete Account</button>
+                        <button type="button" onClick={() => { setIsProfileModalOpen(false); setIsDeleteModalOpen(true); }} className="text-red-500 text-xs font-bold hover:underline py-2 flex items-center gap-1"><LogOut size={12}/> Delete Account</button>
                         <div className="flex gap-2">
                              <Button variant="secondary" onClick={() => setIsProfileModalOpen(false)}>Cancel</Button>
                              <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Profile'}</Button>
                         </div>
                     </div>
                 </form>
+            </Modal>
+
+            <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Delete Account Data">
+                <div className="space-y-6">
+                    <div className="bg-red-50 p-4 rounded-xl border border-red-200 flex flex-col gap-3">
+                        <div className="flex items-center gap-2 text-red-600 font-black">
+                            <AlertTriangle size={24} />
+                            Warning: Irreversible Action
+                        </div>
+                        <p className="text-sm text-red-800">
+                            Selecting this option will permanently delete all of your personal data, profile information, and access credentials from the TekTrakker platform databases. This action cannot be undone. Open tickets will be closed implicitly.
+                        </p>
+                    </div>
+                    <div className="flex gap-3">
+                        <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)} className="flex-1">Keep Account</Button>
+                        <Button onClick={handleDeleteAccount} disabled={isSubmitting} className="flex-1 bg-red-600 hover:bg-red-700">{isSubmitting ? 'Deleting...' : 'Permanently Delete'}</Button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal isOpen={isCancelPlanModalOpen} onClose={() => setIsCancelPlanModalOpen(false)} title="Cancel Subscription">
+                <div className="space-y-6">
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Are you sure you wish to cancel your monthly membership? You will immediately lose access to priority booking, discounts, and any remaining prepaid visits.
+                    </p>
+                    <div className="flex gap-3">
+                        <Button variant="secondary" onClick={() => setIsCancelPlanModalOpen(false)} className="flex-1">Nevermind</Button>
+                        <Button onClick={handleCancelPlan} disabled={isSubmitting} className="flex-1 bg-red-600 hover:bg-red-700 text-white">{isSubmitting ? 'Processing...' : 'Confirm Cancellation'}</Button>
+                    </div>
+                </div>
             </Modal>
             <Modal isOpen={isWarrantyModalOpen} onClose={() => setIsWarrantyModalOpen(false)} title="Warranty Disclaimer Agreement" size="lg">
                 <div className="space-y-6">

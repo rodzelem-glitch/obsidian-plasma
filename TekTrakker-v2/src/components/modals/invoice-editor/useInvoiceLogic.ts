@@ -97,8 +97,8 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         setLineItems(prevItems => prevItems.map(item => {
             let shouldApply = false;
             if (scope === 'All') shouldApply = true;
-            else if (scope === 'Labor' && item.type === 'Labor') shouldApply = true;
-            else if (scope === 'Part' && item.type === 'Part') shouldApply = true;
+            else if (scope === 'Labor' && (item.type === 'Labor' || item.type === 'Part/Labor')) shouldApply = true;
+            else if (scope === 'Part' && (item.type === 'Part' || item.type === 'Part/Labor')) shouldApply = true;
             if (shouldApply) {
                 const discountedPrice = item.unitPrice * (1 - (discountPct / 100));
                 return { ...item, unitPrice: parseFloat(discountedPrice.toFixed(2)), total: parseFloat((item.quantity * discountedPrice).toFixed(2)) };

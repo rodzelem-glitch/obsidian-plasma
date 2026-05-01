@@ -36,7 +36,7 @@ const SolarTools: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
 
     const activeJobs = useMemo(() => 
-        state.jobs.filter(j => j.jobStatus === 'In Progress' && j.assignedTechnicianId === state.currentUser?.id),
+        state.jobs.filter(j => j.jobStatus !== 'Completed' &&  j.assignedTechnicianId === state.currentUser?.id),
         [state.jobs, state.currentUser]
     );
 
@@ -218,3 +218,4 @@ const SolarTools: React.FC = () => {
 };
 
 export default SolarTools;
+

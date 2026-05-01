@@ -102,10 +102,13 @@ const IndustryToolsHub: React.FC = () => {
     const [selectedJobId, setSelectedJobId] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
-    const activeJobs = useMemo(() => 
-        state.jobs.filter(j => j.jobStatus === 'In Progress' && j.assignedTechnicianId === state.currentUser?.id),
-        [state.jobs, state.currentUser]
-    );
+    const activeJobs = useMemo(() => {
+        const isAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both';
+        return state.jobs.filter(j => 
+            j.jobStatus !== 'Completed' && 
+            (isAdmin || j.assignedTechnicianId === state.currentUser?.id)
+        );
+    }, [state.jobs, state.currentUser]);
 
     const results = useMemo(() => {
         // Refrigerant Calculations
@@ -136,7 +139,7 @@ const IndustryToolsHub: React.FC = () => {
             const functions = getFunctions();
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             const prompt = `Senior VRF Tech Support: ${vrfBrand} VRF, Error ${vrfError}. Identify issue and 3-5 tech steps. JSON: { "issue": "...", "steps": ["..."] }`;
-            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3-pro-preview', config: { response_mime_type: "application/json" } });
+            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.1-pro-preview', config: { response_mime_type: "application/json" } });
             const cleanJson = (result.data.text || '{}').replace(/```json/g, '').replace(/```/g, '').trim();
             setVrfAnalysis(JSON.parse(cleanJson));
         } catch (e) {
@@ -359,3 +362,4 @@ const IndustryToolsHub: React.FC = () => {
 };
 
 export default IndustryToolsHub;
+

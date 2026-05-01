@@ -61,15 +61,37 @@ const Inventory: React.FC = () => {
         return Array.from(locs);
     }, [state.vehicles]);
 
+    const [sortBy, setSortBy] = useState('date_desc');
+
     const filteredInventory = useMemo(() => {
-        return state.inventory.filter(item => {
+        let items = state.inventory.filter(item => {
             const matchesSearch = (item.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                                   (item.sku || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                                   (item.barcode || '').toLowerCase().includes(searchTerm.toLowerCase());
             const matchesLoc = filterLocation === 'All' || item.location === filterLocation;
             return matchesSearch && matchesLoc;
         });
-    }, [state.inventory, searchTerm, filterLocation]);
+
+        items.sort((a, b) => {
+            switch (sortBy) {
+                case 'name_asc':
+                    return (a.name || '').localeCompare(b.name || '');
+                case 'sku_asc':
+                    return (a.sku || '').localeCompare(b.sku || '');
+                case 'qty_asc':
+                    return (a.quantity || 0) - (b.quantity || 0);
+                case 'qty_desc':
+                    return (b.quantity || 0) - (a.quantity || 0);
+                case 'date_asc':
+                    return new Date(a.lastUpdated || 0).getTime() - new Date(b.lastUpdated || 0).getTime();
+                case 'date_desc':
+                default:
+                    return new Date(b.lastUpdated || 0).getTime() - new Date(a.lastUpdated || 0).getTime();
+            }
+        });
+
+        return items;
+    }, [state.inventory, searchTerm, filterLocation, sortBy]);
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -196,17 +218,29 @@ const Inventory: React.FC = () => {
                 <RefrigerantLog />
             ) : (
                 <div className="space-y-4">
-                    <div className="flex gap-4 mb-4">
+                    <div className="flex flex-col md:flex-row gap-4 mb-4">
                         <div className="flex-1">
-                    <Input label="" placeholder="Search Parts, SKU, or Barcode..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                </div>
-                <div className="w-64">
-                    <Select label="" value={filterLocation} onChange={e => setFilterLocation(e.target.value)}>
-                        <option value="All">All Locations</option>
-                        {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                    </Select>
-                </div>
-            </div>
+                            <Input label="" placeholder="Search Parts, SKU, or Barcode..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                        </div>
+                        <div className="flex gap-4">
+                            <div className="w-48">
+                                <Select label="" value={filterLocation} onChange={e => setFilterLocation(e.target.value)}>
+                                    <option value="All">All Locations</option>
+                                    {locations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                                </Select>
+                            </div>
+                            <div className="w-48">
+                                <Select label="" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                                    <option value="date_desc">Newest First</option>
+                                    <option value="date_asc">Oldest First</option>
+                                    <option value="name_asc">Name (A-Z)</option>
+                                    <option value="sku_asc">SKU (A-Z)</option>
+                                    <option value="qty_asc">Qty (Low-High)</option>
+                                    <option value="qty_desc">Qty (High-Low)</option>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
 
             <Card>
                 <Table headers={['Item Name', 'SKU', 'Location', 'Qty', 'Cost', 'Retail', 'Action']}>

@@ -124,6 +124,7 @@ const MasterBilling: React.FC = () => {
     const [additionalUsers, setAdditionalUsers] = useState(0);
     const [customCharge, setCustomCharge] = useState(0);
     const [isFreeAccess, setIsFreeAccess] = useState(false);
+    const [unlockAllFeatures, setUnlockAllFeatures] = useState(false);
     const [customDiscountPct, setCustomDiscountPct] = useState(0);
     const [notes, setNotes] = useState('');
 
@@ -131,9 +132,15 @@ const MasterBilling: React.FC = () => {
     const getUserFee = () => config.excessUserFee || 25;
 
     const stats = useMemo(() => {
-        const active = orgs.filter(o => o.subscriptionStatus === 'active');
-        const trial = orgs.filter(o => o.subscriptionStatus === 'trial');
-        const expired = orgs.filter(o => o.subscriptionExpiryDate && new Date(o.subscriptionExpiryDate) < new Date());
+        // Filter out test/demo organizations from financial metrics
+        const validOrgs = orgs.filter(o => {
+            const orgName = (o.name || '').toLowerCase();
+            return !(orgName.includes('test') || orgName.includes('demo') || (o as any).isDemo);
+        });
+
+        const active = validOrgs.filter(o => o.subscriptionStatus === 'active');
+        const trial = validOrgs.filter(o => o.subscriptionStatus === 'trial');
+        const expired = validOrgs.filter(o => o.subscriptionExpiryDate && new Date(o.subscriptionExpiryDate) < new Date());
         const mrr = active.reduce((sum, o) => {
             if (o.isFreeAccess) return sum;
             const base = getBasePrice(o.plan || 'starter');
@@ -159,6 +166,7 @@ const MasterBilling: React.FC = () => {
         setAdditionalUsers(org.additionalUserSlots || 0);
         setCustomCharge(0);
         setIsFreeAccess(org.isFreeAccess || false);
+        setUnlockAllFeatures(org.unlockAllFeatures || false);
         setCustomDiscountPct(org.customDiscountPct || 0);
         setNotes('');
         setIsManageModalOpen(true);
@@ -193,10 +201,10 @@ const MasterBilling: React.FC = () => {
         const invoiceData: any = {
             id: jobId,
             organizationId: 'platform',
-            customerName: selectedOrg.name,
+            customerName: selectedOrg.name || 'Unknown',
             customerId: selectedOrg.id,
-            customerEmail: selectedOrg.email,
-            address: selectedOrg.address,
+            customerEmail: selectedOrg.email || '',
+            address: selectedOrg.address || null,
             tasks: ['Platform Subscription Upgrade'],
             jobStatus: 'Completed',
             appointmentTime: new Date().toISOString(),
@@ -217,10 +225,13 @@ const MasterBilling: React.FC = () => {
 
         try {
             await db.collection('jobs').doc(jobId).set(invoiceData);
-            await db.collection('organizations').doc(selectedOrg.id).update({ plan: upgradePlan, isFreeAccess: isFreeAccess, customDiscountPct: customDiscountPct, additionalUserSlots: additionalUsers });
+            await db.collection('organizations').doc(selectedOrg.id).update({ plan: upgradePlan, isFreeAccess: isFreeAccess, unlockAllFeatures: unlockAllFeatures, customDiscountPct: customDiscountPct, additionalUserSlots: additionalUsers });
             alert(`Upgrade processed. Total: ${formatCurrency(finalTotal)}`);
             setIsManageModalOpen(false);
-        } catch (e) { alert("Failed to generate upgrade invoice."); }
+        } catch (e) {
+            console.error("Upgrade error:", e);
+            alert("Failed to generate upgrade invoice.");
+        }
         finally { setIsSubmitting(false); }
     };
 
@@ -387,7 +398,67 @@ const MasterBilling: React.FC = () => {
                                             <Input label="Monthly ($)" type="number" value={config.plans[pKey].monthly} onChange={e => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], monthly: parseFloat(e.target.value)}}})} />
                                             <Input label="Annual ($)" type="number" value={config.plans[pKey].annual} onChange={e => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], annual: parseFloat(e.target.value)}}})} />
                                         </div>
-                                        <Input label="Max Users" type="number" value={config.plans[pKey].maxUsers} onChange={e => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], maxUsers: parseInt(e.target.value)}}})} />
+                                        <div className="flex gap-4 items-center">
+                                            <div className="flex-1">
+                                                <Input label="Max Users" type="number" disabled={!!config.plans[pKey].unlimitedUsers} value={config.plans[pKey].unlimitedUsers ? 999999 : config.plans[pKey].maxUsers} onChange={e => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], maxUsers: parseInt(e.target.value)}}})} />
+                                            </div>
+                                            <div className="pt-6">
+                                                <Toggle label="Unlimited Users" enabled={!!config.plans[pKey].unlimitedUsers} onChange={v => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], unlimitedUsers: v}}})} />
+                                            </div>
+                                        </div>
+                                        <div className="pt-3 border-t dark:border-slate-800">
+                                            <label className="text-sm font-medium mb-1 block">Ribbon Promotion Text</label>
+                                            <div className="flex gap-4 items-center">
+                                                <Toggle label="Enable Ribbon" enabled={!!config.plans[pKey].ribbonText} onChange={v => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], ribbonText: v ? 'Launch Special' : ''}}})} />
+                                                <div className="flex-1">
+                                                    {!!config.plans[pKey].ribbonText && <Input placeholder="e.g. Launch Special" value={config.plans[pKey].ribbonText || ''} onChange={e => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], ribbonText: e.target.value}}})} />}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="pt-3 border-t dark:border-slate-800">
+                                            <label className="text-sm font-medium mb-3 block">Features Included</label>
+                                            <div className="grid grid-cols-2 gap-3 mb-4">
+                                                {[
+                                                    { id: 'publicBooking', name: 'Online Booking' }, { id: 'proposals', name: 'Interactive Proposals' },
+                                                    { id: 'timeTracking', name: 'Time & Mileage Tracking' }, { id: 'inventory', name: 'Fleet & Inventory' },
+                                                    { id: 'salesCrm', name: 'Sales Pipeline (CRM)' }, { id: 'hrDocuments', name: 'HR & Documents' },
+                                                    { id: 'careerPage', name: 'Recruiting Portal' }, { id: 'ai', name: 'AI Features' },
+                                                    { id: 'quickbooks', name: 'QuickBooks Sync' }, { id: 'subcontractors', name: 'Subcontractors' },
+                                                    { id: '1099', name: 'Tax 1099 Generation' }, { id: 'api', name: 'API & Webhooks' },
+                                                    { id: 'branding', name: 'Custom Branding' }
+                                                ].map(ft => {
+                                                    const isEnabled = (config.plans[pKey].features || []).includes(ft.id);
+                                                    return (
+                                                        <label key={ft.id} className="flex items-center gap-2 cursor-pointer hover:bg-slate-800/30 p-1 rounded transition-colors">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={isEnabled}
+                                                                onChange={(e) => {
+                                                                    const current = config.plans[pKey].features || [];
+                                                                    const next = e.target.checked ? [...current, ft.id] : current.filter(x => x !== ft.id);
+                                                                    setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], features: next}}});
+                                                                }}
+                                                                className="rounded bg-slate-700 border-slate-600 text-sky-500 focus:ring-sky-500"
+                                                                title={`Enable ${ft.name}`}
+                                                            />
+                                                            <span className="text-xs font-semibold">{ft.name}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                            
+                                            {(config.plans[pKey].features || []).includes('ai') && (
+                                                <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800/50">
+                                                    <Input 
+                                                        label="AI Tokens Allowed / Month" 
+                                                        type="number" 
+                                                        value={config.plans[pKey].aiTokensPerMonth || 0} 
+                                                        onChange={e => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], aiTokensPerMonth: parseInt(e.target.value) || 0}}})} 
+                                                    />
+                                                    <p className="text-[10px] text-slate-500 mt-1">Leave at 0 for unlimited, or define a specific cap (e.g. 50000).</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div className="space-y-4 pt-4 border-t dark:border-slate-800">
@@ -426,8 +497,11 @@ const MasterBilling: React.FC = () => {
                             </Select>
                             <Input label="Additional User Slots" type="number" value={additionalUsers} onChange={e => setAdditionalUsers(parseInt(e.target.value) || 0)} />
                         </div>
-                        <div className="p-5 bg-blue-50 dark:bg-blue-900/10 rounded-2xl border flex flex-col md:flex-row gap-6 items-center">
-                            <Toggle label="Free Platform Access" enabled={isFreeAccess} onChange={setIsFreeAccess} />
+                        <div className="p-5 bg-blue-50 dark:bg-blue-900/10 rounded-2xl border flex flex-col md:flex-row gap-6 items-start md:items-center">
+                            <div className="flex flex-col gap-4">
+                                <Toggle label="Free Platform Access" enabled={isFreeAccess} onChange={setIsFreeAccess} />
+                                <Toggle label="Unlock ALL Features" enabled={unlockAllFeatures} onChange={setUnlockAllFeatures} />
+                            </div>
                             <div className="flex-1 w-full">
                                 <Input label="Special Discount (%)" type="number" value={customDiscountPct} onChange={e => setCustomDiscountPct(parseFloat(e.target.value) || 0)} />
                             </div>

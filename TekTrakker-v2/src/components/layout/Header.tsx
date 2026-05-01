@@ -184,7 +184,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
   const canSeeAdmin = user.role === 'both' || user.role === 'supervisor' || user.role === 'admin' || user.role === 'master_admin';
 
   return (
-    <header className="bg-white dark:bg-gray-800 shadow-md fixed top-0 w-full z-[100] border-b border-gray-200 dark:border-gray-700 transition-colors">
+    <header className="bg-white dark:bg-gray-800 shadow-md fixed top-0 w-full z-[100] border-b border-gray-200 dark:border-gray-700 transition-colors pt-safe">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-4">

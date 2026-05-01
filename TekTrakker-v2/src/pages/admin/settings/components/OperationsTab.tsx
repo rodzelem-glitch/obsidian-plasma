@@ -36,6 +36,8 @@ interface OperationsTabProps {
     setMarketMultiplier: (val: string) => void;
     aiPricebookEnabled: boolean;
     setAiPricebookEnabled: (val: boolean) => void;
+    virtualWorkerEnabled: boolean;
+    setVirtualWorkerEnabled: (val: boolean) => void;
 }
 
 const OperationsTab: React.FC<OperationsTabProps> = ({
@@ -52,7 +54,8 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
     handleAddItem, handleRemoveItem,
     requiredCerts, newCert, setNewCert,
     marketMultiplier, setMarketMultiplier,
-    aiPricebookEnabled, setAiPricebookEnabled
+    aiPricebookEnabled, setAiPricebookEnabled,
+    virtualWorkerEnabled, setVirtualWorkerEnabled
 }) => {
     return (
         <div className="space-y-6">
@@ -77,6 +80,11 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
                             label="AI Pricebook Generation" 
                             enabled={aiPricebookEnabled} 
                             onChange={setAiPricebookEnabled} 
+                        />
+                        <Toggle 
+                            label="Premium AI Virtual Worker (Coming Soon)" 
+                            enabled={false} 
+                            onChange={() => {}} 
                         />
                     </div>
                 </div>

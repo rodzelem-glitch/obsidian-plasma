@@ -60,6 +60,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
     const [leadSource, setLeadSource] = useState('Call-In');
     const [selectedProjectId, setSelectedProjectId] = useState(''); 
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isHighPriority, setIsHighPriority] = useState(false);
 
     // Requirements
     const [selectedWaivers, setSelectedWaivers] = useState<string[]>([]);
@@ -127,6 +128,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
             tasks: [finalJobType],
             customerId: selectedCustomer.id,
             jobStatus: 'Scheduled',
+            priority: isHighPriority ? 'High' : 'Normal',
             appointmentTime: appointmentTime,
             assignedTechnicianId: assignMode === 'internal' ? (technicianId || null) : null,
             assignedTechnicianName: assignMode === 'internal' ? (tech ? `${tech.firstName} ${tech.lastName}` : 'Unassigned') : (partner ? `Partner: ${partner.name}` : null),
@@ -159,9 +161,31 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
         try {
             await db.collection('jobs').doc(newJobData.id).set(newJobData);
             dispatch({ type: 'ADD_JOB', payload: newJobData });
+
+            if (assignMode === 'internal' && technicianId) {
+                try {
+                    const { sendNotification } = await import('../../lib/notificationService');
+                    if (isHighPriority) {
+                        await sendNotification(technicianId, {
+                            title: "🚨 EMERGENCY: High Priority Job",
+                            body: `You have an urgent dispatch for ${selectedCustomer.name}. Please check your route immediately.`,
+                            type: 'urgent_job'
+                        });
+                    } else {
+                        await sendNotification(technicianId, {
+                            title: "New Job Dispatched",
+                            body: `You have been dispatched to ${selectedCustomer.name}.`,
+                            type: 'job_assignment'
+                        });
+                    }
+                } catch (notifError) {
+                    console.error("Failed to send notification:", notifError);
+                }
+            }
+
             onClose();
         } catch (error: any) { 
-            alert("Booking failed: " + (error.message || "Unknown error")); 
+            alert("Dispatch failed: " + (error.message || "Unknown error")); 
         } finally {
             setIsSubmitting(false); 
         }
@@ -209,6 +233,8 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         setLeadSource={setLeadSource}
                         notes={notes}
                         setNotes={setNotes}
+                        isHighPriority={isHighPriority}
+                        setIsHighPriority={setIsHighPriority}
                         waiverTemplates={state.documents.filter(d => d.type === 'Waiver Template')}
                         checklistTemplates={state.inspectionTemplates || []}
                         selectedWaivers={selectedWaivers}
@@ -222,7 +248,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                     <div className="flex justify-end gap-3 pt-4">
                         <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
                         <Button type="submit" disabled={isSubmitting || !selectedCustomer}>
-                            {isSubmitting ? 'Booking...' : 'Book Appointment'}
+                            {isSubmitting ? 'Dispatching...' : 'Dispatch!'}
                         </Button>
                     </div>
                 </form>

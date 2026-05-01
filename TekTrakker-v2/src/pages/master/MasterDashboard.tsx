@@ -10,10 +10,12 @@ const MasterDashboard: React.FC = () => {
     const { state } = useAppContext();
     const [excludeTest, setExcludeTest] = useState(false);
     
-    // Filter Orgs for Metrics based on toggle
+    // Filter Orgs for Metrics
     const filteredOrgs = useMemo(() => {
         return state.allOrganizations.filter(org => {
-            if (excludeTest && org.name.toLowerCase().includes('test')) return false;
+            const orgName = (org.name || '').toLowerCase();
+            if (orgName.includes('test') || orgName.includes('demo') || (org as any).isDemo) return false;
+            if (excludeTest && orgName.includes('sandbox')) return false; // kept excludeTest as an option for sandbox
             return true;
         });
     }, [state.allOrganizations, excludeTest]);

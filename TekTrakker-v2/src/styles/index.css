@@ -10,6 +10,24 @@
 html, body {
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
+    background-color: #f8fafc; /* bg-slate-50 equivalent */
+}
+
+/* Ensure dark mode overscroll doesn't flash white either */
+html.dark, html.dark body {
+    background-color: #0f172a; /* bg-slate-900 equivalent */
+}
+
+.safe-area-wrapper {
+  /* Removed global padding-top to allow fixed headers to bleed into the notch natively */
+}
+
+.pt-safe {
+  padding-top: var(--sat, env(safe-area-inset-top, 0px));
+}
+
+.pb-safe {
+  padding-bottom: var(--sab, env(safe-area-inset-bottom, 0px));
 }
 
 /* Custom scrollbar for admin panels */

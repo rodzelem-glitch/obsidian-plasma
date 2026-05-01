@@ -30,6 +30,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                         <tr key={customer.id} onClick={() => onSelectCustomer(customer.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                 {customer.name}
+                                {(customer as any).isNew && <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold dark:bg-blue-900 dark:text-blue-200">New Lead</span>}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                 {customer.phone || customer.email}

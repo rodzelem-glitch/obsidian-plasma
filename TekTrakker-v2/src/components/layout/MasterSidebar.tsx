@@ -1,8 +1,9 @@
 
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Moon, Sun } from 'lucide-react';
 import type { User } from '../../types';
+import { useAppContext } from '../../context/AppContext';
 
 interface MasterSidebarProps {
   user: User;
@@ -14,19 +15,40 @@ interface MasterSidebarProps {
 const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = false, onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { state, dispatch } = useAppContext();
 
-  const navItems = [
-    { path: '/master/dashboard', label: 'Overview', icon: LayoutDashboard },
-    { path: '/master/analytics', label: 'Platform Analytics', icon: BarChart2 },
-    { path: '/master/ai-usage', label: 'AI Usage Metrics', icon: BrainCircuit },
-    { path: '/master/organizations', label: 'Organizations', icon: Building2 },
-    { path: '/master/members', label: 'Global Members', icon: ShieldCheck },
-    { path: '/master/users', label: 'Global Users', icon: Users },
-    { path: '/master/messages', label: 'Messages', icon: MessageSquare },
-    { path: '/master/customers', label: 'Global Customers', icon: UserCheck },
-    { path: '/master/compliance', label: 'Compliance Registry', icon: FileText },
-    { path: '/master/billing', label: 'Platform Billing', icon: CreditCard },
-    { path: '/master/sales-team', label: 'Sales Force', icon: Briefcase },
+  const toggleTheme = () => {
+      dispatch({ type: 'TOGGLE_THEME' });
+  };
+
+  const navGroups = [
+    {
+      group: 'Core Admin',
+      items: [
+        { path: '/master/dashboard', label: 'Overview', icon: LayoutDashboard },
+        { path: '/master/analytics', label: 'Platform Analytics', icon: BarChart2 },
+        { path: '/master/ai-usage', label: 'AI Usage Metrics', icon: BrainCircuit },
+        { path: '/master/storage-usage', label: 'Storage Metrics', icon: Database },
+      ]
+    },
+    {
+      group: 'Tenant Management',
+      items: [
+        { path: '/master/organizations', label: 'Organizations', icon: Building2 },
+        { path: '/master/billing', label: 'Platform Billing', icon: CreditCard },
+        { path: '/master/members', label: 'Global Members', icon: ShieldCheck },
+        { path: '/master/compliance', label: 'Compliance Registry', icon: FileText },
+      ]
+    },
+    {
+      group: 'People & Communication',
+      items: [
+        { path: '/master/users', label: 'Global Users', icon: Users },
+        { path: '/master/customers', label: 'Global Customers', icon: UserCheck },
+        { path: '/master/sales-team', label: 'Sales Force', icon: Briefcase },
+        { path: '/master/messages', label: 'Messages', icon: MessageSquare },
+      ]
+    }
   ];
 
   return (
@@ -35,30 +57,37 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
         <div className="fixed inset-0 z-20 bg-black bg-opacity-50 sm:hidden transition-opacity" onClick={onClose}></div>
       )}
 
-      <aside className={`fixed sm:static inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white border-r border-slate-800 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'} flex flex-col h-full`}>
-        <div className="flex items-center justify-center h-16 border-b border-slate-800 bg-slate-900 px-4">
-            <span className="text-xl font-bold text-sky-400 truncate w-full text-center">Master Admin</span>
+      <aside className={`fixed sm:static inset-y-0 left-0 z-30 w-64 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'} flex flex-col h-full`}>
+        <div className="flex items-center justify-center h-16 border-b border-slate-200 dark:border-slate-700 px-4 pt-safe">
+            <span className="text-xl font-bold text-primary-600 dark:text-primary-400 truncate w-full text-center">Master Admin</span>
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1 custom-scrollbar">
-            {navItems.map((item) => (
-                <Link
-                    key={item.path}
-                    to={item.path}
-                    onClick={onClose}
-                    className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors group ${
-                        location.pathname.startsWith(item.path)
-                            ? 'bg-sky-600 text-white'
-                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }`}
-                >
-                    <item.icon className={`mr-3 h-5 w-5 flex-shrink-0 ${location.pathname.startsWith(item.path) ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
-                    {item.label}
-                </Link>
+            {navGroups.map((group, gIdx) => (
+                <div key={gIdx} className="mb-6">
+                    <h3 className="px-4 mb-2 text-xs font-bold text-slate-400 uppercase tracking-widest">{group.group}</h3>
+                    <div className="space-y-1">
+                        {group.items.map((item) => (
+                            <Link
+                                key={item.path}
+                                to={item.path}
+                                onClick={onClose}
+                                className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors group ${
+                                    location.pathname.startsWith(item.path)
+                                        ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400'
+                                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white'
+                                }`}
+                            >
+                                <item.icon className={`mr-3 h-5 w-5 flex-shrink-0 ${location.pathname.startsWith(item.path) ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`} />
+                                {item.label}
+                            </Link>
+                        ))}
+                    </div>
+                </div>
             ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-800 bg-slate-900 space-y-3">
+        <div className="p-4 pb-[calc(1rem+var(--sab,env(safe-area-inset-bottom,0px)))] border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 space-y-3">
             <button
                 onClick={() => navigate('/sales/dashboard')}
                 className="w-full flex items-center justify-center px-4 py-2 border border-purple-500 text-purple-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-purple-900/30 focus:outline-none transition-colors"
@@ -66,25 +95,29 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
                 Switch to Sales View
             </button>
 
-            <button
-                onClick={() => navigate('/briefing')}
-                className="w-full flex items-center justify-center px-4 py-2 border border-sky-500 text-sky-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-sky-900/30 focus:outline-none transition-colors"
-            >
-                Switch to Tech View
-            </button>
+
 
             <div className="flex items-center">
-                <div className="h-8 w-8 rounded-full bg-sky-900 flex items-center justify-center text-sky-300 font-bold shrink-0">
+                <div className="h-8 w-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-700 dark:text-primary-300 font-bold shrink-0">
                     {user.firstName ? user.firstName[0] : 'U'}
                 </div>
                 <div className="ml-3 overflow-hidden">
-                    <p className="text-sm font-medium text-white truncate">{user.firstName} {user.lastName}</p>
-                    <p className="text-xs text-slate-400">Platform Owner</p>
+                    <p className="text-sm font-medium text-slate-700 dark:text-white truncate">{user.firstName} {user.lastName}</p>
+                    <p className="text-xs text-slate-500 truncate">Platform Owner</p>
                 </div>
             </div>
-            <button onClick={onLogout} className="w-full flex items-center justify-center px-4 py-2 border border-slate-700 rounded-md shadow-sm text-sm font-medium text-slate-300 hover:bg-slate-800 focus:outline-none transition-colors">
-                Log Out
-            </button>
+            <div className="flex gap-2">
+                <button
+                    onClick={toggleTheme}
+                    className="flex-1 flex items-center justify-center px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none transition-colors"
+                    title="Toggle Theme"
+                >
+                    {state.theme === 'dark' ? <Sun size={18} className="mr-2"/> : <Moon size={18} className="mr-2"/>} Theme
+                </button>
+                <button onClick={onLogout} className="flex-1 flex items-center justify-center px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 focus:outline-none transition-colors">
+                    Log Out
+                </button>
+            </div>
         </div>
       </aside>
     </>

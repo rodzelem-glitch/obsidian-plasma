@@ -8,6 +8,11 @@ export interface EmployeeDocument {
   label: string;
   dataUrl: string; 
   createdAt?: string;
+  fileType?: string;
+  isVisibleToEmployee?: boolean;
+  uploadedBy?: string;
+  tags?: string[];
+  description?: string;
 }
 
 export interface User {

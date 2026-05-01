@@ -28,6 +28,7 @@ export interface Organization {
     marketMultiplier?: number;
     ueid?: string | null;
     cageCode?: string | null;
+    hrFileCategories?: string[];
     primaryNaics?: string | null;
     licenseNumber?: string | null;
     letterheadDataUrl?: string | null;
@@ -36,9 +37,13 @@ export interface Organization {
     termsAndConditions?: string | null;
     membershipTerms?: string | null;
     footerImage?: string | null;
-    subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled';
+    subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled' | 'paused';
     subscriptionExpiryDate?: string | null;
     plan?: 'starter' | 'growth' | 'enterprise';
+    cancellationReason?: string;
+    cancellationFeedback?: string;
+    canceledAt?: string;
+    retentionOfferApplied?: string;
     createdAt?: string;
     paymentMethodAttached?: boolean;
     notificationEmails?: string[];
@@ -98,9 +103,11 @@ export interface Organization {
     invoiceTerms?: string;
     additionalUserSlots?: number;
     isFreeAccess?: boolean;
+    unlockAllFeatures?: boolean;
     customDiscountPct?: number;
     quickbooksConnected?: boolean;
     aiPricebookEnabled?: boolean;
+    virtualWorkerEnabled?: boolean;
     salesRepId?: string;
     settings?: any; 
     isVerified?: boolean; 
@@ -136,6 +143,11 @@ export interface EmployeeDocument {
   label: string;
   dataUrl: string; 
   createdAt?: string;
+  fileType?: string;
+  isVisibleToEmployee?: boolean;
+  uploadedBy?: string;
+  tags?: string[];
+  description?: string;
 }
 
 export interface User {
@@ -341,7 +353,7 @@ export interface InvoiceLineItem {
     quantity: number;
     unitPrice: number;
     total: number;
-    type: 'Labor' | 'Part' | 'Fee' | 'Discount' | 'Service'; 
+    type: 'Labor' | 'Part' | 'Part/Labor' | 'Fee' | 'Discount' | 'Service'; 
     taxable?: boolean;
     name?: string; 
 }
@@ -516,6 +528,8 @@ export interface Vehicle {
     vin: string;
     barcode: string;
     assignedUserId: string;
+    maintenanceInterval?: number;
+    lastServiceMileage?: number;
 }
 
 export interface VehicleLog {
@@ -631,12 +645,25 @@ export interface IncidentReport {
 }
 
 // --- Platform & Master ---
+export interface PlatformSettingsPlan {
+    monthly: number;
+    annual: number;
+    maxUsers: number;
+    unlimitedUsers?: boolean;
+    paypalMonthlyId?: string;
+    paypalAnnualId?: string;
+    ribbonText?: string;
+    features?: string[];
+    aiTokensPerMonth?: number;
+}
+
 export interface PlatformSettings {
     id: string;
     plans: {
-        starter: { monthly: number; annual: number; maxUsers: number; paypalMonthlyId?: string; paypalAnnualId?: string };
-        growth: { monthly: number; annual: number; maxUsers: number; paypalMonthlyId?: string; paypalAnnualId?: string };
-        enterprise: { monthly: number; annual: number; maxUsers: number; paypalMonthlyId?: string; paypalAnnualId?: string };
+        starter: PlatformSettingsPlan;
+        growth: PlatformSettingsPlan;
+        enterprise: PlatformSettingsPlan;
+        [key: string]: PlatformSettingsPlan;
     };
     excessUserFee: number;
     updatedAt: string;
@@ -718,10 +745,12 @@ export interface Message {
     receiverId: string;
     content: string;
     timestamp: string;
+    createdAt?: string;
     read: boolean;
     type: 'text' | 'sms' | 'email' | 'customer-log' | 'alert';
     deliveryStatus?: 'queued' | 'sent' | 'failed';
     deliveryError?: string;
+    isEdited?: boolean;
 }
 
 export interface BusinessDocument {

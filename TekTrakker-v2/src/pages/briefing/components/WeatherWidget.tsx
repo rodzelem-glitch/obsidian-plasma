@@ -25,7 +25,7 @@ const getWeatherIcon = (condition: string) => {
 
 const WeatherWidget: React.FC = () => {
     const { state } = useAppContext();
-    const [weather, setWeather] = useState<{temp: number, condition: string, high: number, low: number, lat?: number, lng?: number} | null>(null);
+    const [weather, setWeather] = useState<{temp: number, condition: string, high: number, low: number, lat?: number, lng?: number, city?: string} | null>(null);
     
     useEffect(() => {
         const fetchWeather = async () => {
@@ -48,22 +48,46 @@ const WeatherWidget: React.FC = () => {
                 const lat = coords.lat;
                 const lng = coords.lng;
 
-                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto`);
-                const data = await res.json();
+                let weatherData: any = null;
                 
-                if (data.current_weather && data.daily && data.daily.temperature_2m_max && data.daily.temperature_2m_max.length > 0) {
+                try {
+                    // Try with auto timezone first
+                    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto`).catch(() => null);
+                    if (!res || !res.ok) throw new Error('Primary weather API failed');
+                    weatherData = await res.json();
+                } catch (e) {
+                    try {
+                        // Fallback without auto-timezone which sometimes causes 502s in specific regions
+                        const fallbackRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit`).catch(() => null);
+                        if (!fallbackRes || !fallbackRes.ok) throw new Error('Fallback weather API failed');
+                        weatherData = await fallbackRes.json();
+                    } catch (err) {
+                        // If all APIs fail (CORS/502), fail silently and use defaults
+                        throw new Error('All weather endpoints failed');
+                    }
+                }
+                
+                let city = 'Local Weather';
+                try {
+                    const geoRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+                    const geoData = await geoRes.json();
+                    city = geoData.city || geoData.locality || 'Local Weather';
+                } catch (e) {}
+                
+                if (weatherData && weatherData.current_weather && weatherData.daily && weatherData.daily.temperature_2m_max && weatherData.daily.temperature_2m_max.length > 0) {
                     setWeather({
-                        temp: Math.round(data.current_weather.temperature),
-                        condition: getWeatherCondition(data.current_weather.weathercode),
-                        high: Math.round(data.daily.temperature_2m_max[0]),
-                        low: Math.round(data.daily.temperature_2m_min[0]),
-                        lat, lng
+                        temp: Math.round(weatherData.current_weather.temperature),
+                        condition: getWeatherCondition(weatherData.current_weather.weathercode),
+                        high: Math.round(weatherData.daily.temperature_2m_max[0]),
+                        low: Math.round(weatherData.daily.temperature_2m_min[0]),
+                        lat, lng, city
                     });
                 } else {
-                     setWeather({ temp: 72, condition: 'Clear', high: 80, low: 65, lat, lng });
+                     setWeather({ temp: 72, condition: 'Clear', high: 80, low: 65, lat, lng, city });
                 }
             } catch (error) {
-                setWeather({ temp: 82, condition: 'Sunny', high: 95, low: 75 });
+                // Failsafe default if the network totally blocks the request
+                setWeather({ temp: 72, condition: 'Sunny', high: 82, low: 65 });
             }
         };
         fetchWeather();
@@ -80,6 +104,10 @@ const WeatherWidget: React.FC = () => {
         >
             <div className="flex justify-between items-center px-2">
                 <div>
+                    <div className="text-[10px] text-blue-200 uppercase tracking-widest font-black mb-1 opacity-80 flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        {weather.city || 'Local Area'}
+                    </div>
                     <div className="text-4xl font-bold">{weather.temp}°</div>
                     <div className="font-medium text-blue-100 text-lg">{weather.condition}</div>
                     <div className="text-xs text-blue-200 mt-1 font-mono">H: {weather.high}°  L: {weather.low}°</div>

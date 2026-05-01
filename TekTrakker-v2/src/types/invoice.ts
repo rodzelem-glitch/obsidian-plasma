@@ -6,7 +6,7 @@ export interface InvoiceLineItem {
     quantity: number;
     unitPrice: number;
     total: number;
-    type: 'Labor' | 'Part' | 'Fee' | 'Discount';
+    type: 'Labor' | 'Part' | 'Part/Labor' | 'Fee' | 'Discount';
     taxable?: boolean;
 }
 

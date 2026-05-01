@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Button from 'components/ui/Button';
 import CustomerMasterModal from 'components/modals/CustomerMasterModal';
@@ -11,10 +12,19 @@ import CustomerCard from './customers/components/CustomerCard';
 
 const CustomerManagement: React.FC = () => {
     const { state } = useAppContext();
+    const [searchParams] = useSearchParams();
     
     const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+
+    useEffect(() => {
+        const custId = searchParams.get('custId');
+        if (custId) {
+            setSelectedCustomerId(custId);
+        }
+    }, [searchParams]);
     const [isCreating, setIsCreating] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortBy, setSortBy] = useState('date_desc');
     const [page, setPage] = useState(1);
     const itemsPerPage = 20;
 
@@ -23,7 +33,19 @@ const CustomerManagement: React.FC = () => {
         (c.phone || '').includes(searchTerm) ||
         (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (c.address && c.address.toLowerCase().includes(searchTerm.toLowerCase()))
-    ).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    ).sort((a, b) => {
+        switch (sortBy) {
+            case 'name_asc':
+                return (a.name || '').localeCompare(b.name || '');
+            case 'name_desc':
+                return (b.name || '').localeCompare(a.name || '');
+            case 'date_asc':
+                return new Date((a as any).createdAt || 0).getTime() - new Date((b as any).createdAt || 0).getTime();
+            case 'date_desc':
+            default:
+                return new Date((b as any).createdAt || 0).getTime() - new Date((a as any).createdAt || 0).getTime();
+        }
+    });
 
     const paginatedCustomers = filteredCustomers.slice(0, page * itemsPerPage);
     const hasMore = paginatedCustomers.length < filteredCustomers.length;
@@ -62,8 +84,22 @@ const CustomerManagement: React.FC = () => {
 
             <CustomerSearch searchTerm={searchTerm} onSearchTermChange={handleSearchTermChange} />
 
-            <div className="flex justify-between items-center mb-2 px-2">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 px-2 gap-2">
                 <span className="text-xs text-gray-500">Showing {paginatedCustomers.length} of {filteredCustomers.length} results</span>
+                <div className="flex items-center gap-2 text-sm">
+                    <label className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
+                    <select 
+                        aria-label="Sort Customers"
+                        className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                    >
+                        <option value="date_desc">Newest First</option>
+                        <option value="date_asc">Oldest First</option>
+                        <option value="name_asc">Name (A-Z)</option>
+                        <option value="name_desc">Name (Z-A)</option>
+                    </select>
+                </div>
             </div>
 
             <CustomerTable customers={paginatedCustomers} onSelectCustomer={setSelectedCustomerId} searchTerm={searchTerm} />

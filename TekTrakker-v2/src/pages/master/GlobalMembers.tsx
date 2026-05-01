@@ -29,7 +29,12 @@ const GlobalMembers: React.FC = () => {
             try {
                 const snap = await db.collection('serviceAgreements').get();
                 const agreements = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as ServiceAgreement));
-                setAllAgreements(agreements);
+                const demoOrgIds = state.allOrganizations
+                    .filter(o => {
+                        const n = (o.name || '').toLowerCase();
+                        return n.includes('test') || n.includes('demo') || (o as any).isDemo;
+                    }).map(o => o.id);
+                setAllAgreements(agreements.filter(a => !demoOrgIds.includes(a.organizationId)));
             } catch (e) {
                 console.error("Global fetch failed", e);
             } finally {

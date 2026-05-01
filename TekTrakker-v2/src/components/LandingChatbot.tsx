@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, X, MessageSquare, Loader2 } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useAppContext } from '../context/AppContext';
+import { mockTrainingData } from '../data/trainingModules';
+import ReactMarkdown from 'react-markdown';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -21,6 +23,8 @@ const LandingChatbot: React.FC = () => {
 
     const [trainingData, setTrainingData] = useState('');
 
+
+
     useEffect(() => {
         const platformFeatures = `
         # PLATFORM FEATURES
@@ -38,7 +42,12 @@ const LandingChatbot: React.FC = () => {
         # TROUBLESHOOTING & SUPPORT
         - **App Crashing / Blue Screen / Won't Load**: If a user reports that their app is stuck loading, throwing errors, or showing a blue/white screen, instruct them to 'Clear App Data and Cache' in their browser or mobile device settings. This forces the offline database (IndexedDB) to wipe corrupted data.
         `;
-        setTrainingData(platformFeatures);
+
+        const trainingHubInfo = mockTrainingData.map(t => 
+            `- **${t.title}**: ${t.description}. Give them this EXACT Markdown link to view the associated tutorial video: [Watch Tutorial](#/admin/training?module=${t.id})`
+        ).join('\n');
+
+        setTrainingData(platformFeatures + '\n\n# TRAINING HUB & VIDEO TUTORIALS (Crucial: ALWAYS recommend these links if the user asks how to do something!)\n' + trainingHubInfo);
     }, []);
 
     useEffect(() => {
@@ -121,14 +130,27 @@ const LandingChatbot: React.FC = () => {
                 <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-32px)] sm:w-96 h-[500px] max-h-[calc(100vh-80px)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border flex flex-col z-50">
                     <div className="bg-indigo-600 p-4 rounded-t-2xl flex justify-between items-center text-white">
                         <div className="flex items-center gap-2"><Bot size={20} /><span className="font-bold">TekTrakker Assistant</span></div>
-                        <button onClick={() => setIsOpen(false)}><X size={18}/></button>
+                        <button onClick={() => setIsOpen(false)} aria-label="Close message window" title="Close"><X size={18}/></button>
                     </div>
 
                     <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950">
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-900 border border-slate-100 shadow-sm dark:bg-slate-800 dark:border-slate-700 dark:text-white'}`}>
-                                    {msg.content}
+                                    {msg.role === 'assistant' ? (
+                                        <ReactMarkdown 
+                                            components={{
+                                                a: ({node, ...props}) => <a {...props} className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline" />,
+                                                ul: ({node, ...props}) => <ul {...props} className="list-disc pl-4 space-y-1 my-2" />,
+                                                ol: ({node, ...props}) => <ol {...props} className="list-decimal pl-4 space-y-1 my-2" />,
+                                                p: ({node, ...props}) => <p {...props} className="mb-2 last:mb-0" />
+                                            }}
+                                        >
+                                            {msg.content}
+                                        </ReactMarkdown>
+                                    ) : (
+                                        msg.content
+                                    )}
                                 </div>
                             </div>
                         ))}
@@ -144,7 +166,7 @@ const LandingChatbot: React.FC = () => {
                                 onChange={e => setInput(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && handleSend()}
                             />
-                            <button onClick={handleSend} disabled={!input.trim() || isThinking} className="w-10 h-10 bg-indigo-600 text-white rounded-lg flex items-center justify-center p-0 disabled:opacity-50">
+                            <button onClick={handleSend} disabled={!input.trim() || isThinking} aria-label="Send message" title="Send" className="w-10 h-10 bg-indigo-600 text-white rounded-lg flex items-center justify-center p-0 disabled:opacity-50">
                                 <Send size={18} />
                             </button>
                         </div>

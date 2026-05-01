@@ -18,18 +18,18 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     email, setEmail, password, setPassword, handleLogin, isLoading, brandColor, setView, setUserType
 }) => (
     <form onSubmit={handleLogin} className="space-y-4">
-        <InputField id="email" name="email" type="email" label="Email Address" value={email} onChange={(e: any) => setEmail(e.target.value)} required autoComplete="email" brandColor={brandColor} />
-        <InputField id="password" name="password" type="password" label="Password" value={password} onChange={(e: any) => setPassword(e.target.value)} required autoComplete="current-password" brandColor={brandColor} />
+        <InputField id="email" name="email" type="email" label="Email Address" value={email} onChange={(e: any) => setEmail(e.target.value)} required autoComplete="off" brandColor={brandColor} />
+        <InputField id="password" name="password" type="password" label="Password" value={password} onChange={(e: any) => setPassword(e.target.value)} required autoComplete="new-password" brandColor={brandColor} />
         
         <div className="flex justify-end mb-4">
             <button type="button" onClick={() => setView('forgot_password')} className="text-xs text-blue-400 hover:text-blue-300 font-bold">Forgot Password?</button>
         </div>
 
+        <style>{`.login-btn { background-color: ${brandColor}; }`}</style>
         <button 
             type="submit" 
             disabled={isLoading}
-            className="w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
-            style={{ backgroundColor: brandColor }}
+            className="w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 login-btn"
         >
             {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Sign In'}
         </button>

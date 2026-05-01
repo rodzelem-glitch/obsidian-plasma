@@ -43,8 +43,8 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
     // Items Mapping
     const items = rawItems.filter((i: any) => !isProposal || i.tier === activeTier).map((item: any) => ({
         id: item.id,
-        name: isProposal ? item.name : item.description,
-        description: isProposal ? item.description : undefined,
+        name: item.name || item.title || (isProposal ? '' : item.description),
+        description: item.name ? item.description : undefined,
         quantity: item.quantity || 1,
         unitPrice: isProposal ? item.price : item.unitPrice,
         total: item.total || ((isProposal ? item.price : item.unitPrice) * (item.quantity || 1))
@@ -196,49 +196,49 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                         <div className="header flex flex-col md:flex-row justify-between mb-8 md:mb-[60px] gap-6 md:gap-0">
                             <div className="logo-area text-center md:text-left">
                                 {org?.logoUrl ? (
-                                    <img src={org.logoUrl} alt="Company Logo" className="logo-img inline-block md:block" style={{maxHeight:'60px', maxWidth:'100%'}} />
+                                    <img src={org.logoUrl} alt="Company Logo" className="logo-img inline-block md:block" />
                                 ) : org?.letterheadDataUrl ? (
-                                    <img src={org.letterheadDataUrl} alt="Company Logo" className="logo-img inline-block md:block" style={{maxHeight:'60px', maxWidth:'100%'}} />
+                                    <img src={org.letterheadDataUrl} alt="Company Logo" className="logo-img inline-block md:block" />
                                 ) : (
-                                    <h1 className="branding-h1" style={{fontSize:'24px', fontWeight:800, color: org?.primaryColor || '#0284c7', margin:0}}>{org?.name}</h1>
+                                    <h1 className="branding-h1 text-2xl font-extrabold m-0 text-primary-600 dark:text-primary-400">{org?.name}</h1>
                                 )}
                                 {org?.licenseNumber && (
-                                    <div className="license-badge" style={{fontSize:'10px', fontWeight:800, color:'#64748b', marginTop:'8px', textTransform:'uppercase'}}>Licence # {org.licenseNumber}</div>
+                                    <div className="license-badge">Licence # {org.licenseNumber}</div>
                                 )}
                             </div>
                             <div className="doc-meta text-center md:text-right">
-                                <div className="doc-type-badge" style={{display: 'inline-block', background:'#f1f5f9', padding:'6px 16px', borderRadius:'10px', fontWeight:800, fontSize:'12px', textTransform:'uppercase', marginBottom:'10px', color:'#475569'}}>{type.toUpperCase()}</div>
-                                <div className="meta-grid" style={{display:'grid', gridTemplateColumns:'auto auto', gap:'5px 15px', fontSize:'11px', textAlign:'right', justifyContent: 'center'}}>
-                                    <span className="meta-label" style={{color:'#94a3b8'}}>ID</span>
-                                    <span className="meta-value" style={{fontWeight:800}}>#{id}</span>
-                                    <span className="meta-label" style={{color:'#94a3b8'}}>Date</span>
-                                    <span className="meta-value" style={{fontWeight:800}}>{new Date(date).toLocaleDateString()}</span>
-                                    <span className="meta-label" style={{color:'#94a3b8'}}>Status</span>
-                                    <span className="meta-value" style={{fontWeight:800, textTransform:'uppercase'}}>{status}</span>
+                                <div className="doc-type-badge">{type.toUpperCase()}</div>
+                                <div className="meta-grid">
+                                    <span className="meta-label">ID</span>
+                                    <span className="meta-value">#{id}</span>
+                                    <span className="meta-label">Date</span>
+                                    <span className="meta-value">{new Date(date).toLocaleDateString()}</span>
+                                    <span className="meta-label">Status</span>
+                                    <span className="meta-value-status">{status}</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Billing Blocks */}
                         <div className="billing-info flex flex-col md:flex-row justify-between mb-8 md:mb-[50px] gap-4 md:gap-10">
-                            <div className="info-block" style={{flex:1, background:'#f8fafc', padding:'20px', borderRadius:'20px', border:'1px solid #f1f5f9'}}>
-                                <div className="info-title" style={{fontSize:'9px', textTransform:'uppercase', fontWeight:800, letterSpacing:'2px', color:'#94a3b8', marginBottom:'8px'}}>Bill To</div>
-                                <div className="info-name" style={{fontSize:'16px', fontWeight:800, marginBottom:'4px'}}>{customerName}</div>
-                                <div className="info-text" style={{fontSize:'13px', color:'#475569'}}>{address}</div>
+                            <div className="info-block">
+                                <div className="info-title">Bill To</div>
+                                <div className="info-name">{customerName}</div>
+                                <div className="info-text">{address}</div>
                             </div>
-                            <div className="info-block" style={{flex:1, background:'#f8fafc', padding:'20px', borderRadius:'20px', border:'1px solid #f1f5f9'}}>
-                                <div className="info-title" style={{fontSize:'9px', textTransform:'uppercase', fontWeight:800, letterSpacing:'2px', color:'#94a3b8', marginBottom:'8px'}}>From</div>
-                                <div className="info-name" style={{fontSize:'16px', fontWeight:800, marginBottom:'4px'}}>{org?.name}</div>
-                                <div className="info-text" style={{fontSize:'13px', color:'#475569'}}>{org?.address?.street}</div>
-                                <div className="info-text" style={{fontSize:'13px', color:'#475569'}}>{org?.address?.city}, {org?.address?.state} {org?.address?.zip}</div>
-                                {org?.phone && <div className="info-text" style={{fontSize:'13px', color:'#475569', marginTop:'4px'}}>{org.phone}</div>}
+                            <div className="info-block">
+                                <div className="info-title">From</div>
+                                <div className="info-name">{org?.name}</div>
+                                <div className="info-text">{org?.address?.street}</div>
+                                <div className="info-text">{org?.address?.city}, {org?.address?.state} {org?.address?.zip}</div>
+                                {org?.phone && <div className="info-text-mt">{org.phone}</div>}
                             </div>
                         </div>
 
                         {/* Table or Content */}
                         {isOther ? (
                             <div className="extra-section bg-[#f8fafc] p-5 md:p-8 rounded-[20px] md:rounded-[32px] mb-10 border border-slate-100 min-h-[4in]">
-                                <div className="terms-title" style={{fontSize:'10px', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', color:'#0f172a', marginBottom:'15px'}}>{data.title || 'Document Content'}</div>
+                                <div className="terms-title">{data.title || 'Document Content'}</div>
                                 {data.htmlContent ? (
                                     <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(data.htmlContent) }} />
                                 ) : (data.url || data.dataUrl) && (
@@ -253,30 +253,30 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                                         title="Document Preview"
                                     />
                                 ) : (
-                                    <div className="terms-content" style={{fontSize:'14px', color:'#334155', textAlign:'justify', lineHeight: 1.6, whiteSpace: 'pre-wrap'}}>{data.content || data.body || 'No content available for this document.'}</div>
+                                    <div className="terms-content">{data.content || data.body || 'No content available for this document.'}</div>
                                 )}
                             </div>
                         ) : (
-                            <div className="table-area overflow-x-auto" style={{marginBottom:'30px', border:'1px solid #f1f5f9', borderRadius:'20px'}}>
-                                <table style={{width:'100%', minWidth: '600px', borderCollapse:'collapse'}}>
-                                    <thead style={{background:'#f8fafc'}}>
+                            <div className="table-area overflow-x-auto">
+                                <table className="doc-table">
+                                    <thead className="doc-thead">
                                         <tr>
-                                            <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'left'}}>Item & Services</th>
-                                            <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'center', width:'70px'}}>Qty</th>
-                                            <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'right', width:'110px'}}>Price</th>
-                                            <th style={{padding:'15px 20px', fontSize:'9px', fontWeight:800, color:'#94a3b8', textAlign:'right', width:'110px'}}>Total</th>
+                                            <th className="doc-th-item">Item & Services</th>
+                                            <th className="doc-th-qty">Qty</th>
+                                            <th className="doc-th-price">Price</th>
+                                            <th className="doc-th-price text-right w-[110px]">Total</th>
                                         </tr>
                                     </thead>
-                                    <tbody style={{background:'white'}}>
+                                    <tbody className="doc-tbody">
                                         {items.map((item, idx) => (
-                                            <tr key={idx} style={{borderBottom:'1px solid #f1f5f9'}}>
-                                                <td style={{padding:'15px 20px'}}>
-                                                    <div className="item-name" style={{fontWeight:800, fontSize:'14px', color:'#0f172a', marginBottom:'2px'}}>{item.name}</div>
-                                                    {item.description && <div className="item-desc" style={{fontSize:'11px', color:'#64748b'}}>{item.description}</div>}
+                                            <tr key={idx} className="doc-tr">
+                                                <td className="doc-td-item">
+                                                    <div className="item-name">{item.name}</div>
+                                                    {item.description && <div className="item-desc">{item.description}</div>}
                                                 </td>
-                                                <td style={{padding:'15px 20px', textAlign:'center', fontWeight:700, color:'#64748b', fontSize: '13px'}}>{item.quantity}</td>
-                                                <td style={{padding:'15px 20px', textAlign:'right', fontWeight:700, fontSize: '13px'}}>${Number(item.unitPrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                                                <td style={{padding:'15px 20px', textAlign:'right', fontWeight:800, color:'#0f172a', fontSize: '13px'}}>${Number(item.total).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                <td className="doc-td-qty">{item.quantity}</td>
+                                                <td className="doc-td-price">${Number(item.unitPrice).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                <td className="doc-td-total">${Number(item.total).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -288,25 +288,25 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                         {!isOther && (
                             <div className="summary-grid flex justify-end mb-10 md:mb-[60px]">
                                 <div className="summary-box w-full md:w-[320px]">
-                                    <div className="summary-row flex justify-between py-2 border-b border-dashed border-slate-200" style={{fontSize:'13px'}}>
-                                        <span className="summary-label" style={{color:'#64748b', fontWeight:700}}>Subtotal</span>
-                                        <span style={{fontWeight:800}}>${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                    <div className="summary-row flex justify-between py-2 border-b border-dashed border-slate-200 text-[13px]">
+                                        <span className="summary-label text-slate-500 font-bold">Subtotal</span>
+                                        <span className="font-extrabold">${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                                     </div>
-                                    <div className="summary-row flex justify-between py-2 border-b border-dashed border-slate-200" style={{fontSize:'13px'}}>
-                                        <span className="summary-label" style={{color:'#64748b', fontWeight:700}}>Estimated Tax</span>
-                                        <span style={{fontWeight:800}}>${tax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                    <div className="summary-row flex justify-between py-2 border-b border-dashed border-slate-200 text-[13px]">
+                                        <span className="summary-label text-slate-500 font-bold">Estimated Tax</span>
+                                        <span className="font-extrabold">${tax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                                     </div>
-                                    <div className="summary-row grand-total flex justify-between pt-4 mt-2" style={{fontSize:'22px', fontWeight:800, color:'#0f172a'}}>
-                                        <span style={{color: org?.primaryColor || '#0284c7'}}>Total</span>
-                                        <span style={{letterSpacing:'-1px'}}>${total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                    <div className="summary-row grand-total flex justify-between pt-4 mt-2 text-[22px] font-extrabold text-slate-900">
+                                        <span className="text-primary-600 dark:text-primary-400">Total</span>
+                                        <span className="tracking-tighter">${total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                                     </div>
                                     
                                     {org?.financingLink && (
-                                        <div style={{marginTop:'25px', textAlign:'center'}}>
-                                            <a href={org.financingLink} target="_blank" rel="noopener noreferrer" style={{display:'flex', alignItems:'center', justifyContent:'center', gap:'8px', background:'#0284c7', color:'white', padding:'12px', borderRadius:'10px', textDecoration:'none', fontWeight:800, fontSize:'12px', textTransform:'uppercase', letterSpacing:'1px', boxShadow:'0 10px 15px -3px rgba(2, 132, 199, 0.2)'}}>
+                                        <div className="mt-[25px] text-center">
+                                            <a href={org.financingLink} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 bg-sky-600 text-white p-3 rounded-xl no-underline font-extrabold text-xs uppercase tracking-widest shadow-[0_10px_15px_-3px_rgba(2,132,199,0.2)]">
                                                 <CreditCard size={16}/> Financing Available
                                             </a>
-                                            <p style={{fontSize:'9px', color:'#94a3b8', marginTop:'8px', fontWeight:600}}>Click to view financing options.</p>
+                                            <p className="text-[9px] text-slate-400 mt-2 font-semibold">Click to view financing options.</p>
                                         </div>
                                     )}
                                 </div>
@@ -315,8 +315,8 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
 
                         {org?.termsAndConditions && !isOther && (
                             <div className="extra-section bg-[#f8fafc] p-5 md:p-8 rounded-[20px] md:rounded-[32px] mb-10">
-                                <div className="terms-title" style={{fontSize:'10px', fontWeight:800, letterSpacing:'2px', textTransform:'uppercase', color:'#0f172a', marginBottom:'10px'}}>Terms & Conditions</div>
-                                <div className="terms-content" style={{fontSize:'11px', color:'#64748b', textAlign:'justify', lineHeight: 1.6}}>{org.termsAndConditions}</div>
+                                <div className="terms-title text-[10px] font-extrabold tracking-widest uppercase text-slate-900 mb-2.5">Terms & Conditions</div>
+                                <div className="terms-content text-[11px] text-slate-500 text-justify leading-relaxed">{org.termsAndConditions}</div>
                             </div>
                         )}
 
@@ -324,36 +324,36 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                             <div className="text-center md:text-left">
                                 {signature ? (
                                     <div>
-                                        <img src={signature} alt="Client Signature" className="sig-img mx-auto md:ml-0" style={{maxHeight:'80px', marginBottom:'-15px'}} />
-                                        <div className="sig-placeholder" style={{width:'260px', borderTop:'2px solid #0f172a', paddingTop:'10px'}}>
-                                            <div className="sig-label" style={{fontSize:'9px', fontWeight:800, textTransform:'uppercase', color:'#94a3b8'}}>Authorized Client Signature</div>
+                                        <img src={signature} alt="Client Signature" className="sig-img mx-auto md:ml-0 max-h-[80px] -mb-[15px]" />
+                                        <div className="sig-placeholder w-[260px] border-t-2 border-slate-900 pt-2.5">
+                                            <div className="sig-label text-[9px] font-extrabold uppercase text-slate-400">Authorized Client Signature</div>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="sig-placeholder" style={{width:'260px', borderTop:'2px solid #0f172a', paddingTop:'10px', height:'35px'}}>
-                                        <div className="sig-label" style={{fontSize:'9px', fontWeight:800, textTransform:'uppercase', color:'#94a3b8'}}>Authorized Client Signature</div>
+                                    <div className="sig-placeholder w-[260px] border-t-2 border-slate-900 pt-2.5 h-[35px]">
+                                        <div className="sig-label text-[9px] font-extrabold uppercase text-slate-400">Authorized Client Signature</div>
                                     </div>
                                 )}
                             </div>
                         </div>
 
                         {org?.complianceFooter && (
-                             <div className="legal-footer" style={{fontSize:'8px', color:'#94a3b8', marginTop:'40px', textAlign:'center'}}>
+                             <div className="legal-footer text-[8px] text-slate-400 mt-10 text-center">
                                  {org.complianceFooter}
                              </div>
                         )}
 
                         {org?.footerImage && (
                             <div className="footer-image-container flex justify-center mt-12 pt-8 border-t border-[#f1f5f9]">
-                                <img src={org.footerImage} alt="Company Footer" style={{maxWidth:'100%', height:'auto', borderRadius:'10px'}} />
+                                <img src={org.footerImage} alt="Company Footer" className="max-w-full h-auto rounded-xl" />
                             </div>
                         )}
 
-                        <div className="footer mt-10 pt-8 border-t border-[#f1f5f9] text-center text-[#94a3b8]" style={{fontSize:'10px'}}>
+                        <div className="footer mt-10 pt-8 border-t border-[#f1f5f9] text-center text-[#94a3b8] text-[10px]">
                             <div className="footer-branding font-extrabold text-[#64748b] mb-1">{org?.name.toUpperCase()} PLATFORM</div>
-                            <p style={{margin:0}}>Generated by TekTrakker on {new Date().toLocaleString()}</p>
+                            <p className="m-0">Generated by TekTrakker on {new Date().toLocaleString()}</p>
                             <div className="flex justify-center items-center gap-1.5 mt-4 opacity-50 grayscale hover:grayscale-0 hover:opacity-100 transition-all">
-                                <img src={`${window.location.origin}/tektrakker-icon.png`} width="14" /> 
+                                <img src={`${window.location.origin}/tektrakker-icon.png`} alt="TekTrakker Logo" width="14" /> 
                                 <span>Powered by TekTrakker</span>
                             </div>
                         </div>

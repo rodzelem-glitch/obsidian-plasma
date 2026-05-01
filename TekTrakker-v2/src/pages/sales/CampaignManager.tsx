@@ -109,7 +109,7 @@ const CampaignManager: React.FC = () => {
 
             const result: any = await callGeminiAI({ 
                 prompt,
-                modelName: 'gemini-3-pro-preview'
+                modelName: 'gemini-3.1-pro-preview'
             });
 
             setNewCampaign(prev => ({ ...prev, content: result.data.text }));
@@ -197,7 +197,7 @@ const CampaignManager: React.FC = () => {
                                                 <button onClick={() => toggleCampaignStatus(camp)} className="p-1.5 bg-slate-100 rounded hover:bg-slate-200">
                                                     {camp.status === 'active' ? <Pause size={14}/> : <Play size={14}/>}
                                                 </button>
-                                                <button className="p-1.5 bg-slate-100 rounded hover:text-red-600" onClick={async () => { if(await globalConfirm("Delete?")) await db.collection('sales_campaigns').doc(camp.id).delete(); }}><Trash2 size={14}/></button>
+                                                <button title="Delete Campaign" className="p-1.5 bg-slate-100 rounded hover:text-red-600" onClick={async () => { if(await globalConfirm("Delete?")) await db.collection('sales_campaigns').doc(camp.id).delete(); }}><Trash2 size={14}/></button>
                                             </div>
                                         </td>
                                     </tr>

@@ -17,6 +17,7 @@ const GlobalUsers: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('All');
+    const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
     
     // Management State
     const [editingUser, setEditingUser] = useState<AppUser | null>(null);
@@ -27,7 +28,7 @@ const GlobalUsers: React.FC = () => {
     const orgs = state.allOrganizations || [];
 
     const filteredUsers = useMemo(() => {
-        return users.filter(u => {
+        let result = users.filter(u => {
             if (!u) return false;
             const hasName = (u.firstName && u.firstName.trim().length > 0) || (u.lastName && u.lastName.trim().length > 0);
             const hasEmail = u.email && u.email.trim().length > 0;
@@ -44,7 +45,23 @@ const GlobalUsers: React.FC = () => {
             
             return matchesSearch && matchesRole;
         }).sort((a, b) => (a.lastName || '').localeCompare(b.lastName || ''));
-    }, [users, searchTerm, roleFilter]);
+        
+        if (showDuplicatesOnly) {
+           const emailCounts = result.reduce((acc, u) => {
+              const e = (u.email || '').toLowerCase().trim();
+              if (e) acc[e] = (acc[e] || 0) + 1;
+              return acc;
+           }, {} as Record<string, number>);
+           result = result.filter(u => {
+              const e = (u.email || '').toLowerCase().trim();
+              return e && emailCounts[e] > 1;
+           });
+           
+           return result.sort((a, b) => (a.email || '').localeCompare(b.email || ''));
+        }
+        
+        return result;
+    }, [users, searchTerm, roleFilter, showDuplicatesOnly]);
 
     const getOrgName = (orgId: string) => {
         if (!orgId) return 'Unknown';
@@ -173,7 +190,16 @@ const GlobalUsers: React.FC = () => {
                             onChange={e => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-2 flex-wrap items-center">
+                        <Button 
+                            variant={showDuplicatesOnly ? "primary" : "secondary"} 
+                            onClick={() => setShowDuplicatesOnly(!showDuplicatesOnly)}
+                            className="flex items-center gap-2 whitespace-nowrap !rounded-lg !py-2.5 !text-xs !px-4"
+                        >
+                            <AlertTriangle size={14} />
+                            {showDuplicatesOnly ? 'Show All Users' : 'Find Duplicates'}
+                        </Button>
+                        <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 hidden lg:block"></div>
                         {['All', 'admin', 'employee', 'supervisor', 'customer', 'platform_sales', 'master_admin'].map(role => (
                             <button
                                 key={role}

@@ -374,12 +374,12 @@ const SalesLeads: React.FC = () => {
     };
 
     return (
-        <div className="flex h-[calc(100vh-100px)] gap-6 overflow-hidden">
+        <div className="flex flex-col md:flex-row h-[calc(100vh-100px)] gap-6 overflow-hidden">
             {/* LEFT PANEL */}
-            <Card className="w-1/3 flex flex-col p-0 overflow-hidden border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-default shadow-md">
+            <Card className="w-full md:w-1/3 h-1/3 md:h-full flex flex-col p-0 overflow-hidden border-b md:border-b-0 border-r-0 md:border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-default shadow-md shrink-0">
                 <div className="p-4 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
                     <h3 className="font-bold text-sm uppercase text-slate-500">My Leads</h3>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
                         <button onClick={() => { setEditingLead({ additionalContacts: [] }); setIsEditLeadOpen(true); }} className="text-primary-600 hover:bg-white p-1 rounded transition-colors" title="Add Lead"><Plus size={18}/></button>
                     </div>
                 </div>
@@ -405,7 +405,7 @@ const SalesLeads: React.FC = () => {
                 {selectedLead ? (
                     <>
                         {/* HEADER */}
-                        <div className="p-6 bg-white dark:bg-slate-900 border-b dark:border-slate-800 shadow-sm flex justify-between items-start">
+                        <div className="p-4 md:p-6 bg-white dark:bg-slate-900 border-b dark:border-slate-800 shadow-sm flex flex-col xl:flex-row justify-between items-start gap-4">
                             <div>
                                 <h2 className="text-2xl font-black text-slate-900 dark:text-white">{selectedLead.companyName}</h2>
                                 <div className="flex items-center gap-4 mt-2 text-sm text-slate-600 dark:text-slate-400">
@@ -414,8 +414,8 @@ const SalesLeads: React.FC = () => {
                                     {selectedLead.phone && <span className="flex items-center gap-1"><Phone size={14}/> {selectedLead.phone}</span>}
                                 </div>
                             </div>
-                            <div className="flex flex-col items-end gap-2">
-                                <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full xl:w-auto mt-2 xl:mt-0">
+                                <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
                                     {selectedLead.status !== 'Closed Won' && (
                                         <Button onClick={() => { setAdditionalUsers(0); setCustomDiscount(0); setIsConvertModalOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 flex items-center gap-1">
                                             <Rocket size={14}/> Convert to Deal
@@ -424,7 +424,7 @@ const SalesLeads: React.FC = () => {
                                     <button onClick={handleDeleteLead} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete Lead">
                                         <Trash2 size={18}/>
                                     </button>
-                                    <select 
+                                    <select title="Status" aria-label="Lead Status"
                                         value={selectedLead.status}
                                         onChange={(e) => handleUpdateStatus(e.target.value)}
                                         className="px-3 py-1.5 rounded-lg border bg-slate-100 dark:bg-slate-800 text-sm font-bold border-slate-200 dark:border-slate-700 cursor-pointer"
@@ -574,7 +574,7 @@ const SalesLeads: React.FC = () => {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Select Plan</label>
-                                <select 
+                                <select title="Plan" aria-label="Conversion Plan"
                                     className="w-full p-2 border rounded"
                                     value={convertPlan}
                                     onChange={e => setConvertPlan(e.target.value as any)}
@@ -594,7 +594,7 @@ const SalesLeads: React.FC = () => {
                                         type="number"
                                         min="0"
                                         className="w-full p-2 border rounded"
-                                        value={additionalUsers}
+                                        value={additionalUsers} title="Users" aria-label="Users" placeholder="0"
                                         onChange={e => setAdditionalUsers(parseInt(e.target.value) || 0)}
                                     />
                                 </div>
@@ -608,7 +608,7 @@ const SalesLeads: React.FC = () => {
                                         min="0"
                                         max="100"
                                         className="w-full p-2 border rounded pr-8"
-                                        value={customDiscount}
+                                        value={customDiscount} title="Discount" aria-label="Discount" placeholder="0"
                                         onChange={e => setCustomDiscount(parseFloat(e.target.value) || 0)}
                                     />
                                     <Percent className="absolute right-2 top-2.5 text-gray-400" size={16}/>
@@ -653,3 +653,4 @@ const SalesLeads: React.FC = () => {
 };
 
 export default SalesLeads;
+

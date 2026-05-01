@@ -8,9 +8,10 @@ interface TimesheetTableProps {
     logs: ShiftLog[];
     handleApprove: (log: ShiftLog) => void;
     handleEditClick: (log: ShiftLog) => void;
+    handleDeleteClick: (log: ShiftLog) => void;
 }
 
-const TimesheetTable: React.FC<TimesheetTableProps> = ({ logs, handleApprove, handleEditClick }) => {
+const TimesheetTable: React.FC<TimesheetTableProps> = ({ logs, handleApprove, handleEditClick, handleDeleteClick }) => {
     const calculateDuration = (start: string, end?: string | null) => {
         if (!end) return 'Active';
         const diff = new Date(end).getTime() - new Date(start).getTime();
@@ -45,8 +46,9 @@ const TimesheetTable: React.FC<TimesheetTableProps> = ({ logs, handleApprove, ha
                     <td className="px-6 py-4">
                         {log.clockOut ? <button onClick={() => !log.isApproved && handleApprove(log)} disabled={!!log.isApproved} className={`px-3 py-1 text-xs font-bold rounded ${log.isApproved ? 'bg-gray-200 text-gray-500' : 'bg-blue-600 text-white'}`}>{log.isApproved ? 'Approved' : 'Approve'}</button> : <span className="text-xs">Active</span>}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 flex flex-col gap-2">
                         <button onClick={() => handleEditClick(log)} className="text-sm font-medium text-primary-600 hover:underline">Adjust</button>
+                        <button onClick={() => handleDeleteClick(log)} className="text-sm font-medium text-red-600 hover:underline">Delete</button>
                     </td>
                 </tr>
             ))}

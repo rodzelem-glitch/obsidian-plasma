@@ -37,7 +37,7 @@ const ManualEntry: React.FC<ManualEntryProps> = ({ activeTier, onAdd }) => {
              <h4 className="font-bold text-sm text-blue-500 uppercase tracking-wider mb-3 flex items-center gap-2">
                  <Calculator size={16}/> Manual Entry for {activeTier} Option
              </h4>
-             <div className="flex flex-col md:flex-row gap-3 items-end">
+             <div className="flex flex-col md:flex-row gap-3 items-end [&_.mb-4]:!mb-0 [&_.mb-2]:!mb-0">
                  <div className="flex-1 w-full">
                      <Input label="Item Name" value={manualItem.name} onChange={e => setManualItem({...manualItem, name: e.target.value})} placeholder="Service Description" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white" />
                  </div>
@@ -45,6 +45,7 @@ const ManualEntry: React.FC<ManualEntryProps> = ({ activeTier, onAdd }) => {
                      <Select label="Type" value={manualItem.type} onChange={e => setManualItem({...manualItem, type: e.target.value})}>
                          <option value="Part">Part</option>
                          <option value="Labor">Labor</option>
+                         <option value="Part/Labor">Part/Labor</option>
                          <option value="Fee">Fee</option>
                      </Select>
                  </div>

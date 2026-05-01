@@ -115,8 +115,10 @@ export type Action =
     | { type: 'SET_PLATFORM_SETTINGS'; payload: PlatformSettings | null }
     | { type: 'SYNC_DATA'; payload: any }
     | { type: 'SET_MESSAGES'; payload: Message[] }
+    | { type: 'MERGE_MESSAGES'; payload: Message[] }
     | { type: 'UPDATE_SHIFT_LOG'; payload: { userId: string, log: ShiftLog } }
     | { type: 'ADD_SHIFT_LOG'; payload: { userId: string, log: ShiftLog } }
+    | { type: 'SET_SHIFT_LOGS'; payload: { userId: string, logs: ShiftLog[] } }
     | { type: 'SET_VEHICLES'; payload: Vehicle[] }
     | { type: 'UPDATE_VEHICLE'; payload: any }
     | { type: 'ADD_VEHICLE'; payload: any }
@@ -291,6 +293,10 @@ export const appReducer = (state: AppState, action: Action): AppState => {
             const userLogs = state.shiftLogs[userId] || [];
             return { ...state, shiftLogs: { ...state.shiftLogs, [userId]: [...userLogs, log] } };
         }
+        case 'SET_SHIFT_LOGS': {
+            const { userId, logs } = action.payload;
+            return { ...state, shiftLogs: { ...state.shiftLogs, [userId]: logs } };
+        }
         case 'SET_VEHICLES': return { ...state, vehicles: action.payload };
         case 'UPDATE_VEHICLE': return { ...state, vehicles: state.vehicles.map(v => v.id === action.payload.id ? { ...v, ...action.payload } : v) };
         case 'ADD_VEHICLE': return { ...state, vehicles: [...state.vehicles, action.payload] };
@@ -313,6 +319,15 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'UPDATE_PART_ORDER': return { ...state, partOrders: state.partOrders.map(o => o.id === action.payload.id ? { ...o, ...action.payload } : o) };
         case 'DELETE_PART_ORDER': return { ...state, partOrders: state.partOrders.filter(o => o.id !== action.payload) };
         case 'SET_MESSAGES': return { ...state, messages: action.payload };
+        case 'MERGE_MESSAGES': {
+            const currentMsgs = [...state.messages];
+            action.payload.forEach((msg: Message) => {
+                const idx = currentMsgs.findIndex(m => m.id === msg.id);
+                if (idx > -1) currentMsgs[idx] = msg;
+                else currentMsgs.push(msg);
+            });
+            return { ...state, messages: currentMsgs.sort((a,b) => (b.createdAt || b.timestamp || '').localeCompare(a.createdAt || a.timestamp || '')) };
+        }
         case 'SET_NOTIFICATIONS': return { ...state, notifications: action.payload };
         case 'SET_APPLICANTS': return { ...state, applicants: action.payload };
         case 'UPDATE_APPLICANT': return { ...state, applicants: state.applicants.map(a => a.id === action.payload.id ? { ...a, ...action.payload } : a) };

@@ -85,7 +85,7 @@ const TemplateDesigner: React.FC = () => {
 
             const result: any = await callGeminiAI({ 
                 prompt: systemContext,
-                modelName: 'gemini-3-pro-preview'
+                modelName: 'gemini-3.1-pro-preview'
             });
 
             setEditingTemplate(prev => ({ ...prev, content: result.data.text }));
@@ -137,8 +137,8 @@ const TemplateDesigner: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex gap-2 justify-end">
-                                        <button onClick={() => { setEditingTemplate(temp); setIsModalOpen(true); setViewMode('edit'); }} className="p-1.5 hover:bg-slate-100 rounded text-gray-500"><Edit3 size={14}/></button>
-                                        <button onClick={() => handleDelete(temp.id)} className="p-1.5 hover:bg-slate-100 rounded text-red-500"><Trash2 size={14}/></button>
+                                        <button title="Edit Template" onClick={() => { setEditingTemplate(temp); setIsModalOpen(true); setViewMode('edit'); }} className="p-1.5 hover:bg-slate-100 rounded text-gray-500"><Edit3 size={14}/></button>
+                                        <button title="Delete Template" onClick={() => handleDelete(temp.id)} className="p-1.5 hover:bg-slate-100 rounded text-red-500"><Trash2 size={14}/></button>
                                     </div>
                                 </td>
                             </tr>
