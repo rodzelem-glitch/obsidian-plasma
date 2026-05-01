@@ -25,7 +25,7 @@ export const mockTrainingData: TrainingArticle[] = [
         roles: ['admin', 'master'],
         category: 'Jobs & Field',
         icon: MapPin,
-        videoUrl: '/assets/training/dispatch_guide.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/dispatch_guide.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&w=400&q=80',
         tags: ['dispatching', 'new job', 'calendar', 'scheduling'],
         content: `
@@ -54,7 +54,7 @@ Dispatching is the core of your daily operations. Follow these steps to fluidly 
         roles: ['employee', 'admin'],
         category: 'Jobs & Field',
         icon: CalendarClock,
-        videoUrl: '/assets/training/clocking_in.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/clocking_in.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?auto=format&fit=crop&w=400&q=80',
         tags: ['technician', 'timesheets', 'clock in', 'field'],
         content: `
@@ -79,7 +79,7 @@ Your mobile device is your tracking device. Here is how you maintain your timesh
         roles: ['admin', 'master', 'employee'],
         category: 'Invoicing',
         icon: FileSignature,
-        videoUrl: '/assets/training/proposal_guide.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/proposal_guide.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=400&q=80',
         tags: ['proposals', 'estimates', 'good better best', 'sales'],
         content: `
@@ -101,7 +101,7 @@ Customers love options. Use the proposal builder to give them variations.
         roles: ['master', 'admin'],
         category: 'Onboarding',
         icon: Building,
-        videoUrl: '/assets/training/org_setup.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/org_setup.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?auto=format&fit=crop&w=400&q=80',
         tags: ['onboarding', 'settings', 'organization', 'setup'],
         content: `
@@ -122,7 +122,7 @@ Make TekTrakker feel like yours from Day 1.
         roles: ['admin', 'master', 'platform_sales'],
         category: 'Admin & Settings',
         icon: Users,
-        videoUrl: '/assets/training/crm_guide.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/crm_guide.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1552581234-26160f608093?auto=format&fit=crop&w=400&q=80',
         tags: ['crm', 'customers', 'database', 'locations'],
         content: `
@@ -144,7 +144,7 @@ The CRM is the core of operations.
         roles: ['master', 'admin', 'platform_sales'],
         category: 'Invoicing',
         icon: CreditCard,
-        videoUrl: '/assets/training/invoice_payment.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/invoice_payment.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=400&q=80',
         tags: ['invoicing', 'payments', 'billing', 'financials'],
         content: `
@@ -164,7 +164,7 @@ The CRM is the core of operations.
         roles: ['master', 'admin', 'employee'],
         category: 'Onboarding',
         icon: MessageSquare,
-        videoUrl: '/assets/training/messaging_guide.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/messaging_guide.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1573164713988-8665fc963095?auto=format&fit=crop&w=400&q=80',
         tags: ['chat', 'messaging', 'communications', 'team'],
         content: `
@@ -185,7 +185,7 @@ Stop texting your techs on their personal phones.
         roles: ['master', 'admin'],
         category: 'Admin & Settings',
         icon: BarChart3,
-        videoUrl: '/assets/training/analytics_guide.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/analytics_guide.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=400&q=80',
         tags: ['analytics', 'charts', 'reporting', 'dashboard'],
         content: `
@@ -205,7 +205,7 @@ Stop texting your techs on their personal phones.
         roles: ['employee', 'admin', 'master'],
         category: 'Jobs & Field',
         icon: Wrench,
-        videoUrl: '/assets/training/tech_workflow.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/tech_workflow.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=400&q=80',
         tags: ['technician', 'workflow', 'diagnosis', 'repair', 'billing'],
         content: `
@@ -227,7 +227,7 @@ Navigate your field jobs with ease using the centralized Job Workflow Modal.
         roles: ['employee', 'admin', 'master'],
         category: 'Jobs & Field',
         icon: Brain,
-        videoUrl: '/assets/training/tech_tools.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/tech_tools.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=400&q=80',
         tags: ['tools', 'measurements', 'ai', 'assistant', 'diagnostics'],
         content: `
@@ -246,7 +246,7 @@ Navigate your field jobs with ease using the centralized Job Workflow Modal.
         roles: ['admin', 'master'],
         category: 'Admin & Settings',
         icon: Building,
-        videoUrl: '/assets/training/gov_bid.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/gov_bid.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=400&q=80',
         tags: ['government', 'bids', 'contracts', 'compliance', 'sales'],
         content: `
@@ -268,7 +268,7 @@ The Bid Optimization Tool is your central hub for federal and local contracts.
         roles: ['admin', 'master'],
         category: 'Admin & Settings',
         icon: Search,
-        videoUrl: '/assets/training/records_assets.webp',
+        videoUrl: 'https://tektrakker.com/assets/training/records_assets.webp',
         thumbnailUrl: 'https://images.unsplash.com/photo-1554774853-719586f82d77?auto=format&fit=crop&w=400&q=80',
         tags: ['records', 'assets', 'fleet', 'documents', 'inventory'],
         content: `
