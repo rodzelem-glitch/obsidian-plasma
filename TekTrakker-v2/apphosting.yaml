@@ -1,7 +1,7 @@
 # Settings for Cloud Run
 runConfig:
   cpu: 1
-  memoryMiB: 512
+  memoryMiB: 2048
 
 # Environment variables and secrets
 env:
