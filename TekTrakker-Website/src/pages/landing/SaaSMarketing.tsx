@@ -879,7 +879,7 @@ const SaaSMarketing: React.FC = () => {
                     <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} className="flex items-center cursor-pointer" onClick={() => navigate('/')}><Logo className="h-14 w-auto text-primary-600" /></div>
                     <div className="flex gap-4 items-center">
                         <button onClick={() => window.location.href = 'https://app.tektrakker.com/login'} className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap">Customer Portal / Login</button>
-                        <a href="https://app.tektrakker.com/pro/apex?fresh=true" className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer">Free Interactive Demo</a>
+                        <button onClick={() => setShowDemoOptions(true)} className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer">Free Interactive Demo</button>
                         <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=register_business'} className="bg-orange-600 hover:bg-orange-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</button>
                     </div>
                 </div>
@@ -900,7 +900,7 @@ const SaaSMarketing: React.FC = () => {
                                 { role: 'employee', icon: Wrench, label: 'View as Technician', color: 'bg-emerald-600', desc: 'Field App Flow' },
                                 { role: 'customer', icon: Users, label: 'View as Customer', color: 'bg-orange-600', desc: 'Self-Service Portal' }
                             ].map((opt) => (
-                                <button key={opt.role} onClick={() => startDemo(opt.role as 'admin' | 'employee' | 'customer')} className="p-6 rounded-3xl bg-slate-50 border border-slate-200 hover:border-primary-500 transition-all text-left group flex flex-col h-full hover:bg-slate-100 shadow-sm">
+                                <button key={opt.role} onClick={() => window.location.href = `https://app.tektrakker.com/pro/apex?role=${opt.role}&source=marketing`} className="p-6 rounded-3xl bg-slate-50 border border-slate-200 hover:border-primary-500 transition-all text-left group flex flex-col h-full hover:bg-slate-100 shadow-sm">
                                     <div className={`w-12 h-12 rounded-2xl ${opt.color} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg`}><opt.icon className="text-white" size={24} /></div>
                                     <h4 className="font-bold text-lg mb-2 text-slate-900">{opt.label}</h4>
                                     <p className="text-xs text-slate-500 leading-relaxed mb-6 flex-1">{opt.desc}</p>

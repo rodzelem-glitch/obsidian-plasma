@@ -161,7 +161,7 @@ const FAQ: React.FC = () => {
               <div className="flex gap-6 text-sm text-slate-500">
                   <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
                   <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
-                  <Link to="/login" className="hover:text-white transition-colors">Sign In</Link>
+                  <a href="https://app.tektrakker.com/login" className="hover:text-white transition-colors">Sign In</a>
               </div>
           </div>
       </footer>

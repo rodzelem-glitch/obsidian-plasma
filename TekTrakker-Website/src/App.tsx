@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import SaaSMarketing from './pages/landing/SaaSMarketing';
+import ScrollToTop from './components/common/ScrollToTop';
 
 const PropertyOwnerMarketing = lazy(() => import('./pages/landing/PropertyOwnerMarketing'));
 const VirtualWorkerMarketing = lazy(() => import('./pages/landing/VirtualWorkerMarketing'));
@@ -21,6 +22,7 @@ const LoadingFallback = () => (
 function App() {
   return (
     <Suspense fallback={<LoadingFallback />}>
+        <ScrollToTop />
         <Routes>
           <Route path="/" element={<SaaSMarketing />} />
           <Route path="/homeowners" element={<PropertyOwnerMarketing />} />

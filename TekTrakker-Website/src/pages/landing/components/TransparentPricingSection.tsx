@@ -104,9 +104,7 @@ const TransparentPricingSection = () => {
                                 <a href="https://app.tektrakker.com/login?view=register_business" className="block w-full text-center bg-white text-slate-900 font-black py-4 rounded-xl hover:bg-indigo-50 transition-colors shadow-xl cursor-pointer text-lg">
                                     Start Your Free Trial
                                 </a>
-                                <p className="text-center text-xs text-slate-500 mt-4 flex items-center justify-center gap-1 font-medium">
-                                    <Zap size={12} className="text-amber-400" /> Instant access. No credit card required.
-                                </p>
+
                             </div>
                         </div>
                     </div>

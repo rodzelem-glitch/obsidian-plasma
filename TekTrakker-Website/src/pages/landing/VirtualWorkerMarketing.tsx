@@ -16,7 +16,7 @@ const VirtualWorkerMarketing: React.FC = () => {
                         <Logo className="h-14 w-auto text-indigo-600" />
                     </div>
                     <div className="flex gap-4 items-center">
-                        <button onClick={() => navigate('/login?view=login')} className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200 text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-sm">
+                        <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=login'} className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200 text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-sm">
                             Login
                         </button>
                     </div>
@@ -37,8 +37,8 @@ const VirtualWorkerMarketing: React.FC = () => {
                         Hire the Virtual Worker Add-On. It works 24/7/365, never takes a sick day, understands your entire database instantly, and costs less than your daily coffee.
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mx-auto">
-                        <button disabled className="h-16 px-10 rounded-2xl bg-indigo-600/50 text-white/50 font-black text-lg cursor-not-allowed flex items-center justify-center gap-2">
-                            Coming Soon to TekTrakker <Clock size={20} />
+                        <button onClick={() => window.location.href = 'https://app.tektrakker.com/login'} className="h-16 px-10 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg shadow-xl hover:shadow-2xl transition-all hover:-translate-y-1 flex items-center justify-center gap-2">
+                            Enable Add-On Now <ArrowRight size={20} />
                         </button>
                         <button onClick={() => navigate('/ai-worker-commands')} className="h-16 px-10 rounded-2xl bg-white text-indigo-600 border-2 border-indigo-100 hover:border-indigo-300 hover:bg-slate-50 font-black text-lg transition-all flex items-center justify-center gap-2 shadow-sm">
                             What can I tell my agent? <ArrowRight size={20} />
@@ -172,10 +172,9 @@ const VirtualWorkerMarketing: React.FC = () => {
                             The more your business scales, the more affordable your AI backbone becomes.
                         </p>
                         <div className="flex flex-col items-center md:items-start w-full">
-                            <button disabled className="h-16 px-12 rounded-2xl bg-slate-200 text-slate-500 font-black text-xl flex items-center justify-center gap-2 cursor-not-allowed">
-                                Coming Soon to TekTrakker <Clock size={22} />
+                            <button onClick={() => window.location.href = 'https://app.tektrakker.com/login'} className="h-16 px-12 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xl shadow-xl hover:shadow-2xl transition-all hover:-translate-y-1 flex items-center justify-center gap-2">
+                                Enable Add-On Now <ArrowRight size={22} />
                             </button>
-                            <p className="mt-6 text-sm text-slate-400 font-bold uppercase tracking-widest flex items-center">Join the waitlist to receive access</p>
                         </div>
                     </div>
                     <div className="md:w-64 shrink-0 hidden md:flex items-center justify-center">

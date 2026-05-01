@@ -26,7 +26,7 @@ const PropertyOwnerMarketing: React.FC = () => {
                         </div>
                         <div className="flex items-center gap-3">
                             <button 
-                                onClick={() => navigate('/login')} 
+                                onClick={() => window.location.href = 'https://app.tektrakker.com/login'} 
                                 className="text-slate-600 font-bold hover:text-blue-600 transition-colors whitespace-nowrap"
                             >
                                 Pro Software Login
@@ -86,10 +86,10 @@ const PropertyOwnerMarketing: React.FC = () => {
                     </div>
                     
                     <div className="flex flex-col items-center">
-                        <button onClick={() => navigate('/login?view=register_customer')} className="w-full sm:w-auto px-8 md:px-12 py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl shadow-blue-500/30 hover:bg-blue-700 hover:shadow-2xl transition-all flex items-center justify-center gap-3">
+                        <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=register_customer'} className="w-full sm:w-auto px-8 md:px-12 py-5 bg-blue-600 text-white rounded-2xl font-black text-xl shadow-xl shadow-blue-500/30 hover:bg-blue-700 hover:shadow-2xl transition-all flex items-center justify-center gap-3">
                             Create Your Free Vault <ArrowRight size={24} />
                         </button>
-                        <button onClick={() => navigate('/login')} className="mt-6 font-bold text-slate-500 hover:text-blue-600 transition-colors">
+                        <button onClick={() => window.location.href = 'https://app.tektrakker.com/login'} className="mt-6 font-bold text-slate-500 hover:text-blue-600 transition-colors">
                             Already have an account? Log in
                         </button>
                     </div>
