@@ -235,7 +235,7 @@ const PartnerTestimonial = () => {
                         "TekTrakker completely transformed how we run our operations. Our techs love the field app, and the automated billing has recovered thousands of dollars in lost revenue. It's the only operating system we trust."
                     </p>
                     <div className="flex items-center justify-center gap-6">
-                        <img src="https://firebasestorage.googleapis.com/v0/b/tektrakker.firebasestorage.app/o/public_assets%2Forg-1765817997819%2Flogo_stable_1774702115808.png?alt=media&token=08c347fe-a7b0-40d9-b23f-6a2adecf63e9" alt="TekAir Inc Logo" className="h-10 md:h-14 w-auto object-contain drop-shadow-sm" />
+                        <img src="https://firebasestorage.googleapis.com/v0/b/tektrakker.firebasestorage.app/o/public_assets%2Forg-1765817997819%2Flogo_stable_1774702115808.png?alt=media&token=08c347fe-a7b0-40d9-b23f-6a2adecf63e9" alt="TekAir Inc Logo" width="200" height="56" loading="lazy" className="h-10 md:h-14 w-auto object-contain drop-shadow-sm" />
                         <div className="hidden md:block h-10 w-px bg-slate-200"></div>
                         <div className="text-left flex flex-col justify-center">
                             <span className="font-bold text-slate-900 border-b border-transparent group-hover:border-slate-400 transition-colors">Featured Partner</span>
@@ -431,6 +431,7 @@ const InteractiveFeatures = () => {
                                 scrolling="no" 
                                 marginHeight={0} 
                                 marginWidth={0} 
+                                loading="lazy"
                                 src="https://maps.google.com/maps?q=San%20Antonio&t=&z=13&ie=UTF8&iwloc=&output=embed" 
                                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none filter saturate-[1.2] opacity-80"
                             ></iframe>
@@ -941,7 +942,7 @@ const SaaSMarketing: React.FC = () => {
                 <div className="max-w-5xl mx-auto bg-slate-900 border border-slate-700 rounded-3xl p-8 md:p-12 text-left flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group hover:border-indigo-500/50 transition-colors shadow-lg shadow-indigo-500/10 mb-8">
                     <div className="absolute top-0 left-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 group-hover:bg-indigo-500/30 transition-all duration-700 pointer-events-none"></div>
                     <div className="relative z-10 w-36 h-36 md:w-48 md:h-48 shrink-0 hidden md:flex items-center justify-center">
-                        <img src="/mascot.png" alt="AI Mascot" className="w-full h-full object-contain filter drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] group-hover:scale-110 transition-transform duration-500 origin-bottom" />
+                        <img src="/mascot.webp" alt="AI Mascot" width="400" height="717" loading="lazy" className="w-full h-full object-contain filter drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] group-hover:scale-110 transition-transform duration-500 origin-bottom" />
                     </div>
                     <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/ai-worker'); }} className="flex-1 relative z-10 text-white cursor-pointer" onClick={() => navigate('/ai-worker')}>
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold uppercase tracking-widest mb-4">
@@ -953,7 +954,7 @@ const SaaSMarketing: React.FC = () => {
                         </p>
                     </div>
                     <div className="relative z-10 w-full md:w-auto shrink-0 flex flex-col items-center">
-                        <img src="/mascot.png" alt="AI Mascot" className="w-16 h-16 object-contain filter drop-shadow-[0_0_10px_rgba(99,102,241,0.5)] md:hidden mb-4" />
+                        <img src="/mascot.webp" alt="AI Mascot" width="400" height="717" loading="lazy" className="w-16 h-16 object-contain filter drop-shadow-[0_0_10px_rgba(99,102,241,0.5)] md:hidden mb-4" />
                         <button onClick={() => navigate('/ai-worker')} className="w-full md:w-auto px-8 py-4 bg-indigo-600 text-white font-black text-lg rounded-xl hover:bg-indigo-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
                             Meet Your AI Worker <ArrowRight size={20} />
                         </button>

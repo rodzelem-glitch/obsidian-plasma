@@ -97,7 +97,7 @@ const VirtualWorkerMarketing: React.FC = () => {
 
             <section className="py-24 px-6 bg-slate-100">
                 <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-center gap-8 mb-16">
-                    <img src="/mascot.png" alt="AI Mascot" className="w-40 h-40 object-contain filter drop-shadow-xl shrink-0" />
+                    <img src="/mascot.webp" alt="AI Mascot" width="400" height="717" loading="lazy" className="w-40 h-40 object-contain filter drop-shadow-xl shrink-0" />
                     <div className="text-center md:text-left">
                         <h2 className="text-4xl font-black text-slate-900 mb-4">What can your Virtual Worker do?</h2>
                         <p className="text-xl text-slate-600 max-w-xl mx-auto md:mx-0">It's like having an administrative assistant looking at your screen, ready to help within milliseconds.</p>
@@ -182,10 +182,10 @@ const VirtualWorkerMarketing: React.FC = () => {
                         </div>
                     </div>
                     <div className="md:w-64 shrink-0 hidden md:flex items-center justify-center">
-                        <img src="/mascot.png" alt="AI Mascot" className="max-h-[380px] h-full object-contain filter drop-shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:-translate-y-2 transition-transform duration-500" />
+                        <img src="/mascot.webp" alt="AI Mascot" width="400" height="717" loading="lazy" className="max-h-[380px] h-full object-contain filter drop-shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:-translate-y-2 transition-transform duration-500" />
                     </div>
                     <div className="w-full md:hidden flex justify-center mt-8">
-                        <img src="/mascot.png" alt="AI Mascot" className="h-64 object-contain filter drop-shadow-xl" />
+                        <img src="/mascot.webp" alt="AI Mascot" width="400" height="717" loading="lazy" className="h-64 object-contain filter drop-shadow-xl" />
                     </div>
                 </div>
             </section>

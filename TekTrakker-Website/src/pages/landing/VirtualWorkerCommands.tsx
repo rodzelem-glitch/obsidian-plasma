@@ -98,7 +98,7 @@ const VirtualWorkerCommands: React.FC = () => {
 
             <header className="pt-32 pb-12 px-6 text-center">
                 <div className="max-w-3xl mx-auto flex flex-col items-center">
-                    <img src="/mascot.png" alt="AI Mascot" className="w-28 h-28 object-contain filter drop-shadow-xl mb-6" />
+                    <img src="/mascot.webp" alt="AI Mascot" width="400" height="717" loading="lazy" className="w-28 h-28 object-contain filter drop-shadow-xl mb-6" />
                     <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-4 text-slate-900">
                         Agent Command Directory
                     </h1>
