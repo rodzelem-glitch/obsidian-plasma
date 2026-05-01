@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { MarketingFooter } from '../../components/layout/MarketingFooter';
 import { 
     Wrench, ArrowRight, ShieldCheck, History, FileText, 
     Search, CheckCircle, Home
@@ -97,17 +98,7 @@ const PropertyOwnerMarketing: React.FC = () => {
             </div>
 
             {/* Trust Footer */}
-            <footer className="bg-slate-950 border-t border-white/5 py-12 px-6 relative z-10 w-full">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all"><Logo className="h-8 w-auto" /></div>
-                    <div className="flex gap-8 text-sm text-slate-500 font-medium">
-                        <a href="/#/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
-                        <a href="/#/terms" className="hover:text-white transition-colors">Terms of Service</a>
-                        <a href="/#/eula" className="hover:text-white transition-colors">EULA</a>
-                    </div>
-                    <div className="text-slate-600 text-xs font-medium">&copy; 2025 TekTrakker Inc. All rights reserved.</div>
-                </div>
-            </footer>
+            <MarketingFooter />
 
             <LandingChatbot />
         </div>

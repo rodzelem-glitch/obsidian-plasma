@@ -13,6 +13,7 @@ import { Logo } from '../../components/ui/Logo';
 import { useAppContext } from '../../context/AppContext';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
+import { MarketingFooter } from '../../components/layout/MarketingFooter';
 
 const LandingChatbot = lazy(() => import('../../components/LandingChatbot'));
 import TransparentPricingSection from './components/TransparentPricingSection';
@@ -303,56 +304,6 @@ const ROICalculator = () => {
     );
 };
 
-interface SupportModalProps {
-    onClose: () => void;
-    onSubmit: (formData: { name: string; email: string; message: string }) => Promise<void>;
-}
-
-const SupportModal: React.FC<SupportModalProps> = ({ onClose, onSubmit }) => {
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
-    const [message, setMessage] = useState('');
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isSubmitted, setIsSubmitted] = useState(false);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            await onSubmit({ name, email, message });
-            setIsSubmitted(true);
-        } catch (error) {
-            console.error("Support form submission error:", error);
-            showToast.warn("There was an error sending your message. Please try again.");
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 z-[100] bg-slate-900/40 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
-            <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 relative">
-                <button
-                    onClick={onClose}
-                    aria-label="Close form"
-                    title="Close form"
-                    className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors p-2 bg-slate-100 rounded-full"
-                >
-                    <X size={24} />
-                </button>
-
-                <div className="p-4 md:p-10">
-                    {isSubmitted ? (
-                        <div className="text-center py-10">
-                            <CheckCircle className="text-emerald-500 w-16 h-16 mx-auto mb-4" />
-                            <h3 className="text-2xl font-black text-slate-900 mb-2">Message Sent!</h3>
-                            <p className="text-slate-600">Thanks for reaching out. We'll get back to you at {email} within 24 hours.</p>
-                            <button onClick={onClose} className="mt-8 bg-primary-600 hover:bg-primary-700 text-white font-bold px-4 md:px-8 py-3 rounded-full transition-all">Close</button>
-                        </div>
-                    ) : (
-                        <>
-                            <h3 className="text-2xl font-black text-slate-900 mb-2 flex items-center gap-3">
-                                <Mail className="text-primary-600" />
                                 Contact Support
                             </h3>
                             <p className="text-slate-500 text-sm mb-8">Have a question or need help? Send us a message.</p>
@@ -835,14 +786,8 @@ const InteractiveFeatures = () => {
 const SaaSMarketing: React.FC = () => {
     const navigate = useNavigate();
     const { startDemo } = useAppContext();
-    const [showSupportModal, setShowSupportModal] = useState(false);
     const [showDemoOptions, setShowDemoOptions] = useState(false);
     const [activeMockTab, setActiveMockTab] = useState<'layout' | 'users' | 'analytics' | 'wrench'>('layout');
-
-    const handleSupportSubmit = async () => {
-        // Mock submission
-        await new Promise(resolve => setTimeout(resolve, 1500));
-    };
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-primary-500 selection:text-white">
@@ -912,7 +857,7 @@ const SaaSMarketing: React.FC = () => {
                 </div>
             )}
 
-            {showSupportModal && <SupportModal onClose={() => setShowSupportModal(false)} onSubmit={handleSupportSubmit} />}
+
 
             <header className="pt-40 pb-20 px-6 relative overflow-hidden">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary-600/10 rounded-full blur-[120px] -z-10" />
@@ -1101,24 +1046,7 @@ const SaaSMarketing: React.FC = () => {
 
             <PartnerTestimonial />
 
-            <footer className="bg-slate-950 border-t border-white/5 py-12 px-6">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all"><Logo className="h-8 w-auto" /></div>
-                    <div className="flex items-center gap-6 text-sm text-slate-500 font-medium">
-                        <a href="/faq" className="hover:text-white transition-colors">FAQ</a>
-                        <a href="/franchise" className="hover:text-white transition-colors">Franchise Info</a>
-                        <a href="/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
-                        <a href="/terms" className="hover:text-white transition-colors">Terms of Service</a>
-                        <button onClick={() => setShowSupportModal(true)} className="hover:text-white transition-colors">Support</button>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <a href="https://www.facebook.com/share/1AyPhsNeN3/" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook" className="text-slate-500 hover:text-[#1877F2] transition-all hover:scale-110">Facebook</a>
-                        <a href="https://twitter.com/TrakkerPlatform" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)" title="X (Twitter)" className="text-slate-500 hover:text-white transition-all hover:scale-110"><XLogo size={20} /></a>
-                        <a href="https://www.tiktok.com/@tektrakker" target="_blank" rel="noopener noreferrer" aria-label="TikTok" title="TikTok" className="text-slate-500 hover:text-[#00f2fe] transition-all hover:scale-110"><TikTok size={20} /></a>
-                    </div>
-                    <div className="text-slate-600 text-xs font-medium">&copy; 2026 TekTrakker Inc. All rights reserved.</div>
-                </div>
-            </footer>
+            <MarketingFooter />
 
             <Suspense fallback={null}>
                 <LandingChatbot />
