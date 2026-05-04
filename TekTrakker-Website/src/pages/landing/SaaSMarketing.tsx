@@ -439,7 +439,7 @@ const InteractiveFeatures = () => {
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
                                             <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200">En Route</span>
-                                            <span className="text-[10px] font-bold text-slate-400">#4092</span>
+                                            <span className="text-[10px] font-bold text-slate-500">#4092</span>
                                         </div>
                                         <div className="font-bold text-slate-900 text-sm">Emergency HVAC Repair</div>
                                     </div>
@@ -466,7 +466,7 @@ const InteractiveFeatures = () => {
                                 ].map((btn, i) => (
                                     <div key={i} className={`flex flex-col items-center justify-center gap-1 p-2 rounded-xl border backdrop-blur-md ${btn.color} shadow-sm hover:scale-105 transition-transform cursor-pointer`}>
                                         <btn.icon size={16} />
-                                        <span className="text-[9px] font-bold text-slate-700">{btn.label}</span>
+                                        <span className="text-[9px] font-bold text-slate-800">{btn.label}</span>
                                     </div>
                                 ))}
                             </div>
@@ -624,7 +624,7 @@ const InteractiveFeatures = () => {
                             
                             <div className="flex items-baseline justify-center gap-1 mb-6">
                                 <span className="text-4xl font-black text-slate-900">$49</span>
-                                <span className="text-sm font-bold text-slate-400">/mo</span>
+                                <span className="text-sm font-bold text-slate-500">/mo</span>
                             </div>
                             
                             <div className="bg-slate-50/80 backdrop-blur-md rounded-2xl p-3 border border-slate-100 text-left">
@@ -638,8 +638,8 @@ const InteractiveFeatures = () => {
                                     </div>
                                 </div>
                                 <div className="flex justify-between items-center mt-2">
-                                    <span className="text-[9px] font-medium text-slate-400">Oct 15</span>
-                                    <span className="text-[9px] font-medium text-slate-400">Nov 15</span>
+                                    <span className="text-[9px] font-medium text-slate-500">Oct 15</span>
+                                    <span className="text-[9px] font-medium text-slate-500">Nov 15</span>
                                 </div>
                             </div>
                         </div>
@@ -654,7 +654,7 @@ const InteractiveFeatures = () => {
                             
                             <div className="flex justify-between items-start mb-3 relative z-10">
                                 <span className="bg-blue-500/20 text-blue-400 text-[9px] font-black uppercase px-2 py-1 rounded border border-blue-500/30 tracking-wider">Network RFP</span>
-                                <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1"><MapPin size={10} /> Local</span>
+                                <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1"><MapPin size={10} /> Local</span>
                             </div>
                             
                             <div className="font-bold text-base mb-2 relative z-10 leading-tight">Need 5 Commercial Boilers Installed Next Week</div>
@@ -706,7 +706,7 @@ const InteractiveFeatures = () => {
                         </div>
                         <div>
                             <h3 className={`font-bold mb-1 ${activeFeature === feature.id ? 'text-slate-900' : 'text-slate-600'}`}>{feature.title}</h3>
-                            <p className={`text-xs leading-relaxed ${activeFeature === feature.id ? 'text-slate-600' : 'text-slate-400'}`}>{feature.desc}</p>
+                            <p className={`text-xs leading-relaxed ${activeFeature === feature.id ? 'text-slate-600' : 'text-slate-500'}`}>{feature.desc}</p>
                         </div>
                     </button>
                 ))}
@@ -796,7 +796,7 @@ const SaaSMarketing: React.FC = () => {
             {showDemoOptions && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
                     <div className="w-full max-w-4xl bg-white rounded-[2.5rem] border border-slate-200 p-4 md:p-8 md:p-12 relative shadow-2xl">
-                        <button onClick={() => setShowDemoOptions(false)} aria-label="Close Demo Modal" title="Close" className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 p-2 bg-slate-100 rounded-full transition-colors"><X size={32} /></button>
+                        <button onClick={() => setShowDemoOptions(false)} aria-label="Close Demo Modal" title="Close" className="absolute top-6 right-6 text-slate-500 hover:text-slate-600 p-2 bg-slate-100 rounded-full transition-colors"><X size={32} /></button>
                         <div className="text-center mb-10">
                             <h2 className="text-3xl md:text-4xl font-black mb-4">Choose Your Experience</h2>
                             <p className="text-slate-500">Explore TekTrakker from any perspective. No login required.</p>
@@ -948,7 +948,7 @@ const SaaSMarketing: React.FC = () => {
                             AI Powered Agent
                         </div>
                         <h3 className="text-3xl font-black mb-4">Scale gracefully with the Virtual Worker Add-On</h3>
-                        <p className="text-lg text-slate-400 mb-0 leading-relaxed">
+                        <p className="text-lg text-slate-500 mb-0 leading-relaxed">
                             Stop hiring expensive administrators for data entry. Add a dedicated AI agent to your organization that understands your entire dispatch board, customer history, and financials, available 24/7.
                         </p>
                     </div>
@@ -991,7 +991,7 @@ const SaaSMarketing: React.FC = () => {
                             Ownership Opportunities
                         </div>
                         <h3 className="text-4xl font-black text-white mb-4 tracking-tight">Franchise with TekTrakker</h3>
-                        <p className="text-lg text-slate-400 mb-0 leading-relaxed font-medium">
+                        <p className="text-lg text-slate-500 mb-0 leading-relaxed font-medium">
                             Stop breaking your back to build someone else's business. Take control of your financial future and build generational wealth with our turnkey trade business franchise model, powered exclusively by this very platform.
                         </p>
                     </div>

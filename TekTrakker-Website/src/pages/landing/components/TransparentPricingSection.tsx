@@ -21,8 +21,8 @@ const TransparentPricingSection = () => {
                     {/* The "Other Guys" */}
                     <div className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-sm relative overflow-hidden group">
                         <div className="absolute top-0 inset-x-0 h-2 bg-slate-200"></div>
-                        <h3 className="text-2xl font-black text-slate-400 mb-2">Legacy Platforms</h3>
-                        <div className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-8">ServiceTitan, Housecall Pro, etc.</div>
+                        <h3 className="text-2xl font-black text-slate-500 mb-2">Legacy Platforms</h3>
+                        <div className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-8">ServiceTitan, Housecall Pro, etc.</div>
                         
                         <div className="space-y-6">
                             <div className="flex items-start gap-4">
@@ -74,28 +74,28 @@ const TransparentPricingSection = () => {
                                     <div className="mt-1 bg-emerald-500/20 text-emerald-400 p-1 rounded-full shrink-0 shadow-[0_0_10px_rgba(52,211,153,0.3)]"><Check size={16} strokeWidth={3} /></div>
                                     <div>
                                         <h4 className="font-bold text-white text-lg flex items-center gap-2">Unlimited Users <span className="bg-indigo-600 text-white text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider">Free</span></h4>
-                                        <p className="text-slate-400 text-sm mt-1">Add 5 or 50 technicians. Your software cost never goes up. We reward growth.</p>
+                                        <p className="text-slate-500 text-sm mt-1">Add 5 or 50 technicians. Your software cost never goes up. We reward growth.</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-4">
                                     <div className="mt-1 bg-emerald-500/20 text-emerald-400 p-1 rounded-full shrink-0 shadow-[0_0_10px_rgba(52,211,153,0.3)]"><Check size={16} strokeWidth={3} /></div>
                                     <div>
                                         <h4 className="font-bold text-white text-lg">Zero Implementation Fees</h4>
-                                        <p className="text-slate-400 text-sm mt-1">Free onboarding, free data migration, and free 1-on-1 team training.</p>
+                                        <p className="text-slate-500 text-sm mt-1">Free onboarding, free data migration, and free 1-on-1 team training.</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-4">
                                     <div className="mt-1 bg-emerald-500/20 text-emerald-400 p-1 rounded-full shrink-0 shadow-[0_0_10px_rgba(52,211,153,0.3)]"><Check size={16} strokeWidth={3} /></div>
                                     <div>
                                         <h4 className="font-bold text-white text-lg">Everything Included</h4>
-                                        <p className="text-slate-400 text-sm mt-1">AI Quoting, Smart Dispatching, Inventory, and CRM. No tiered feature paywalls.</p>
+                                        <p className="text-slate-500 text-sm mt-1">AI Quoting, Smart Dispatching, Inventory, and CRM. No tiered feature paywalls.</p>
                                     </div>
                                 </div>
                                 <div className="flex items-start gap-4">
                                     <div className="mt-1 bg-emerald-500/20 text-emerald-400 p-1 rounded-full shrink-0 shadow-[0_0_10px_rgba(52,211,153,0.3)]"><Check size={16} strokeWidth={3} /></div>
                                     <div>
                                         <h4 className="font-bold text-white text-lg">No Contracts</h4>
-                                        <p className="text-slate-400 text-sm mt-1">Month-to-month. If we aren't delivering massive ROI, you can leave anytime.</p>
+                                        <p className="text-slate-500 text-sm mt-1">Month-to-month. If we aren't delivering massive ROI, you can leave anytime.</p>
                                     </div>
                                 </div>
                             </div>
