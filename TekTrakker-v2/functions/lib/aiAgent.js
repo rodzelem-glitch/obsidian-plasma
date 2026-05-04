@@ -132,7 +132,8 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
         
         UNIVERSAL DATABASE ACCESS MODULE:
         You have universal access to the database using the \`searchDatabase\`, \`upsertRecord\`, and \`deleteRecord\` tools.
-        If a user asks you to manage properties, assets, employees, tools, checklists, hazard reports, fleet vehicles, etc., you MUST first use \`searchDatabase\` to locate the record and understand its current schema. Then use \`upsertRecord\` to make EXACTLY the changes requested.
+        If a user asks you to manage properties, assets, employees, tools, checklists, hazard reports, fleet vehicles, or warranty claims (\`warrantyClaims\` collection), you MUST first use \`searchDatabase\` to locate the record and understand its current schema. Then use \`upsertRecord\` to make EXACTLY the changes requested.
+        The \`warrantyClaims\` collection tracks customer equipment warranties, statuses like "Pending", "Approved", "Credit Received", and part details. Ensure you query this collection if a user asks about warranty credits or claim progress.
         NEVER delete a user's profile, customer profile, unsubscribe them, or delete an organization, even if requested. You can disable them by updating their active status if their schema supports it.
         
         AMBIGUITY & SAFETY RULE:
@@ -634,7 +635,7 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
                 },
                 {
                     name: "searchDatabase",
-                    description: "Queries any database collection (e.g., users, customers, jobs, proposals, inventory, vehicles, checklists, refrigerantLogs). Use this to lookup IDs or fetch current data before updating an exact entity.",
+                    description: "Queries any database collection (e.g., users, customers, jobs, proposals, inventory, vehicles, checklists, refrigerantLogs, warrantyClaims). Use this to lookup IDs or fetch current data before updating an exact entity.",
                     parameters: {
                         type: "OBJECT",
                         properties: {
@@ -1716,7 +1717,25 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
                             count++;
                         }
                     });
-                    toolStatusMessage = `I ran the analytics across your database natively. Total gross mapped revenue from ${count} invoiced/completed jobs is **$${total.toFixed(2)}**.`;
+                    // Include warranty credits in revenue
+                    let warrantyCredits = 0;
+                    let warrantyCreditCount = 0;
+                    try {
+                        const warrantySnap = await admin.firestore()
+                            .collection('organizations').doc(organizationId)
+                            .collection('warrantyClaims').get();
+                        warrantySnap.docs.forEach(doc => {
+                            const d = doc.data();
+                            if (d.status === 'Credit Received' && d.amountApproved) {
+                                warrantyCredits += Number(d.amountApproved) || 0;
+                                warrantyCreditCount++;
+                            }
+                        });
+                    }
+                    catch (e) { /* warranty collection may not exist yet */ }
+                    const grandTotal = total + warrantyCredits;
+                    const warrantyLine = warrantyCredits > 0 ? `\n- **Warranty Credits:** $${warrantyCredits.toFixed(2)} from ${warrantyCreditCount} approved claims` : '';
+                    toolStatusMessage = `I ran the analytics across your database natively. Total gross mapped revenue from ${count} invoiced/completed jobs is **$${total.toFixed(2)}**.${warrantyLine}\n- **Grand Total (incl. warranty):** **$${grandTotal.toFixed(2)}**`;
                 }
                 else if (call.name === "getTechnicianEfficiency") {
                     const shiftSnap = await admin.firestore().collection('shifts')
@@ -1847,9 +1866,12 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
                 }
                 else if (call.name === "searchDatabase") {
                     const args = call.args;
-                    const snap = await admin.firestore().collection(args.collectionName)
-                        .where('organizationId', '==', organizationId)
-                        .get();
+                    // Route subcollections that live under organizations/{orgId}/
+                    const orgSubcollections = ['warrantyClaims'];
+                    const isOrgSubcollection = orgSubcollections.includes(args.collectionName);
+                    const snap = isOrgSubcollection
+                        ? await admin.firestore().collection('organizations').doc(organizationId).collection(args.collectionName).get()
+                        : await admin.firestore().collection(args.collectionName).where('organizationId', '==', organizationId).get();
                     let matches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                     // Specifically allow tracing of soft-deleted customers so the AI can explain "what happened"
                     if (args.collectionName === 'customers') {
@@ -1871,13 +1893,20 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
                     const { collectionName, recordId, payload } = args;
                     const isAdmin = userData?.role === 'admin' || userData?.role === 'master_admin';
                     const adminOnlyCollections = ['users', 'organizations', 'proposalPresets', 'platformSettings', 'membershipPlans', 'serviceAgreements', 'bids'];
+                    // Route subcollections that live under organizations/{orgId}/
+                    const orgSubcollections = ['warrantyClaims'];
+                    const isOrgSubcollection = orgSubcollections.includes(collectionName);
+                    const getCollectionRef = () => isOrgSubcollection
+                        ? admin.firestore().collection('organizations').doc(organizationId).collection(collectionName)
+                        : admin.firestore().collection(collectionName);
                     if (!isAdmin && adminOnlyCollections.includes(collectionName)) {
                         toolStatusMessage = `Error: You must be an administrator to modify records in the ${collectionName} database.`;
                     }
                     else {
                         if (recordId) {
-                            const docCheck = await admin.firestore().collection(collectionName).doc(recordId).get();
-                            if (!docCheck.exists || docCheck.data()?.organizationId !== organizationId) {
+                            const docCheck = await getCollectionRef().doc(recordId).get();
+                            const orgIdCheck = isOrgSubcollection ? true : (docCheck.data()?.organizationId === organizationId);
+                            if (!docCheck.exists || !orgIdCheck) {
                                 toolStatusMessage = `Error: Record not found or you do not have permission to edit it in ${collectionName}.`;
                             }
                             else {
@@ -1891,7 +1920,7 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
                             }
                         }
                         else {
-                            const newRef = admin.firestore().collection(collectionName).doc();
+                            const newRef = getCollectionRef().doc();
                             await newRef.set({
                                 id: newRef.id,
                                 organizationId: organizationId,
@@ -1908,6 +1937,12 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
                     const { collectionName, recordId } = args;
                     const isAdmin = userData?.role === 'admin' || userData?.role === 'master_admin';
                     const adminOnlyCollections = ['users', 'organizations', 'proposalPresets', 'platformSettings', 'membershipPlans', 'serviceAgreements', 'bids'];
+                    // Route subcollections that live under organizations/{orgId}/
+                    const orgSubcollections = ['warrantyClaims'];
+                    const isOrgSubcollection = orgSubcollections.includes(collectionName);
+                    const getCollectionRef = () => isOrgSubcollection
+                        ? admin.firestore().collection('organizations').doc(organizationId).collection(collectionName)
+                        : admin.firestore().collection(collectionName);
                     if (!isAdmin && adminOnlyCollections.includes(collectionName)) {
                         toolStatusMessage = `Error: You must be an administrator to delete records from the ${collectionName} database.`;
                     }
@@ -1915,8 +1950,9 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
                         toolStatusMessage = "Error: I am strictly forbidden from deleting user profiles, customer profiles, or organization profiles from the system.";
                     }
                     else {
-                        const docCheck = await admin.firestore().collection(collectionName).doc(recordId).get();
-                        if (!docCheck.exists || docCheck.data()?.organizationId !== organizationId) {
+                        const docCheck = await getCollectionRef().doc(recordId).get();
+                        const orgIdCheck = isOrgSubcollection ? true : (docCheck.data()?.organizationId === organizationId);
+                        if (!docCheck.exists || !orgIdCheck) {
                             toolStatusMessage = `Error: Record ${recordId} not found or permission denied in ${collectionName}.`;
                         }
                         else {
@@ -2304,7 +2340,7 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
                     toolStatusMessage = `I have successfully queued your long-form research request: "${promptArgs}". I'll work on this in the background and let you know when the report is ready in the Virtual Worker Reports tab.`;
                 }
                 else if (call.name === "predictCustomerChurn") {
-                    const taskRef = admin.firestore().collection("organizations/${organizationId}/aiLongTasks").doc();
+                    const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
                     await taskRef.set({
                         id: taskRef.id,
                         prompt: "Run predictive churn analysis on customer base using historical jobs to identify flight risks and recommend retention strategies.",
@@ -2317,7 +2353,7 @@ exports.aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).h
                     toolStatusMessage = "I have started analyzing the customer base and historical jobs to predict churn risk. I queued this as a background task. You'll see the complete retention strategy report in your Virtual Worker Reports tab shortly!";
                 }
                 else if (call.name === "draftTargetedUpsellScripts") {
-                    const taskRef = admin.firestore().collection("organizations/${organizationId}/aiLongTasks").doc();
+                    const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
                     await taskRef.set({
                         id: taskRef.id,
                         prompt: "Analyze equipment age and service history across all completed jobs to draft targeted upsell scripts for technicians and call center staff.",

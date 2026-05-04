@@ -114,7 +114,7 @@ exports.provisionGustoCompany = (0, https_1.onCall)({ cors: true }, async (reque
             user: {
                 first_name: auth.token.name?.split(' ')[0] || 'Admin',
                 last_name: auth.token.name?.split(' ')[1] || 'User',
-                email: auth.token.email || orgData.email || 'admin@tektrakker.com',
+                email: auth.token.email || orgData.email || 'platform@tektrakker.com',
                 phone: orgData.phone || '555-555-5555'
             },
             company: {

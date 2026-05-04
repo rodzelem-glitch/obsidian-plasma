@@ -160,6 +160,11 @@ service cloud.firestore {
       match /warrantyClaims/{claimId} {
          allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
       }
+
+      match /aiLongTasks/{taskId} {
+         allow read: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+         allow write: if false; // Written only by Cloud Functions
+      }
     }
 
     match /franchises/{franchiseDocId} {

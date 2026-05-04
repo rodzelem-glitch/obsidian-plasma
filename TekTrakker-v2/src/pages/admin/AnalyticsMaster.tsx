@@ -290,7 +290,7 @@ const AnalyticsMaster: React.FC = () => {
                             className={`h-full rounded-full transition-all duration-1000 ${
                                 laborData.efficiencyRate > 75 ? 'bg-emerald-500' : laborData.efficiencyRate > 50 ? 'bg-amber-500' : 'bg-rose-500'
                             }`}
-                            style={{ width: `${Math.min(laborData.efficiencyRate, 100)}%` }}
+                            style={{ width: `${Math.min(laborData.efficiencyRate, 100)}%` } as React.CSSProperties}
                         ></div>
                     </div>
 

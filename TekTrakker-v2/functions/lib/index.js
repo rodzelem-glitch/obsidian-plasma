@@ -1594,9 +1594,9 @@ exports.incomingLeadWebhook = functions.runWith({
                             <p>Thanks for reaching out! We've secured your service request and our team is reviewing it now.</p>
                             <p>You can view your appointment details, update your information, and manage your account via our secure portal:</p>
                             <div style="text-align: center; margin: 30px 0;">
-                                <a href="https://tektrakker.com/portal/${customerId}" style="background-color: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Your Portal</a>
+                                <a href="https://app.tektrakker.com/portal/${customerId}" style="background-color: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Your Portal</a>
                             </div>
-                            <p>If you don't use the button above, copy and paste this link: https://tektrakker.com/portal/${customerId}</p>
+                            <p>If you don't use the button above, copy and paste this link: https://app.tektrakker.com/portal/${customerId}</p>
                             <br/>
                             <p>Best regards,</p>
                             <p>Your Service Team</p>
@@ -1662,7 +1662,7 @@ exports.initiatePunchoutSession = functions.https.onCall(async (data, context) =
                             BrowserFormPost: [{ URL: [browserFormPostURL] }],
                             Contact: [{
                                     Name: [{ $: { "xml:lang": "en" }, _: context.auth.token.name || 'TekTrakker Technician' }],
-                                    Email: [context.auth.token.email || 'admin@tektrakker.com']
+                                    Email: [context.auth.token.email || 'platform@tektrakker.com']
                                 }]
                         }]
                 }]

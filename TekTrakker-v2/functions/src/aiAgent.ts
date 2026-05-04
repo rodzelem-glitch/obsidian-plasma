@@ -2483,7 +2483,7 @@ export const aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"]
                 toolStatusMessage = `I have successfully queued your long-form research request: "${promptArgs}". I'll work on this in the background and let you know when the report is ready in the Virtual Worker Reports tab.`;
             }
             else if (call.name === "predictCustomerChurn") {
-                const taskRef = admin.firestore().collection("organizations/${organizationId}/aiLongTasks").doc();
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
                 await taskRef.set({
                     id: taskRef.id,
                     prompt: "Run predictive churn analysis on customer base using historical jobs to identify flight risks and recommend retention strategies.",
@@ -2497,7 +2497,7 @@ export const aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"]
                 toolStatusMessage = "I have started analyzing the customer base and historical jobs to predict churn risk. I queued this as a background task. You'll see the complete retention strategy report in your Virtual Worker Reports tab shortly!";
             }
             else if (call.name === "draftTargetedUpsellScripts") {
-                const taskRef = admin.firestore().collection("organizations/${organizationId}/aiLongTasks").doc();
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
                 await taskRef.set({
                     id: taskRef.id,
                     prompt: "Analyze equipment age and service history across all completed jobs to draft targeted upsell scripts for technicians and call center staff.",

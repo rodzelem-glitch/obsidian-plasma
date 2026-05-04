@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.googleVoiceSync = exports.nextdoorWebhook = exports.xeroSync = exports.thumbtackWebhook = exports.qbDesktopSync = exports.createSumoQuote = exports.triggerHatchFollowUp = exports.syncToERPSystem = exports.importLSALead = exports.shopifyOrderWebhook = exports.pushToBIDashboard = exports.pollFleetPositions = exports.syncCompanyCamPhotos = exports.reportGoogleAdsConversion = exports.syncToHubSpot = exports.hearthWebhook = exports.callRailWebhook = exports.sendReviewRequest = exports.syncCustomerToMailchimp = void 0;
+exports.nextdoorWebhook = exports.xeroSync = exports.thumbtackWebhook = exports.qbDesktopSync = exports.createSumoQuote = exports.triggerHatchFollowUp = exports.syncToERPSystem = exports.importLSALead = exports.shopifyOrderWebhook = exports.pushToBIDashboard = exports.pollFleetPositions = exports.syncCompanyCamPhotos = exports.reportGoogleAdsConversion = exports.syncToHubSpot = exports.hearthWebhook = exports.callRailWebhook = exports.sendReviewRequest = exports.syncCustomerToMailchimp = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 const db = admin.firestore();
@@ -626,58 +626,6 @@ exports.nextdoorWebhook = functions.https.onRequest(async (req, res) => {
     }
     catch (error) {
         functions.logger.error('Nextdoor Webhook Error:', error);
-        res.status(500).send('Internal Server Error');
-    }
-});
-// 19. Google Voice (Call & SMS Sync)
-exports.googleVoiceSync = functions.https.onRequest(async (req, res) => {
-    if (req.method !== 'POST') {
-        res.status(405).send('Method Not Allowed');
-        return;
-    }
-    const orgId = req.query.orgId;
-    if (!orgId) {
-        res.status(400).send('Missing orgId');
-        return;
-    }
-    // Optional: Verify credentials to ensure this org actually enabled it
-    const credentials = await getMarketplaceCredentials(orgId, 'google_voice');
-    if (!credentials || !credentials.keys?.googleVoiceApiKey || !credentials.keys?.googleVoiceWorkspaceId) {
-        res.status(403).send('Google Voice not configured or disabled.');
-        return;
-    }
-    const payload = req.body;
-    try {
-        // If it's a message
-        if (payload.type === 'MESSAGE' || payload.message) {
-            await db.collection(`organizations/${orgId}/communications`).add({
-                source: 'Google Voice',
-                type: 'SMS',
-                phoneNumber: payload.phoneNumber || payload.from || '',
-                message: payload.message || payload.text || '',
-                direction: payload.direction || 'inbound',
-                status: 'unread',
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                rawPayload: payload
-            });
-        }
-        // If it's a call
-        else if (payload.type === 'CALL' || payload.duration !== undefined) {
-            await db.collection(`organizations/${orgId}/call_logs`).add({
-                source: 'Google Voice',
-                customerPhoneNumber: payload.phoneNumber || payload.from || '',
-                duration: payload.duration || 0,
-                direction: payload.direction || 'inbound',
-                voicemailUrl: payload.voicemailUrl || '',
-                voicemailTranscript: payload.voicemailTranscript || '',
-                timestamp: admin.firestore.FieldValue.serverTimestamp(),
-                rawPayload: payload
-            });
-        }
-        res.status(200).send('Google Voice Event Processed');
-    }
-    catch (error) {
-        functions.logger.error('Google Voice Webhook Error:', error);
         res.status(500).send('Internal Server Error');
     }
 });
