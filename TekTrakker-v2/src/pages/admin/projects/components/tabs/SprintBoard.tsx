@@ -199,7 +199,7 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                             <div className="w-24 bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
                                 <div
                                     className="bg-gradient-to-r from-blue-500 to-emerald-500 h-full rounded-full transition-all duration-500"
-                                    // eslint-disable-next-line react/forbid-dom-props
+
                                     ref={el => { if (el) el.style.width = `${Math.min((sprintVelocity / totalPoints) * 100, 100)}%`; }}
                                 />
                             </div>

@@ -47,14 +47,14 @@ const AnalyticsMaster: React.FC = () => {
             .reduce((sum: number, j: Job) => sum + (j.invoice.totalAmount || j.invoice.amount || 0), 0);
 
         const warrantyRevenue = (state.warrantyClaims || [])
-            .filter((c: { status?: string; amountApproved?: number }) => c.status === 'Credit Received')
-            .reduce((sum: number, c: { amountApproved?: number }) => sum + (c.amountApproved || 0), 0);
+            .filter((c: any) => c.status === 'Credit Received')
+            .reduce((sum: number, c: any) => sum + (c.amountApproved || 0), 0);
 
         const revenue = jobRevenue + warrantyRevenue;
 
         const expenses = (state.expenses || [])
-            .filter((e: { description: string; vendor: string; amount: number }) => !excludeTest || (!isTestItem(e.description) && !isTestItem(e.vendor)))
-            .reduce((sum: number, e: { amount: number }) => sum + e.amount, 0);
+            .filter(e => !excludeTest || (!isTestItem(e.description) && !isTestItem(e.vendor)))
+            .reduce((sum: number, e: any) => sum + e.amount, 0);
 
         const inventoryValue = (state.inventory as InventoryItem[])
              .filter(i => !excludeTest || !isTestItem(i.name))
@@ -286,12 +286,11 @@ const AnalyticsMaster: React.FC = () => {
                     </div>
 
                     <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-3 mb-6 overflow-hidden">
-                        <div 
+                        <div // NOSONAR
                             className={`h-full rounded-full transition-all duration-1000 ${
                                 laborData.efficiencyRate > 75 ? 'bg-emerald-500' : laborData.efficiencyRate > 50 ? 'bg-amber-500' : 'bg-rose-500'
                             }`}
-                            // eslint-disable-next-line react/forbid-dom-props
-                            style={{ width: `${Math.min(laborData.efficiencyRate, 100)}%` } as React.CSSProperties} // NOSONAR
+                            style={{ width: `${Math.min(laborData.efficiencyRate, 100)}%` } as React.CSSProperties}
                         ></div>
                     </div>
 

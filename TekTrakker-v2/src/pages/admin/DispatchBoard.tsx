@@ -424,7 +424,7 @@ const DispatchBoard: React.FC = () => {
                                                 onClick={() => setViewingJob(job)}
                                                 onDragStart={(e) => handleDragStart(e, job.id)}
                                                 className={`absolute top-2 bottom-2 rounded-lg p-2 text-[10px] font-medium text-white overflow-hidden cursor-pointer hover:scale-[1.02] shadow-md border-l-4 z-10 transition-all ${getJobColor(job)}`}
-                                                /* eslint-disable-next-line react/forbid-dom-props */
+
                                                 style={getJobStyle(job)} // NOSONAR
                                             >
                                                 <div className="font-bold truncate drop-shadow-md">{job.customerName}</div>
