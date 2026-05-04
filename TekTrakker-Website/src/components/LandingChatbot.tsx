@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, X, MessageSquare, Loader2 } from 'lucide-react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { useAppContext } from '../context/AppContext';
 import { mockTrainingData } from '../data/trainingModules';
 import ReactMarkdown from 'react-markdown';
 
@@ -12,7 +11,6 @@ interface Message {
 }
 
 const LandingChatbot: React.FC = () => {
-    const { state } = useAppContext();
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([
         { role: 'assistant', content: 'Hi there! I can answer questions about TekTrakker features, pricing, and how we help service businesses grow. What can I help you with?' }
@@ -68,7 +66,11 @@ const LandingChatbot: React.FC = () => {
             const functions = getFunctions();
             const chatbotFunction = httpsCallable(functions, 'callLandingChatbot');
             
-            const plans = (state.platformSettings?.plans || {}) as any;
+            const plans = {
+                starter: { monthly: 99, maxUsers: 3 },
+                growth: { monthly: 249, maxUsers: 10 },
+                enterprise: { monthly: 499, maxUsers: 20 }
+            };
             const pricingContext = `
                 TekTrakker Pro: $${plans.starter?.monthly || 99}/mo. Includes ${plans.starter?.maxUsers || 3} users.
                 TekTrakker Premium: $${plans.growth?.monthly || 249}/mo. Includes ${plans.growth?.maxUsers || 10} users.
