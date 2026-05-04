@@ -89,27 +89,28 @@ export const MarketingFooter: React.FC = () => {
                 <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all"><Logo className="h-8 w-auto text-white" /></div>
                     <div className="flex items-center gap-6 text-sm text-slate-500 font-medium">
-                        <Link to="/faq" className="hover:text-white transition-colors">FAQ</Link>
-                        <Link to="/franchise" className="hover:text-white transition-colors">Franchise Info</Link>
-                        <Link to="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
-                        <Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
-                        <button onClick={() => setShowSupportModal(true)} className="hover:text-white transition-colors">Support</button>
+                        <Link to="/faq" className="text-slate-400 hover:text-white transition-colors">FAQ</Link>
+                        <Link to="/franchise" className="text-slate-400 hover:text-white transition-colors">Franchise Info</Link>
+                        <Link to="/privacy" className="text-slate-400 hover:text-white transition-colors">Privacy Policy</Link>
+                        <Link to="/terms" className="text-slate-400 hover:text-white transition-colors">Terms of Service</Link>
+                        <button onClick={() => setShowSupportModal(true)} className="text-slate-400 hover:text-white transition-colors">Support</button>
                     </div>
                     <div className="flex items-center gap-4">
                         <a href="https://www.facebook.com/share/1AyPhsNeN3/" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook" className="text-slate-500 hover:text-[#1877F2] transition-all hover:scale-110">
                             <Facebook size={20} />
                         </a>
-                        <a href="https://twitter.com/TrakkerPlatform" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)" title="X (Twitter)" className="text-slate-500 hover:text-white transition-all hover:scale-110">
+                        <a href="https://twitter.com/TrakkerPlatform" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)" title="X (Twitter)" className="text-slate-400 hover:text-white transition-all hover:scale-110">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/></svg>
                         </a>
                         <a href="https://www.tiktok.com/@tektrakker" target="_blank" rel="noopener noreferrer" aria-label="TikTok" title="TikTok" className="text-slate-500 hover:text-[#00f2fe] transition-all hover:scale-110">
                             <TikTok size={20} />
                         </a>
                     </div>
-                    <div className="text-slate-600 text-xs font-medium">&copy; 2026 TekTrakker Inc. All rights reserved.</div>
+                    <div className="text-slate-400 text-xs font-medium">&copy; 2026 TekTrakker Inc. All rights reserved.</div>
                 </div>
             </footer>
             {showSupportModal && <SupportModal onClose={() => setShowSupportModal(false)} onSubmit={handleSupportSubmit} />}
         </>
     );
 };
+

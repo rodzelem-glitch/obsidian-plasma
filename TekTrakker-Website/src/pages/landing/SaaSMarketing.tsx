@@ -45,7 +45,7 @@ const AnimatedCard: React.FC<{ children: React.ReactNode; direction: 'left' | 'r
             style={delayStyle} 
         >
             {children}
-        </div>
+        </main>
     );
 };
 
@@ -189,7 +189,7 @@ const MockUpdatingCharts = ({ activeTab }: { activeTab: 'layout' | 'users' | 'an
                     )})}
                 </div>
             </div>
-        </div>
+        </main>
     );
 };
 
@@ -209,14 +209,14 @@ const IntegrationsMarquee = () => {
             <div className="flex w-[200%] animate-marquee">
                 <div className="flex w-1/2 justify-around items-center">
                     {integrations.map((name, i) => (
-                        <div key={i} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap mx-8">
+                        <div key={i} className="text-xl md:text-2xl font-black text-slate-500 hover:text-slate-700 transition-colors cursor-default whitespace-nowrap mx-8">
                             {name}
                         </div>
                     ))}
                 </div>
                 <div className="flex w-1/2 justify-around items-center">
                     {integrations.map((name, i) => (
-                        <div key={`dup-${i}`} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap mx-8">
+                        <div key={`dup-${i}`} className="text-xl md:text-2xl font-black text-slate-500 hover:text-slate-700 transition-colors cursor-default whitespace-nowrap mx-8">
                             {name}
                         </div>
                     ))}
@@ -224,7 +224,7 @@ const IntegrationsMarquee = () => {
             </div>
             <div className="absolute top-0 left-0 w-32 md:w-64 h-full bg-gradient-to-r from-white to-transparent pointer-events-none"></div>
             <div className="absolute top-0 right-0 w-32 md:w-64 h-full bg-gradient-to-l from-white to-transparent pointer-events-none"></div>
-        </div>
+        </main>
     );
 };
 
@@ -250,7 +250,7 @@ const PartnerTestimonial = () => {
                     </div>
                 </div>
             </a>
-        </div>
+        </main>
     );
 };
 
@@ -306,7 +306,7 @@ const ROICalculator = () => {
                     *Don't let inefficiency steal this from you.
                 </p>
             </div>
-        </div>
+        </main>
     );
 };
 
@@ -441,7 +441,7 @@ const InteractiveFeatures = () => {
                                             <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200">En Route</span>
                                             <span className="text-[10px] font-bold text-slate-400">#4092</span>
                                         </div>
-                                        <h4 className="font-bold text-slate-900 text-sm">Emergency HVAC Repair</h4>
+                                        <div className="font-bold text-slate-900 text-sm">Emergency HVAC Repair</div>
                                     </div>
                                     <div className="w-8 h-8 rounded-full bg-slate-100/80 flex items-center justify-center border border-slate-200">
                                         <Phone size={14} className="text-slate-600" />
@@ -466,7 +466,7 @@ const InteractiveFeatures = () => {
                                 ].map((btn, i) => (
                                     <div key={i} className={`flex flex-col items-center justify-center gap-1 p-2 rounded-xl border backdrop-blur-md ${btn.color} shadow-sm hover:scale-105 transition-transform cursor-pointer`}>
                                         <btn.icon size={16} />
-                                        <span className="text-[9px] font-bold">{btn.label}</span>
+                                        <span className="text-[9px] font-bold text-slate-700">{btn.label}</span>
                                     </div>
                                 ))}
                             </div>
@@ -539,7 +539,7 @@ const InteractiveFeatures = () => {
                             <div className="flex items-center gap-3 mb-4">
                                 <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 overflow-hidden"><img src="https://i.pravatar.cc/100?img=5" alt="Avatar" className="w-full h-full object-cover" /></div>
                                 <div>
-                                    <h4 className="font-bold text-slate-900 text-sm">Michael Chang</h4>
+                                    <div className="font-bold text-slate-900 text-sm">Michael Chang</div>
                                     <div className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded w-max mt-0.5">
                                         <MapPin size={10} /> 3.2 Miles Away
                                     </div>
@@ -547,7 +547,7 @@ const InteractiveFeatures = () => {
                             </div>
                             
                             <div className="mb-4">
-                                <h5 className="font-black text-slate-800 text-base mb-1">A/C Not Blowing Cold Air</h5>
+                                <div className="font-black text-slate-800 text-base mb-1">A/C Not Blowing Cold Air</div>
                                 <p className="text-xs text-slate-600 leading-relaxed border-l-2 border-indigo-200 pl-3">"System is running but the air coming out of the vents is room temperature. Need someone to check freon levels."</p>
                             </div>
                             
@@ -619,7 +619,7 @@ const InteractiveFeatures = () => {
                                 <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center border-2 border-white shadow-sm"><Shield size={12} fill="currentColor" /></div>
                             </div>
                             
-                            <h4 className="font-black text-slate-900 text-xl mb-1">Platinum Shield</h4>
+                            <div className="font-black text-slate-900 text-xl mb-1">Platinum Shield</div>
                             <p className="text-xs font-bold text-slate-500 mb-4 bg-slate-100 px-3 py-1 rounded-full inline-block">Active • Member since '23</p>
                             
                             <div className="flex items-baseline justify-center gap-1 mb-6">
@@ -657,7 +657,7 @@ const InteractiveFeatures = () => {
                                 <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1"><MapPin size={10} /> Local</span>
                             </div>
                             
-                            <h4 className="font-bold text-base mb-2 relative z-10 leading-tight">Need 5 Commercial Boilers Installed Next Week</h4>
+                            <div className="font-bold text-base mb-2 relative z-10 leading-tight">Need 5 Commercial Boilers Installed Next Week</div>
                             <div className="flex flex-wrap gap-2 mb-4 relative z-10">
                                 <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded">HVAC</span>
                                 <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Commercial</span>
@@ -705,7 +705,7 @@ const InteractiveFeatures = () => {
                             <feature.icon size={24} />
                         </div>
                         <div>
-                            <h4 className={`font-bold mb-1 ${activeFeature === feature.id ? 'text-slate-900' : 'text-slate-600'}`}>{feature.title}</h4>
+                            <h3 className={`font-bold mb-1 ${activeFeature === feature.id ? 'text-slate-900' : 'text-slate-600'}`}>{feature.title}</h3>
                             <p className={`text-xs leading-relaxed ${activeFeature === feature.id ? 'text-slate-600' : 'text-slate-400'}`}>{feature.desc}</p>
                         </div>
                     </button>
@@ -742,7 +742,7 @@ const InteractiveFeatures = () => {
                     </motion.div>
                 </AnimatePresence>
             </div>
-        </div>
+        </main>
     );
 };
 
@@ -752,7 +752,7 @@ const SaaSMarketing: React.FC = () => {
     const [activeMockTab, setActiveMockTab] = useState<'layout' | 'users' | 'analytics' | 'wrench'>('layout');
 
     return (
-        <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-primary-500 selection:text-white">
+        <main className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-primary-500 selection:text-white">
             <Helmet>
                 <title>TekTrakker | #1 Field Service Management Software</title>
                 <meta name="description" content="TekTrakker is the all-in-one field service management software for modern contractors. Includes scheduling, invoicing, AI estimators, and a native bid network." />
@@ -786,8 +786,8 @@ const SaaSMarketing: React.FC = () => {
                     <div role="button" aria-label="Go to Home" title="Go to Home" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} className="flex items-center cursor-pointer" onClick={() => navigate('/')}><Logo className="h-14 w-auto text-primary-600" /></div>
                     <div className="flex gap-4 items-center">
                         <button onClick={() => window.location.href = 'https://app.tektrakker.com/login'} className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap">Customer Portal / Login</button>
-                        <button onClick={() => setShowDemoOptions(true)} className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer">Free Interactive Demo</button>
-                        <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=register_business'} className="bg-orange-600 hover:bg-orange-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</button>
+                        <button onClick={() => setShowDemoOptions(true)} className="bg-slate-900 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer">Free Interactive Demo</button>
+                        <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=register_business'} className="bg-slate-900 hover:bg-orange-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</button>
                     </div>
                 </div>
             </nav>
@@ -809,7 +809,7 @@ const SaaSMarketing: React.FC = () => {
                             ].map((opt) => (
                                 <button key={opt.role} onClick={() => window.location.href = `https://app.tektrakker.com/pro/apex?role=${opt.role}&source=marketing&returnUrl=${encodeURIComponent(window.location.href)}`} className="p-6 rounded-3xl bg-slate-50 border border-slate-200 hover:border-primary-500 transition-all text-left group flex flex-col h-full hover:bg-slate-100 shadow-sm">
                                     <div className={`w-12 h-12 rounded-2xl ${opt.color} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-lg`}><opt.icon className="text-white" size={24} /></div>
-                                    <h4 className="font-bold text-lg mb-2 text-slate-900">{opt.label}</h4>
+                                    <h3 className="font-bold text-lg mb-2 text-slate-900">{opt.label}</h3>
                                     <p className="text-xs text-slate-500 leading-relaxed mb-6 flex-1">{opt.desc}</p>
                                     <div className="flex items-center gap-2 text-xs font-black uppercase text-primary-600 group-hover:gap-4 transition-all">Launch Demo <ArrowRight size={14} /></div>
                                 </button>
@@ -833,7 +833,7 @@ const SaaSMarketing: React.FC = () => {
                         <h2 className="text-2xl font-bold text-slate-500 mb-8">Stop Being a Slave to Paperwork.</h2>
                         <p className="text-xl text-slate-600 max-w-xl mb-10 leading-relaxed font-medium">You didn't start a business to work 16 hours a day. TekTrakker eliminates the chaos of scheduling, chasing payments, and managing techs so you can finally breathe.</p>
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-primary-600 text-white font-black text-lg hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 hover:scale-[1.02] flex items-center justify-center gap-2 cursor-pointer">Start Exploring Now <ArrowRight size={20} /></button>
+                            <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-slate-900 text-white font-black text-lg hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 hover:scale-[1.02] flex items-center justify-center gap-2 cursor-pointer">Start Exploring Now <ArrowRight size={20} /></button>
                         </div>
                         <div className="mt-6 flex flex-col sm:flex-row gap-4 sm:items-center">
                             <div className="flex items-center gap-1">
@@ -916,7 +916,7 @@ const SaaSMarketing: React.FC = () => {
                 <div className="max-w-3xl mx-auto mb-20">
                     <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-6 leading-tight">Ready to Stop Drowning in Paperwork?</h2>
                     <p className="text-xl text-slate-600 mb-10">Join hundreds of service businesses who are reclaiming their time and scaling their operations with TekTrakker.</p>
-                    <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=register_business'} className="h-16 px-12 rounded-2xl bg-orange-600 text-white font-black text-xl hover:bg-orange-700 transition-all shadow-lg shadow-orange-600/20 hover:scale-[1.02] flex items-center justify-center gap-2 mx-auto">Start Your Free 14-Day Trial <ArrowRight size={22} /></button>
+                    <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=register_business'} className="h-16 px-12 rounded-2xl bg-slate-900 text-white font-black text-xl hover:bg-orange-700 transition-all shadow-lg shadow-orange-600/20 hover:scale-[1.02] flex items-center justify-center gap-2 mx-auto">Start Your Free 14-Day Trial <ArrowRight size={22} /></button>
                 </div>
 
                 {/* Property Owners Cross-Pitch */}
@@ -1013,8 +1013,10 @@ const SaaSMarketing: React.FC = () => {
             <Suspense fallback={null}>
                 <LandingChatbot />
             </Suspense>
-        </div>
+        </main>
     );
 };
 
 export default SaaSMarketing;
+
+
