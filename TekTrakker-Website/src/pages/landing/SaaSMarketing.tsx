@@ -1,5 +1,3 @@
-
-
 import React, { useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -10,7 +8,7 @@ import {
     Phone, FileText, Camera
 } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
-import { useAppContext } from '../../context/AppContext';
+
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MarketingFooter } from '../../components/layout/MarketingFooter';
@@ -44,7 +42,8 @@ const AnimatedCard: React.FC<{ children: React.ReactNode; direction: 'left' | 'r
         <div 
             ref={ref} 
             className={`${baseClass} ${isVisible ? visibleClass : hiddenClass} transition-delay-var`} 
-            style={delayStyle}
+            // eslint-disable-next-line react/forbid-dom-props
+            style={delayStyle} // NOSONAR
         >
             {children}
         </div>
@@ -136,11 +135,13 @@ const MockUpdatingCharts = ({ activeTab }: { activeTab: 'layout' | 'users' | 'an
                         <div 
                             key={i} 
                             className="flex-1 bg-indigo-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out" 
-                            style={containerStyle}
+                            // eslint-disable-next-line react/forbid-dom-props
+                            style={containerStyle} // NOSONAR
                         >
                             <div 
                                 className="w-full bg-indigo-500 absolute bottom-0 rounded-t-sm transition-all duration-1000" 
-                                style={innerStyle}
+                                // eslint-disable-next-line react/forbid-dom-props
+                                style={innerStyle} // NOSONAR
                             ></div>
                         </div>
                     )})}
@@ -180,12 +181,14 @@ const MockUpdatingCharts = ({ activeTab }: { activeTab: 'layout' | 'users' | 'an
                         <div 
                             key={i} 
                             className="flex-1 bg-primary-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out" 
-                            style={containerStyle}
+                            // eslint-disable-next-line react/forbid-dom-props
+                            style={containerStyle} // NOSONAR
                         >
                             <div className="absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 transition-opacity w-full text-center text-[10px] font-bold text-primary-700">${(height * 150).toLocaleString()}</div>
                             <div 
                                 className="w-full bg-primary-500 absolute bottom-0 rounded-t-sm transition-all duration-1000" 
-                                style={innerStyle}
+                                // eslint-disable-next-line react/forbid-dom-props
+                                style={innerStyle} // NOSONAR
                             ></div>
                         </div>
                     )})}
@@ -517,7 +520,8 @@ const InteractiveFeatures = () => {
                                         {row.jobs.map((job, j) => {
                                             const jobStyle = { width: job.w, left: job.l } as React.CSSProperties;
                                             return (
-                                            <div key={j} className={`absolute top-1/2 -translate-y-1/2 h-8 rounded-lg shadow-md flex items-center px-2 overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer ${row.color}`} style={jobStyle}>
+                                            // eslint-disable-next-line react/forbid-dom-props
+                                            <div key={j} className={`absolute top-1/2 -translate-y-1/2 h-8 rounded-lg shadow-md flex items-center px-2 overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer ${row.color}`} style={jobStyle}> {/* NOSONAR */}
                                                 <div className="w-1 h-full bg-black/10 absolute left-0 top-0"></div>
                                                 <span className="text-[10px] font-bold truncate ml-1">{job.t}</span>
                                             </div>

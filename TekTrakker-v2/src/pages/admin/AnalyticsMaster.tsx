@@ -16,7 +16,7 @@ import {
     Activity,
     ArrowUpRight
 } from 'lucide-react';
-import type { ShiftLog, Job, User, InventoryItem, MarketingCampaign } from 'types';
+import type { ShiftLog, Job, User, InventoryItem } from 'types';
 
 const AnalyticsMaster: React.FC = () => {
     const { state } = useAppContext();
@@ -47,14 +47,14 @@ const AnalyticsMaster: React.FC = () => {
             .reduce((sum: number, j: Job) => sum + (j.invoice.totalAmount || j.invoice.amount || 0), 0);
 
         const warrantyRevenue = (state.warrantyClaims || [])
-            .filter((c: any) => c.status === 'Credit Received')
-            .reduce((sum: number, c: any) => sum + (c.amountApproved || 0), 0);
+            .filter((c: { status?: string; amountApproved?: number }) => c.status === 'Credit Received')
+            .reduce((sum: number, c: { amountApproved?: number }) => sum + (c.amountApproved || 0), 0);
 
         const revenue = jobRevenue + warrantyRevenue;
 
         const expenses = (state.expenses || [])
-            .filter(e => !excludeTest || (!isTestItem(e.description) && !isTestItem(e.vendor)))
-            .reduce((sum: number, e: any) => sum + e.amount, 0);
+            .filter((e: { description: string; vendor: string; amount: number }) => !excludeTest || (!isTestItem(e.description) && !isTestItem(e.vendor)))
+            .reduce((sum: number, e: { amount: number }) => sum + e.amount, 0);
 
         const inventoryValue = (state.inventory as InventoryItem[])
              .filter(i => !excludeTest || !isTestItem(i.name))
@@ -72,7 +72,7 @@ const AnalyticsMaster: React.FC = () => {
         let billableHours = 0;
         filteredJobs.forEach((job: Job) => {
             if (job.invoice?.items) {
-                job.invoice.items.forEach((item: any) => {
+                job.invoice.items.forEach((item: { type?: string; quantity?: number }) => {
                     if (item.type === 'Labor') {
                         billableHours += (item.quantity || 0);
                     }
@@ -290,7 +290,8 @@ const AnalyticsMaster: React.FC = () => {
                             className={`h-full rounded-full transition-all duration-1000 ${
                                 laborData.efficiencyRate > 75 ? 'bg-emerald-500' : laborData.efficiencyRate > 50 ? 'bg-amber-500' : 'bg-rose-500'
                             }`}
-                            style={{ width: `${Math.min(laborData.efficiencyRate, 100)}%` } as React.CSSProperties}
+                            // eslint-disable-next-line react/forbid-dom-props
+                            style={{ width: `${Math.min(laborData.efficiencyRate, 100)}%` } as React.CSSProperties} // NOSONAR
                         ></div>
                     </div>
 
@@ -383,7 +384,7 @@ const AnalyticsMaster: React.FC = () => {
                     </div>
 
                     <div className="space-y-3">
-                        {techLeaderboard.length > 0 ? techLeaderboard.map((tech: any, index: number) => (
+                        {techLeaderboard.length > 0 ? techLeaderboard.map((tech: { id: string; name: string; revenue: number }, index: number) => (
                             <div key={tech.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 group hover:border-amber-200 transition-colors">
                                 <div className="flex items-center gap-4">
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm shadow-sm ${
