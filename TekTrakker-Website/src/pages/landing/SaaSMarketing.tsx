@@ -418,18 +418,17 @@ const InteractiveFeatures = () => {
                     <div className="flex flex-col h-full bg-slate-50/60 backdrop-blur-md rounded-b-[2rem] border-x border-b border-slate-200 overflow-hidden relative shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)]">
                         {/* Map Header Mock */}
                         <div className="h-32 bg-slate-100 relative overflow-hidden">
-                            <iframe 
-                                title="Live technician navigation map"
-                                width="100%" 
-                                height="150%" 
-                                frameBorder="0" 
-                                scrolling="no" 
-                                marginHeight={0} 
-                                marginWidth={0} 
-                                loading="lazy"
-                                src="https://maps.google.com/maps?q=San%20Antonio&t=&z=13&ie=UTF8&iwloc=&output=embed" 
-                                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none filter saturate-[1.2] opacity-80"
-                            ></iframe>
+                            {/* Static Map Mockup to save performance */}
+                            <div className="absolute inset-0 bg-[#e5e3df] pointer-events-none filter saturate-[1.2] opacity-80">
+                                {/* Fake roads */}
+                                <div className="absolute top-1/4 left-0 right-0 h-2 bg-white/70 rotate-12 transform origin-left"></div>
+                                <div className="absolute top-1/2 left-0 right-0 h-3 bg-white/80 -rotate-6 transform origin-right"></div>
+                                <div className="absolute top-0 bottom-0 left-1/3 w-2 bg-white/70 rotate-3 transform origin-top"></div>
+                                <div className="absolute top-0 bottom-0 right-1/4 w-3 bg-white/90 -rotate-12 transform origin-bottom"></div>
+                                {/* Fake parks */}
+                                <div className="absolute top-1/4 right-1/3 w-16 h-16 bg-[#c5e3c6] rounded-full blur-md"></div>
+                                <div className="absolute bottom-1/4 left-1/4 w-20 h-12 bg-[#c5e3c6] rounded-[40%] blur-sm"></div>
+                            </div>
                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center animate-pulse">
                                 <div className="w-4 h-4 bg-blue-600 rounded-full border-[3px] border-white shadow-lg"></div>
                             </div>
