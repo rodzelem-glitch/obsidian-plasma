@@ -45,7 +45,7 @@ const AnimatedCard: React.FC<{ children: React.ReactNode; direction: 'left' | 'r
             style={delayStyle} 
         >
             {children}
-        </main>
+        </div>
     );
 };
 
@@ -189,7 +189,7 @@ const MockUpdatingCharts = ({ activeTab }: { activeTab: 'layout' | 'users' | 'an
                     )})}
                 </div>
             </div>
-        </main>
+        </div>
     );
 };
 
@@ -224,7 +224,7 @@ const IntegrationsMarquee = () => {
             </div>
             <div className="absolute top-0 left-0 w-32 md:w-64 h-full bg-gradient-to-r from-white to-transparent pointer-events-none"></div>
             <div className="absolute top-0 right-0 w-32 md:w-64 h-full bg-gradient-to-l from-white to-transparent pointer-events-none"></div>
-        </main>
+        </div>
     );
 };
 
@@ -250,7 +250,7 @@ const PartnerTestimonial = () => {
                     </div>
                 </div>
             </a>
-        </main>
+        </div>
     );
 };
 
@@ -306,7 +306,7 @@ const ROICalculator = () => {
                     *Don't let inefficiency steal this from you.
                 </p>
             </div>
-        </main>
+        </div>
     );
 };
 
@@ -742,7 +742,7 @@ const InteractiveFeatures = () => {
                     </motion.div>
                 </AnimatePresence>
             </div>
-        </main>
+        </div>
     );
 };
 
