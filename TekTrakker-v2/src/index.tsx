@@ -33,7 +33,22 @@ if ('serviceWorker' in navigator) {
         });
     } else {
         // Register it manually for production web users
-        registerSW({ immediate: true });
+        const updateSW = registerSW({
+            immediate: true,
+            onNeedRefresh() {
+                // Automatically activate the new service worker and reload the page
+                // This ensures the user NEVER gets stuck on an old cached version
+                updateSW(true);
+            },
+            onRegisteredSW(swUrl, r) {
+                // Periodically check for updates (every hour)
+                if (r) {
+                    setInterval(() => {
+                        r.update();
+                    }, 60 * 60 * 1000);
+                }
+            }
+        });
     }
 }
 
