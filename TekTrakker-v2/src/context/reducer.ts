@@ -33,13 +33,11 @@ export type Action =
     | { type: 'UPDATE_CUSTOMER'; payload: any }
     | { type: 'DELETE_CUSTOMER'; payload: string }
     | { type: 'SET_PROPOSALS'; payload: Proposal[] }
-    | { type: 'MERGE_PROPOSALS'; payload: Proposal[] }
     | { type: 'ADD_PROPOSAL'; payload: Proposal }
     | { type: 'UPDATE_PROPOSAL'; payload: any }
     | { type: 'DELETE_PROPOSAL'; payload: string }
     | { type: 'SET_JOBS'; payload: Job[] }
     | { type: 'SET_EXTERNAL_JOBS'; payload: Job[] }
-    | { type: 'MERGE_JOBS'; payload: Job[] }
     | { type: 'ADD_JOB'; payload: Job }
     | { type: 'UPDATE_JOB'; payload: any }
     | { type: 'DELETE_JOB'; payload: string }
@@ -199,20 +197,7 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'UPDATE_CUSTOMER': return { ...state, customers: state.customers.map(c => c.id === action.payload.id ? { ...c, ...action.payload } : c) };
         case 'DELETE_CUSTOMER': return { ...state, customers: state.customers.filter(c => c.id !== action.payload) };
         case 'SET_JOBS': return { ...state, jobs: action.payload };
-        case 'MERGE_JOBS': {
-            const currentJobs = state.jobs;
-            const newJobs = action.payload;
-            const merged = [...currentJobs];
-            newJobs.forEach(nj => {
-                const idx = merged.findIndex(j => j.id === nj.id);
-                if (idx !== -1) {
-                    merged[idx] = nj; // Update existing
-                } else {
-                    merged.push(nj); // Add new
-                }
-            });
-            return { ...state, jobs: merged };
-        }
+
         case 'SET_EXTERNAL_JOBS': return { ...state, externalJobs: action.payload };
         case 'ADD_JOB': 
             if (state.jobs.some(j => j.id === action.payload.id)) return state;
@@ -228,20 +213,7 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'UPDATE_INVENTORY': return { ...state, inventory: state.inventory.map(i => i.id === action.payload.id ? { ...i, ...action.payload } : i) };
         case 'DELETE_INVENTORY': return { ...state, inventory: state.inventory.filter(i => i.id !== action.payload) };
         case 'SET_PROPOSALS': return { ...state, proposals: action.payload };
-        case 'MERGE_PROPOSALS': {
-            const currentProposals = state.proposals;
-            const newProposals = action.payload;
-            const merged = [...currentProposals];
-            newProposals.forEach(np => {
-                const idx = merged.findIndex(p => p.id === np.id);
-                if (idx !== -1) {
-                    merged[idx] = np; // Update existing
-                } else {
-                    merged.push(np); // Add new
-                }
-            });
-            return { ...state, proposals: merged };
-        }
+
         case 'ADD_PROPOSAL': 
             if (state.proposals.some(p => p.id === action.payload.id)) return state;
             return { ...state, proposals: [...state.proposals, action.payload] };

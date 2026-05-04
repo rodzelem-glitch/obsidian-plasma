@@ -370,13 +370,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 
                 newSubscriptions.push(query.onSnapshot(s => {
                     const payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
-                    
-                    if (['jobs', 'proposals'].includes(collection)) {
-                        const mergeType = collection === 'jobs' ? 'MERGE_JOBS' : 'MERGE_PROPOSALS';
-                        dispatch({ type: mergeType, payload } as unknown as Action);
-                    } else {
-                        dispatch({ type: actionType, payload } as unknown as Action);
-                    }
+                    dispatch({ type: actionType, payload } as unknown as Action);
                 }, (error) => {
                     console.error(`Subscription failed for ${collection}:`, error);
                 }));
