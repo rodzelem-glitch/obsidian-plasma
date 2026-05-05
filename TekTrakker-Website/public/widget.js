@@ -40,6 +40,12 @@
         .tt-widget-footer img { height: 20px; margin-left: 8px; }
         #tt-hvac-details, #tt-owner-details { display: none; margin-top: 16px; padding-top: 16px; border-top: 1px dashed #e5e7eb; }
         .tt-widget-success-message { text-align: center; padding: 40px; color: #059669; font-size: 1.2rem; }
+        @media (max-width: 768px) {
+            .tt-widget-grid { display: flex !important; flex-direction: column; width: 100%; gap: 12px; }
+            .tt-widget-group { width: 100%; display: flex; flex-direction: column; }
+            .tt-widget-input, .tt-widget-select { width: 100%; box-sizing: border-box; }
+            .tt-widget-container { border-radius: 0; }
+        }
     `;
 
     // 4. HTML Structure
