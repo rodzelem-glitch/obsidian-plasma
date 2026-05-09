@@ -3,6 +3,7 @@ import React from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import type { Applicant } from 'types';
+import { FileText } from 'lucide-react';
 
 interface ListViewProps {
     applicants: Applicant[];

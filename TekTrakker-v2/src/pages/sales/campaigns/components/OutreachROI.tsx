@@ -88,7 +88,6 @@ const OutreachROI: React.FC = () => {
                                 <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                     {(() => {
                                         const progressStyle = { width: `${step.pct}%` };
-                                        // eslint-disable-next-line
                                         return <div className={`h-full bg-primary-500 transition-all`} style={progressStyle}></div>;
                                     })()}
                                 </div>

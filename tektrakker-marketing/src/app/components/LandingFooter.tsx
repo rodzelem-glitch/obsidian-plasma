@@ -2,14 +2,16 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Facebook } from 'lucide-react';
 
 const Logo = ({ className }: { className?: string }) => (
-    {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img 
+    <Image 
         src="/tektrakker-logo-web.png" 
         alt="TekTrakker" 
-        className={`max-w-full max-h-full object-contain ${className || 'h-auto'}`}
+        width={160}
+        height={32}
+        className={`object-contain ${className || 'h-auto'}`}
     />
 );
 
