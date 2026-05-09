@@ -33,26 +33,94 @@ interface LandingFooterProps {
 
 export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) => {
     return (
-        <footer className="bg-slate-950 border-t border-white/5 py-12 px-6">
-            <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-                <Link href="/" className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 hover:opacity-100 transition-all">
-                    <Logo className="h-8 w-auto" />
-                </Link>
-                <div className="flex items-center gap-6 text-sm text-slate-500 font-medium">
-                    <Link href="/faq" className="hover:text-white transition-colors">FAQ</Link>
-                    <Link href="/franchise" className="hover:text-white transition-colors">Franchise</Link>
-                    <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
-                    <Link href="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
-                    {onShowSupport && (
-                        <button onClick={onShowSupport} className="hover:text-white transition-colors">Support</button>
-                    )}
+        <footer className="bg-slate-950 border-t border-white/5 py-16 md:py-24 px-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-600/10 rounded-full blur-[100px] pointer-events-none transform translate-x-1/2 -translate-y-1/2"></div>
+            <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-8 gap-y-16 relative z-10">
+                <div className="col-span-1">
+                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Platform</h4>
+                    <ul className="space-y-4 text-sm font-medium text-slate-400">
+                        <li><a href="/features/scheduling-dispatch/" className="hover:text-primary-400 transition-colors">Scheduling & Dispatch</a></li>
+                        <li><a href="/features/invoicing-payments/" className="hover:text-primary-400 transition-colors">Invoicing & Payments</a></li>
+                        <li><a href="/features/field-service-app/" className="hover:text-primary-400 transition-colors">Field Service App</a></li>
+                        <li><a href="/features/estimating-proposals/" className="hover:text-primary-400 transition-colors">Estimating & Proposals</a></li>
+                        <li><a href="/features/service-agreements/" className="hover:text-primary-400 transition-colors">Service Agreements</a></li>
+                        <li><a href="/features/ai-virtual-worker/" className="hover:text-primary-400 transition-colors">AI Virtual Worker</a></li>
+                    </ul>
                 </div>
-                <div className="flex items-center gap-4">
-                    <a href="https://www.facebook.com/share/1AyPhsNeN3/" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook" className="text-slate-500 hover:text-[#1877F2] transition-all hover:scale-110"><Facebook size={20} /></a>
-                    <a href="https://twitter.com/TrakkerPlatform" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)" title="X (Twitter)" className="text-slate-500 hover:text-white transition-all hover:scale-110"><XLogo size={20} /></a>
-                    <a href="https://www.tiktok.com/@tektrakker" target="_blank" rel="noopener noreferrer" aria-label="TikTok" title="TikTok" className="text-slate-500 hover:text-[#00f2fe] transition-all hover:scale-110"><TikTok size={20} /></a>
+
+                <div className="col-span-1 lg:col-span-2">
+                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Industries</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <ul className="space-y-4 text-sm font-medium text-slate-400">
+                            <li><a href="/industries/hvac/" className="hover:text-primary-400 transition-colors">HVAC</a></li>
+                            <li><a href="/industries/plumbing/" className="hover:text-primary-400 transition-colors">Plumbing</a></li>
+                            <li><a href="/industries/electrical/" className="hover:text-primary-400 transition-colors">Electrical</a></li>
+                            <li><a href="/industries/landscaping/" className="hover:text-primary-400 transition-colors">Landscaping</a></li>
+                            <li><a href="/industries/cleaning/" className="hover:text-primary-400 transition-colors">Cleaning Services</a></li>
+                            <li><a href="/industries/painting/" className="hover:text-primary-400 transition-colors">Painting</a></li>
+                            <li><a href="/industries/roofing/" className="hover:text-primary-400 transition-colors">Roofing</a></li>
+                            <li><a href="/industries/contracting/" className="hover:text-primary-400 transition-colors">General Contracting</a></li>
+                        </ul>
+                        <ul className="space-y-4 text-sm font-medium text-slate-400">
+                            <li><a href="/industries/masonry/" className="hover:text-primary-400 transition-colors">Masonry</a></li>
+                            <li><a href="/industries/garage-door/" className="hover:text-primary-400 transition-colors">Garage Door</a></li>
+                            <li><a href="/industries/appliance-repair/" className="hover:text-primary-400 transition-colors">Appliance Repair</a></li>
+                            <li><a href="/industries/telecommunications/" className="hover:text-primary-400 transition-colors">Telecommunications</a></li>
+                            <li><a href="/industries/solar/" className="hover:text-primary-400 transition-colors">Solar Installation</a></li>
+                            <li><a href="/industries/security/" className="hover:text-primary-400 transition-colors">Security & Alarm</a></li>
+                            <li><a href="/industries/property-management/" className="hover:text-primary-400 transition-colors">Property Management</a></li>
+                            <li><a href="/industries/pet-grooming/" className="hover:text-primary-400 transition-colors">Pet Grooming</a></li>
+                        </ul>
+                    </div>
                 </div>
-                <div className="text-slate-600 text-xs font-medium">&copy; {new Date().getFullYear()} TekTrakker Inc. All rights reserved.</div>
+
+                <div className="col-span-1">
+                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Resources</h4>
+                    <ul className="space-y-4 text-sm font-medium text-slate-400">
+                        <li><a href="/faq/" className="hover:text-primary-400 transition-colors">Help Center / FAQ</a></li>
+                        <li><a href="/roi-calculator/" className="hover:text-primary-400 transition-colors">ROI Calculator</a></li>
+                        <li><a href="/integrations/" className="hover:text-primary-400 transition-colors">Integration Directory</a></li>
+                        <li><a href="https://app.tektrakker.com/#/homeowners" className="hover:text-primary-400 transition-colors">Homeowner Portal</a></li>
+                        <li><a href="https://app.tektrakker.com/#/login" className="hover:text-primary-400 transition-colors">Customer Login</a></li>
+                    </ul>
+                </div>
+
+                <div className="col-span-1">
+                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Company</h4>
+                    <ul className="space-y-4 text-sm font-medium text-slate-400">
+                        <li><a href="/franchise/" className="hover:text-primary-400 transition-colors">Franchise Opportunities</a></li>
+                        {onShowSupport && (
+                            <li><button onClick={onShowSupport} className="hover:text-primary-400 transition-colors">Contact Support</button></li>
+                        )}
+                        <li><a href="/privacy/" className="hover:text-primary-400 transition-colors">Privacy Policy</a></li>
+                        <li><a href="/terms/" className="hover:text-primary-400 transition-colors">Terms of Service</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center md:items-end gap-8 mt-16 pt-8 border-t border-slate-800/50 relative z-10">
+                <div className="text-slate-500 text-sm font-medium w-full md:w-1/3 text-center md:text-left order-3 md:order-1">
+                    &copy; {new Date().getFullYear()} TekTrakker Inc.<br />All rights reserved.
+                </div>
+
+                <div className="flex flex-col items-center text-center w-full md:w-1/3 gap-4 order-1 md:order-2">
+                    <Link href="/" className="opacity-90 hover:opacity-100 transition-opacity">
+                        <Logo className="h-6 w-auto" />
+                    </Link>
+                    <p className="text-slate-500 text-xs max-w-sm mx-auto leading-relaxed">
+                        The all-in-one operating system built specifically for the trades. Stop managing software and start managing your business.
+                    </p>
+                    <div className="flex items-center justify-center gap-3">
+                        <a href="https://www.facebook.com/share/1AyPhsNeN3/" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-[#1877F2] hover:border-[#1877F2] hover:bg-[#1877F2]/10 transition-all"><Facebook size={14} /></a>
+                        <a href="https://twitter.com/TrakkerPlatform" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)" className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:border-white hover:bg-white/10 transition-all"><XLogo size={14} /></a>
+                        <a href="https://www.tiktok.com/@tektrakker" target="_blank" rel="noopener noreferrer" aria-label="TikTok" className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-[#00f2fe] hover:border-[#00f2fe] hover:bg-[#00f2fe]/10 transition-all"><TikTok size={14} /></a>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-center md:justify-end w-full md:w-1/3 gap-2 order-2 md:order-3 mb-4 md:mb-0">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]"></span>
+                    <span className="text-slate-400 text-sm font-bold">All Systems Operational</span>
+                </div>
             </div>
         </footer>
     );

@@ -354,17 +354,17 @@ const IntegrationsMarquee = () => {
                     <span className="w-8 h-px bg-slate-300"></span>
                 </p>
             </div>
-            <div className="flex w-[200%] animate-marquee flex-nowrap">
-                <div className="flex w-1/2 justify-start items-center flex-nowrap gap-16">
+            <div className="flex w-max animate-marquee flex-nowrap hover:[animation-play-state:paused]">
+                <div className="flex shrink-0 justify-start items-center flex-nowrap gap-16 pr-16">
                     {integrations.map((name, i) => (
-                        <div key={i} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap min-w-max">
+                        <div key={i} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap">
                             {name}
                         </div>
                     ))}
                 </div>
-                <div className="flex w-1/2 justify-start items-center flex-nowrap gap-16">
+                <div className="flex shrink-0 justify-start items-center flex-nowrap gap-16 pr-16">
                     {integrations.map((name, i) => (
-                        <div key={`dup-${i}`} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap min-w-max">
+                        <div key={`dup-${i}`} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap">
                             {name}
                         </div>
                     ))}
