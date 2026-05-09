@@ -607,7 +607,7 @@ export default function Home() {
                     <div>
                         <Logo className="h-16 md:h-16 w-auto mb-8 animate-fade-in" />
                         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 border border-blue-200 mb-8 animate-fade-in"><span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span><span className="text-xs font-bold text-blue-700 uppercase tracking-widest">Reclaim Your Evenings</span></div>
-                        <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-8 leading-tight text-slate-900">Stop Being a Slave to <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600">Paperwork.</span></h1>
+                        <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-8 leading-tight text-slate-900">The #1 Field Service Management Software for <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600">Modern Contractors.</span></h1>
                         <p className="text-xl text-slate-600 max-w-xl mb-10 leading-relaxed font-medium">You didn&apos;t start a business to work 16 hours a day. TekTrakker eliminates the chaos of scheduling, chasing payments, and managing techs so you can finally breathe.</p>
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-primary-700 text-white font-black text-lg hover:bg-primary-800 transition-all shadow-lg shadow-primary-700/20 hover:scale-[1.02] flex items-center justify-center gap-2">Start Exploring Now <ArrowRight size={20} /></button>
