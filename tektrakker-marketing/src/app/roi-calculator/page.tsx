@@ -21,7 +21,7 @@ export default function ROICalculatorPage() {
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-            <LandingHeader />
+            <LandingHeader backButton={{ label: 'Back to Home', href: '/' }} />
             
             <header className="pt-40 pb-20 px-6 bg-white border-b border-slate-200">
                 <div className="max-w-4xl mx-auto text-center">

@@ -2,8 +2,18 @@ import React from 'react';
 import { LandingHeader } from '../components/LandingHeader';
 import { LandingFooter } from '../components/LandingFooter';
 import LandingChatbot from '../components/LandingChatbot';
-import { Shield, Target, Users, Award } from 'lucide-react';
+import { Shield, Target, Users, Award, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+    title: 'About Us | TekTrakker SDVOSB',
+    description: 'TekTrakker is a Service-Disabled Veteran-Owned Small Business (SDVOSB) providing all-in-one field service management software. Learn about our mission.',
+    openGraph: {
+        title: 'About Us | TekTrakker SDVOSB',
+        description: 'TekTrakker is a Service-Disabled Veteran-Owned Small Business (SDVOSB) providing all-in-one field service management software.',
+    }
+};
 
 export default function AboutPage() {
     return (
@@ -13,13 +23,17 @@ export default function AboutPage() {
             <header className="pt-40 pb-20 px-6 relative overflow-hidden bg-slate-950 text-white border-b border-slate-800">
                 <div 
                     className="absolute inset-0 z-0 opacity-20 bg-cover bg-center mix-blend-overlay"
-                    // eslint-disable-next-line react/forbid-dom-props
                     style={{ backgroundImage: `url(/images/about_us_hero_1778355123377.png)` }}
                 />
                 <div className="absolute top-0 right-0 w-[800px] h-[500px] bg-primary-600/40 rounded-full blur-[120px] pointer-events-none transform translate-x-1/3 -translate-y-1/3 z-0" />
                 <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-emerald-900/30 rounded-full blur-[150px] pointer-events-none transform -translate-x-1/2 translate-y-1/2 z-0" />
                 
                 <div className="max-w-4xl mx-auto text-center relative z-10">
+                    <div className="mb-6 flex justify-center">
+                        <Link href="/" className="inline-flex items-center text-primary-400 hover:text-primary-300 transition-colors font-semibold uppercase tracking-wider text-sm">
+                            <ArrowLeft className="mr-2" size={16} /> Back to Home
+                        </Link>
+                    </div>
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 mb-8">
                         <Award size={16} className="text-emerald-400" />
                         <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">A Certified SDVOSB</span>
@@ -61,7 +75,7 @@ export default function AboutPage() {
                             </div>
                             <h3 className="text-xl font-bold mb-4">Veteran Led</h3>
                             <p className="text-slate-600 leading-relaxed">
-                                We approach business with the same dedication, strategic planning, and unwavering commitment to the mission that we learned in the military. When you partner with us, you are partnering with a team that won't quit until the job is done.
+                                We approach business with the same dedication, strategic planning, and unwavering commitment to the mission that we learned in the military. When you partner with us, you are partnering with a team that won&apos;t quit until the job is done.
                             </p>
                         </div>
                         
@@ -81,7 +95,7 @@ export default function AboutPage() {
                             </div>
                             <h3 className="text-xl font-bold mb-4">True Partnership</h3>
                             <p className="text-slate-600 leading-relaxed">
-                                We don't just sell software; we forge partnerships. Our onboarding and support teams are deeply invested in your success, providing ongoing training, best practices, and continuous platform enhancements.
+                                We don&apos;t just sell software; we forge partnerships. Our onboarding and support teams are deeply invested in your success, providing ongoing training, best practices, and continuous platform enhancements.
                             </p>
                         </div>
                     </div>

@@ -275,7 +275,6 @@ const VirtualWorkerReports: React.FC = () => {
                                 <div className="w-64 bg-slate-100 dark:bg-slate-800 rounded-full h-3 mt-4 overflow-hidden border border-slate-200 dark:border-slate-700">
                                     {(() => {
                                         const progressStyle = { width: `${selectedTask.progress}%` };
-                                        // eslint-disable-next-line react/forbid-dom-props
                                         return <div className="bg-indigo-500 h-full transition-all duration-500" style={progressStyle}></div>;
                                     })()}
                                 </div>

@@ -1,8 +1,12 @@
-"use client";
-
 import React from 'react';
 import { LandingHeader } from '../components/LandingHeader';
 import { LandingFooter } from '../components/LandingFooter';
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+    title: 'Privacy Policy | TekTrakker',
+    description: 'TekTrakker Privacy Policy. Learn how we handle, protect, and use your data across our field service applications.',
+};
 
 export default function PrivacyPolicy() {
   return (

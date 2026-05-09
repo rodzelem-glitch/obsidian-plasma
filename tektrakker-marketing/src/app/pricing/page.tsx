@@ -79,7 +79,7 @@ export default function Pricing() {
                                 {[1,2,3,4,5].map(s => <Star key={s} fill="currentColor" size={20} />)}
                             </div>
                             <p className="text-xl italic text-slate-300 leading-relaxed mb-6">
-                                "We deployed TekTrakker on a Monday. By Friday, the automated SMS reminders recovered $14,000 in unpaid proposals we completely forgot about. It pays for itself."
+                                &quot;We deployed TekTrakker on a Monday. By Friday, the automated SMS reminders recovered $14,000 in unpaid proposals we completely forgot about. It pays for itself.&quot;
                             </p>
                             <div className="flex items-center gap-4">
                                 <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center font-bold">JD</div>

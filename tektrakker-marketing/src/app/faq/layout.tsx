@@ -1,18 +1,10 @@
-import type { Metadata } from "next";
+import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: "TekTrakker FAQ | Frequently Asked Questions",
-  description: "Find answers to your questions about TekTrakker's all-in-one software platform for trade services, mobile app, Kiosk mode, B2B Contractor Marketplace, and more.",
-  openGraph: {
-    title: "TekTrakker FAQ | Frequently Asked Questions",
-    description: "Find answers to your questions about TekTrakker's all-in-one software platform for trade services, mobile app, Kiosk mode, B2B Contractor Marketplace, and more.",
-  },
+    title: 'Frequently Asked Questions | TekTrakker',
+    description: 'Find answers to common questions about TekTrakker, from setup and billing to advanced features and integrations.',
 };
 
-export default function FAQLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return <>{children}</>;
+export default function FAQLayout({ children }: { children: React.ReactNode }) {
+    return <>{children}</>;
 }

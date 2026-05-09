@@ -1,8 +1,12 @@
-"use client";
-
 import React from 'react';
 import { LandingHeader } from '../components/LandingHeader';
 import { LandingFooter } from '../components/LandingFooter';
+import { Metadata } from 'next';
+
+export const metadata: Metadata = {
+    title: 'Terms of Service | TekTrakker',
+    description: 'Read the TekTrakker Terms of Service. By using our platform, you agree to these rules and guidelines.',
+};
 
 export default function TermsOfService() {
   return (

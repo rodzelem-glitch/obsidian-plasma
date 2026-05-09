@@ -2,6 +2,18 @@ import React from 'react';
 import { LandingHeader } from '../components/LandingHeader';
 import { LandingFooter } from '../components/LandingFooter';
 import LandingChatbot from '../components/LandingChatbot';
+import Link from 'next/link';
+import { Metadata } from 'next';
+import { ArrowLeft } from 'lucide-react';
+
+export const metadata: Metadata = {
+    title: 'End User License Agreement (EULA) | TekTrakker',
+    description: 'Read the End User License Agreement (EULA) for TekTrakker. Understand your rights and responsibilities when using our field service management software.',
+    openGraph: {
+        title: 'End User License Agreement (EULA) | TekTrakker',
+        description: 'Read the End User License Agreement (EULA) for TekTrakker.',
+    }
+};
 
 export default function EULAPage() {
     return (
@@ -11,6 +23,11 @@ export default function EULAPage() {
             <header className="pt-40 pb-20 px-6 bg-slate-950 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary-600/20 rounded-full blur-[100px] pointer-events-none" />
                 <div className="max-w-4xl mx-auto text-center relative z-10">
+                    <div className="mb-8 flex justify-center">
+                        <Link href="/" className="inline-flex items-center text-primary-400 hover:text-primary-300 transition-colors font-semibold uppercase tracking-wider text-sm">
+                            <ArrowLeft className="mr-2" size={16} /> Back to Home
+                        </Link>
+                    </div>
                     <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6">End User License Agreement</h1>
                     <p className="text-xl text-slate-400 mb-10">Last Updated: {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
                 </div>

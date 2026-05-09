@@ -31,7 +31,7 @@ export default function IntegrationsPage() {
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-            <LandingHeader />
+            <LandingHeader backButton={{ label: 'Back to Home', href: '/' }} />
             
             <header className="pt-40 pb-20 px-6 bg-slate-900 text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-primary-600/20 rounded-full blur-[100px] pointer-events-none" />
@@ -67,7 +67,7 @@ export default function IntegrationsPage() {
             </section>
 
             <section className="py-20 px-6 bg-primary-50 text-center">
-                <h2 className="text-3xl font-black text-slate-900 mb-6">Don't see your favorite tool?</h2>
+                <h2 className="text-3xl font-black text-slate-900 mb-6">Don&apos;t see your favorite tool?</h2>
                 <p className="text-lg text-slate-600 mb-8 max-w-xl mx-auto">Our Open API allows your developers to connect TekTrakker to virtually any system on earth.</p>
                 <Link href="https://app.tektrakker.com/#/login?view=register_business" className="inline-flex h-14 px-8 rounded-xl bg-primary-600 text-white font-bold hover:bg-primary-700 transition-all items-center gap-2">
                     Request an Integration <ArrowRight size={18} />
