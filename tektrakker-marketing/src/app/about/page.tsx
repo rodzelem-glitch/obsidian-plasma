@@ -13,6 +13,7 @@ export default function AboutPage() {
             <header className="pt-40 pb-20 px-6 relative overflow-hidden bg-slate-950 text-white border-b border-slate-800">
                 <div 
                     className="absolute inset-0 z-0 opacity-20 bg-cover bg-center mix-blend-overlay"
+                    // eslint-disable-next-line react/forbid-dom-props
                     style={{ backgroundImage: `url(/images/about_us_hero_1778355123377.png)` }}
                 />
                 <div className="absolute top-0 right-0 w-[800px] h-[500px] bg-primary-600/40 rounded-full blur-[120px] pointer-events-none transform translate-x-1/3 -translate-y-1/3 z-0" />

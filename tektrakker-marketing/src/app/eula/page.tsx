@@ -20,7 +20,7 @@ export default function EULAPage() {
                 <div className="max-w-4xl mx-auto">
                     <div className="prose prose-lg prose-slate text-slate-600">
                         <p className="lead">
-                            This End User License Agreement ("EULA") is a legal agreement between you ("User" or "You") and TekTrakker Inc. ("Company," "We," or "Us") governing your use of the TekTrakker software, web applications, mobile applications, and associated services (collectively, the "Software").
+                            This End User License Agreement (&quot;EULA&quot;) is a legal agreement between you (&quot;User&quot; or &quot;You&quot;) and TekTrakker Inc. (&quot;Company,&quot; &quot;We,&quot; or &quot;Us&quot;) governing your use of the TekTrakker software, web applications, mobile applications, and associated services (collectively, the &quot;Software&quot;).
                         </p>
                         
                         <p>
@@ -50,7 +50,7 @@ export default function EULAPage() {
 
                         <h3>4. Updates and Maintenance</h3>
                         <p>
-                            TekTrakker may from time to time provide enhancements or improvements to the features/functionality of the Software, which may include patches, bug fixes, updates, upgrades, and other modifications ("Updates"). Updates may modify or delete certain features and/or functionalities of the Software. You agree that TekTrakker has no obligation to (i) provide any Updates, or (ii) continue to provide or enable any particular features and/or functionalities of the Software to you.
+                            TekTrakker may from time to time provide enhancements or improvements to the features/functionality of the Software, which may include patches, bug fixes, updates, upgrades, and other modifications (&quot;Updates&quot;). Updates may modify or delete certain features and/or functionalities of the Software. You agree that TekTrakker has no obligation to (i) provide any Updates, or (ii) continue to provide or enable any particular features and/or functionalities of the Software to you.
                         </p>
 
                         <h3>5. Term and Termination</h3>

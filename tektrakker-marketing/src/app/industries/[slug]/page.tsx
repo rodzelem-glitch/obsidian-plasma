@@ -33,6 +33,7 @@ export default async function IndustryPage({ params }: { params: Promise<{ slug:
                 {industry.heroImage && (
                     <div 
                         className="absolute inset-0 z-0 opacity-30 bg-cover bg-center mix-blend-luminosity"
+                        // eslint-disable-next-line react/forbid-dom-props
                         style={{ backgroundImage: `url(${industry.heroImage})` }}
                     />
                 )}
