@@ -7,7 +7,7 @@ import { Facebook } from 'lucide-react';
 
 const Logo = ({ className }: { className?: string }) => (
     <Image 
-        src="/tektrakker-logo-web.png" 
+        src="/tektrakker-logo-web.webp" 
         alt="TekTrakker" 
         width={160}
         height={32}

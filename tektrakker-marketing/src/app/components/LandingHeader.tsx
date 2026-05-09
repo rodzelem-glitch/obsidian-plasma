@@ -6,7 +6,7 @@ import { ArrowLeft } from 'lucide-react';
 
 const Logo = ({ className }: { className?: string }) => (
     <img 
-        src="/tektrakker-logo-web.png" 
+        src="/tektrakker-logo-web.webp" 
         alt="TekTrakker" 
         width={150}
         height={40}
