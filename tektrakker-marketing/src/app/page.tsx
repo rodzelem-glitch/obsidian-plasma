@@ -348,7 +348,7 @@ const IntegrationsMarquee = () => {
     return (
         <div className="w-full bg-white border-y border-slate-200 py-10 overflow-hidden relative">
             <div className="max-w-7xl mx-auto px-6 mb-8">
-                <p className="text-center text-sm font-bold text-slate-500 uppercase tracking-widest flex items-center justify-center gap-2">
+                <p className="text-center text-sm font-bold text-slate-600 uppercase tracking-widest flex items-center justify-center gap-2">
                     <span className="w-8 h-px bg-slate-300"></span>
                     Connects seamlessly with 70+ industry-leading tools
                     <span className="w-8 h-px bg-slate-300"></span>
@@ -357,14 +357,14 @@ const IntegrationsMarquee = () => {
             <div className="flex w-max animate-marquee flex-nowrap hover:[animation-play-state:paused]">
                 <div className="flex shrink-0 justify-start items-center flex-nowrap gap-16 pr-16">
                     {integrations.map((name, i) => (
-                        <div key={i} className="text-xl md:text-2xl font-black text-slate-400 hover:text-slate-600 transition-colors cursor-default whitespace-nowrap">
+                        <div key={i} className="text-xl md:text-2xl font-black text-slate-500 hover:text-slate-700 transition-colors cursor-default whitespace-nowrap">
                             {name}
                         </div>
                     ))}
                 </div>
                 <div className="flex shrink-0 justify-start items-center flex-nowrap gap-16 pr-16">
                     {integrations.map((name, i) => (
-                        <div key={`dup-${i}`} className="text-xl md:text-2xl font-black text-slate-400 hover:text-slate-600 transition-colors cursor-default whitespace-nowrap">
+                        <div key={`dup-${i}`} className="text-xl md:text-2xl font-black text-slate-500 hover:text-slate-700 transition-colors cursor-default whitespace-nowrap">
                             {name}
                         </div>
                     ))}
@@ -390,7 +390,7 @@ const PartnerTestimonial = () => {
                     </p>
                     <div className="flex items-center justify-center gap-6">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="https://firebasestorage.googleapis.com/v0/b/tektrakker.firebasestorage.app/o/public_assets%2Forg-1765817997819%2Flogo_stable_1774702115808.png?alt=media&token=08c347fe-a7b0-40d9-b23f-6a2adecf63e9" alt="TekAir Inc Logo" className="h-10 md:h-14 w-auto object-contain drop-shadow-sm" />
+                        <img src="https://firebasestorage.googleapis.com/v0/b/tektrakker.firebasestorage.app/o/public_assets%2Forg-1765817997819%2Flogo_stable_1774702115808.png?alt=media&token=08c347fe-a7b0-40d9-b23f-6a2adecf63e9" alt="TekAir Inc Logo" width={128} height={56} className="h-10 md:h-14 w-auto object-contain drop-shadow-sm" />
                         <div className="hidden md:block h-10 w-px bg-slate-200"></div>
                         <div className="text-left flex flex-col justify-center">
                             <span className="font-bold text-slate-900 border-b border-transparent group-hover:border-slate-400 transition-colors">Featured Partner</span>
