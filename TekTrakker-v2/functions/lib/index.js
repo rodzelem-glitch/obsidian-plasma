@@ -35,8 +35,11 @@ var __importStar = (this && this.__importStar) || (function () {
 var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.postToX = exports.fetchShovelsPermits = exports.fetchIotDiagnostics = exports.enforceHardQuotas = exports.provisionCustomDomain = exports.automatedMaintenanceReminders = exports.twilioInboundVoice = exports.punchoutWebhook = exports.initiatePunchoutSession = exports.incomingLeadWebhook = exports.trackEmailOpen = exports.createUserAuth = exports.syncExternalReviews = exports.measureQuickWebhook = exports.processMailQueue = exports.manageHandshake = exports.suggestBidPricing = exports.generateBidDocument = exports.searchHistoricalBidData = exports.analyzeRFP = exports.callGeminiAI = exports.callLandingChatbot = exports.generateReviewResponse = exports.linkCustomerOnUserCreate = exports.deleteAuthUser = exports.sendSms = exports.getPlatformMetrics = exports.setUserRole = exports.generateCommissionOnSubscriptionPayment = void 0;
+exports.checkApiKeyExpirations = exports.cleanupBidOnDelete = exports.automatedBidReminders = exports.postToX = exports.fetchShovelsPermits = exports.fetchIotDiagnostics = exports.enforceHardQuotas = exports.provisionCustomDomain = exports.automatedMaintenanceReminders = exports.twilioInboundVoice = exports.punchoutWebhook = exports.initiatePunchoutSession = exports.incomingLeadWebhook = exports.trackEmailOpen = exports.createUserAuth = exports.syncExternalReviews = exports.measureQuickWebhook = exports.processMailQueue = exports.manageHandshake = exports.suggestBidPricing = exports.generateBidDocument = exports.searchHistoricalBidData = exports.analyzeRFP = exports.callGeminiAI = exports.callLandingChatbot = exports.generateReviewResponse = exports.linkCustomerOnUserCreate = exports.deleteAuthUser = exports.sendSms = exports.getPlatformMetrics = exports.setUserRole = exports.generateCommissionOnSubscriptionPayment = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const twitter_api_v2_1 = require("twitter-api-v2");
 const admin = __importStar(require("firebase-admin"));
@@ -47,12 +50,16 @@ const generative_ai_1 = require("@google/generative-ai");
 const xml2js = __importStar(require("xml2js"));
 const squareUtils_1 = require("./squareUtils");
 const aiAgent_1 = require("./aiAgent");
+const axios_1 = __importDefault(require("axios"));
+const buffer_1 = require("buffer");
 try {
     if (admin.apps.length === 0) {
         admin.initializeApp();
     }
 }
-catch (e) { }
+catch (e) {
+    // Ignore initialization errors if already initialized
+}
 const auth = admin.auth();
 const db = admin.firestore();
 const billingBudgetsClient = new billing_budgets_1.BudgetServiceClient();
@@ -325,7 +332,7 @@ exports.sendSms = functions.firestore.document('messages/{msgId}').onCreate(asyn
         const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
             method: 'POST',
             headers: {
-                'Authorization': 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
+                'Authorization': 'Basic ' + buffer_1.Buffer.from(`${accountSid}:${authToken}`).toString('base64'),
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
             body: body
@@ -548,11 +555,65 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
         throw new functions.https.HttpsError("invalid-argument", "No files provided.");
     }
     const apiKey = await (0, aiAgent_1.getGeminiApiKey)(orgId);
+    let orgContext = null;
+    if (orgId && orgId !== 'unauthenticated') {
+        try {
+            const orgDoc = await db.collection('organizations').doc(orgId).get();
+            if (orgDoc.exists) {
+                orgContext = orgDoc.data();
+            }
+        }
+        catch (e) {
+            functions.logger.warn("Failed to fetch org context for analyzeRFP", e);
+        }
+    }
     try {
         const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: GEMINI_PRO_MODEL });
         const analyses = await Promise.all(files.map(async (file) => {
-            const { fileData, mimeType } = file;
+            let { fileData, mimeType, fileName } = file;
+            // If the fileData is actually a URL (like a SAM.gov resource link), download it first
+            if (fileData && (fileData.startsWith('http://') || fileData.startsWith('https://'))) {
+                try {
+                    const response = await axios_1.default.get(fileData, { responseType: 'arraybuffer' });
+                    const contentType = String(response.headers['content-type'] || '').toLowerCase();
+                    const contentDisposition = String(response.headers['content-disposition'] || '');
+                    let headerFileName = fileName || '';
+                    const match = contentDisposition.match(/filename="?([^";]+)"?/i);
+                    if (match)
+                        headerFileName = match[1];
+                    const isXlsx = contentType.includes('spreadsheet') || contentType.includes('excel') || contentType.includes('csv') || (headerFileName && (headerFileName.toLowerCase().endsWith('.xlsx') || headerFileName.toLowerCase().endsWith('.xls') || headerFileName.toLowerCase().endsWith('.csv')));
+                    const isDocx = contentType.includes('wordprocessing') || contentType.includes('msword') || (headerFileName && (headerFileName.toLowerCase().endsWith('.docx') || headerFileName.toLowerCase().endsWith('.doc')));
+                    if (isXlsx) {
+                        const XLSX = await Promise.resolve().then(() => __importStar(require('xlsx')));
+                        const workbook = XLSX.read(response.data, { type: 'buffer' });
+                        let extractedText = "";
+                        for (const sheetName of workbook.SheetNames) {
+                            extractedText += `--- Sheet: ${sheetName} ---\n`;
+                            extractedText += XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+                            extractedText += `\n\n`;
+                        }
+                        fileData = buffer_1.Buffer.from(extractedText).toString('base64');
+                        mimeType = 'text/plain';
+                    }
+                    else if (isDocx) {
+                        const mammoth = await Promise.resolve().then(() => __importStar(require('mammoth')));
+                        const result = await mammoth.extractRawText({ buffer: buffer_1.Buffer.from(response.data) });
+                        fileData = buffer_1.Buffer.from(result.value).toString('base64');
+                        mimeType = 'text/plain';
+                    }
+                    else {
+                        fileData = buffer_1.Buffer.from(response.data).toString('base64');
+                        // Automatically detect PDF mime type if not provided
+                        if (!mimeType)
+                            mimeType = 'application/pdf';
+                    }
+                }
+                catch (dlErr) {
+                    console.error("Failed to download or parse file from URL:", dlErr);
+                    throw new Error(`Failed to process attached document ${fileName || ''}`, { cause: dlErr });
+                }
+            }
             const prompt = `Analyze this government RFP or solicitation document. Extract the following information in JSON format: 
             {
               "requirements": ["list", "of", "general", "requirements"],
@@ -561,15 +622,26 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
               "solicitationNumber": "string",
               "agency": "string",
               "dueDate": "ISO date if found",
+              "importantDates": [{"name": "Site Visit", "date": "YYYY-MM-DD"}, {"name": "Questions Due", "date": "YYYY-MM-DD"}],
               "questions": [{"id": "q1", "text": "Question text based on document that requires user input", "answer": ""}],
               "lineItems": [{"id": "item1", "description": "Item description", "qty": 1, "unit": "EA"}]
             }
             
+            ### COMPANY CONTEXT
+            The organization creating this bid has the following profile data:
+            Company Name: ${orgContext?.name || 'Unknown'}
+            CAGE Code: ${orgContext?.cageCode || 'Unknown'}
+            UEI Number: ${orgContext?.ueid || 'Unknown'}
+            Website: ${orgContext?.website || 'Unknown'}
+            Primary NAICS: ${orgContext?.primaryNaics || 'Unknown'}
+            Address: ${orgContext?.address ? `${orgContext.address.street}, ${orgContext.address.city}, ${orgContext.address.state} ${orgContext.address.zip}` : 'Unknown'}
+
             Crucial Instructions:
             1. For 'deliverables', explicitly prepend each item with either '(Submittal)' if it must be included in the bid response package, or '(Contract)' if it is required after winning the award during execution.
-            2. Identify key areas where the estimator needs to provide input (e.g., "What is the hourly rate for role X?", "Who is the project manager?", "What is the warranty period?") and add them to the 'questions' array.
-            3. Identify all required services, products, or materials that need pricing and add them to the 'lineItems' array.
-            4. Ensure output is STRICTLY valid JSON. Do not include markdown code block tags (\`\`\`json).`;
+            2. Identify key areas where the estimator needs to provide input and add them to the 'questions' array.
+            3. CRITICAL: DO NOT add questions to the 'questions' array for information that is already provided in the COMPANY CONTEXT above (like CAGE Code, UEI, Website, Address, Company Name, etc.). We already have this data and will automatically populate it.
+            4. Identify all required services, products, or materials that need pricing and add them to the 'lineItems' array.
+            5. Ensure output is STRICTLY valid JSON. Do not include markdown code block tags (\`\`\`json).`;
             try {
                 const result = await model.generateContent([
                     { inlineData: { data: fileData, mimeType } },
@@ -585,7 +657,7 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
                 }
                 catch (e) {
                     console.error("Failed to parse AI response as JSON. Raw text:", text);
-                    throw new Error("Failed to parse AI response as JSON for one of the files.");
+                    throw new Error("Failed to parse AI response as JSON for one of the files.", { cause: e });
                 }
             }
             catch (err) {
@@ -607,7 +679,7 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
                     }
                     catch (fallbackErr) {
                         console.error("Fallback to Flash model also failed:", fallbackErr.message);
-                        throw new Error(`AI Service is currently overloaded (503 High Demand). Please try again later. Details: ${fallbackErr.message}`);
+                        throw new Error(`AI Service is currently overloaded (503 High Demand). Please try again later. Details: ${fallbackErr.message}`, { cause: fallbackErr });
                     }
                 }
                 if (err.message && err.message.includes("Unsupported MIME type")) {
@@ -951,7 +1023,7 @@ Output Format:
         }
         catch (e) {
             functions.logger.error("Failed to parse AI pricing recommendations:", text);
-            throw new Error("AI returned invalid JSON.");
+            throw new Error("AI returned invalid JSON.", { cause: e });
         }
         // 3. Map recommendations back to the original line items
         const updatedLineItems = bid.lineItems.map((item) => {
@@ -1730,7 +1802,7 @@ exports.punchoutWebhook = functions.https.onRequest(async (req, res) => {
                 if (cookieMap.userId)
                     userId = cookieMap.userId;
             }
-            catch (e) { }
+            catch { /* ignore */ }
         }
         const totalAmount = parseFloat(orderMessage.PunchOutOrderMessageHeader?.Total?.Money?._ || '0');
         let itemsField = orderMessage.ItemIn || [];
@@ -1844,7 +1916,7 @@ exports.automatedMaintenanceReminders = functions.pubsub.schedule('0 9 * * *')
             let hasWarrantiedHVAC = false;
             customer.equipment.forEach((asset) => {
                 if (asset.warranty?.requiresMaintenance && asset.warranty.maintenanceIntervalMonths) {
-                    let nextDate = new Date();
+                    let nextDate;
                     if (asset.warranty.lastMaintenanceDate) {
                         nextDate = new Date(asset.warranty.lastMaintenanceDate);
                     }
@@ -1939,7 +2011,7 @@ exports.provisionCustomDomain = functions.https.onCall(async (data, context) => 
         try {
             fbConfig = JSON.parse(process.env.FIREBASE_CONFIG || '{}');
         }
-        catch (e) { }
+        catch (e) { /* Ignore */ }
         const projectId = fbConfig.projectId || process.env.GCLOUD_PROJECT || 'tektrakker';
         const siteId = 'tektrakker';
         // Use customDomains API
@@ -2212,4 +2284,190 @@ __exportStar(require("./rfpAgent"), exports);
 __exportStar(require("./tiktok"), exports);
 __exportStar(require("./marketplaceIntegrations"), exports);
 __exportStar(require("./linkedin"), exports);
+__exportStar(require("./ringCentral"), exports);
+__exportStar(require("./govContracts"), exports);
+__exportStar(require("./microsoftAuth"), exports);
+exports.automatedBidReminders = functions.pubsub.schedule('0 8 * * *').timeZone('America/New_York').onRun(async (context) => {
+    try {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const bidsSnap = await db.collection('bids')
+            .where('status', 'in', ['Draft', 'Analyzing', 'Costing', 'Review'])
+            .get();
+        const promises = [];
+        for (const doc of bidsSnap.docs) {
+            const bid = doc.data();
+            const orgId = bid.organizationId;
+            if (!orgId)
+                continue;
+            // Collect all upcoming dates for this bid
+            const upcomingEvents = [];
+            if (bid.dueDate) {
+                const parsed = new Date(bid.dueDate);
+                if (!isNaN(parsed.getTime()))
+                    upcomingEvents.push({ name: 'Final Proposal Due', date: parsed });
+            }
+            if (bid.importantDates && Array.isArray(bid.importantDates)) {
+                bid.importantDates.forEach((d) => {
+                    const parsed = new Date(d.date);
+                    if (!isNaN(parsed.getTime()))
+                        upcomingEvents.push({ name: d.name, date: parsed });
+                });
+            }
+            // Check if any date is exactly 3 days or 7 days away
+            const notificationsToSend = [];
+            upcomingEvents.forEach(event => {
+                event.date.setHours(0, 0, 0, 0);
+                const diffTime = event.date.getTime() - now.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                if (diffDays === 3 || diffDays === 7 || diffDays === 1) {
+                    notificationsToSend.push(`${event.name} is in ${diffDays} day(s) (${event.date.toLocaleDateString()}).`);
+                }
+            });
+            if (notificationsToSend.length > 0) {
+                // Find users in this org who handle bids (or all admins)
+                const usersSnap = await db.collection('users')
+                    .where('organizationId', '==', orgId)
+                    .get();
+                const admins = usersSnap.docs.filter(u => u.data().role === 'admin' || u.data().role === 'manager');
+                for (const adminDoc of admins) {
+                    const adminId = adminDoc.id;
+                    const messageText = `Reminder for Bid "${bid.title || 'Untitled'}":\n` + notificationsToSend.join('\n');
+                    // Internal Notification
+                    promises.push(db.collection('users').doc(adminId).collection('notifications').add({
+                        title: 'Upcoming Bid Deadline',
+                        message: messageText,
+                        createdAt: new Date().toISOString(),
+                        read: false,
+                        link: `/admin/bid-workspace?id=${bid.id}`
+                    }));
+                    // Email Reminder
+                    const adminEmail = adminDoc.data().email;
+                    if (adminEmail) {
+                        promises.push(db.collection('messages').add({
+                            organizationId: orgId,
+                            senderId: 'system',
+                            senderName: 'TekTrakker System',
+                            receiverId: adminEmail,
+                            content: `
+                                <html>
+                                    <body style="font-family: sans-serif; padding: 20px;">
+                                        <h2 style="color: #1e40af;">Upcoming Bid Deadline Reminder</h2>
+                                        <p>This is an automated reminder regarding the bid: <strong>${bid.title || 'Untitled'}</strong></p>
+                                        <p>The following deadlines are approaching:</p>
+                                        <ul>
+                                            ${notificationsToSend.map(n => `<li>${n}</li>`).join('')}
+                                        </ul>
+                                        <a href="https://tektrakker.web.app/admin/bid-workspace?id=${bid.id}" style="display:inline-block; padding: 10px 15px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px;">View Bid in TekTrakker</a>
+                                    </body>
+                                </html>
+                            `,
+                            type: 'email',
+                            createdAt: new Date().toISOString(),
+                            read: false
+                        }));
+                    }
+                }
+            }
+        }
+        await Promise.allSettled(promises);
+    }
+    catch (error) {
+        functions.logger.error("Error in automatedBidReminders:", error);
+    }
+});
+exports.cleanupBidOnDelete = functions.firestore.document('bids/{bidId}').onDelete(async (snap, context) => {
+    const bidId = context.params.bidId;
+    const bidData = snap.data();
+    const orgId = bidData.organizationId;
+    if (!orgId)
+        return;
+    try {
+        const usersSnap = await db.collection('users').where('organizationId', '==', orgId).get();
+        const batch = db.batch();
+        let count = 0;
+        for (const userDoc of usersSnap.docs) {
+            const notificationsSnap = await db.collection('users').doc(userDoc.id).collection('notifications')
+                .where('link', '==', `/admin/bid-workspace?id=${bidId}`)
+                .get();
+            notificationsSnap.docs.forEach(doc => {
+                batch.delete(doc.ref);
+                count++;
+            });
+        }
+        if (count > 0) {
+            await batch.commit();
+            functions.logger.info(`Deleted ${count} notifications for deleted bid ${bidId}`);
+        }
+    }
+    catch (e) {
+        functions.logger.error("Error cleaning up bid notifications:", e);
+    }
+});
+exports.checkApiKeyExpirations = functions.pubsub.schedule('0 9 * * *').timeZone('America/New_York').onRun(async (context) => {
+    try {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const keysSnap = await db.collection('platformSettings').doc('api_keys').get();
+        if (!keysSnap.exists) {
+            const oneYearFromNow = new Date();
+            oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+            await db.collection('platformSettings').doc('api_keys').set({
+                'SAM.gov': {
+                    key: 'SAM-f4ad5cf0-1535-4a33-8c50-f2e78267fb11',
+                    expiresAt: oneYearFromNow.toISOString()
+                }
+            });
+            return;
+        }
+        const keysData = keysSnap.data() || {};
+        const promises = [];
+        const expiringKeys = [];
+        Object.entries(keysData).forEach(([serviceName, data]) => {
+            if (data.expiresAt) {
+                const expDate = new Date(data.expiresAt);
+                expDate.setHours(0, 0, 0, 0);
+                const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                if ([30, 15, 7, 3, 1].includes(diffDays) || diffDays <= 0) {
+                    expiringKeys.push(`${serviceName} API Key ${diffDays <= 0 ? 'HAS EXPIRED' : `expires in ${diffDays} day(s)`} on ${expDate.toLocaleDateString()}`);
+                }
+            }
+        });
+        if (expiringKeys.length > 0) {
+            const masterAdmins = await db.collection('users').where('role', '==', 'master_admin').get();
+            for (const adminDoc of masterAdmins.docs) {
+                const adminEmail = adminDoc.data().email;
+                if (adminEmail) {
+                    promises.push(db.collection('messages').add({
+                        organizationId: 'system',
+                        senderId: 'system',
+                        senderName: 'TekTrakker System',
+                        receiverId: adminEmail,
+                        content: `
+                            <html>
+                                <body style="font-family: sans-serif; padding: 20px;">
+                                    <h2 style="color: #ef4444;">API Key Expiration Warning</h2>
+                                    <p>This is an automated system alert regarding your platform's API keys.</p>
+                                    <ul>
+                                        ${expiringKeys.map(k => `<li><strong>${k}</strong></li>`).join('')}
+                                    </ul>
+                                    <p>Please update the keys in the codebase and the platformSettings/api_keys Firestore document to prevent service interruption.</p>
+                                </body>
+                            </html>
+                        `,
+                        type: 'email',
+                        createdAt: new Date().toISOString(),
+                        read: false
+                    }));
+                }
+            }
+        }
+        await Promise.allSettled(promises);
+    }
+    catch (error) {
+        functions.logger.error("Error in checkApiKeyExpirations:", error);
+    }
+});
+__exportStar(require("./office365Webhook"), exports);
+__exportStar(require("./office365Webhook"), exports);
 //# sourceMappingURL=index.js.map

@@ -104,7 +104,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
     const [isConverting, setIsConverting] = useState(false);
 
     // Derived values with memoization for performance and stability
-    const { isProposal, isOther, prop, job, id, total, subtotal, tax, customerName, address, date, status, signature, items } = useMemo(() => {
+    const { isProposal, isOther, prop, job, id, total, subtotal, tax, customerName, address, billToName, billToAddress, poNumber, date, status, signature, items } = useMemo(() => {
         const isProposal = type === 'Proposal';
         const isOther = type === 'Other';
         
@@ -117,7 +117,9 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
         const job = globalJob || (!isProposal && !isOther ? data as Job : null);
         
         const rawItems = isProposal ? prop?.items || [] : job?.invoice?.items || [];
-        const activeTier = prop?.selectedOption || (rawItems.length > 0 && !isProposal ? (rawItems[0] as any).tier : 'Good');
+        const populatedTiers = ['Good', 'Better', 'Best'].filter(t => rawItems.some((i: any) => i.tier && i.tier.toLowerCase() === t.toLowerCase()));
+        const defaultTier = populatedTiers.length > 0 ? populatedTiers[0] : 'Good';
+        const activeTier = prop?.selectedOption || (isProposal ? defaultTier : (rawItems.length > 0 && !isProposal ? (rawItems[0] as any).tier : 'Good'));
         const safeActiveTier = activeTier || 'Good';
         
         const items = rawItems.filter((i: any) => !isProposal || (i.tier && i.tier.toLowerCase() === safeActiveTier.toLowerCase()) || (!i.tier && safeActiveTier === 'Good')).map((item: any) => ({
@@ -146,7 +148,11 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                 ? (data?.signatureImage || data?.signatureDataUrl || data?.signature || null) 
                 : (job?.invoiceSignature || null));
 
-        return { isProposal, isOther, prop, job, id, total, subtotal, tax, customerName, address, date, status, signature, items };
+        const billToName = (!isProposal && !isOther && job?.invoice?.billToName) ? job.invoice.billToName : customerName;
+        const billToAddress = (!isProposal && !isOther && job?.invoice?.billToAddress) ? job.invoice.billToAddress : address;
+        const poNumber = (!isProposal && !isOther) ? job?.poNumber : null;
+
+        return { isProposal, isOther, prop, job, id, total, subtotal, tax, customerName, address, billToName, billToAddress, poNumber, date, status, signature, items };
     }, [type, data, state.proposals, state.jobs, state.customers]);
 
     const calculateAvailableTiers = () => {
@@ -303,6 +309,12 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                                     <span className="font-black text-slate-900">{new Date(date).toLocaleDateString()}</span>
                                     <span className="font-bold text-slate-400 uppercase">Status</span>
                                     <span className="font-black text-primary-600">{status}</span>
+                                    {poNumber && (
+                                        <>
+                                            <span className="font-bold text-slate-400 uppercase">PO / Ref</span>
+                                            <span className="font-black text-slate-900">{poNumber}</span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -311,9 +323,17 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                         <div className="flex flex-col md:flex-row justify-between mb-8 md:mb-[50px] gap-6 md:gap-12">
                             <div className="flex-1">
                                 <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-3">Bill To</div>
-                                <div className="text-lg font-black text-slate-900 mb-1">{customerName}</div>
-                                <div className="text-sm text-slate-500 leading-relaxed whitespace-pre-wrap">{address}</div>
+                                <div className="text-lg font-black text-slate-900 mb-1">{billToName}</div>
+                                <div className="text-sm text-slate-500 leading-relaxed whitespace-pre-wrap">{billToAddress}</div>
                             </div>
+                            
+                            {(billToName !== customerName || billToAddress !== address) && (
+                                <div className="flex-1 border-l-2 border-slate-50 pl-6">
+                                    <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-3">Service Location</div>
+                                    <div className="text-lg font-black text-slate-900 mb-1">{customerName}</div>
+                                    <div className="text-sm text-slate-500 leading-relaxed whitespace-pre-wrap">{address}</div>
+                                </div>
+                            )}
                             <div className="flex-1 text-left md:text-right">
                                 <div className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-3">Service From</div>
                                 <div className="text-lg font-black text-slate-900 mb-1">{org?.name}</div>
@@ -356,10 +376,19 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                                             </div>
                                             <div className="space-y-3 mb-6 flex-1">
                                                 {t.items.map((item: any, idx: number) => (
-                                                    <div key={idx} className="flex flex-col gap-1">
-                                                        <div className="flex items-start gap-2">
-                                                            <span className="text-emerald-500 font-bold shrink-0 text-xs">✓</span>
-                                                            <span className="font-bold text-slate-700 text-[11px] leading-tight">{item.name}</span>
+                                                    <div key={idx} className="flex flex-col gap-1 border-b border-slate-50 last:border-0 pb-3 last:pb-0">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="flex items-start gap-2">
+                                                                <span className="text-emerald-500 font-bold shrink-0 text-xs">✓</span>
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-bold text-slate-700 text-[11px] leading-tight">{item.name || item.title || item.description}</span>
+                                                                    {item.description && item.description !== item.name && <span className="text-[9px] text-slate-400 mt-0.5 leading-snug">{item.description}</span>}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right shrink-0 flex flex-col">
+                                                                <span className="font-bold text-[10px] text-slate-600">${Number(item.price || item.unitPrice || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                                                {item.quantity > 1 && <span className="text-[8px] text-slate-400">Qty: {item.quantity}</span>}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 ))}

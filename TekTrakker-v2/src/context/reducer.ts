@@ -7,7 +7,8 @@ import type {
     IncidentReport, MembershipPlan, ServiceAgreement,
     PlatformSettings, Review, InspectionTemplate, Message,
     PlatformLead, PlatformCommission, RefrigerantCylinder, ToolMaintenanceLog, ProposalPreset,
-    Project, Subcontractor, EquipmentRental, Expense, ShopOrder, ProjectTask, Permit, RefrigerantTransaction, Applicant, OrganizationTeam, WarrantyClaim
+    Project, Subcontractor, EquipmentRental, Expense, ShopOrder, ProjectTask, Permit, RefrigerantTransaction, Applicant, OrganizationTeam, WarrantyClaim,
+    ServiceLocation, EquipmentAsset
 } from 'types';
 
 export type Action =
@@ -146,7 +147,9 @@ export type Action =
     | { type: 'SET_WARRANTY_CLAIMS'; payload: WarrantyClaim[] }
     | { type: 'ADD_WARRANTY_CLAIM'; payload: WarrantyClaim }
     | { type: 'UPDATE_WARRANTY_CLAIM'; payload: WarrantyClaim }
-    | { type: 'DELETE_WARRANTY_CLAIM'; payload: string };
+    | { type: 'DELETE_WARRANTY_CLAIM'; payload: string }
+    | { type: 'SET_SERVICE_LOCATIONS'; payload: ServiceLocation[] }
+    | { type: 'SET_EQUIPMENT'; payload: EquipmentAsset[] };
 
 export const appReducer = (state: AppState, action: Action): AppState => {
     switch (action.type) {
@@ -165,6 +168,8 @@ export const appReducer = (state: AppState, action: Action): AppState => {
                 loading: false, // Ensure loading is false
             };
         case 'LOGIN_SUCCESS':
+            // Guard: never let a stale auth callback overwrite an active demo session
+            if (state.isDemoMode) return state;
             // Start from a clean slate, preserving only the theme from the previous state.
             return {
                 ...initialState,
@@ -341,6 +346,9 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'ADD_WARRANTY_CLAIM': return { ...state, warrantyClaims: [...state.warrantyClaims, action.payload] };
         case 'UPDATE_WARRANTY_CLAIM': return { ...state, warrantyClaims: state.warrantyClaims.map(w => w.id === action.payload.id ? action.payload : w) };
         case 'DELETE_WARRANTY_CLAIM': return { ...state, warrantyClaims: state.warrantyClaims.filter(w => w.id !== action.payload) };
+
+        case 'SET_SERVICE_LOCATIONS': return { ...state, serviceLocations: action.payload };
+        case 'SET_EQUIPMENT': return { ...state, equipment: action.payload };
 
         default: return state;
     }

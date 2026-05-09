@@ -1,8 +1,11 @@
 import showToast from "lib/toast";
 import React, { useState, useRef } from 'react';
-import { Network, ArrowRight, CheckCircle2, ShieldCheck, Mail, Lock, Building, Map, CreditCard, ChevronLeft, Globe, Loader2 } from 'lucide-react';
+import { Network, ArrowRight, CheckCircle2, ShieldCheck, Mail, Lock, Building, Map, CreditCard, ChevronLeft, Globe, Loader2, Shield, Wrench, Users } from 'lucide-react';
 import { db, auth } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
+
+import { LandingHeader } from './components/LandingHeader';
+import { LandingFooter } from './components/LandingFooter';
 
 const FranchiseOpportunities: React.FC = () => {
     const navigate = useNavigate();
@@ -142,15 +145,12 @@ const FranchiseOpportunities: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
-            <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-4 sticky top-0 z-50">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-2 font-black text-xl text-primary-600 dark:text-primary-400 cursor-pointer" onClick={() => navigate('/')}>
-                        <Network /> TekTrakker White-Label
-                    </div>
-                </div>
-            </header>
+            <LandingHeader 
+                title="White-Label PAAS" 
+                backButton={{ label: 'Back to Home', href: '/' }}
+            />
 
-            <main className="flex-1 flex items-center justify-center p-4 py-12">
+            <main className="flex-1 flex items-center justify-center p-4 py-12 mt-24">
                 <div className="max-w-4xl w-full">
                     {/* Stepper Header */}
                     <div className="flex items-center justify-center mb-12">
@@ -392,6 +392,8 @@ const FranchiseOpportunities: React.FC = () => {
                     </div>
                 </div>
             </main>
+
+            <LandingFooter />
         </div>
     );
 };

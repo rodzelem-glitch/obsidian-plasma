@@ -1,17 +1,16 @@
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Job, EquipmentAsset, StoredFile, InspectionTemplate, Subcontractor } from '../../../types';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
-import { Check, ArrowRight, Sparkles, PlusCircle, X, Package } from 'lucide-react';
+import { Check, ArrowRight, Sparkles, X } from 'lucide-react';
 import { db, firebase } from '../../../lib/firebase';
 import { uploadFileToStorage } from '../../../lib/storageService';
 import { useAppContext } from '../../../context/AppContext';
 import Textarea from '../../../components/ui/Textarea';
 import { useNavigate } from 'react-router-dom';
-import { compressFile } from '../../../lib/utils';
 import InvoiceEditorModal from '../../../components/modals/InvoiceEditorModal';
 import IndustryToolsHub from '../../tools/IndustryToolsHub';
 import Tesseract from 'tesseract.js';
@@ -119,12 +118,6 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         return state.inspectionTemplates || [];
     }, [state.inspectionTemplates, job, state.currentOrganization]);
 
-    const waiverTemplates = useMemo(() => {
-        if (job.assignedPartnerId === state.currentOrganization?.id && job.embeddedData?.waivers) {
-            return job.embeddedData.waivers;
-        }
-        return state.documents.filter(d => d.type === 'Waiver Template');
-    }, [state.documents, job, state.currentOrganization]);
 
 
     const generateItemsFromIds = (ids: string[], templates: InspectionTemplate[]): ChecklistItem[] => {
@@ -311,8 +304,8 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                     const result = await Tesseract.recognize(file, 'eng');
                     const text = result.data.text.toUpperCase();
                     
-                    const serialMatch = text.match(/(?:S\/?N|SERIAL(?:\s*NO|\s*NUM(?:BER)?)?)\s*[:#\-]?\s*([A-Z0-9]+)/i);
-                    const modelMatch = text.match(/(?:M\/?N|MOD(?:EL)?(?:\s*NO|\s*NUM(?:BER)?)?)\s*[:#\-]?\s*([A-Z0-9\-]+)/i);
+                    const serialMatch = text.match(/(?:S\/?N|SERIAL(?:\s*NO|\s*NUM(?:BER)?)?)\s*[:#-]?\s*([A-Z0-9]+)/i);
+                    const modelMatch = text.match(/(?:M\/?N|MOD(?:EL)?(?:\s*NO|\s*NUM(?:BER)?)?)\s*[:#-]?\s*([A-Z0-9-]+)/i);
 
                     if (serialMatch && serialMatch[1]) {
                         extractedSerial = serialMatch[1].toUpperCase();
@@ -368,8 +361,23 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
             dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, equipment: updatedEquipment } });
             setAssets(updatedEquipment);
         }
-        setNewAsset({ brand: '', model: '', serial: '', type: 'System' });
         setIsAddAssetOpen(false);
+        setNewAsset({ brand: '', model: '', serial: '', type: 'System' });
+        showToast.success("Asset saved!");
+    };
+
+    const handleDeleteAsset = async (id: string) => {
+        if (!await globalConfirm("Delete this asset permanently?")) return;
+        const customer = state.customers.find(c => c.id === job.customerId);
+        if (customer) {
+            const updatedEquipment = (customer.equipment || []).filter(e => e.id !== id);
+            if (!state.isDemoMode) {
+                await db.collection('customers').doc(customer.id).update({ equipment: updatedEquipment });
+            }
+            dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, equipment: updatedEquipment } });
+            setAssets(updatedEquipment);
+            showToast.success("Asset deleted.");
+        }
     };
 
     const openImport = (target: 'diagnosis' | 'quality') => {
@@ -720,9 +728,12 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
     };
 
     const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, label: string) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        processCapturedFile(file, label);
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        
+        for (const file of files) {
+            await processCapturedFile(file, label);
+        }
     };
 
     const handleDeletePhoto = async (fileToDelete: StoredFile) => {
@@ -873,6 +884,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                     newAsset={newAsset}
                     setNewAsset={setNewAsset}
                     handleAddAsset={handleAddAsset}
+                    handleDeleteAsset={handleDeleteAsset}
                     isOcrScanning={isOcrScanning}
                     handleAssetPhotoUpload={handleAssetPhotoUpload}
                     saveCustomerInfo={saveCurrentState} 
@@ -972,7 +984,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                 {state.proposals?.filter(p => p.jobId === job.id || (job.customerId && p.customerId === job.customerId) || (p.customerName && job.customerName && p.customerName.toLowerCase() === job.customerName.toLowerCase()))
                     .sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime())
                     .map(proposal => (
-                    <div key={proposal.id} onClick={() => { setIsProposalSelectorOpen(false); handleViewEditProposal(proposal.id); }} className="border rounded-lg p-4 flex flex-col md:flex-row justify-between md:items-center bg-white cursor-pointer hover:border-purple-400 hover:shadow-md transition-all">
+                    <button type="button" key={proposal.id} onClick={() => { setIsProposalSelectorOpen(false); handleViewEditProposal(proposal.id); }} className="w-full text-left border rounded-lg p-4 flex flex-col md:flex-row justify-between md:items-center bg-white cursor-pointer hover:border-purple-400 hover:shadow-md transition-all">
                         <div className="mb-2 md:mb-0">
                             <p className="font-semibold text-slate-900">{proposal.id} - {proposal.customerName}</p>
                             <p className="text-sm text-slate-500">{new Date(proposal.createdAt).toLocaleDateString()} • {proposal.items?.length || 0} items</p>
@@ -981,7 +993,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                             <span className="font-bold text-green-700">${(proposal.total || 0).toFixed(2)}</span>
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${proposal.status === 'Accepted' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>{proposal.status || 'Draft'}</span>
                         </div>
-                    </div>
+                    </button>
                 ))}
             </div>
         </Modal>
@@ -992,11 +1004,10 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                 <p className="text-sm text-slate-500 mb-4">Select an invoice from another job for this customer to import the line items.</p>
                 {(!state.jobs || state.jobs.filter(j => j.invoice && (j.customerId === job.customerId || (j.customerName && j.customerName !== 'Unknown Customer' && job.customerName && j.customerName.toLowerCase() === job.customerName.toLowerCase())) && j.id !== job.id).length === 0) && (
                     <div className="text-center p-6 text-slate-500 bg-slate-50 rounded-lg border border-dashed">No other invoices found for this customer.</div>
-                )}
-                {state.jobs?.filter(j => j.invoice && (j.customerId === job.customerId || (j.customerName && j.customerName !== 'Unknown Customer' && job.customerName && j.customerName.toLowerCase() === job.customerName.toLowerCase())) && j.id !== job.id)
+                )}                {state.jobs?.filter(j => j.invoice && (j.customerId === job.customerId || (j.customerName && j.customerName !== 'Unknown Customer' && job.customerName && j.customerName.toLowerCase() === job.customerName.toLowerCase())) && j.id !== job.id)
                     .sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime())
                     .map(j => (
-                    <div key={j.id} onClick={() => { handleImportSelectedInvoice(j.id); }} className="border rounded-lg p-4 flex flex-col md:flex-row justify-between md:items-center bg-white cursor-pointer hover:border-blue-400 hover:shadow-md transition-all">
+                    <button type="button" key={j.id} onClick={() => { handleImportSelectedInvoice(j.id); }} className="w-full text-left border rounded-lg p-4 flex flex-col md:flex-row justify-between md:items-center bg-white cursor-pointer hover:border-blue-400 hover:shadow-md transition-all">
                         <div className="mb-2 md:mb-0">
                             <p className="font-semibold text-slate-900">INV-{j.invoice?.id || j.id} - {j.customerName}</p>
                             <p className="text-sm text-slate-500">{new Date(j.createdAt||0).toLocaleDateString()} • {j.invoice?.items?.length || 0} items</p>
@@ -1005,7 +1016,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                             <span className="font-bold text-green-700">${(Number(j.invoice?.totalAmount || j.invoice?.amount) || 0).toFixed(2)}</span>
                             <span className={`px-2 py-1 text-xs font-medium rounded-full ${j.invoice?.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'}`}>{j.invoice?.status || 'Pending'}</span>
                         </div>
-                    </div>
+                    </button>
                 ))}
             </div>
         </Modal>
@@ -1153,7 +1164,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                                         />
                                     )}
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Upload Receipt / Invoice</label>
+                                        <p className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Upload Receipt / Invoice</p>
                                         <div className="flex items-center gap-3">
                                             <input type="file" accept="image/*,application/pdf" onChange={handleReceiptUpload} className="hidden" id="part-receipt" />
                                             <label htmlFor="part-receipt" className={`cursor-pointer px-4 py-2 ${partReceipt ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-white dark:bg-slate-800 border border-slate-300'} rounded shadow-sm text-sm font-medium hover:bg-opacity-80 transition-colors`}>
@@ -1195,7 +1206,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                 <Textarea label="Reading Summary" placeholder="e.g. Low Side: 120 PSI, High Side: 350 PSI, Subcool: 12F" value={newReading.summary} onChange={e => setNewReading({...newReading, summary: e.target.value})} />
                 
                 <div className="pt-2">
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Attach Reading/Diagnostic Screenshot (Optional)</label>
+                    <p className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Attach Reading/Diagnostic Screenshot (Optional)</p>
                     <div className="flex items-center gap-3">
                         <input type="file" accept="image/*,application/pdf" onChange={(e) => handlePhotoUpload(e, 'Diagnostic Reading')} className="hidden" id="reading-upload" />
                         <label htmlFor="reading-upload" className="cursor-pointer px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 rounded shadow-sm text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
@@ -1248,7 +1259,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         
         {isInvoiceEditorOpen && <InvoiceEditorModal isOpen={true} onClose={() => setIsInvoiceEditorOpen(false)} jobId={job.id} />}
         <LiveAssistModal isOpen={isLiveAssistOpen} onClose={() => setIsLiveAssistOpen(false)} job={job} />
-        <WaiverModal isOpen={isWaiverOpen} onClose={() => setIsWaiverOpen(false)} onSign={(sig) => {}} job={job} />
+        <WaiverModal isOpen={isWaiverOpen} onClose={() => setIsWaiverOpen(false)} onSign={() => {}} job={job} />
         <VisualQCModal isOpen={isQCOpen} onClose={() => setIsQCOpen(false)} onComplete={() => setIsQCOpen(false)} jobId={job.id} organizationId={job.organizationId} />
         <BarcodeScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScan={handleScanResult} />
         <WebCameraModal isOpen={isWebCameraOpen} onClose={() => setIsWebCameraOpen(false)} onCapture={(dataUrl) => {

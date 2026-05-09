@@ -32,7 +32,7 @@ const ROUTE_CONFIG: Record<string, { title: string, subtitle: string, icon: any,
     '/admin/marketing': { title: 'Marketing ROI', subtitle: 'Evaluate ad-spend efficiency and inbound conversion paths.', icon: BarChart2, bgClass: 'bg-gradient-to-r from-rose-500 to-red-600' },
     '/admin/social': { title: 'Social Media Hub', subtitle: 'Manage out-bound generic brand announcements.', icon: Globe, bgClass: 'bg-gradient-to-r from-fuchsia-500 to-purple-600' },
     '/admin/contracts': { title: 'Bid Optimization Tool', subtitle: '', icon: FileText, bgClass: 'bg-gradient-to-r from-blue-600 to-indigo-600' },
-    '/admin/contractor-network': { title: 'Contractor Network', subtitle: 'Discover B2B opportunities, post RFPs, and connect with trusted subcontractors.', icon: Users, bgClass: 'bg-gradient-to-r from-blue-600 to-indigo-600' },
+    '/admin/contracting': { title: 'Contracting Hub', subtitle: 'B2B Subcontractor Networking and Federal SAM.gov Contracts.', icon: Building2, bgClass: 'bg-gradient-to-r from-blue-600 to-indigo-800' },
     '/admin/analytics': { title: 'Admin Analytics', subtitle: 'Deep operational and platform engagement metrics.', icon: BarChart2, bgClass: 'bg-gradient-to-r from-violet-600 to-purple-800' },
     
     // Master Admin Routes

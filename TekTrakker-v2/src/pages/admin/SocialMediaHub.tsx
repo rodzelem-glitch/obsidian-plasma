@@ -180,13 +180,11 @@ const SocialMediaHub: React.FC = () => {
 
     const handleConnectTT = () => {
         setIsTTConnecting(true);
-        // Replace 'YOUR_TIKTOK_CLIENT_KEY' with your approved key
-        const clientKey = '7631794451085525009';
+        const clientKey = import.meta.env.VITE_TIKTOK_CLIENT_KEY || 'awr6ierl6qanqdxc';
         const redirectUri = window.location.origin + '/auth/callback';
         const scope = 'user.info.basic,video.upload';
 
-        window.location.href = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-        // Note: The UI layer will listen on /auth/tiktok/callback to capture the token
+        window.location.href = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${encodeURIComponent(redirectUri)}&state=tiktok`;
     };
 
     const handleDisconnectTT = () => {
@@ -689,22 +687,28 @@ const SocialMediaHub: React.FC = () => {
                                 </div>
 
                                 {/* TikTok Authentication Module */}
-                                <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50 relative overflow-hidden opacity-60">
-                                    <div className="absolute top-2 right-2 z-10">
-                                        <span className="text-[9px] bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400 px-2 py-0.5 rounded-full font-black uppercase tracking-wider border border-amber-200 dark:border-amber-800">Coming Soon</span>
-                                    </div>
+                                <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">
                                     <div className="flex items-center justify-between gap-1 mb-3">
                                         <div className="flex items-center gap-2 overflow-hidden flex-1">
                                             <span className="font-bold text-sm text-[#000000] dark:text-white truncate">TikTok</span>
+                                            {isTTConnected && <span className="hidden xl:inline-block text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Connected</span>}
                                         </div>
-                                        <button 
-                                            disabled
-                                            className="text-xs font-bold bg-slate-400 text-white px-3 py-1.5 rounded-md cursor-not-allowed shrink-0"
-                                        >
-                                            Connect
-                                        </button>
+                                        {isTTConnected ? (
+                                            <div className="flex items-center gap-2 shrink-0 pl-1">
+                                                <button onClick={handleDisconnectTT} className="text-[10px] uppercase font-bold text-slate-400 hover:text-red-500 transition-colors shrink-0">Disconnect</button>
+                                                <input id="postToTT" title="Post to TikTok" aria-label="Post to TikTok" type="checkbox" checked={postToTT} onChange={() => setPostToTT(!postToTT)} className="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-primary-500 cursor-pointer shrink-0" />
+                                            </div>
+                                        ) : (
+                                            <button 
+                                                onClick={handleConnectTT}
+                                                disabled={isTTConnecting}
+                                                className="text-xs font-bold bg-[#000000] dark:bg-white dark:text-black text-white hover:bg-slate-800 dark:hover:bg-slate-200 px-3 py-1.5 rounded-md transition-colors shrink-0"
+                                            >
+                                                {isTTConnecting ? "Connecting..." : "Connect"}
+                                            </button>
+                                        )}
                                     </div>
-                                    <p className="text-xs text-slate-500 leading-tight">Awaiting TikTok API approval for production access.</p>
+                                    <p className="text-xs text-slate-500 leading-tight">Authorize TekTrakker to manage your TikTok videos.</p>
                                 </div>
                             </div>
                             

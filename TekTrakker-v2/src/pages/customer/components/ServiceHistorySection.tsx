@@ -65,15 +65,31 @@ const ServiceHistorySection: React.FC<ServiceHistorySectionProps> = ({ jobs, onV
                 <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-wider">
                     <FileText className="text-blue-600" size={20} /> Service History
                 </h3>
-                {!loading && canReview && (
-                    <Button onClick={() => setIsReviewModalOpen(true)} variant="outline" size="sm" className="flex items-center gap-1">
-                        <Star size={14} className="text-amber-400" />
-                        Leave a Review
+                <div className="flex gap-2">
+                    <Button onClick={() => {
+                        const csvContent = "data:text/csv;charset=utf-8," 
+                            + "Date,Property Location,PO Number,Service,Total,Status\n"
+                            + jobs.map(j => `"${new Date(j.appointmentTime).toLocaleDateString()}","${j.locationName || 'Main Office'}","${j.poNumber || ''}","${j.tasks.join(', ')}","${j.invoice?.amount || 0}","${j.jobStatus}"`).join("\n");
+                        const encodedUri = encodeURI(csvContent);
+                        const link = document.createElement("a");
+                        link.setAttribute("href", encodedUri);
+                        link.setAttribute("download", `Service_History_${customerName || 'Export'}.csv`);
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }} variant="secondary" size="sm" className="flex items-center gap-1">
+                        <Download size={14} /> Export CSV
                     </Button>
-                )}
-                {!loading && hasReviewed && (
-                    <p className="text-sm text-slate-500 font-medium">Thanks for your feedback!</p>
-                )}
+                    {!loading && canReview && (
+                        <Button onClick={() => setIsReviewModalOpen(true)} variant="outline" size="sm" className="flex items-center gap-1">
+                            <Star size={14} className="text-amber-400" />
+                            Leave a Review
+                        </Button>
+                    )}
+                    {!loading && hasReviewed && (
+                        <p className="text-sm text-slate-500 font-medium self-center">Thanks for your feedback!</p>
+                    )}
+                </div>
             </div>
             <div className="space-y-3">
                 {jobs.map(job => {

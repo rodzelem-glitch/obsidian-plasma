@@ -11,7 +11,7 @@ const getBofaSecrets = async (db: admin.firestore.Firestore) => {
 };
 
 // Initiate ACH (Accounts Payable / Outbound)
-export const initiateCashProACH = onCall({ cors: true }, async (request) => {
+export const initiateCashProACH = onCall({ cors: true, vpcConnector: 'cashpro-connector', vpcConnectorEgressSettings: 'ALL_TRAFFIC' }, async (request) => {
     const auth = request.auth;
     if (!auth) throw new HttpsError('unauthenticated', 'User must be signed in.');
 
@@ -43,7 +43,7 @@ export const initiateCashProACH = onCall({ cors: true }, async (request) => {
 });
 
 // Process Transaction (Accounts Receivable / Inbound)
-export const processCashProTransaction = onCall({ cors: true }, async (request) => {
+export const processCashProTransaction = onCall({ cors: true, vpcConnector: 'cashpro-connector', vpcConnectorEgressSettings: 'ALL_TRAFFIC' }, async (request) => {
     // Note: We don't require auth here because customer checkout may be unauthenticated
 
     const { amount, customerName, invoiceId, paymentMethodToken } = request.data;

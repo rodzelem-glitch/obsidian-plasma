@@ -5,9 +5,9 @@ import type { User } from 'types';
 import AdminSidebar from './AdminSidebar';
 import { Logo } from '../ui/Logo';
 import VirtualWorker from '../ui/VirtualWorker';
-
 import TopNavActions from '../common/TopNavActions';
 import PageHeader from '../ui/PageHeader';
+import { RingCentralWidget } from '../common/RingCentralWidget';
 
 interface AdminLayoutProps {
   user: User;
@@ -20,7 +20,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-900 text-gray-900 dark:text-gray-200 font-sans transition-colors overflow-hidden relative">
+    <div className="flex min-h-[100dvh] w-full bg-slate-50 dark:bg-slate-900 text-gray-900 dark:text-gray-200 font-sans transition-colors relative items-start">
       <AdminSidebar 
         user={user} 
         onLogout={onLogout} 
@@ -28,8 +28,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
         onClose={() => setIsSidebarOpen(false)} 
       />
       
-      <div className="flex-1 flex flex-col overflow-hidden relative">
-         <header className="bg-white dark:bg-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-700/80 z-40 relative transition-colors pt-safe shrink-0">
+      <div className="flex-1 flex flex-col relative min-w-0 min-h-[100dvh]">
+         <header className="sticky top-0 bg-white dark:bg-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-700/80 z-40 transition-colors pt-safe shrink-0">
            <div className="px-4 h-16 flex items-center justify-between">
               <div className="flex items-center gap-3">
                   <button 
@@ -47,13 +47,14 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
               <TopNavActions user={user} onLogout={onLogout} />
            </div>
          </header>
-        <main id="main-scroll-container" className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 dark:bg-slate-900 p-4 sm:p-6 lg:p-8 transition-colors">
+        <main id="main-scroll-container" className="flex-1 bg-slate-50 dark:bg-slate-900 p-4 sm:p-6 lg:p-8 transition-colors pb-safe">
             <div className="min-h-full max-w-7xl mx-auto pb-8">
               <PageHeader />
               {children}
-            </div>        </main>
+            </div>
+        </main>
       </div>
-
+      <RingCentralWidget />
     </div>
   );
 };

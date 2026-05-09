@@ -8,14 +8,15 @@ import Button from 'components/ui/Button';
 import { db } from 'lib/firebase';
 import type { Proposal, Job, Notification } from 'types';
 import { 
-    DollarSign, Briefcase, CheckCircle, XCircle, 
-    FileText, User, Calendar, ArrowRight, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy, Bell
+    DollarSign, Briefcase, CheckCircle, 
+    FileText, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy, Bell, UserPlus
 } from 'lucide-react';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { globalConfirm } from "lib/globalConfirm";
 import Modal from 'components/ui/Modal';
 import Textarea from 'components/ui/Textarea';
+import Select from 'components/ui/Select';
 
 const SalesPipeline: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -30,12 +31,15 @@ const SalesPipeline: React.FC = () => {
     const [shareMessageText, setShareMessageText] = useState('');
     const [isSharing, setIsSharing] = useState(false);
 
+    const [reassignProposal, setReassignProposal] = useState<Proposal | null>(null);
+    const [newCustomerId, setNewCustomerId] = useState('');
+
     const proposals = state.proposals;
 
     React.useEffect(() => {
         const propId = searchParams.get('propId');
         if (propId) {
-            const prop = state.proposals.find((p: any) => p.id === propId);
+            const prop = state.proposals.find((p: Proposal) => p.id === propId);
             if (prop) {
                 setViewProposal(prop);
             }
@@ -111,6 +115,25 @@ const SalesPipeline: React.FC = () => {
         }
     };
 
+    const handleReassign = async () => {
+        if (!reassignProposal || !newCustomerId) return;
+        const newCustomer = state.customers?.find((c: {id: string; name: string; email?: string}) => c.id === newCustomerId);
+        if (!newCustomer) return;
+        
+        try {
+            await db.collection('proposals').doc(reassignProposal.id).update({
+                customerId: newCustomer.id,
+                customerName: newCustomer.name,
+                customerEmail: newCustomer.email || null
+            });
+            showToast.success(`Reassigned to ${newCustomer.name}`);
+            setReassignProposal(null);
+            setNewCustomerId('');
+        } catch (e) {
+            showToast.warn("Failed to reassign proposal.");
+        }
+    };
+
     const handleEditProposal = (id: string) => {
         const isStaff = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'supervisor';
         const basePath = isStaff ? '/admin' : '/briefing';
@@ -173,10 +196,10 @@ const SalesPipeline: React.FC = () => {
                 handleStatusChange(proposal, 'Accepted');
             }
             
-            showToast.warn("Job Created! View in Operations -> Job List.");
+            showToast.success("Job Created! View in Operations -> Job List.");
             setViewProposal(null);
-        } catch (e) {
-            console.error(e);
+        } catch (err) {
+            console.error(err);
             showToast.warn("Failed to create job.");
         }
     };
@@ -190,7 +213,7 @@ const SalesPipeline: React.FC = () => {
         if (!shareModalProp || !shareTargetId) return;
         setIsSharing(true);
         try {
-            const msgObj: any = {
+            const msgObj = {
                 id: `msg-${Date.now()}`,
                 senderId: state.currentUser?.id,
                 senderName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
@@ -202,10 +225,10 @@ const SalesPipeline: React.FC = () => {
                 type: 'internal'
             };
             await db.collection('messages').doc(msgObj.id).set(msgObj);
-            showToast.warn("Proposal shared successfully!");
+            showToast.success("Proposal shared successfully!");
             setShareModalProp(null);
             setShareMessageText('');
-        } catch (e) {
+        } catch (err) {
             showToast.warn("Failed to share.");
         } finally {
             setIsSharing(false);
@@ -250,25 +273,45 @@ const SalesPipeline: React.FC = () => {
 
     return (
         <div className="space-y-6 pb-20">
+            <Modal isOpen={!!reassignProposal} onClose={() => setReassignProposal(null)} title="Reassign Proposal">
+                <div className="space-y-4">
+                    <label className="block">
+                        <span className="text-sm text-slate-500 block mb-1">Select a new customer to map this proposal to.</span>
+                        <Select value={newCustomerId} onChange={e => setNewCustomerId(e.target.value)}>
+                            <option value="">Select Customer...</option>
+                            {state.customers?.map((c: {id: string; name: string}) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                        </Select>
+                    </label>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="secondary" onClick={() => setReassignProposal(null)}>Cancel</Button>
+                        <Button onClick={handleReassign} disabled={!newCustomerId}>Save Assignment</Button>
+                    </div>
+                </div>
+            </Modal>
+
             <Modal isOpen={!!shareModalProp} onClose={() => setShareModalProp(null)} title={`Share Proposal: ${shareModalProp?.customerName}`}>
                  <div className="space-y-4">
-                     <p className="text-sm text-slate-500">Send this proposal reference to a staff member.</p>
-                     <select 
-                         aria-label="Select Share Recipient"
-                         title="Select Share Recipient"
-                        className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
-                         value={shareTargetId}
-                         onChange={e => setShareTargetId(e.target.value)}
-                     >
-                         <option value="">Select Recipient...</option>
-                         {state.users.filter((u: any) => 
-                             u.organizationId === state.currentOrganization?.id && 
-                             u.id !== state.currentUser?.id && 
-                             u.role !== 'customer'
-                         ).map((u: any) => (
-                             <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
-                         ))}
-                     </select>
+                     <label className="block">
+                         <span className="text-sm text-slate-500 block mb-1">Send this proposal reference to a staff member.</span>
+                         <select 
+                             aria-label="Select Share Recipient"
+                             title="Select Share Recipient"
+                            className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
+                             value={shareTargetId}
+                             onChange={e => setShareTargetId(e.target.value)}
+                         >
+                             <option value="">Select Recipient...</option>
+                             {state.users.filter((u: {organizationId: string; id: string; role: string; firstName: string; lastName: string}) => 
+                                 u.organizationId === state.currentOrganization?.id && 
+                                 u.id !== state.currentUser?.id && 
+                                 u.role !== 'customer'
+                             ).map((u: {id: string; firstName: string; lastName: string; role: string}) => (
+                                 <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
+                             ))}
+                         </select>
+                     </label>
                      <Textarea 
                          placeholder="Add an optional message..."
                          value={shareMessageText}
@@ -343,20 +386,21 @@ const SalesPipeline: React.FC = () => {
                         ))}
                     </div>
                     <div className="flex items-center gap-2 text-sm shrink-0">
-                        <label className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
-                        <select 
-                            aria-label="Sort Proposals"
-                            className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value)}
-                        >
-                            <option value="date_desc">Newest First</option>
-                            <option value="date_asc">Oldest First</option>
-                            <option value="name_asc">Customer (A-Z)</option>
-                            <option value="name_desc">Customer (Z-A)</option>
-                            <option value="amount_desc">Amount (High to Low)</option>
-                            <option value="amount_asc">Amount (Low to High)</option>
-                        </select>
+                        <label className="font-medium text-slate-600 dark:text-slate-300 flex items-center gap-2">Sort by:
+                            <select 
+                                aria-label="Sort Proposals"
+                                className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value)}
+                            >
+                                <option value="date_desc">Newest First</option>
+                                <option value="date_asc">Oldest First</option>
+                                <option value="name_asc">Customer (A-Z)</option>
+                                <option value="name_desc">Customer (Z-A)</option>
+                                <option value="amount_desc">Amount (High to Low)</option>
+                                <option value="amount_asc">Amount (Low to High)</option>
+                            </select>
+                        </label>
                     </div>
                 </div>
 
@@ -403,6 +447,7 @@ const SalesPipeline: React.FC = () => {
                                         )}
                                         <button onClick={() => setViewProposal(p)} className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="View"><Eye size={16}/></button>
                                         <button onClick={() => handleEditProposal(p.id)} className="p-2 text-purple-600 hover:bg-purple-50 rounded" title="Edit"><Edit size={16}/></button>
+                                        <button aria-label="Reassign Customer" title="Reassign Customer" onClick={(e) => { e.stopPropagation(); setReassignProposal(p); setNewCustomerId(p.customerId || ''); }} className="p-2 text-slate-400 hover:bg-slate-50 hover:text-orange-600 rounded"><UserPlus size={16}/></button>
                                         <button aria-label="Copy Reference" title="Copy Reference" onClick={(e) => { e.stopPropagation(); handleCopyRef(p.id); }} className="p-2 text-slate-400 hover:bg-slate-50 hover:text-primary-600 rounded"><Copy size={16}/></button>
                                         <button aria-label="Share Proposal" title="Share Proposal" onClick={(e) => { e.stopPropagation(); setShareModalProp(p); }} className="p-2 text-slate-400 hover:bg-slate-50 hover:text-primary-600 rounded"><Share2 size={16}/></button>
                                         <button onClick={() => handleDeleteProposal(p.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Delete"><Trash2 size={16}/></button>

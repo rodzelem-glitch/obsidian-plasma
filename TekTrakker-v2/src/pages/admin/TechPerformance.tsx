@@ -18,7 +18,7 @@ const TechPerformance: React.FC = () => {
         return techs.map(tech => {
             const myJobs = state.jobs.filter(j => j.assignedTechnicianId === tech.id);
             const completed = myJobs.filter(j => j.jobStatus === 'Completed').length;
-            const revenue = myJobs.reduce((sum, j) => sum + (j.invoice.status === 'Paid' ? j.invoice.amount : 0), 0);
+            const revenue = myJobs.reduce((sum, j) => sum + (j.invoice?.status === 'Paid' ? (j.invoice.amount || 0) : 0), 0);
             const avgTicket = completed > 0 ? revenue / completed : 0;
             return { ...tech, completed, revenue, avgTicket };
         }).sort((a, b) => b.revenue - a.revenue);

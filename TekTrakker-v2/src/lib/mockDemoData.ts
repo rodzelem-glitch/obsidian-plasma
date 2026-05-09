@@ -138,7 +138,9 @@ export const MOCK_DEMO_APPLICANTS: Applicant[] = [
         appliedDate: new Date(Date.now() - 86400000 * 5).toISOString(),
         applicationDate: new Date(Date.now() - 86400000 * 5).toISOString(),
         notes: 'Seems promising, if a bit eccentric. Strong background in paper, not HVAC.',
-        experienceYears: 10
+        experienceYears: 10,
+        resumeDataUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        resumeFileName: 'michael_scott_resume.pdf'
     },
     {
         id: 'app-2',
@@ -153,7 +155,9 @@ export const MOCK_DEMO_APPLICANTS: Applicant[] = [
         appliedDate: new Date(Date.now() - 86400000 * 2).toISOString(),
         applicationDate: new Date(Date.now() - 86400000 * 2).toISOString(),
         notes: 'Claims extensive knowledge of bears, beets, and Battlestar Galactica.',
-        experienceYears: 15
+        experienceYears: 15,
+        resumeDataUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+        resumeFileName: 'schrute_farms_cv.pdf'
     },
     {
         id: 'app-3',

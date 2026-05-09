@@ -22,6 +22,8 @@ export interface InvoiceDetails {
     notes?: string | null;
     amount: number; 
     paidDate?: string | null;
+    billToName?: string;
+    billToAddress?: string;
     accountingSynced?: boolean;
     accountingSyncDate?: string;
     paidTo?: string; // Added for B2B

@@ -334,6 +334,20 @@ const FieldProposal: React.FC = () => {
             // --- NOTIFY FIELD TECHNICIAN IMMEDIATELY ---
             if (action === 'accept') {
                 const recipientId = proposal.technicianId || proposal.createdById;
+                const notificationContent = `🎉 ${proposal.customerName || 'Your customer'} just signed and accepted the "${finalSelectedOption}" option of Proposal ${proposal.id} for $${total.toFixed(2)} in person!`;
+                
+                try {
+                    const { sendNotification, notifyAdmins } = await import('lib/notificationService');
+                    const orgId = proposal.organizationId || state.currentOrganization?.id || '';
+                    
+                    if (recipientId) {
+                        await sendNotification(recipientId, { title: 'Proposal Accepted In-Person', body: notificationContent, type: 'proposal_accepted' }, orgId);
+                    }
+                    if (orgId) {
+                        await notifyAdmins(orgId, { title: 'Proposal Accepted In-Person', body: notificationContent, type: 'proposal_accepted' });
+                    }
+                } catch(e) { console.error('Failed to send push notifications', e); }
+
                 if (recipientId) {
                     try {
                         await db.collection('messages').add({
@@ -341,7 +355,7 @@ const FieldProposal: React.FC = () => {
                             senderId: 'system',
                             senderName: 'System Alerts',
                             receiverId: recipientId,
-                            content: `🎉 ${proposal.customerName || 'Your customer'} just signed and accepted the "${finalSelectedOption}" option of Proposal ${proposal.id} for $${total.toFixed(2)} in person!`,
+                            content: notificationContent,
                             type: 'alert',
                             timestamp: new Date().toISOString(),
                             read: false,

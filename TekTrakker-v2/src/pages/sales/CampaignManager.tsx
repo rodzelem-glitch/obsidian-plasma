@@ -2,7 +2,7 @@ import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, MessageSquare, Play, Pause, Trash2, Plus, Search, Target, Clock, BarChart3, TrendingUp, Sparkles, AlertCircle, Loader2, ArrowLeft } from 'lucide-react';
+import { Mail, MessageSquare, Play, Pause, Trash2, Plus, Search, Target, Clock, BarChart3, TrendingUp, Sparkles, AlertCircle, Loader2, ArrowLeft, GripVertical } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import { useAppContext } from '../../context/AppContext';
 import Card from '../../components/ui/Card';
@@ -17,6 +17,14 @@ import OutreachROI from './campaigns/components/OutreachROI';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { globalConfirm } from "lib/globalConfirm";
 
+interface CampaignPhase {
+    id: string;
+    name: string;
+    subject: string;
+    content: string;
+    delayDays: number;
+}
+
 interface Campaign {
     id: string;
     name: string;
@@ -25,7 +33,8 @@ interface Campaign {
     audience: 'all_leads' | 'new_leads' | 'closed_lost' | 'custom';
     templateId?: string;
     subject?: string;
-    content: string;
+    content?: string;
+    phases?: CampaignPhase[];
     stats: {
         sent: number;
         opened: number;
@@ -44,15 +53,13 @@ const CampaignManager: React.FC = () => {
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // AI Write State
     const [isWriting, setIsWriting] = useState(false);
 
-    // Form State
     const [newCampaign, setNewCampaign] = useState<Partial<Campaign>>({
         name: '',
         type: 'email',
         audience: 'new_leads',
-        content: '',
+        phases: [{ id: `phase-1`, name: 'Initial Contact', subject: '', content: '', delayDays: 0 }],
         status: 'draft'
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,7 +74,10 @@ const CampaignManager: React.FC = () => {
     }, []);
 
     const handleCreateCampaign = async () => {
-        if (!newCampaign.name || !newCampaign.content) return;
+        if (!newCampaign.name || !newCampaign.phases || newCampaign.phases.length === 0) {
+            showToast.warn("Campaign name and at least one phase are required.");
+            return;
+        }
         setIsSubmitting(true);
         
         const campaign: Campaign = {
@@ -76,9 +86,8 @@ const CampaignManager: React.FC = () => {
             type: newCampaign.type as any,
             status: 'draft',
             audience: newCampaign.audience as any,
-            content: newCampaign.content,
+            phases: newCampaign.phases,
             templateId: newCampaign.templateId,
-            subject: newCampaign.subject,
             stats: { sent: 0, opened: 0, clicked: 0, responded: 0 },
             createdAt: new Date().toISOString()
         };
@@ -86,7 +95,11 @@ const CampaignManager: React.FC = () => {
         try {
             await db.collection('sales_campaigns').doc(campaign.id).set(campaign);
             setIsCreateModalOpen(false);
-            setNewCampaign({ name: '', type: 'email', audience: 'new_leads', content: '' });
+            setNewCampaign({ 
+                name: '', type: 'email', audience: 'new_leads', 
+                phases: [{ id: `phase-1`, name: 'Initial Contact', subject: '', content: '', delayDays: 0 }] 
+            });
+            showToast.success("Campaign sequence created successfully!");
         } catch (e) {
             showToast.warn("Failed to save campaign.");
         } finally {
@@ -104,20 +117,33 @@ const CampaignManager: React.FC = () => {
             const functions = getFunctions();
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             
-            const prompt = `Write a high-converting ${newCampaign.type} for a SaaS sales campaign titled "${newCampaign.name}". 
-            Audience: ${newCampaign.audience}. 
-            Product: TekTrakker (Field Service Operations & AI).
-            Tone: Professional, urgent, value-driven. 
-            Include placeholders like {{firstName}} and {{companyName}}.`;
+            const prompt = `Write a high-converting ${newCampaign.type} drip campaign sequence for a SaaS sales campaign titled "${newCampaign.name}". 
+            Audience: ${newCampaign.audience}. Product: TekTrakker (Field Service Operations & AI). Tone: Professional, urgent, value-driven. 
+            Create a comprehensive 3 to 4 step sequence.
+            Return ONLY a valid JSON array of objects with this exact structure (no markdown tags):
+            [
+              { "name": "Phase 1 - Initial Contact", "subject": "Email Subject", "content": "Body content here. Use {{firstName}}.", "delayDays": 0 },
+              { "name": "Phase 2 - Pain Point", "subject": "Email Subject", "content": "Body content here.", "delayDays": 3 }
+            ]`;
 
-            const result: any = await callGeminiAI({ 
-                prompt,
-                modelName: 'gemini-3.1-pro-preview'
-            });
+            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.1-pro-preview' });
 
-            setNewCampaign(prev => ({ ...prev, content: result.data.text }));
+            let text = result.data.text.replace(/```json/g, '').replace(/```/g, '').trim();
+            const generatedPhases = JSON.parse(text);
+            
+            const formattedPhases = generatedPhases.map((p: any, i: number) => ({
+                id: `phase-${Date.now()}-${i}`,
+                name: p.name || `Phase ${i + 1}`,
+                subject: p.subject || '',
+                content: p.content || '',
+                delayDays: p.delayDays || (i === 0 ? 0 : 3)
+            }));
+
+            setNewCampaign(prev => ({ ...prev, phases: formattedPhases }));
+            showToast.success("AI generated a complete multi-step campaign sequence!");
         } catch (e) {
-            showToast.warn("AI writing failed.");
+            console.error("AI Generation Error:", e);
+            showToast.warn("AI sequence generation failed. The model might not have returned valid JSON.");
         } finally {
             setIsWriting(false);
         }
@@ -140,6 +166,24 @@ const CampaignManager: React.FC = () => {
         responded: acc.responded + (c.stats.responded || 0)
     }), { sent: 0, clicked: 0, responded: 0 });
 
+    const updatePhase = (index: number, field: keyof CampaignPhase, value: any) => {
+        const phases = [...(newCampaign.phases || [])];
+        phases[index] = { ...phases[index], [field]: value };
+        setNewCampaign(prev => ({ ...prev, phases }));
+    };
+
+    const addPhase = () => {
+        const phases = [...(newCampaign.phases || [])];
+        phases.push({ id: `phase-${Date.now()}`, name: `Phase ${phases.length + 1}`, subject: '', content: '', delayDays: 3 });
+        setNewCampaign(prev => ({ ...prev, phases }));
+    };
+
+    const removePhase = (index: number) => {
+        const phases = [...(newCampaign.phases || [])];
+        phases.splice(index, 1);
+        setNewCampaign(prev => ({ ...prev, phases }));
+    };
+
     return (
         <div className="space-y-6 pb-20">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -152,7 +196,7 @@ const CampaignManager: React.FC = () => {
                 
                 <div className="flex gap-2">
                     <Button onClick={() => setIsCreateModalOpen(true)} className="w-auto shadow-xl bg-primary-600 hover:bg-primary-700 px-6 font-black uppercase text-xs">
-                        <Plus size={16} className="mr-2"/> New Campaign
+                        <Plus size={16} className="mr-2"/> New Campaign Sequence
                     </Button>
                 </div>
             </header>
@@ -184,7 +228,7 @@ const CampaignManager: React.FC = () => {
                                                 </div>
                                                 <div>
                                                     <p className="font-black text-slate-900 dark:text-white">{camp.name}</p>
-                                                    <p className="text-[10px] text-slate-400 uppercase font-bold">{camp.type} Sequence</p>
+                                                    <p className="text-[10px] text-slate-400 uppercase font-bold">{camp.phases?.length || 1} Phases • {camp.type} Sequence</p>
                                                 </div>
                                             </div>
                                         </td>
@@ -227,10 +271,10 @@ const CampaignManager: React.FC = () => {
             {activeTab === 'templates' && <TemplateDesigner />}
             {activeTab === 'analytics' && <OutreachROI />}
 
-            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="New Sales Workflow" size="lg">
-                <div className="space-y-6">
+            <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="New Sales Workflow & Sequence" size="xl">
+                <div className="space-y-6 max-h-[75vh] overflow-y-auto pr-2">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input label="Campaign Name" value={newCampaign.name} onChange={e => setNewCampaign({...newCampaign, name: e.target.value})} placeholder="Q1 Growth" />
+                        <Input label="Campaign Name" value={newCampaign.name} onChange={e => setNewCampaign({...newCampaign, name: e.target.value})} placeholder="e.g. Q1 HVAC Growth" />
                         <Select label="Channel" value={newCampaign.type} onChange={e => setNewCampaign({...newCampaign, type: e.target.value as any})}>
                             <option value="email">Email Sequence</option>
                             <option value="sms">SMS Sequence</option>
@@ -241,21 +285,57 @@ const CampaignManager: React.FC = () => {
                             <option value="new_leads">New Leads</option>
                             <option value="closed_lost">Closed Lost</option>
                         </Select>
-                        <Input label="Schedule" type="datetime-local" />
+                        <Input label="Schedule Start" type="datetime-local" />
                     </div>
-                    <div className="space-y-2">
+                    
+                    <div className="space-y-4 pt-4 border-t">
                         <div className="flex justify-between items-center">
-                            <label className="text-xs font-black uppercase text-slate-400">Message Content</label>
-                            <button onClick={handleAISmartWrite} disabled={isWriting} className="text-[10px] font-black text-primary-600 uppercase flex items-center gap-1">
-                                {isWriting ? <Loader2 className="animate-spin" size={10}/> : <Sparkles size={10}/>} 
-                                AI Smart Write
+                            <div>
+                                <h3 className="font-bold text-slate-800 dark:text-white">Drip Sequence Phases</h3>
+                                <p className="text-xs text-slate-500">Define the automated follow-up intervals and messages.</p>
+                            </div>
+                            <button onClick={handleAISmartWrite} disabled={isWriting} className="px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-lg text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg transition-all">
+                                {isWriting ? <Loader2 className="animate-spin" size={14}/> : <Sparkles size={14}/>} 
+                                {isWriting ? 'Generating Sequence...' : 'AI Generate Sequence'}
                             </button>
                         </div>
-                        <Textarea rows={8} value={newCampaign.content} onChange={e => setNewCampaign({...newCampaign, content: e.target.value})} />
+
+                        <div className="space-y-4">
+                            {(newCampaign.phases || []).map((phase, index) => (
+                                <div key={phase.id} className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700 relative group">
+                                    <div className="absolute left-4 top-4 text-slate-400 cursor-grab">
+                                        <GripVertical size={16} />
+                                    </div>
+                                    <div className="pl-8 space-y-4">
+                                        <div className="flex justify-between items-start gap-4">
+                                            <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <Input label="Phase Name" value={phase.name} onChange={e => updatePhase(index, 'name', e.target.value)} placeholder="e.g. Initial Contact" />
+                                                <Input label="Delay (Days)" type="number" min={0} value={phase.delayDays} onChange={e => updatePhase(index, 'delayDays', parseInt(e.target.value) || 0)} placeholder="Days since last phase" />
+                                            </div>
+                                            <button onClick={() => removePhase(index)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Remove Phase">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <Input label="Subject Line" value={phase.subject} onChange={e => updatePhase(index, 'subject', e.target.value)} placeholder="High converting subject..." />
+                                            <div>
+                                                <label className="text-xs font-black uppercase text-slate-400 mb-1 block">Message Content</label>
+                                                <Textarea rows={4} value={phase.content} onChange={e => updatePhase(index, 'content', e.target.value)} placeholder="Hi {{firstName}}, ..." />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        
+                        <Button variant="secondary" onClick={addPhase} className="w-full border-dashed border-2 py-4 text-slate-500 hover:text-primary-600 hover:border-primary-600 hover:bg-primary-50">
+                            <Plus size={16} className="mr-2" /> Add Another Phase
+                        </Button>
                     </div>
-                    <div className="flex justify-end gap-3 pt-6 border-t">
+
+                    <div className="flex justify-end gap-3 pt-6 border-t sticky bottom-0 bg-white dark:bg-slate-900 pb-2">
                         <Button variant="secondary" onClick={() => setIsCreateModalOpen(false)}>Cancel</Button>
-                        <Button onClick={handleCreateCampaign} disabled={isSubmitting} className="bg-primary-600 font-black">Launch Campaign</Button>
+                        <Button onClick={handleCreateCampaign} disabled={isSubmitting} className="bg-primary-600 font-black">Save & Launch Sequence</Button>
                     </div>
                 </div>
             </Modal>

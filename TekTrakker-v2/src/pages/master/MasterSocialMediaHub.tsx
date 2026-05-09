@@ -174,13 +174,11 @@ const MasterSocialMediaHub: React.FC = () => {
 
     const handleConnectTT = () => {
         setIsTTConnecting(true);
-        // Replace 'YOUR_TIKTOK_CLIENT_KEY' with your approved key
-        const clientKey = '7631794451085525009';
+        const clientKey = import.meta.env.VITE_TIKTOK_CLIENT_KEY || 'awr6ierl6qanqdxc';
         const redirectUri = window.location.origin + '/auth/callback';
         const scope = 'user.info.basic,video.upload';
 
-        window.location.href = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${encodeURIComponent(redirectUri)}`;
-        // Note: The UI layer will listen on /auth/tiktok/callback to capture the token
+        window.location.href = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${encodeURIComponent(redirectUri)}&state=tiktok`;
     };
 
     const handleDisconnectTT = () => {
@@ -665,7 +663,7 @@ const MasterSocialMediaHub: React.FC = () => {
                                 <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">
                                     <div className="flex items-center justify-between gap-1 mb-3">
                                         <div className="flex items-center gap-2 overflow-hidden flex-1">
-                                            <span className="font-bold text-sm text-[#000000] dark:text-white truncate">TikTok <span className="font-normal text-xs ml-2 text-slate-500">(Coming Soon)</span></span>
+                                            <span className="font-bold text-sm text-[#000000] dark:text-white truncate">TikTok</span>
                                             {isTTConnected && <span className="hidden xl:inline-block text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Connected</span>}
                                         </div>
                                         {isTTConnected ? (
@@ -675,10 +673,11 @@ const MasterSocialMediaHub: React.FC = () => {
                                             </div>
                                         ) : (
                                             <button 
-                                                disabled
-                                                className="text-xs font-bold bg-slate-200 text-slate-400 dark:bg-slate-700 dark:text-slate-500 px-3 py-1.5 rounded-md transition-colors shrink-0 cursor-not-allowed"
+                                                onClick={handleConnectTT}
+                                                disabled={isTTConnecting}
+                                                className="text-xs font-bold bg-[#000000] dark:bg-white dark:text-black text-white hover:bg-slate-800 dark:hover:bg-slate-200 px-3 py-1.5 rounded-md transition-colors shrink-0"
                                             >
-                                                Connect
+                                                {isTTConnecting ? "Connecting..." : "Connect"}
                                             </button>
                                         )}
                                     </div>

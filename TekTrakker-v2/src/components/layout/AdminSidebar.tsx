@@ -90,7 +90,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
         { path: '/admin/customers', label: 'Customer Center', icon: BuildingOfficeIcon, roles: ['admin', 'both'] },
         { path: '/admin/financials', label: 'Financials', icon: FinancialIcon, roles: ['admin', 'both'] },
         { path: '/admin/contracts', label: 'Bid Optimization', icon: FileText, roles: ['admin', 'both'] },
-        { path: '/admin/contractor-network', label: 'Contractor Network', icon: UsersIcon, roles: ['admin', 'both'] },
+        { path: '/admin/contracting', label: 'Contracting Hub', icon: UsersIcon, roles: ['admin', 'both'] },
       ]
     },
     {
@@ -291,9 +291,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
       )}
 
       <aside
-        className={`fixed sm:static inset-y-0 left-0 z-[100] ${isCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700/80 transform transition-all duration-300 ease-in-out ${
+        className={`fixed sm:sticky top-0 inset-y-0 left-0 z-[100] ${isCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700/80 transform transition-all duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'
-        } flex flex-col h-screen max-h-screen`}
+        } flex flex-col h-[100dvh] max-h-[100dvh] shrink-0`}
       >
         <div className="flex items-center justify-center h-16 border-b border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 p-2 relative group pt-safe overflow-hidden shrink-0">
             {!isCollapsed ? (

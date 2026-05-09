@@ -2,7 +2,7 @@
 // This file is used as a central hub for all type definitions via the 'types' alias.
 
 // --- Organization & Address ---
-export type IndustryVertical = 'HVAC' | 'Plumbing' | 'Electrical' | 'Landscaping' | 'General' | 'Cleaning' | 'Painting' | 'Roofing' | 'Contracting' | 'Masonry' | 'Telecommunications' | 'Solar' | 'Security' | 'Pet Grooming';
+export type IndustryVertical = 'HVAC' | 'Plumbing' | 'Electrical' | 'Landscaping' | 'General' | 'Cleaning' | 'Painting' | 'Roofing' | 'Contracting' | 'Masonry' | 'Telecommunications' | 'Solar' | 'Security' | 'Pet Grooming' | 'Property Management';
 
 export interface Address {
     street: string;
@@ -280,6 +280,7 @@ export interface WarrantyClaim {
 export interface ServiceLocation {
    id: string;
    name: string;
+   propertyName?: string;
    address: string;
    city?: string;
    state?: string;
@@ -288,6 +289,7 @@ export interface ServiceLocation {
    notes?: string;
    parentId?: string | null;
    locationType?: string;
+   contacts?: { name: string; phone: string; email?: string; role?: string }[];
 }
 
 export interface Customer {
@@ -297,7 +299,7 @@ export interface Customer {
   firstName?: string;
   lastName?: string;
   address: string; 
-  customerType: 'Residential' | 'Commercial'; 
+  customerType: 'Residential' | 'Commercial' | 'Property Management'; 
   email: string;
   phone: string;
   city?: string | null;
@@ -320,6 +322,7 @@ export interface Customer {
   technicianNotes?: string;
   savedProviders?: string[]; 
   serviceLocations?: ServiceLocation[];
+  contacts?: any[];
 }
 
 // --- Job & Scheduling ---
@@ -334,6 +337,9 @@ export interface Job {
   address: string; 
   tasks: string[];
   customerId?: string | null;
+  locationId?: string | null;
+  locationName?: string | null;
+  poNumber?: string | null;
   customerPhone?: string | null;
   customerEmail?: string | null;
   jobStatus: 'Scheduled' | 'In Progress' | 'Completed';
@@ -445,6 +451,8 @@ export interface InvoiceDetails {
     notes?: string | null;
     amount: number; 
     paidDate?: string | null;
+    billToName?: string;
+    billToAddress?: string;
     accountingSynced?: boolean;
     accountingSyncDate?: string;
     paymentRecipientName?: string;
@@ -474,6 +482,8 @@ export interface Proposal {
     organizationId: string;
     customerId?: string;
     customerName: string;
+    locationId?: string | null;
+    locationName?: string | null;
     items: ProposalItem[];
     total: number;
     subtotal: number;
@@ -1094,11 +1104,14 @@ export interface Bid {
     agency?: string;
     solicitationNumber?: string;
     dueDate?: string;
+    importantDates?: {name: string, date: string}[];
     status: string;
     requirements: string[];
     deliverables?: string[];
     summary?: string;
     notes?: string;
+    submissionEmail?: string;
+    submissionLink?: string;
     files: StoredFile[];
     lineItems?: any[];
     questions?: any[];

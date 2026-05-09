@@ -1,3 +1,5 @@
+/* eslint-disable no-undef */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as functions from 'firebase-functions/v1';
 import * as admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -756,6 +758,46 @@ export const aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"]
                 {
                     name: "draftTargetedUpsellScripts",
                     description: "Analyzes equipment age and previous service history to draft highly targeted upsell scripts for technicians or call center staff.",
+                    parameters: { type: "OBJECT", properties: {}, required: [] }
+                },
+                {
+                    name: "generateTechnicianMatrix",
+                    description: "Analyzes labor hours vs completed job revenue to determine the most profitable and efficient technicians.",
+                    parameters: { type: "OBJECT", properties: {}, required: [] }
+                },
+                {
+                    name: "generateInventoryAudit",
+                    description: "Cross-references job notes, tool readings, and final invoices to identify inventory billing leakage.",
+                    parameters: { type: "OBJECT", properties: {}, required: [] }
+                },
+                {
+                    name: "generateMaintenanceForecaster",
+                    description: "Analyzes equipment age and historical breakdowns to create a targeted call list for preventative maintenance.",
+                    parameters: { type: "OBJECT", properties: {}, required: [] }
+                },
+                {
+                    name: "generateMarketingROI",
+                    description: "Calculates Customer Lifetime Value (CLV) and groups it by lead source to determine the highest ROI marketing channels.",
+                    parameters: { type: "OBJECT", properties: {}, required: [] }
+                },
+                {
+                    name: "generateRouteAudit",
+                    description: "Analyzes zip codes, dispatch times, and travel data to recommend more efficient dispatch zones and reduce windshield time.",
+                    parameters: { type: "OBJECT", properties: {}, required: [] }
+                },
+                {
+                    name: "generateInvoiceDunning",
+                    description: "Analyzes unpaid and overdue invoices to draft and queue automated SMS/Email collection reminders.",
+                    parameters: { type: "OBJECT", properties: {}, required: [] }
+                },
+                {
+                    name: "generateStaleEstimateReactivation",
+                    description: "Analyzes old rejected or expired high-value proposals to create a re-engagement SMS/Email campaign.",
+                    parameters: { type: "OBJECT", properties: {}, required: [] }
+                },
+                {
+                    name: "generateFleetAudit",
+                    description: "Cross-references fleet vehicle mileage and fuel logs against actual job locations to detect gas card abuse and inefficient routes.",
                     parameters: { type: "OBJECT", properties: {}, required: [] }
                 }
             ]
@@ -1824,7 +1866,7 @@ export const aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"]
                             warrantyCreditCount++;
                         }
                     });
-                } catch (e) { /* warranty collection may not exist yet */ }
+                } catch { /* warranty collection may not exist yet */ }
                 
                 const grandTotal = total + warrantyCredits;
                 const warrantyLine = warrantyCredits > 0 ? `\n- **Warranty Credits:** $${warrantyCredits.toFixed(2)} from ${warrantyCreditCount} approved claims` : '';
@@ -2510,6 +2552,110 @@ export const aiAgentController = functions.runWith({ secrets: ["GEMINI_API_KEY"]
                 
                 toolStatusMessage = "I have started generating highly targeted upsell scripts based on your historical jobs and equipment data. I queued this as a background task. The full upsell script report will be available in your Virtual Worker Reports tab soon!";
             }
+            else if (call.name === "generateTechnicianMatrix") {
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
+                await taskRef.set({
+                    id: taskRef.id,
+                    prompt: "Generate a Technician Efficiency & Profitability Matrix by cross-referencing labor hours (from shifts) against the actual cost and total amount of completed jobs to find net profit per hour and rework rates.",
+                    status: 'Pending',
+                    progress: 0,
+                    queuedAt: new Date().toISOString(),
+                    requestedBy: 'Virtual AI Worker',
+                    resultMarkdown: ''
+                });
+                toolStatusMessage = "I have started generating the Technician Efficiency & Profitability Matrix in the background. It will be available in your Virtual Worker Reports tab shortly!";
+            }
+            else if (call.name === "generateInventoryAudit") {
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
+                await taskRef.set({
+                    id: taskRef.id,
+                    prompt: "Run an Inventory 'Leakage' & Billing Audit by scanning raw notes and tool readings on completed jobs, and comparing them to final invoices to identify missed billing opportunities.",
+                    status: 'Pending',
+                    progress: 0,
+                    queuedAt: new Date().toISOString(),
+                    requestedBy: 'Virtual AI Worker',
+                    resultMarkdown: ''
+                });
+                toolStatusMessage = "I have queued the Inventory Leakage & Billing Audit to run in the background. Check your Virtual Worker Reports tab soon for the results!";
+            }
+            else if (call.name === "generateMaintenanceForecaster") {
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
+                await taskRef.set({
+                    id: taskRef.id,
+                    prompt: "Create a Preventative Maintenance & Equipment Failure Forecaster report by analyzing equipment age, zip codes, and historical service dates to generate a targeted call list of high-risk systems.",
+                    status: 'Pending',
+                    progress: 0,
+                    queuedAt: new Date().toISOString(),
+                    requestedBy: 'Virtual AI Worker',
+                    resultMarkdown: ''
+                });
+                toolStatusMessage = "I am calculating the Preventative Maintenance Forecaster right now. I'll drop the targeted call list in the Virtual Worker Reports tab when finished!";
+            }
+            else if (call.name === "generateMarketingROI") {
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
+                await taskRef.set({
+                    id: taskRef.id,
+                    prompt: "Calculate Marketing ROI & Lifetime Value (LTV) by grouping customers by leadSource and analyzing their total historical spend across all invoices to identify the most profitable marketing channels.",
+                    status: 'Pending',
+                    progress: 0,
+                    queuedAt: new Date().toISOString(),
+                    requestedBy: 'Virtual AI Worker',
+                    resultMarkdown: ''
+                });
+                toolStatusMessage = "The Marketing ROI & LTV Tracker is actively crunching the numbers. You'll find the report in the Virtual Worker Reports tab once it finishes!";
+            }
+            else if (call.name === "generateRouteAudit") {
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
+                await taskRef.set({
+                    id: taskRef.id,
+                    prompt: "Perform a 'Windshield Time' & Route Density Audit mapping out zip codes and timestamps of completed jobs to calculate travel time costs and recommend optimized dispatch zones.",
+                    status: 'Pending',
+                    progress: 0,
+                    queuedAt: new Date().toISOString(),
+                    requestedBy: 'Virtual AI Worker',
+                    resultMarkdown: ''
+                });
+                toolStatusMessage = "I've dispatched a background task to perform the Route Density & Windshield Time audit. I'll ping your Virtual Worker Reports tab with the optimization strategy when it's done!";
+            }
+            else if (call.name === "generateInvoiceDunning") {
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
+                await taskRef.set({
+                    id: taskRef.id,
+                    prompt: "Run an Automated Invoice Dunning scan. Analyze all unpaid, overdue invoices in the database and draft a targeted SMS and Email collection sequence for each delinquent account, including a strategy for escalation.",
+                    status: 'Pending',
+                    progress: 0,
+                    queuedAt: new Date().toISOString(),
+                    requestedBy: 'Virtual AI Worker',
+                    resultMarkdown: ''
+                });
+                toolStatusMessage = "I have initiated the Automated Invoice Dunning process in the background. I will scan for overdue accounts and compile the collection scripts in your Virtual Worker Reports tab!";
+            }
+            else if (call.name === "generateStaleEstimateReactivation") {
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
+                await taskRef.set({
+                    id: taskRef.id,
+                    prompt: "Run a 'Stale Estimate' Reactivation analysis. Identify high-value proposals that were marked 'Rejected' or 'Expired' 6-12 months ago, and draft a targeted SMS/Email 'Second Chance' re-engagement campaign to win them back.",
+                    status: 'Pending',
+                    progress: 0,
+                    queuedAt: new Date().toISOString(),
+                    requestedBy: 'Virtual AI Worker',
+                    resultMarkdown: ''
+                });
+                toolStatusMessage = "I have queued the Stale Estimate Reactivation analysis. I'll drop the list of targets and the re-engagement campaign strategy in your Virtual Worker Reports tab shortly!";
+            }
+            else if (call.name === "generateFleetAudit") {
+                const taskRef = admin.firestore().collection(`organizations/${organizationId}/aiLongTasks`).doc();
+                await taskRef.set({
+                    id: taskRef.id,
+                    prompt: "Perform a Fleet Gas Card & Route Efficiency Audit. Correlate estimated job travel distances against any available fuel and mileage expenses to mathematically flag potential gas card abuse, vehicle wear-and-tear issues, or highly inefficient drivers.",
+                    status: 'Pending',
+                    progress: 0,
+                    queuedAt: new Date().toISOString(),
+                    requestedBy: 'Virtual AI Worker',
+                    resultMarkdown: ''
+                });
+                toolStatusMessage = "The Fleet & Gas Card Audit has been queued. I am cross-referencing jobs and travel distances now, and will place the findings in your Virtual Worker Reports tab when finished!";
+            }
 
             // Feed the result back to Gemini so it can converse properly instead of just spitting out the hardcoded status
                 functionResponsesPayload.push({
@@ -2693,8 +2839,8 @@ Only return the raw JSON object, no markdown blocks.`
 
         const result = await executeWithRetry(() => model.generateContent(parts));
         let responseText = result.response.text().trim();
-        if (responseText.startsWith('\`\`\`json')) {
-            responseText = responseText.replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+        if (responseText.startsWith('```json')) {
+            responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
         }
 
         const parsed = JSON.parse(responseText);
@@ -2727,18 +2873,40 @@ export const processBackgroundAITask = functions.runWith({ timeoutSeconds: 540, 
         const db = admin.firestore();
         
         // Fetch last 500 completed jobs to prevent memory overload but provide good sample
-        const jobsSnap = await db.collection('jobs').where('organizationId', '==', orgId).where('jobStatus', '==', 'Completed').orderBy('completedAt', 'desc').limit(500).get();
+        const jobsSnap = await db.collection('jobs').where('organizationId', '==', orgId).where('jobStatus', '==', 'Completed').orderBy('endTime', 'desc').limit(500).get();
         const jobs = jobsSnap.docs.map(d => {
             const j = d.data();
-            return { id: j.id, type: j.jobType, total: j.totalAmount, zip: j.zipCode, date: j.completedAt };
+            return { 
+                id: j.id, 
+                type: j.jobType, 
+                total: j.totalAmount || 0, 
+                zip: j.zipCode || j.zip || (j.address ? j.address.split(',').pop()?.trim() : 'Unknown'), 
+                date: j.endTime || j.createdAt,
+                customer: j.customerName || 'Unknown',
+                technician: j.assignedTechnician || 'Unassigned',
+                source: j.source || 'Organic',
+                cost: j.actualCost || 0,
+                laborHours: j.actualHours || 0
+            };
         });
 
         // Fetch last 500 invoices
-        const invSnap = await db.collection('invoices').where('organizationId', '==', orgId).orderBy('createdAt', 'desc').limit(500).get();
-        const invoices = invSnap.docs.map(d => {
-            const i = d.data();
-            return { id: i.id, total: i.totalAmount, status: i.status, items: i.items?.map((it:any) => it.name) || [] };
+        const invoicesSnap = jobsSnap.docs.filter(d => d.data().invoice);
+        const invoices = invoicesSnap.map(d => {
+            const i = d.data().invoice;
+            return { id: i.id || d.id, total: i.totalAmount, status: i.status, items: i.items?.map((it:any) => it.name) || [] };
         });
+
+        // Fetch last 200 proposals (for Stale Estimate Reactivation)
+        const proposalsSnap = await db.collection('proposals').where('organizationId', '==', orgId).orderBy('createdAt', 'desc').limit(200).get();
+        const proposals = proposalsSnap.docs.map(d => {
+            const p = d.data();
+            return { id: p.id, customer: p.customerName || 'Unknown', total: p.totalAmount || 0, date: p.createdAt, status: p.status };
+        });
+
+        // Fetch vehicle logs if available (for Fleet Audit)
+        const vehicleSnap = await db.collection('vehicleLogs').where('organizationId', '==', orgId).orderBy('date', 'desc').limit(100).get();
+        const vehicleLogs = vehicleSnap.docs.map(d => d.data());
         
         await snapshot.ref.update({ progress: 50 });
 
@@ -2746,8 +2914,16 @@ export const processBackgroundAITask = functions.runWith({ timeoutSeconds: 540, 
 The user has requested a comprehensive report: "${data.prompt}".
 Here is a raw data dump of the recent 500 completed jobs: ${JSON.stringify(jobs)}
 Here is a raw data dump of the recent 500 invoices: ${JSON.stringify(invoices)}
+Here is a raw data dump of the recent proposals: ${JSON.stringify(proposals)}
+Here is a raw data dump of the recent vehicle logs: ${JSON.stringify(vehicleLogs)}
 
-Please generate a highly detailed, professional, and insightful report answering their request. Format it entirely in Markdown. Include tables, bullet points, and clear headers. If the user asks for tax records, format it like a clean ledger. If they ask for profitability, calculate the highest grossing job types or zip codes based on the data provided. Do not invent fake data. Use the provided context.`;
+Please generate a highly detailed, professional, and insightful report answering their request. 
+Follow these strict formatting rules to maximize readability and visual appeal:
+1. Format in standard Markdown BUT heavily utilize inline HTML with robust CSS inline styles (<div style="...">) for layout and graphics.
+2. DO NOT USE Mermaid.js. Instead, generate "graphics" by building HTML-based progress bars, styled metric cards, colored badges, and custom data visualizations using purely inline HTML and CSS.
+3. Include clean, structured Markdown tables for all numerical data.
+4. Use emojis, blockquotes, and varied header sizes to make the report easy to read.
+5. Do not invent fake data. Use the provided context to calculate real metrics. Make the report visually stunning and executive-ready by styling it like a premium SaaS dashboard.`;
 
         await snapshot.ref.update({ progress: 60 });
 

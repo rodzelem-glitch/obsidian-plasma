@@ -60,6 +60,7 @@ const MasterSalesTeam: React.FC = () => {
     const [taxAmountOverride, setTaxAmountOverride] = useState<string>('');
 
     useEffect(() => {
+        if (!state.currentUser) return;
         const isFranchiseAdmin = !state.isMasterAdmin && state.currentUser?.franchiseId;
         const myFranchiseId = state.currentUser?.franchiseId;
 

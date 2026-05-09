@@ -30,12 +30,18 @@ const TimeSheetReview: React.FC = () => {
         return (state.shiftLogs[selectedEmployeeId] || []).sort((a: ShiftLog, b: ShiftLog) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime());
     }, [selectedEmployeeId, state.shiftLogs]);
 
-    const handleApprove = (log: ShiftLog) => {
+    const handleApprove = async (log: ShiftLog) => {
         if (!selectedEmployeeId) return;
-        dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: selectedEmployeeId, log: { ...log, isApproved: true } } });
+        try {
+            await db.collection('shiftLogs').doc(log.id).update({ isApproved: true });
+            dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: selectedEmployeeId, log: { ...log, isApproved: true } } });
+        } catch (error) {
+            console.error("Failed to approve shift", error);
+            showToast.warn("Failed to save approval to the database.");
+        }
     };
 
-    const handleSaveEdit = async (updatedLog: ShiftLog, editRecord: ShiftEdit) => {
+    const handleSaveEdit = async (updatedLog: ShiftLog, _editRecord: ShiftEdit) => {
         if (!selectedEmployeeId) return;
         try {
             const { id, ...updateData } = updatedLog;

@@ -1,14 +1,14 @@
-
 import React, { useState, Suspense, lazy } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { 
     Wrench, Briefcase, ArrowRight, ShieldCheck, Zap, History, FileText, 
-    Search, DollarSign, BarChart3, Globe, Smartphone, Users, CheckCircle, Map, Building
+    Search, DollarSign, BarChart3, Globe, Map, Building
 } from 'lucide-react';
-import { Logo } from '../../components/ui/Logo';
 const LandingChatbot = lazy(() => import('../../components/LandingChatbot'));
 import Modal from '../../components/ui/Modal';
 import Button from '../../components/ui/Button';
+import { LandingHeader } from './components/LandingHeader';
+import { LandingFooter } from './components/LandingFooter';
 
 // Utility to delay background chunk execution until after LCP paint
 const NavigationDelayer: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -31,38 +31,13 @@ const SplitHome: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col font-sans">
-      
-      {/* Navbar */}
-      <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md border-b border-slate-100 shadow-sm transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16 md:h-20">
-                <div className="flex-shrink-0 cursor-pointer" onClick={() => window.scrollTo(0,0)}>
-                    <Logo className="h-8 md:h-10 w-auto" />
-                </div>
-                <div className="hidden md:flex space-x-8">
-                    <button onClick={() => document.getElementById('property-owner-section')?.scrollIntoView({ behavior: 'smooth' })} className="text-slate-600 font-bold hover:text-blue-600 transition-colors">For Property Owners</button>
-                    <button onClick={() => document.getElementById('business-section')?.scrollIntoView({ behavior: 'smooth' })} className="text-slate-600 font-bold hover:text-emerald-600 transition-colors">For Pros</button>
-                </div>
-                <div className="flex items-center gap-3">
-                    <button 
-                        onClick={() => navigate('/login')} 
-                        className="px-4 py-2 text-slate-700 font-bold text-sm hover:text-slate-900 transition-colors"
-                    >
-                        Log In
-                    </button>
-                    <button 
-                        onClick={() => setIsModalOpen(true)} 
-                        className="px-5 py-2.5 bg-blue-600 text-white rounded-full font-bold text-sm hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all transform hover:-translate-y-0.5"
-                    >
-                        Get Started
-                    </button>
-                </div>
-            </div>
-        </div>
-      </nav>
+      <LandingHeader 
+        showAuthButtons
+        onShowDemoOptions={() => setIsModalOpen(true)}
+      />
 
       {/* Hero Split Section */}
-      <div className="pt-16 md:pt-20 flex-1 flex flex-col md:flex-row">
+      <div className="pt-20 flex-1 flex flex-col md:flex-row">
         
         {/* Left: Property Owner Funnel */}
         <div 
@@ -71,7 +46,7 @@ const SplitHome: React.FC = () => {
             onClick={() => setIsModalOpen(true)}
         >
             <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-white/50 opacity-100 z-0" />
-            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#2563eb 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[radial-gradient(#2563eb_1px,transparent_1px)] bg-[length:30px_30px]"></div>
             
             <div className="relative z-10 max-w-lg mx-auto transform group-hover:-translate-y-1 transition-transform duration-500">
                 <div className="inline-flex items-center justify-center p-4 bg-white rounded-2xl shadow-xl shadow-blue-100 mb-8 ring-1 ring-blue-50 group-hover:scale-105 transition-transform">
@@ -136,7 +111,7 @@ const SplitHome: React.FC = () => {
             onClick={() => navigate('/pro')}
         >
             <div className="absolute inset-0 bg-gradient-to-bl from-slate-900 to-slate-950 opacity-95 z-0" />
-            <div className="absolute inset-0 opacity-[0.05] pointer-events-none" style={{ backgroundImage: 'linear-gradient(45deg, #10b981 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+            <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[linear-gradient(45deg,#10b981_1px,transparent_1px)] bg-[length:40px_40px]"></div>
 
             <div className="relative z-10 max-w-lg mx-auto transform group-hover:-translate-y-1 transition-transform duration-500">
                  <div className="inline-flex items-center justify-center p-4 bg-slate-800 rounded-2xl shadow-2xl shadow-emerald-900/50 mb-8 ring-1 ring-white/10 group-hover:scale-105 transition-transform">
@@ -196,24 +171,7 @@ const SplitHome: React.FC = () => {
 
       </div>
 
-      {/* Trust Badges / Footer Strip */}
-      <div className="bg-white border-t border-slate-100 py-6 md:py-8">
-        <div className="max-w-7xl mx-auto px-4 flex flex-wrap justify-center items-center gap-x-8 gap-y-4 md:gap-x-12 text-slate-500 font-bold text-xs uppercase tracking-widest">
-            <span className="flex items-center gap-2 text-slate-500">
-                <CheckCircle size={16} className="text-blue-500"/> Verified Professionals
-            </span>
-            <span className="flex items-center gap-2 text-slate-500">
-                <CheckCircle size={16} className="text-blue-500"/> Bank-Level Security
-            </span>
-            <span className="flex items-center gap-2 text-slate-500">
-                <CheckCircle size={16} className="text-blue-500"/> 24/7 Support
-            </span>
-            <Link to="/eula" className="hover:text-slate-900 transition-colors">EULA</Link>
-            <Link to="/terms" className="hover:text-slate-900 transition-colors">Terms</Link>
-            <Link to="/privacy" className="hover:text-slate-900 transition-colors">Privacy</Link>
-
-        </div>
-      </div>
+      <LandingFooter />
 
       <NavigationDelayer>
         <Suspense fallback={null}>

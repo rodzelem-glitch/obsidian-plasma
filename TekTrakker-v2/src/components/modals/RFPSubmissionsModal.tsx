@@ -4,6 +4,7 @@ import { db } from '../../lib/firebase';
 import type { RFPNotice } from '../../types';
 import showToast from '../../lib/toast';
 import { MessageCircle, CheckCircle, X } from 'lucide-react';
+import { useAppContext } from '../../context/AppContext';
 
 interface RFPSubmissionsModalProps {
     isOpen: boolean;
@@ -15,9 +16,10 @@ const RFPSubmissionsModal: React.FC<RFPSubmissionsModalProps> = ({ isOpen, onClo
     const [submissions, setSubmissions] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const navigate = useNavigate();
+    const { state } = useAppContext();
 
     useEffect(() => {
-        if (!isOpen || !rfp) return;
+        if (!state.currentUser || !isOpen || !rfp) return;
         
         setIsLoading(true);
         const unsubscribe = db.collection('rfp_notices').doc(rfp.id).collection('submissions')
@@ -41,7 +43,7 @@ const RFPSubmissionsModal: React.FC<RFPSubmissionsModalProps> = ({ isOpen, onClo
             });
 
         return () => unsubscribe();
-    }, [isOpen, rfp]);
+    }, [isOpen, rfp, state.currentUser]);
 
     const handleAwardBid = async (submissionId: string, orgId: string, orgName: string) => {
         if (!rfp) return;

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Moon, Sun, Network, Megaphone } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket } from 'lucide-react';
 import type { User } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 
@@ -15,7 +15,7 @@ interface MasterSidebarProps {
 const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = false, onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { state, dispatch } = useAppContext();
+  const { state } = useAppContext();
 
 
 
@@ -27,6 +27,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
         { path: '/master/analytics', label: 'Platform Analytics', icon: BarChart2 },
         { path: '/master/integration-requests', label: 'Integration Requests', icon: Network },
         { path: '/master/campaigns', label: 'Campaign Studio', icon: Megaphone },
+        { path: '/master/drip-campaigns', label: 'Drip Sequences', icon: Rocket },
         { path: '/master/ai-usage', label: 'AI Usage Metrics', icon: BrainCircuit },
         { path: '/master/ai-reports', label: 'AI Worker Reports', icon: FileText },
         { path: '/master/storage-usage', label: 'Storage Metrics', icon: Database },
@@ -50,6 +51,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
         { path: '/master/customers', label: 'Global Customers', icon: UserCheck },
         { path: '/master/sales-team', label: 'Sales Force', icon: Briefcase },
         { path: '/master/messages', label: 'Messages', icon: MessageSquare },
+        { path: '/master/inbox', label: 'Email Hub', icon: Mail },
       ]
     }
   ];
@@ -86,10 +88,10 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-20 bg-black bg-opacity-50 sm:hidden transition-opacity" onClick={onClose}></div>
+        <button type="button" className="fixed inset-0 z-20 bg-black bg-opacity-50 sm:hidden transition-opacity w-full h-full cursor-default" onClick={onClose} aria-label="Close sidebar" />
       )}
 
-      <aside className={`fixed sm:static inset-y-0 left-0 z-30 w-64 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'} flex flex-col h-full`}>
+      <aside className={`fixed sm:sticky top-0 inset-y-0 left-0 z-30 w-64 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'} flex flex-col h-[100dvh] max-h-[100dvh] shrink-0`}>
         <div className="flex items-center justify-center h-16 border-b border-slate-200 dark:border-slate-700 px-4 pt-safe">
             <span className="text-xl font-bold text-primary-600 dark:text-primary-400 truncate w-full text-center">Master Admin</span>
         </div>

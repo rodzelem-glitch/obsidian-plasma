@@ -27,7 +27,8 @@ import SalesPipeline from '../pages/admin/SalesPipeline';
 import ReviewHub from '../pages/admin/ReviewHub';
 import BlogManager from '../pages/admin/BlogManager';
 import BidOptimizationTool from '../pages/admin/BidOptimizationTool';
-import ContractorNetwork from '../pages/admin/ContractorNetwork';
+import IntegrationsMarketplace from '../pages/admin/IntegrationsMarketplace';
+import ContractingHub from '../pages/admin/ContractingHub';
 import ProjectManagement from '../pages/admin/ProjectManagement';
 import Messages from '../pages/Messages';
 import FieldProposal from '../pages/FieldProposal';
@@ -36,8 +37,6 @@ import DatabaseMigration from '../pages/admin/DatabaseMigration';
 import TrainingHub from '../pages/TrainingHub';
 import VirtualWorkerUpgrade from '../pages/admin/VirtualWorkerUpgrade';
 import VirtualWorkerReports from '../pages/admin/VirtualWorkerReports';
-import IntegrationsMarketplace from '../pages/admin/IntegrationsMarketplace';
-
 import HROperationsDashboard from '../pages/admin/HROperationsDashboard';
 import WarrantyClaimsDashboard from '../pages/admin/WarrantyClaimsDashboard';
 
@@ -74,7 +73,7 @@ const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: 
           <Route path="reviews" element={<ReviewHub />} />
           <Route path="messages" element={<Messages />} />
           <Route path="contracts" element={<BidOptimizationTool />} />
-          <Route path="contractor-network" element={<ContractorNetwork />} />
+          <Route path="contracting" element={<ContractingHub />} />
 
           <Route path="projects" element={<ProjectManagement />} />
           <Route path="proposal" element={<FieldProposal />} />

@@ -1,6 +1,5 @@
 import React from 'react';
 import { FileSignature, Sparkles, ClipboardList, Import, Camera, ImageIcon, X, ChevronDown, ChevronUp, Edit3 } from 'lucide-react';
-import Card from '../../../../components/ui/Card';
 import Button from '../../../../components/ui/Button';
 import Textarea from '../../../../components/ui/Textarea';
 import { VoiceInput } from '../../../../components/ui/VoiceInput';
@@ -135,7 +134,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                 {linkedProposals.length > 0 ? (
                     <div className="space-y-2">
                         {linkedProposals.map(p => (
-                            <div key={p.id} onClick={() => onViewEditProposal && onViewEditProposal(p.id)} className="p-4 bg-purple-50/50 rounded-xl flex justify-between items-center border border-purple-200 cursor-pointer hover:bg-purple-100 transition-colors shadow-sm">
+                            <button type="button" key={p.id} onClick={() => onViewEditProposal && onViewEditProposal(p.id)} className="w-full text-left p-4 bg-purple-50/50 rounded-xl flex justify-between items-center border border-purple-200 cursor-pointer hover:bg-purple-100 transition-colors shadow-sm">
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <p className="font-bold text-sm text-purple-900">{p.id}</p>
@@ -146,7 +145,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                                 <div className="text-right">
                                     <p className="font-black text-lg text-purple-700">${(p.total || 0).toFixed(2)}</p>
                                 </div>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 ) : (
@@ -258,23 +257,29 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                         <label htmlFor="prework-gallery" className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors w-24 h-24 shadow-sm">
                             <ImageIcon size={24} className="text-slate-400 mb-2"/>
                             <span className="text-xs font-bold text-slate-500">Gallery</span>
-                            <input id="prework-gallery" type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, 'Pre-Work')} className="hidden" />
+                            <input id="prework-gallery" type="file" multiple accept="image/*" onChange={(e) => handlePhotoUpload(e, 'Pre-Work')} className="hidden" />
                         </label>
                     </div>
                     
                     <div className="flex-1 flex overflow-x-auto gap-3 pb-2 custom-scrollbar">
                         {files.filter(f => (f.metadata?.label || (f as any).label) === 'Pre-Work').map(f => (
                             <div key={f.id} className="relative group w-24 h-24 rounded-xl overflow-hidden border border-slate-200 shadow-sm shrink-0">
-                                <img 
-                                    src={f.dataUrl || (f as any).url} 
-                                    alt={f.fileName} 
-                                    className="w-full h-full object-cover cursor-pointer hover:scale-110 transition-transform duration-300"
+                                <button 
+                                    type="button"
                                     onClick={() => onViewPhoto(f)}
-                                />
+                                    className="w-full h-full p-0 border-none outline-none block"
+                                >
+                                    <img 
+                                        src={f.dataUrl || (f as any).url} 
+                                        alt={f.fileName} 
+                                        className="w-full h-full object-cover cursor-pointer hover:scale-110 transition-transform duration-300"
+                                    />
+                                </button>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); onDeletePhoto(f); }}
                                     className="absolute top-1 right-1 p-1.5 bg-red-600/90 hover:bg-red-700 text-white rounded-full opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shadow-sm backdrop-blur-sm"
                                     title="Delete Photo"
+                                    aria-label="Delete Photo"
                                 >
                                     <X size={12}/>
                                 </button>

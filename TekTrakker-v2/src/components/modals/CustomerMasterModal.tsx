@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { getBaseUrl } from "lib/utils";
 
 import React, { useState, useMemo } from 'react';
@@ -9,15 +10,13 @@ import Textarea from '../ui/Textarea';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
 import type { Customer, EquipmentAsset, ServiceAgreement, MembershipPlan, Job, StoredFile } from 'types';
-import { MapPinIcon, TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Mail, QrCode, Printer, Sparkles, ShieldCheck, Ban, MessageSquare, CheckCircle, Edit, Share2, Copy, Upload } from 'lucide-react';
+import { TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Mail, Printer, Sparkles, ShieldCheck, MessageSquare, CheckCircle, Edit, Share2, Copy, Upload } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { globalConfirm } from "lib/globalConfirm";
 import { uploadFileToStorage } from 'lib/storageService';
 import { sendEmail } from 'lib/notificationService';
-import Tesseract from 'tesseract.js';
 import showToast from 'lib/toast';
 import EquipmentHierarchy from 'pages/admin/projects/components/tabs/equipment/EquipmentHierarchy';
-import { EQUIPMENT_OPTIONS } from '@/constants/industryNaming';
 import WarrantySection from 'pages/customer/components/WarrantySection';
 
 interface CustomerMasterModalProps {
@@ -30,24 +29,21 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
     const { state, dispatch } = useAppContext();
     const customer = state.customers.find(c => c.id === customerId);
     
-    const industry = state.currentOrganization?.industry || 'HVAC';
-    const equipmentOptions = EQUIPMENT_OPTIONS[industry] || EQUIPMENT_OPTIONS['default'];
+
+
 
     const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'history' | 'financials' | 'docs' | 'warranties'>('overview');
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState<Partial<Customer>>({});
     const [isSendingInvite, setIsSendingInvite] = useState(false);
     
-    // Equipment State
-    const [newEquipment, setNewEquipment] = useState<EquipmentAsset>({ id: '', brand: '', model: '', serial: '', type: equipmentOptions[0] });
-    const [isAddingEquip, setIsAddingEquip] = useState(false);
-    const [isSavingAsset, setIsSavingAsset] = useState(false); // Fix for duplicates
-    const [selectedReportAssets, setSelectedReportAssets] = useState<string[]>([]);
-    const [isOcrScanning, setIsOcrScanning] = useState(false);
-
     // Property Location State
     const [newLocation, setNewLocation] = useState<any>({ name: '', address: '', city: '', state: '', zip: '', notes: '' });
     const [isAddingLocation, setIsAddingLocation] = useState(false);
+
+    // Contacts State
+    const [newContact, setNewContact] = useState<any>({ id: '', name: '', title: '', phone: '', email: '', isPrimary: false });
+    const [isAddingContact, setIsAddingContact] = useState(false);
 
     // Membership Manual Enrollment State
     const [isEnrolling, setIsEnrolling] = useState(false);
@@ -186,16 +182,27 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
     };
 
     const handleAddLocation = async () => {
-        if (!newLocation.name || !newLocation.address) {
+        if (!newLocation.propertyName && !newLocation.name) {
             showToast.warn("Property Name and Address are required.");
             return;
         }
+        
+        // Map legacy UI "name" to "propertyName" for the new schema
+        const locPayload = {
+            ...newLocation,
+            propertyName: newLocation.propertyName || newLocation.name,
+            customerId: customer.id,
+            organizationId: state.currentOrganization?.id || 'default'
+        };
+
         let updatedLocations;
-        if (newLocation.id) {
-            updatedLocations = (customer.serviceLocations || []).map((l:any) => l.id === newLocation.id ? newLocation : l);
+        if (locPayload.id) {
+            updatedLocations = (customer.serviceLocations || []).map((l:any) => l.id === locPayload.id ? locPayload : l);
+            await db.collection('serviceLocations').doc(locPayload.id).set(locPayload, { merge: true });
         } else {
-            const loc = { ...newLocation, id: `loc-${Date.now()}` };
-            updatedLocations = [...(customer.serviceLocations || []), loc];
+            locPayload.id = `loc-${Date.now()}`;
+            updatedLocations = [...(customer.serviceLocations || []), locPayload];
+            await db.collection('serviceLocations').doc(locPayload.id).set(locPayload);
         }
         await db.collection('customers').doc(customer.id).update({ serviceLocations: updatedLocations });
         dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, serviceLocations: updatedLocations } });
@@ -207,173 +214,68 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         e.stopPropagation();
         if (!await globalConfirm("Remove this property? Equipment or jobs mapped to it may lose context.")) return;
         const updatedLocations = (customer.serviceLocations || []).filter((l:any) => l.id !== id);
+        await db.collection('serviceLocations').doc(id).delete();
         await db.collection('customers').doc(customer.id).update({ serviceLocations: updatedLocations });
         dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, serviceLocations: updatedLocations } });
     };
 
-    const handleAddEquipment = async () => {
-        if (isSavingAsset) return;
-        setIsSavingAsset(true);
-
-        try {
-            let updatedEquipment;
-            // Check if we are updating an existing asset
-            if (newEquipment.id) {
-                updatedEquipment = (customer.equipment || []).map(e => 
-                    e.id === newEquipment.id ? newEquipment : e
-                );
-            } else {
-                // Creating new asset
-                const asset: EquipmentAsset = { ...newEquipment, id: `eq-${Date.now()}` };
-                updatedEquipment = [...(customer.equipment || []), asset];
-            }
-
-            const updatedCustomer = { ...customer, equipment: updatedEquipment };
-            
-            await db.collection('customers').doc(customer.id).update({ equipment: updatedEquipment });
-            dispatch({ type: 'UPDATE_CUSTOMER', payload: updatedCustomer });
-            setIsAddingEquip(false);
-            setNewEquipment({ id: '', brand: '', model: '', serial: '', type: equipmentOptions[0] });
-        } catch (e) {
-            console.error(e);
-            showToast.error("Failed to save asset.");
-        } finally {
-            setIsSavingAsset(false);
-        }
-    };
-    const handleAssetPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, photoType: 'serialPhotoUrl' | 'unitTagPhotoUrl' | 'conditionPhotoUrl') => {
-        const file = e.target.files?.[0];
-        if (!file || !state.currentOrganization) return;
-        
-        if (file.size > 5 * 1024 * 1024) {
-            showToast.warn("File too large — asset photos must be under 5MB.");
-            e.target.value = '';
+    const handleAddContact = async () => {
+        if (!newContact.name || !newContact.phone) {
+            showToast.warn("Contact Name and Phone are required.");
             return;
         }
-        
-        try {
-            const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : `photo-${Date.now()}.png`;
-            const path = `organizations/${state.currentOrganization.id}/customers/${customer.id}/equipment/${Date.now()}_${safeName}`;
-            const downloadUrl = await uploadFileToStorage(path, file);
-            
-            // Add reference to customer files so it appears in Docs & Media
-            const newFileReference: StoredFile = {
-                id: `file-${Date.now()}`,
-                organizationId: customer.organizationId,
-                parentId: customer.id,
-                parentType: 'customer',
-                fileName: `Asset Photo - ${safeName}`,
-                dataUrl: downloadUrl,
-                fileType: file.type,
-                createdAt: new Date().toISOString(),
-                uploadedBy: state.currentUser?.id || 'unknown',
-            };
-            const updatedFiles = [...(customer.files || []), newFileReference];
-            if (!state.isDemoMode) {
-                await db.collection('customers').doc(customer.id).update({ files: updatedFiles });
-            }
-            dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, files: updatedFiles } });
-            
-            // Run AI OCR if it's a serial or unit tag photo
-            let extractedSerial = newEquipment.serial;
-            let extractedModel = newEquipment.model;
 
-            if (photoType === 'serialPhotoUrl' || photoType === 'unitTagPhotoUrl') {
-                setIsOcrScanning(true);
-                try {
-                    const result = await Tesseract.recognize(file, 'eng');
-                    const text = result.data.text.toUpperCase();
-                    
-                    const serialMatch = text.match(/(?:S\/?N|SERIAL(?:\s*NO|\s*NUM(?:BER)?)?)\s*[:#\-]?\s*([A-Z0-9]+)/i);
-                    const modelMatch = text.match(/(?:M\/?N|MOD(?:EL)?(?:\s*NO|\s*NUM(?:BER)?)?)\s*[:#\-]?\s*([A-Z0-9\-]+)/i);
+        const contactPayload = { ...newContact };
+        let updatedContacts;
 
-                    if (serialMatch && serialMatch[1]) {
-                        extractedSerial = serialMatch[1].toUpperCase();
-                    }
-                    if (modelMatch && modelMatch[1]) {
-                        extractedModel = modelMatch[1].toUpperCase();
-                    }
-                    
-                    // Removed risky fallback mapping that assigned random alphanumeric words.
-                    // Only trust explicit SN/MN/SERIAL/MODEL keys to prevent hallucination.
-                    if (!extractedSerial && !extractedModel) {
-                         console.log("OCR couldn't confidently find a label with SN or MODEL in standard format.");
-                         showToast.warn("Couldn't read serial/model from image. It may be blurry or oddly formatted.");
-                    }
-                } catch (ocrErr) {
-                    console.error("OCR Failed:", ocrErr);
-                } finally {
-                    setIsOcrScanning(false);
-                }
-            }
-
-            setNewEquipment(prev => ({ 
-                ...prev, 
-                [photoType]: downloadUrl,
-                serial: extractedSerial || prev.serial,
-                model: extractedModel || prev.model
-            }));
-
-        } catch (err) {
-            console.error("Photo upload failed:", err);
-            showToast.error("Upload failed.");
-        }
-    };
-
-    const handleEditEquipment = (asset: EquipmentAsset) => {
-        setNewEquipment(asset);
-        setIsAddingEquip(true);
-    };
-
-    const handleDeleteEquipment = async (assetId: string) => {
-        if (!await globalConfirm("Are you sure you want to delete this asset?")) return;
-        const updatedEquipment = (customer.equipment || []).filter(e => e.id !== assetId);
-        await db.collection('customers').doc(customer.id).update({ equipment: updatedEquipment });
-        dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, equipment: updatedEquipment } });
-    };
-
-    const handleSendReport = async () => {
-        const reportUrl = `${getBaseUrl()}/#/report/equipment/${customer.id}${selectedReportAssets.length > 0 ? `?units=${selectedReportAssets.join(',')}` : ''}`;
-        
-        let targetEmail = customer.email;
-        if (!targetEmail) {
-            const promptedEmail = window.prompt("Customer has no email on file. Enter email address to deliver report to:");
-            if (!promptedEmail) return;
-            targetEmail = promptedEmail;
+        if (contactPayload.id) {
+            updatedContacts = (customer.contacts || []).map((c:any) => c.id === contactPayload.id ? contactPayload : c);
         } else {
-            const confirmEmail = window.confirm(`Send equipment health report to ${targetEmail}?`);
-            if (!confirmEmail) return;
+            contactPayload.id = `contact-${Date.now()}`;
+            updatedContacts = [...(customer.contacts || []), contactPayload];
         }
 
+        await db.collection('customers').doc(customer.id).update({ contacts: updatedContacts });
+        dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, contacts: updatedContacts } });
+        setNewContact({ id: '', name: '', title: '', phone: '', email: '', isPrimary: false });
+        setIsAddingContact(false);
+        showToast.success("Contact saved.");
+    };
+
+    const handleDeleteContact = async (id: string) => {
+        if (!await globalConfirm("Remove this contact?")) return;
+        const updatedContacts = (customer.contacts || []).filter((c:any) => c.id !== id);
+        await db.collection('customers').doc(customer.id).update({ contacts: updatedContacts });
+        dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, contacts: updatedContacts } });
+    };
+
+    const handleDeleteFile = async (file: StoredFile, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!await globalConfirm("Delete this file permanently?")) return;
         try {
-            await sendEmail(state.currentOrganization, {
-                to: targetEmail,
-                message: {
-                    subject: `Equipment Health Report for ${customer.name}`,
-                    html: `
-                        <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 8px; overflow: hidden;">
-                            <div style="background-color: #0f172a; padding: 20px; text-align: center; color: white;">
-                                <h1 style="margin: 0; font-size: 24px;">Equipment Health Report</h1>
-                            </div>
-                            <div style="padding: 20px; background-color: #fafafa;">
-                                <p style="font-size: 16px;">Hello <strong>${customer.name}</strong>,</p>
-                                <p style="font-size: 16px; line-height: 1.5;">A new equipment health report has been generated for your property. Please click the secure link below to view your full documentation, including condition assessments, asset data, and corresponding photos.</p>
-                                <div style="text-align: center; margin: 40px 0;">
-                                    <a href="${reportUrl}" style="background-color: #4f46e5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">View Secure Report</a>
-                                </div>
-                                <hr style="border: 0; border-top: 1px solid #eee; margin-top: 40px;" />
-                                <p style="font-size: 12px; color: #999; margin-top: 20px; text-align: center;">This report was securely generated by TekTrakker on behalf of ${state.currentOrganization?.name || 'your service provider'}.</p>
-                            </div>
-                        </div>
-                    `
+            if (file.parentType === 'customer') {
+                const updatedFiles = (customer.files || []).filter((f: any) => f.id !== file.id);
+                await db.collection('customers').doc(customer.id).update({ files: updatedFiles });
+                dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, files: updatedFiles } });
+            } else if (file.parentType === 'job' && file.parentId) {
+                const jobToUpdate = state.jobs.find((j: Job) => j.id === file.parentId);
+                if (jobToUpdate) {
+                    const updatedFiles = (jobToUpdate.files || []).filter((f: any) => f.id !== file.id);
+                    await db.collection('jobs').doc(jobToUpdate.id).update({ files: updatedFiles });
+                    dispatch({ type: 'UPDATE_JOB', payload: { ...jobToUpdate, files: updatedFiles } });
                 }
-            });
-            showToast.success("Report generated and delivered!");
-        } catch (error) {
-            console.error(error);
-            showToast.error("Failed to send report.");
+            } else {
+                showToast.error("Could not determine file origin.");
+                return;
+            }
+            showToast.success("File deleted successfully.");
+            if (viewingFile?.id === file.id) setViewingFile(null);
+        } catch (err) {
+            console.error(err);
+            showToast.error("Failed to delete file.");
         }
     };
+
 
     const handleManualEnroll = async (plan: MembershipPlan) => {
         if (!state.currentOrganization || isProcessingEnrollment) return;
@@ -454,22 +356,6 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         }
     };
 
-    const handleCancelMembership = async () => {
-        if (!membership) return;
-        if (!await globalConfirm("Are you sure you want to cancel this membership? This will stop recurring billing if configured.")) return;
-
-        try {
-            await db.collection('serviceAgreements').doc(membership.id).update({
-                status: 'Cancelled',
-                endDate: new Date().toISOString() // End immediately
-            });
-            showToast.success("Membership cancelled.");
-        } catch (e) {
-            console.error(e);
-            showToast.error("Failed to cancel membership.");
-        }
-    };
-
     const handleSendInvite = async () => {
         if (!customer.email) {
             showToast.warn("Customer record is missing an email address.");
@@ -481,7 +367,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         const orgName = org?.name || 'Service Provider';
         const normalizedEmail = customer.email.trim().toLowerCase();
         const portalLink = `${getBaseUrl()}/#/register?view=register_user&userType=customer&email=${encodeURIComponent(normalizedEmail)}&name=${encodeURIComponent(customer.name)}&oid=${customer.organizationId}`;
-        const smtp = org?.smtpConfig;
+
 
         try {
             // 1. Create a root user document (Acts as an INVITE for registration)
@@ -582,6 +468,56 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         }
     };
 
+    const handleBulkAdHocPMs = async () => {
+        if (!customer.serviceLocations || customer.serviceLocations.length === 0) {
+            return showToast.warn("This customer has no site properties listed.");
+        }
+        
+        if (!await globalConfirm(`Schedule Maintenance for all ${customer.serviceLocations.length} properties? This will create Ad-Hoc Scheduled Work Orders for each location.`)) return;
+
+        let generatedCount = 0;
+        for (const loc of customer.serviceLocations) {
+            const techId = (loc as any).preferredTechnicianId || null;
+            const tech = techId ? state.users.find((u: any) => u.id === techId) : null;
+            const techName = tech ? `${tech.firstName} ${tech.lastName}` : 'Unassigned (Queue)';
+
+            const newJobId = `job-adhoc-pm-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            const newJob = {
+                id: newJobId,
+                organizationId: state.currentOrganization?.id || '',
+                customerName: customer.name,
+                customerId: customer.id,
+                address: loc.address || customer.address,
+                locationId: loc.id !== 'default' ? loc.id : null,
+                locationName: loc.propertyName || loc.name,
+                tasks: ['Preventative Maintenance'],
+                jobStatus: 'Scheduled',
+                priority: 'Normal',
+                appointmentTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Schedule 1 week out
+                assignedTechnicianId: techId,
+                assignedTechnicianName: techName,
+                source: 'AdHoc-Bulk',
+                specialInstructions: `Ad-Hoc Bulk Maintenance Request (Non-Membership).`,
+                invoice: { id: `INV-${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: 0, taxAmount: 0, totalAmount: 0, amount: 0 },
+                jobEvents: [],
+                createdAt: new Date().toISOString()
+            };
+
+            try {
+                await db.collection('jobs').doc(newJobId).set(newJob);
+                generatedCount++;
+            } catch (e) {
+                console.error("Failed to generate PM:", e);
+            }
+        }
+
+        if (generatedCount > 0) {
+            showToast.success(`Successfully dispatched ${generatedCount} Ad-Hoc PM Work Orders.`);
+        } else {
+            showToast.error("Failed to generate PM Work Orders.");
+        }
+    };
+
     const handleCopyRef = () => {
         navigator.clipboard.writeText(`#CUST-${customer.id}`);
         showToast.success("Customer reference copied!");
@@ -606,7 +542,8 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             showToast.warn("Customer record shared successfully!");
             setShareModalOpen(false);
             setShareMessageText('');
-        } catch (e) {
+        } catch (err) {
+            console.error(err);
             showToast.warn("Failed to share.");
         } finally {
             setIsSharing(false);
@@ -715,15 +652,22 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                 {isEditing ? (
                                     <div className="space-y-3">
                                         <Input label="Name" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                        <Select 
+                                            label="Customer Type" 
+                                            value={formData.customerType || 'Residential'} 
+                                            onChange={e => setFormData({...formData, customerType: e.target.value as any})}
+                                        >
+                                            <option value="Residential">Residential</option>
+                                            <option value="Commercial">Commercial</option>
+                                            <option value="Property Management">Property Management</option>
+                                        </Select>
                                         <Input label="Email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} />
                                         <Input label="Phone" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} />
                                         
-                                        <Input label="Street Address" value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} />
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                            <Input label="City" value={formData.city || ''} onChange={e => setFormData({...formData, city: e.target.value})} />
-                                            <Input label="State" value={formData.state || ''} onChange={e => setFormData({...formData, state: e.target.value})} />
-                                            <Input label="Zip" value={formData.zip || ''} onChange={e => setFormData({...formData, zip: e.target.value})} />
-                                        </div>
+                                        <Input label="Street Address" isBlock value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} />
+                                        <Input label="City" isBlock value={formData.city || ''} onChange={e => setFormData({...formData, city: e.target.value})} />
+                                        <Input label="State" isBlock value={formData.state || ''} onChange={e => setFormData({...formData, state: e.target.value})} />
+                                        <Input label="Zip" isBlock value={formData.zip || ''} onChange={e => setFormData({...formData, zip: e.target.value})} />
                                         
                                         <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded border dark:border-slate-700">
                                             <p className="text-xs font-bold text-slate-500 mb-2 uppercase">Marketing Consent (Manual Override)</p>
@@ -769,6 +713,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                        <div><p className="text-gray-500">Type</p><p className="font-medium dark:text-white">{customer.customerType || 'Residential'}</p></div>
                                         <div><p className="text-gray-500">Email</p><p className="font-medium dark:text-white">{customer.email || 'N/A'}</p></div>
                                         <div><p className="text-gray-500">Phone</p><p className="font-medium dark:text-white">{customer.phone || 'N/A'}</p></div>
                                         <div className="col-span-2">
@@ -826,21 +771,30 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                 <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
                                     <div className="flex justify-between items-center mb-3">
                                         <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Site Properties</h4>
-                                        <button title="Add Property" aria-label="Add Property" onClick={() => { setNewLocation({ name: '', address: '', city: '', state: '', zip: '', notes: '' }); setIsAddingLocation(!isAddingLocation); }} className="text-primary-600 hover:text-primary-700">
-                                            <PlusCircle size={18} />
-                                        </button>
+                                        <div className="flex gap-2">
+                                            {customer.customerType === 'Property Management' && customer.serviceLocations && customer.serviceLocations.length > 0 && (
+                                                <Button onClick={handleBulkAdHocPMs} variant="secondary" className="text-[10px] py-1 px-2 h-auto flex items-center gap-1 bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100">
+                                                    <Wrench size={12}/> Bulk Dispatch Maintenance
+                                                </Button>
+                                            )}
+                                            <button title="Add Property" aria-label="Add Property" onClick={() => { setNewLocation({ name: '', address: '', city: '', state: '', zip: '', notes: '' }); setIsAddingLocation(!isAddingLocation); }} className="text-primary-600 hover:text-primary-700">
+                                                <PlusCircle size={18} />
+                                            </button>
+                                        </div>
                                     </div>
                                     
                                     {isAddingLocation && (
-                                        <div className="space-y-2 mb-4 p-2 bg-white dark:bg-slate-700 rounded border border-slate-200 dark:border-slate-600 shadow-sm animate-in fade-in slide-in-from-top-2">
-                                            <p className="text-xs font-bold text-slate-600 dark:text-slate-300 mb-2">{newLocation.id ? 'Edit Property' : 'Add Property'}</p>
-                                            <Input label="Location Name (e.g. Primary, Warehouse)" value={newLocation.name || ''} onChange={e => setNewLocation({...newLocation, name: e.target.value})} />
-                                            <Input label="Street Address" value={newLocation.address || ''} onChange={e => setNewLocation({...newLocation, address: e.target.value})} />
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <Input label="City" value={newLocation.city || ''} onChange={e => setNewLocation({...newLocation, city: e.target.value})} />
-                                                <Input label="State" value={newLocation.state || ''} onChange={e => setNewLocation({...newLocation, state: e.target.value})} />
-                                            </div>
-                                            <div className="flex justify-end gap-2 mt-2">
+                                        <div className="space-y-3 mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-600 shadow-inner animate-in fade-in slide-in-from-top-2">
+                                            <p className="text-xs font-bold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 pb-2">{newLocation.id ? 'Edit Property' : 'Add Property'}</p>
+                                            
+                                            <Input label="Location Name (e.g. Primary, Warehouse)" isBlock value={newLocation.name || ''} onChange={e => setNewLocation({...newLocation, name: e.target.value})} />
+                                            <Input label="PO Number / Property Code" isBlock value={newLocation.poNumber || ''} onChange={e => setNewLocation({...newLocation, poNumber: e.target.value})} placeholder="e.g. PO-10293 or PROP-A1" />
+                                            <Input label="Street Address" isBlock value={newLocation.address || ''} onChange={e => setNewLocation({...newLocation, address: e.target.value})} />
+                                            <Input label="City" isBlock value={newLocation.city || ''} onChange={e => setNewLocation({...newLocation, city: e.target.value})} />
+                                            <Input label="State" isBlock value={newLocation.state || ''} onChange={e => setNewLocation({...newLocation, state: e.target.value})} />
+                                            <Input label="Zip" isBlock value={newLocation.zip || ''} onChange={e => setNewLocation({...newLocation, zip: e.target.value})} />
+                                            
+                                            <div className="flex justify-end gap-2 pt-2">
                                                 <Button variant="secondary" onClick={() => setIsAddingLocation(false)} className="text-xs py-1.5 px-3 h-auto">Cancel</Button>
                                                 <Button onClick={handleAddLocation} className="text-xs py-1.5 px-3 h-auto">Save Property</Button>
                                             </div>
@@ -854,6 +808,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                                     <p className="font-bold text-xs text-slate-800 dark:text-slate-100">{loc.name}</p>
                                                     <p className="text-[10px] text-slate-500 mt-0.5">{loc.address}</p>
                                                     {loc.city && <p className="text-[10px] text-slate-500">{loc.city}, {loc.state}</p>}
+                                                    {loc.poNumber && <p className="text-[10px] font-black text-emerald-600 mt-1 uppercase tracking-widest">PO: {loc.poNumber}</p>}
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <button title="Edit Property" aria-label="Edit Property" onClick={() => { setNewLocation(loc); setIsAddingLocation(true); }} className="text-slate-400 hover:text-primary-600 transition-colors">
@@ -869,6 +824,67 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                         )}
                                     </div>
                                 </div>
+
+                                {/* Company Contacts */}
+                                {(customer.customerType === 'Property Management' || customer.customerType === 'Commercial') && (
+                                    <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700 mt-4">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Company Contacts</h4>
+                                            <button title="Add Contact" aria-label="Add Contact" onClick={() => { setNewContact({ id: '', name: '', title: '', phone: '', email: '', isPrimary: false }); setIsAddingContact(!isAddingContact); }} className="text-primary-600 hover:text-primary-700">
+                                                <PlusCircle size={18} />
+                                            </button>
+                                        </div>
+                                        
+                                        {isAddingContact && (
+                                            <div className="space-y-3 mb-4 p-3 bg-white dark:bg-slate-700 rounded border border-slate-200 dark:border-slate-600 shadow-inner animate-in fade-in slide-in-from-top-2">
+                                                <p className="text-xs font-bold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600 pb-2">{newContact.id ? 'Edit Contact' : 'Add Contact'}</p>
+                                                
+                                                <Input label="Name" value={newContact.name || ''} onChange={e => setNewContact({...newContact, name: e.target.value})} />
+                                                <Input label="Title/Role (Optional)" value={newContact.title || ''} onChange={e => setNewContact({...newContact, title: e.target.value})} />
+                                                <Input label="Phone" value={newContact.phone || ''} onChange={e => setNewContact({...newContact, phone: e.target.value})} />
+                                                <Input label="Email" value={newContact.email || ''} onChange={e => setNewContact({...newContact, email: e.target.value})} />
+                                                
+                                                <div className="flex items-center justify-between pt-2">
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input type="checkbox" checked={newContact.isPrimary} onChange={e => setNewContact({...newContact, isPrimary: e.target.checked})} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                                        <span className="text-xs font-medium dark:text-slate-300">Primary Contact</span>
+                                                    </label>
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button variant="secondary" onClick={() => setIsAddingContact(false)} className="text-xs py-1.5 px-3 h-auto">Cancel</Button>
+                                                        <Button onClick={handleAddContact} className="text-xs py-1.5 px-3 h-auto">Save Contact</Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-2 overflow-y-auto max-h-[30vh] custom-scrollbar pr-1">
+                                            {customer.contacts && customer.contacts.length > 0 ? customer.contacts.map((contact: any) => (
+                                                <div key={contact.id} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded flex justify-between items-start transition-colors hover:border-primary-300">
+                                                    <div>
+                                                        <p className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-1">
+                                                            {contact.name} {contact.isPrimary && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] rounded uppercase font-bold">Primary</span>}
+                                                        </p>
+                                                        {contact.title && <p className="text-[10px] font-medium text-slate-600 dark:text-slate-400 mt-0.5">{contact.title}</p>}
+                                                        <div className="flex flex-col gap-0.5 mt-1">
+                                                            {contact.phone && <p className="text-[10px] text-slate-500 flex items-center gap-1"><span className="text-slate-400">P:</span> {contact.phone}</p>}
+                                                            {contact.email && <p className="text-[10px] text-slate-500 flex items-center gap-1"><span className="text-slate-400">E:</span> {contact.email}</p>}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button title="Edit Contact" aria-label="Edit Contact" onClick={() => { setNewContact(contact); setIsAddingContact(true); }} className="text-slate-400 hover:text-primary-600 transition-colors">
+                                                            <Edit size={14} />
+                                                        </button>
+                                                        <button title="Delete Contact" aria-label="Delete Contact" onClick={() => handleDeleteContact(contact.id)} className="text-slate-400 hover:text-red-500 transition-colors">
+                                                            <TrashIcon size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )) : (
+                                                <p className="text-xs text-slate-500 italic p-2 center text-center">No contacts listed.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -886,30 +902,66 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                     )}
 
                     {activeTab === 'history' && (
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-800">
-                                <tr>
-                                    <th className="px-4 py-2">Date</th>
-                                    <th className="px-4 py-2">Service</th>
-                                    <th className="px-4 py-2">Tech</th>
-                                    <th className="px-4 py-2">Total</th>
-                                    <th className="px-4 py-2">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                {customerJobs.map(job => (
-                                    <tr key={job.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
-                                        <td className="px-4 py-3 text-gray-900 dark:text-white">{new Date(job.appointmentTime).toLocaleDateString()}</td>
-                                        <td className="px-4 py-3">{job.tasks.join(', ')}</td>
-                                        <td className="px-4 py-3">{job.assignedTechnicianName}</td>
-                                        <td className="px-4 py-3 font-bold">${(job.invoice?.amount || 0).toFixed(2)}</td>
-                                        <td className="px-4 py-3">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${job.jobStatus === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{job.jobStatus}</span>
-                                        </td>
+                        <div className="space-y-4">
+                            {customer.customerType === 'Property Management' && (
+                                <div className="flex justify-end">
+                                    <select 
+                                        title="Filter History by Location"
+                                        aria-label="Filter History by Location"
+                                        className="text-sm border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+                                        onChange={(e) => {
+                                            const filterVal = e.target.value;
+                                            const tbody = document.getElementById('history-tbody');
+                                            if (tbody) {
+                                                Array.from(tbody.children).forEach((tr: any) => {
+                                                    if (!filterVal || tr.getAttribute('data-location') === filterVal) {
+                                                        tr.style.display = '';
+                                                    } else {
+                                                        tr.style.display = 'none';
+                                                    }
+                                                });
+                                            }
+                                        }}
+                                    >
+                                        <option value="">All Locations</option>
+                                        <option value="default">Main Office / Unassigned</option>
+                                        {customer.serviceLocations?.map(loc => (
+                                            <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-800">
+                                    <tr>
+                                        <th className="px-4 py-2">Date</th>
+                                        {customer.customerType === 'Property Management' && <th className="px-4 py-2">Property</th>}
+                                        <th className="px-4 py-2">Service</th>
+                                        <th className="px-4 py-2">Tech</th>
+                                        <th className="px-4 py-2">Total</th>
+                                        <th className="px-4 py-2">Status</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody id="history-tbody" className="divide-y divide-gray-200 dark:divide-gray-700">
+                                    {customerJobs.map(job => (
+                                        <tr key={job.id} data-location={job.locationId || 'default'} className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                                            <td className="px-4 py-3 text-gray-900 dark:text-white">{new Date(job.appointmentTime).toLocaleDateString()}</td>
+                                            {customer.customerType === 'Property Management' && (
+                                                <td className="px-4 py-3 text-xs font-medium text-slate-700 dark:text-slate-300">
+                                                    {job.locationName || 'Main Office'}
+                                                </td>
+                                            )}
+                                            <td className="px-4 py-3">{job.tasks.join(', ')}</td>
+                                            <td className="px-4 py-3">{job.assignedTechnicianName}</td>
+                                            <td className="px-4 py-3 font-bold">${(job.invoice?.amount || 0).toFixed(2)}</td>
+                                            <td className="px-4 py-3">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${job.jobStatus === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{job.jobStatus}</span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
 
                     {activeTab === 'financials' && (
@@ -1055,8 +1107,27 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                         <div className="space-y-2">
                                             {customer.equipment?.filter(e => e.warranty?.manufacturerDurationMonths).map(eq => (
                                                 <div key={eq.id} className="p-3 bg-white dark:bg-slate-800 border rounded text-sm shadow-sm">
-                                                    <p className="font-bold text-slate-900 dark:text-white">{eq.brand} {eq.model}</p>
-                                                    <p className="text-xs text-slate-500 mb-2">S/N: {eq.serial}</p>
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <p className="font-bold text-slate-900 dark:text-white">{eq.brand} {eq.model}</p>
+                                                            <p className="text-xs text-slate-500 mb-2">S/N: {eq.serial}</p>
+                                                        </div>
+                                                        <button 
+                                                            onClick={async () => {
+                                                                if (!await globalConfirm("Remove this warranty?")) return;
+                                                                const updatedEq = (customer.equipment || []).map((e: any) => 
+                                                                    e.id === eq.id ? { ...e, warranty: undefined } : e
+                                                                );
+                                                                await db.collection('customers').doc(customer.id).update({ equipment: updatedEq });
+                                                                dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, equipment: updatedEq } });
+                                                                showToast.success("Warranty removed.");
+                                                            }}
+                                                            className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                                                            title="Delete Warranty"
+                                                        >
+                                                            <TrashIcon size={14} />
+                                                        </button>
+                                                    </div>
                                                     <div className="flex gap-4 text-xs">
                                                         <span className="font-medium text-emerald-600">Start: {eq.warranty?.manufacturerStartDate}</span>
                                                         <span className="font-medium text-blue-600">Duration: {eq.warranty?.manufacturerDurationMonths} mo</span>
@@ -1076,17 +1147,31 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                             {customerFiles.filter(f => f.metadata?.category === 'warranty').map(file => (
                                                 <div 
                                                     key={file.id} 
-                                                    onClick={() => setViewingFile(file)}
-                                                    className="relative group bg-slate-100 dark:bg-slate-700 rounded h-24 overflow-hidden border border-slate-200 dark:border-slate-600 cursor-pointer hover:ring-2 hover:ring-primary-500 transition-all shadow-sm"
+                                                    className="relative group bg-slate-100 dark:bg-slate-700 rounded h-24 overflow-hidden border border-slate-200 dark:border-slate-600 shadow-sm"
                                                 >
-                                                    {file.fileType.includes('image') ? (
-                                                        <img src={file.dataUrl || (file as any).url} alt={file.fileName} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <div className="w-full h-full flex flex-col items-center justify-center text-[10px] text-slate-500 p-2 text-center">
-                                                            <FileText size={20} className="mb-1 text-slate-400"/>
-                                                            <span className="truncate w-full">{file.fileName}</span>
+                                                    <button type="button" onClick={() => setViewingFile(file)} className="absolute inset-0 w-full h-full text-left cursor-pointer hover:ring-2 hover:ring-primary-500 transition-all z-0 outline-none" title="View Document" aria-label="View Document">
+                                                        {file.fileType.includes('image') ? (
+                                                            <img src={file.dataUrl || (file as any).url} alt={file.fileName} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex flex-col items-center justify-center text-[10px] text-slate-500 p-2 text-center">
+                                                                <FileText size={20} className="mb-1 text-slate-400"/>
+                                                                <span className="truncate w-full">{file.fileName}</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] p-2 text-center pointer-events-none">
+                                                            <p className="font-bold truncate w-full">{file.fileName}</p>
+                                                            <p className="opacity-75">{new Date(file.createdAt).toLocaleDateString()}</p>
                                                         </div>
-                                                    )}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleDeleteFile(file, e)}
+                                                        className="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded-full transition-all shadow-lg backdrop-blur-sm hover:bg-red-700 hover:scale-110 z-10 opacity-0 group-hover:opacity-100"
+                                                        title="Delete Document"
+                                                        aria-label="Delete Document"
+                                                    >
+                                                        <TrashIcon size={12}/>
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>
@@ -1166,24 +1251,34 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                 <span className="text-xs mt-2">Upload</span>
                             </label>
                             {customerFiles.filter(f => f.metadata?.category !== 'warranty').map(file => (
-                                <div 
-                                    key={file.id} 
-                                    onClick={() => setViewingFile(file)}
-                                    className="relative group bg-gray-100 dark:bg-gray-700 rounded h-32 overflow-hidden border border-gray-200 dark:border-gray-700 cursor-pointer hover:ring-2 hover:ring-primary-500 transition-all shadow-sm"
-                                >
-                                    {file.fileType.includes('image') ? (
-                                        <img src={file.dataUrl || (file as any).url} alt={file.fileName} className="w-full h-full object-cover" />
-                                    ) : (
-                                        <div className="w-full h-full flex flex-col items-center justify-center text-xs text-gray-500 p-2 text-center">
-                                            <FileText size={24} className="mb-1 text-gray-400"/>
-                                            <span className="truncate w-full">{file.fileName}</span>
-                                        </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] p-2 text-center">
-                                        <p className="font-bold truncate w-full">{file.fileName}</p>
-                                        <p className="opacity-75">{new Date(file.createdAt).toLocaleDateString()}</p>
-                                    </div>
-                                </div>
+                                                <div 
+                                                    key={file.id} 
+                                                    className="relative group bg-gray-100 dark:bg-gray-700 rounded h-32 overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm"
+                                                >
+                                                    <button type="button" onClick={() => setViewingFile(file)} className="absolute inset-0 w-full h-full text-left cursor-pointer hover:ring-2 hover:ring-primary-500 transition-all z-0 outline-none" title="View Document" aria-label="View Document">
+                                                        {file.fileType.includes('image') ? (
+                                                            <img src={file.dataUrl || (file as any).url} alt={file.fileName} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex flex-col items-center justify-center text-xs text-gray-500 p-2 text-center">
+                                                                <FileText size={24} className="mb-1 text-gray-400"/>
+                                                                <span className="truncate w-full">{file.fileName}</span>
+                                                            </div>
+                                                        )}
+                                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] p-2 text-center pointer-events-none">
+                                                            <p className="font-bold truncate w-full">{file.fileName}</p>
+                                                            <p className="opacity-75">{new Date(file.createdAt).toLocaleDateString()}</p>
+                                                        </div>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleDeleteFile(file, e)}
+                                                        className="absolute top-2 right-2 p-1.5 bg-red-600/90 text-white rounded-full transition-all shadow-lg backdrop-blur-sm hover:bg-red-700 hover:scale-110 z-10"
+                                                        title="Delete File"
+                                                        aria-label="Delete File"
+                                                    >
+                                                        <TrashIcon size={12}/>
+                                                    </button>
+                                                </div>
                             ))}
                         </div>
                     )}

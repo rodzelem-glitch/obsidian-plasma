@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Authenticating with Microsoft...</title>
+    <style>
+        .container {
+            font-family: sans-serif;
+            text-align: center;
+            margin-top: 100px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Authenticating...</h2>
+        <p>Please wait while we connect securely to Microsoft Exchange. This window should close automatically.</p>
+    </div>
+
+    <!-- Use native ES Module to completely bypass UMD wrapper conflicts (which caused 'msal is not defined') -->
+    <script type="module">
+        import * as msal from 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.13.0/+esm';
+
+        // Initialize MSAL in the popup so it can detect the hash, verify the cache, 
+        // post the message back to the main window, and close itself securely!
+        const msalConfig = {
+            auth: {
+                clientId: "35863990-62d3-482c-afd0-3708087c018e", // VITE_MSAL_CLIENT_ID
+                authority: "https://login.microsoftonline.com/1af8f245-ea30-4fdc-a06b-020a99f26817", // VITE_MSAL_TENANT_ID
+            }
+        };
+
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+        
+        msalInstance.initialize().then(() => {
+            // handleRedirectPromise will parse the hash in the URL and securely communicate it to the parent
+            msalInstance.handleRedirectPromise().then(() => {
+                // MSAL usually closes the window automatically during the promise resolution if it detects it's a popup.
+                // Just in case it doesn't, we attempt a close here.
+                window.close();
+            }).catch(err => {
+                console.error("MSAL Popup Error:", err);
+            });
+        });
+    </script>
+</body>
+</html>

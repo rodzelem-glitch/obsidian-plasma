@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, Users, Target, MousePointer2, Mail, MessageSquare, BarChart2 } from 'lucide-react';
+import { TrendingUp, Users, Target, MousePointer2, Mail, BarChart2 } from 'lucide-react';
 import Card from 'components/ui/Card';
+import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
 
 interface AggregateStats {
@@ -13,12 +14,14 @@ interface AggregateStats {
 }
 
 const OutreachROI: React.FC = () => {
+    const { state } = useAppContext();
     const [stats, setStats] = useState<AggregateStats>({
         sent: 0, opened: 0, clicked: 0, responded: 0, converted: 0
     });
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        if (!state.currentUser) return;
         const unsub = db.collection('sales_campaigns').onSnapshot(snap => {
             const aggregate = snap.docs.reduce((acc, doc) => {
                 const data = doc.data();
@@ -83,7 +86,11 @@ const OutreachROI: React.FC = () => {
                                     <span className="text-slate-900">{step.count.toLocaleString()} ({step.pct}%)</span>
                                 </div>
                                 <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                    <div className={`h-full bg-primary-500 transition-all`} style={{ width: `${step.pct}%` }}></div>
+                                    {(() => {
+                                        const progressStyle = { width: `${step.pct}%` };
+                                        // eslint-disable-next-line
+                                        return <div className={`h-full bg-primary-500 transition-all`} style={progressStyle}></div>;
+                                    })()}
                                 </div>
                             </div>
                         ))}

@@ -23,6 +23,7 @@ import { Bot } from 'lucide-react';
 
 const ComplianceDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { getBaseUrl } = require('lib/utils');
     const [searchParams] = useSearchParams();
     const industry = state.currentOrganization?.industry || 'HVAC';
     const { currentUser } = state;
@@ -46,6 +47,10 @@ const ComplianceDashboard: React.FC = () => {
     const [newCylinder, setNewCylinder] = useState<Partial<RefrigerantCylinder>>({ type: 'R410A', status: 'Full', totalWeight: 25, remainingWeight: 25 });
     const [maintenanceLog, setMaintenanceLog] = useState<Partial<ToolMaintenanceLog>>({ toolType: 'Recovery Machine', result: 'Pass', nextDueDate: '' });
     const [reportConfig, setReportConfig] = useState({ type: 'Compliance', range: 'Yearly' });
+    
+    // For Verification Link Generation
+    const [isLinkGenerated, setIsLinkGenerated] = useState(false);
+    const [verificationLink, setVerificationLink] = useState('');
 
     const [isCertUploadOpen, setIsCertUploadOpen] = useState(false);
     const [selectedUserForCert, setSelectedUserForCert] = useState<User | null>(null);
@@ -150,14 +155,38 @@ const ComplianceDashboard: React.FC = () => {
         setIsReportOpen(false);
     };
 
+    const generateVerificationLink = () => {
+        // The secure route is '/compliance-view?key=tw-verify-8823'
+        const link = `${getBaseUrl()}/#/compliance-view?key=tw-verify-8823&orgId=${state.currentOrganization?.id || ''}`;
+        setVerificationLink(link);
+        setIsLinkGenerated(true);
+    };
+
     return (
         <div className="space-y-6 animate-fade-in relative">
             <header className="flex justify-between items-center">
-                
-                <Button onClick={() => setIsReportOpen(true)} variant="secondary" className="w-auto flex items-center gap-2">
-                    <Printer size={16}/> Generate Report
-                </Button>
+                <div className="flex gap-2">
+                    <Button onClick={generateVerificationLink} className="w-auto flex items-center gap-2">
+                        <Shield size={16}/> A2P 10DLC Verification Link
+                    </Button>
+                    <Button onClick={() => setIsReportOpen(true)} variant="secondary" className="w-auto flex items-center gap-2">
+                        <Printer size={16}/> Generate Report
+                    </Button>
+                </div>
             </header>
+
+            {isLinkGenerated && (
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
+                    <div>
+                        <h4 className="font-bold text-blue-800 text-sm">Provider Verification Link Active</h4>
+                        <p className="text-xs text-blue-600">Share this secure link with RingCentral or your carrier to prove consent collection.</p>
+                    </div>
+                    <div className="flex gap-2 w-full md:w-auto">
+                        <input readOnly value={verificationLink} className="flex-1 text-xs p-2 rounded border bg-white min-w-[300px]" title="Verification Link" aria-label="Verification Link" />
+                        <Button onClick={() => window.open(verificationLink, '_blank')} className="text-xs">View</Button>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {/* Tools & Maintenance Card */}

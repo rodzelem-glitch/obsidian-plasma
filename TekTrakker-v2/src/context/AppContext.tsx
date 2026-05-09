@@ -56,6 +56,7 @@ const PLATFORM_ORGANIZATION: Organization = {
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, initialState);
     const dataSubscriptions = useRef<(() => void)[]>([]);
+    const demoInitRequested = useRef(false);
     
     const unsubscribeData = useCallback(() => {
         dataSubscriptions.current.forEach(unsub => unsub());
@@ -77,13 +78,18 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         if (user.role === 'employee') return '/briefing';
         
         const path = (!user.organizationId || user.organizationId === 'unaffiliated' || !user.role) ? '/marketplace' : '/login';
-        console.log(`[Navigation-Context] User: ${user.email}, Role: ${user.role}, Org: ${user.organizationId} -> Path: ${path}`);
         return path;
     }, []);
 
     const startDemo = useCallback((role: 'admin' | 'employee' | 'customer' | 'sales') => {
+        // Set synchronous flag BEFORE dispatch to guard against auth race condition
+        demoInitRequested.current = true;
         if (!sessionStorage.getItem('preDemoPath')) {
             sessionStorage.setItem('preDemoPath', window.location.pathname + window.location.search + window.location.hash);
+        }
+        // Save the referrer so we can return the user to the originating site (e.g. tektrakker.com)
+        if (!sessionStorage.getItem('preDemoReferrer') && document.referrer) {
+            sessionStorage.setItem('preDemoReferrer', document.referrer);
         }
         unsubscribeData();
         
@@ -135,25 +141,38 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }, [startDemo]);
 
     const exitDemo = useCallback(() => {
-        const isSales = state.currentUser?.role === 'platform_sales';
+        demoInitRequested.current = false;
+        
         const preDemoPath = sessionStorage.getItem('preDemoPath');
-
+        const preDemoReferrer = sessionStorage.getItem('preDemoReferrer');
+        
+        // Clean up demo session storage
         sessionStorage.removeItem('preDemoPath');
+        sessionStorage.removeItem('preDemoReferrer');
 
-        const currentPath = window.location.pathname + window.location.search + window.location.hash;
-
-        if (preDemoPath) {
-            if (preDemoPath === currentPath) {
-                window.location.reload();
-            } else {
-                window.location.href = preDemoPath;
-            }
-        } else if (isSales) {
-            window.location.href = '/sales/dashboard';
-        } else {
-            window.location.href = '/pro';
+        // If they came from the marketing site, send them back there (cross-origin = full reload)
+        if (preDemoReferrer && (preDemoReferrer.includes('tektrakker.com') && !preDemoReferrer.includes('app.tektrakker.com'))) {
+            window.location.replace(preDemoReferrer);
+            return;
         }
-    }, [state.currentUser?.role]);
+
+        // CRITICAL: In a HashRouter app, changing only the hash does NOT reload the page.
+        // React Router intercepts the hashchange event and re-renders in-place,
+        // which causes the demo user to be redirected right back to the dashboard.
+        // The only way to force a true document teardown is to change the pathname.
+        // Adding a cache-busting query param ensures the browser treats this as a
+        // brand new navigation. Firebase rewrites serve index.html for all paths.
+        
+        // Use the pre-demo path if available, otherwise default to home
+        const targetPath = preDemoPath || '/#/';
+        
+        // Construct the reload URL. We use a query param 'exited' to force the reload.
+        // If the targetPath already has query params, we append with &, otherwise ?.
+        const separator = targetPath.includes('?') ? '&' : '?';
+        const reloadUrl = window.location.origin + targetPath + separator + 'exited=' + Date.now();
+        
+        window.location.href = reloadUrl;
+    }, []);
 
     useEffect(() => {
         if (state.isDemoMode) {
@@ -171,6 +190,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
         const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
             clearTimeout(fallbackTimer);
+            // Guard: if demo mode is being initialized, skip auth processing entirely
+            if (demoInitRequested.current) return;
             unsubscribeData();
             if (user) {
                 dispatch({ type: 'SET_LOADING', payload: true });
@@ -334,7 +355,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 'workSchedules': 'SET_SCHEDULES', 'membershipPlans': 'SET_MEMBERSHIP_PLANS', 'serviceAgreements': 'SET_AGREEMENTS', 'partOrders': 'SET_PART_ORDERS',
                 'shopOrders': 'SET_SHOP_ORDERS', 'marketingCampaigns': 'SET_CAMPAIGNS', 'appointments': 'SET_APPOINTMENTS', 'bids': 'SET_BIDS', 'expenses': 'SET_EXPENSES',
                 'inspectionTemplates': 'SET_INSPECTION_TEMPLATES', 'vehicles': 'SET_VEHICLES', 'applicants': 'SET_APPLICANTS',
-                'subcontractors': 'SET_SUBCONTRACTORS', 'vehicleLogs': 'SET_VEHICLE_LOGS', 'teams': 'SET_TEAMS'
+                'subcontractors': 'SET_SUBCONTRACTORS', 'vehicleLogs': 'SET_VEHICLE_LOGS', 'teams': 'SET_TEAMS',
+                'serviceLocations': 'SET_SERVICE_LOCATIONS', 'equipment': 'SET_EQUIPMENT'
             };
 
             const internalOnly = [
@@ -344,7 +366,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 'users', 'subcontractors', 'vehicleLogs', 'shiftLogs', 'teams'
             ];
 
-            const customerPersonalData = ['jobs', 'proposals', 'appointments', 'serviceAgreements', 'messages', 'notifications', 'customers', 'documents', 'reviews'];
+            const customerPersonalData = ['jobs', 'proposals', 'appointments', 'serviceAgreements', 'messages', 'notifications', 'customers', 'documents', 'reviews', 'serviceLocations', 'equipment'];
 
             Object.entries(collections).forEach(([collection, actionType]) => {
                 if (isCustomer && internalOnly.includes(collection)) return;

@@ -53,7 +53,6 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [timeSlot, setTimeSlot] = useState('09:00'); 
     const [jobType, setJobType] = useState('Repair');
-    const [customJobType, setCustomJobType] = useState('');
     const [assignMode, setAssignMode] = useState<'internal' | 'partner'>('internal');
     const [technicianId, setTechnicianId] = useState('');
     const [partnerId, setPartnerId] = useState('');
@@ -61,7 +60,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
     const [partnerPayoutAmount, setPartnerPayoutAmount] = useState<number | undefined>(undefined);
     const [notes, setNotes] = useState('');
     const [leadSource, setLeadSource] = useState('Call-In');
-    const [selectedProjectId, setSelectedProjectId] = useState(''); 
+    const selectedProjectId = ''; 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isHighPriority, setIsHighPriority] = useState(false);
     const [selectedPropertyId, setSelectedPropertyId] = useState('');
@@ -157,6 +156,10 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
         if (!selectedCustomer || !state.currentOrganization) return;
         
         // Property Validation Safeguard
+        if (selectedCustomer.customerType === 'Property Management' && (!selectedPropertyId || selectedPropertyId === 'default')) {
+            showToast.warn("Property Management dispatch requires an explicit service location. Please select one.");
+            return;
+        }
         if (selectedCustomer.serviceLocations && selectedCustomer.serviceLocations.length > 0 && !selectedPropertyId) {
             showToast.warn("This customer has multiple properties. Please explicitly select the dispatch destination before proceeding.");
             return;
@@ -170,85 +173,97 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
         
         const appointmentTimeNative = new Date(`${date}T${timeSlot}:00`);
         const appointmentTimeIso = appointmentTimeNative.toISOString();
-        const finalJobType = jobType === 'Custom' ? customJobType : jobType;
-
-        let dispatchAddress = selectedCustomer.address || 'Address Pending';
-        if (selectedPropertyId && selectedPropertyId !== 'default') {
-            const loc = selectedCustomer.serviceLocations?.find(l => l.id === selectedPropertyId);
-            if (loc) dispatchAddress = loc.address;
-        }
+        const finalJobType = jobType;
 
         try {
-            if (jobToEdit) {
-                const updatePayload: any = {
-                    appointmentTime: appointmentTimeIso,
-                    tasks: [finalJobType],
-                    priority: isHighPriority ? 'High' : 'Normal',
-                    assignedTechnicianId: assignMode === 'internal' ? (technicianId || null) : null,
-                    assignedTechnicianName: assignMode === 'internal' ? (tech ? `${tech.firstName} ${tech.lastName}` : 'Unassigned') : (partner ? `Partner: ${partner.name}` : null),
-                    assignedPartnerId: assignMode === 'partner' ? (partnerId || null) : null,
-                    partnerAllowDirectPayment: assignMode === 'partner' ? !!state.subcontractors.find(s => s.linkedOrgId === partnerId)?.allowDirectPayment : false,
-                    partnerPayoutAmount: (assignMode === 'partner' && partnerPayoutAmount) ? partnerPayoutAmount : null,
-                    assistants: assignMode === 'internal' ? assistantIds : [],
-                    specialInstructions: notes,
-                    source: leadSource,
-                    requiredWaiverIds: selectedWaivers,
-                    requiredDiagnosisChecklistIds: selectedDiagChecklists,
-                    requiredQualityChecklistIds: selectedQualChecklists
-                };
+            let dispatchAddress = selectedCustomer.address || 'Address Pending';
+            let locationName = undefined;
+                let poNumber = null;
+                if (selectedPropertyId && selectedPropertyId !== 'default') {
+                    const loc = selectedCustomer.serviceLocations?.find(l => l.id === selectedPropertyId);
+                    if (loc) {
+                        dispatchAddress = loc.address;
+                        locationName = loc.propertyName || loc.name;
+                        poNumber = loc.poNumber || null;
+                    }
+                }
 
-                if (assignMode === 'partner' && partnerId) {
-                    updatePayload.embeddedData = {
-                        waivers: state.documents.filter(d => selectedWaivers.includes(d.id)),
-                        inspectionTemplates: state.inspectionTemplates.filter(t => selectedDiagChecklists.includes(t.id) || selectedQualChecklists.includes(t.id))
+                if (jobToEdit) {
+                    const updatePayload: Partial<Job> = {
+                        appointmentTime: appointmentTimeIso,
+                        tasks: [finalJobType],
+                        priority: isHighPriority ? 'High' : 'Normal',
+                        assignedTechnicianId: assignMode === 'internal' ? (technicianId || null) : null,
+                        assignedTechnicianName: assignMode === 'internal' ? (tech ? `${tech.firstName} ${tech.lastName}` : 'Unassigned') : (partner ? `Partner: ${partner.name}` : null),
+                        assignedPartnerId: assignMode === 'partner' ? (partnerId || null) : null,
+                        partnerAllowDirectPayment: assignMode === 'partner' ? !!state.subcontractors.find(s => s.linkedOrgId === partnerId)?.allowDirectPayment : false,
+                        partnerPayoutAmount: (assignMode === 'partner' && partnerPayoutAmount) ? partnerPayoutAmount : null,
+                        assistants: assignMode === 'internal' ? assistantIds : [],
+                        specialInstructions: notes,
+                        source: leadSource,
+                        requiredWaiverIds: selectedWaivers,
+                        requiredDiagnosisChecklistIds: selectedDiagChecklists,
+                        requiredQualityChecklistIds: selectedQualChecklists,
+                        locationId: selectedPropertyId && selectedPropertyId !== 'default' ? selectedPropertyId : null,
+                        locationName: locationName,
+                        poNumber: poNumber
                     };
-                }
 
-                await db.collection('jobs').doc(jobToEdit.id).update(updatePayload);
-                dispatch({ type: 'UPDATE_JOB', payload: { ...jobToEdit, ...updatePayload } });
+                    if (assignMode === 'partner' && partnerId) {
+                        (updatePayload as Record<string, unknown>).embeddedData = {
+                            waivers: state.documents.filter(d => selectedWaivers.includes(d.id)),
+                            inspectionTemplates: state.inspectionTemplates.filter(t => selectedDiagChecklists.includes(t.id) || selectedQualChecklists.includes(t.id))
+                        };
+                    }
 
-                // Check if assigned tech changed
-                if (assignMode === 'internal' && technicianId && technicianId !== jobToEdit.assignedTechnicianId) {
-                    const { sendNotification } = await import('../../lib/notificationService');
-                    await sendNotification(technicianId, {
-                        title: "New Job Assigned",
-                        body: `You have been assigned to ${selectedCustomer.name} (Rescheduled).`,
-                        type: 'job_assignment'
-                    });
-                }
+                    await db.collection('jobs').doc(jobToEdit.id).update(updatePayload);
+                    dispatch({ type: 'UPDATE_JOB', payload: { ...jobToEdit, ...updatePayload } });
 
-                onClose();
-            } else {
-                const newJobData: Job = {
-                    id: `job-${Date.now()}`,
-                    organizationId: state.currentOrganization.id,
-                    customerName: selectedCustomer.name,
-                    firstName: selectedCustomer.firstName || null,
-                    lastName: selectedCustomer.lastName || null,
-                    customerPhone: selectedCustomer.phone || '',
-                    customerEmail: selectedCustomer.email || '',
-                    address: dispatchAddress,
-                    tasks: [finalJobType],
-                    customerId: selectedCustomer.id,
-                    jobStatus: 'Scheduled',
-                    priority: isHighPriority ? 'High' : 'Normal',
-                    appointmentTime: appointmentTimeIso,
-                    assignedTechnicianId: assignMode === 'internal' ? (technicianId || null) : null,
-                    assignedTechnicianName: assignMode === 'internal' ? (tech ? `${tech.firstName} ${tech.lastName}` : 'Unassigned') : (partner ? `Partner: ${partner.name}` : null),
-                    assignedPartnerId: assignMode === 'partner' ? (partnerId || null) : null,
-                    partnerAllowDirectPayment: assignMode === 'partner' ? !!state.subcontractors.find(s => s.linkedOrgId === partnerId)?.allowDirectPayment : false,
-                    partnerPayoutAmount: (assignMode === 'partner' && partnerPayoutAmount) ? partnerPayoutAmount : null,
-                    assistants: assignMode === 'internal' ? assistantIds : [],
-                    specialInstructions: notes || '',
-                    source: leadSource || 'Call-In',
-                    projectId: selectedProjectId || null,
-                    invoice: { id: `INV-${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: (state.currentOrganization.taxRate || 8.25) / 100, taxAmount: 0, totalAmount: 0, amount: 0 },
-                    jobEvents: [],
-                    createdAt: new Date().toISOString(),
-                    requiredWaiverIds: selectedWaivers,
-                    requiredDiagnosisChecklistIds: selectedDiagChecklists,
-                    requiredQualityChecklistIds: selectedQualChecklists
-                };
+                    // Check if assigned tech changed
+                    if (assignMode === 'internal' && technicianId && technicianId !== jobToEdit.assignedTechnicianId) {
+                        const { sendNotification } = await import('../../lib/notificationService');
+                        await sendNotification(technicianId, {
+                            title: "New Job Assigned",
+                            body: `You have been assigned to ${selectedCustomer.name} (Rescheduled).`,
+                            type: 'job_assignment'
+                        });
+                    }
+
+                    onClose();
+                } else {
+                    const newJobData: Job = {
+                        id: `job-${Date.now()}`,
+                        organizationId: state.currentOrganization.id,
+                        customerName: selectedCustomer.name,
+                        firstName: selectedCustomer.firstName || null,
+                        lastName: selectedCustomer.lastName || null,
+                        customerPhone: selectedCustomer.phone || '',
+                        customerEmail: selectedCustomer.email || '',
+                        address: dispatchAddress,
+                        locationId: selectedPropertyId && selectedPropertyId !== 'default' ? selectedPropertyId : undefined,
+                        locationName: locationName,
+                        poNumber: poNumber,
+                        tasks: [finalJobType],
+                        customerId: selectedCustomer.id,
+                        jobStatus: 'Scheduled',
+                        priority: isHighPriority ? 'High' : 'Normal',
+                        appointmentTime: appointmentTimeIso,
+                        assignedTechnicianId: assignMode === 'internal' ? (technicianId || null) : null,
+                        assignedTechnicianName: assignMode === 'internal' ? (tech ? `${tech.firstName} ${tech.lastName}` : 'Unassigned') : (partner ? `Partner: ${partner.name}` : null),
+                        assignedPartnerId: assignMode === 'partner' ? (partnerId || null) : null,
+                        partnerAllowDirectPayment: assignMode === 'partner' ? !!state.subcontractors.find(s => s.linkedOrgId === partnerId)?.allowDirectPayment : false,
+                        partnerPayoutAmount: (assignMode === 'partner' && partnerPayoutAmount) ? partnerPayoutAmount : null,
+                        assistants: assignMode === 'internal' ? assistantIds : [],
+                        specialInstructions: notes || '',
+                        source: leadSource || 'Call-In',
+                        projectId: selectedProjectId || null,
+                        invoice: { id: `INV-${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: (state.currentOrganization.taxRate || 8.25) / 100, taxAmount: 0, totalAmount: 0, amount: 0 },
+                        jobEvents: [],
+                        createdAt: new Date().toISOString(),
+                        requiredWaiverIds: selectedWaivers,
+                        requiredDiagnosisChecklistIds: selectedDiagChecklists,
+                        requiredQualityChecklistIds: selectedQualChecklists
+                    };
 
                 if (assignMode === 'partner' && partnerId) {
                     newJobData.embeddedData = {
@@ -283,8 +298,9 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
 
                 onClose();
             }
-        } catch (error: any) { 
-            showToast.warn("Dispatch failed: " + (error.message || "Unknown error")); 
+        } catch (error) { 
+            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+            showToast.warn("Dispatch failed: " + errorMessage); 
         } finally {
             setIsSubmitting(false); 
         }
@@ -303,10 +319,11 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         </div>
                     )}
                     
-                    {selectedCustomer && selectedCustomer.serviceLocations && selectedCustomer.serviceLocations.length > 0 && (
+                    {selectedCustomer && (selectedCustomer.customerType === 'Property Management' || (selectedCustomer.serviceLocations && selectedCustomer.serviceLocations.length > 0)) && (
                         <div className="bg-amber-50 dark:bg-amber-900/30 p-4 border border-amber-200 dark:border-amber-800 rounded-lg">
-                            <label className="block text-sm font-bold text-amber-800 dark:text-amber-300 mb-2">Multiple Properties Found: Select Destination</label>
+                            <label htmlFor="propertySelect" className="block text-sm font-bold text-amber-800 dark:text-amber-300 mb-2">Service Location / Property Target</label>
                             <select 
+                                id="propertySelect"
                                 title="Select Destination Target"
                                 aria-label="Select Destination Target"
                                 className="w-full rounded-md border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm focus:border-amber-500 focus:ring-amber-500"
@@ -315,9 +332,9 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                                 required
                             >
                                 <option value="">-- Please Explicitly Select A Property --</option>
-                                <option value="default">Primary: {selectedCustomer.address}</option>
-                                {selectedCustomer.serviceLocations.map((loc: any) => (
-                                    <option key={loc.id} value={loc.id}>{loc.name} - {loc.address} {loc.city ? `(${loc.city})` : ''}</option>
+                                {selectedCustomer.customerType !== 'Property Management' && <option value="default">Primary: {selectedCustomer.address}</option>}
+                                {(selectedCustomer.serviceLocations || []).map((loc: NonNullable<Customer['serviceLocations']>[0]) => (
+                                    <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name} - {loc.address} {loc.city ? `(${loc.city})` : ''}</option>
                                 ))}
                             </select>
                         </div>

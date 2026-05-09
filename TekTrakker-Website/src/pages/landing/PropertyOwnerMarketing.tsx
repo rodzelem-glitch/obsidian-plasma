@@ -15,7 +15,6 @@ const PropertyOwnerMarketing: React.FC = () => {
         window.scrollTo(0, 0);
     }, []);
 
-    const backgroundStyle = { backgroundImage: 'radial-gradient(#2563eb 1px, transparent 1px)', backgroundSize: '30px 30px' } as React.CSSProperties;
 
     return (
         <div className="min-h-screen flex flex-col font-sans bg-slate-50 selection:bg-blue-500 selection:text-white">
@@ -45,10 +44,8 @@ const PropertyOwnerMarketing: React.FC = () => {
             {/* Content */}
             <div className="pt-24 md:pt-32 pb-20 flex-1 flex flex-col justify-center items-center text-center px-4 relative overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-100/50 to-white opacity-100 z-0" />
-                <div // NOSONAR
-                    className="absolute inset-0 opacity-[0.03] pointer-events-none" 
-                    style={backgroundStyle}
-                ></div>
+                <style>{`.dynamic-bg { background-image: radial-gradient(#2563eb 1px, transparent 1px); background-size: 30px 30px; }`}</style>
+                <div className="absolute inset-0 opacity-[0.03] pointer-events-none dynamic-bg"></div>
                 
                 <div className="relative z-10 max-w-3xl mx-auto">
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-100 text-blue-800 text-sm font-bold uppercase tracking-widest mb-8 border border-blue-200 shadow-sm">

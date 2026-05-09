@@ -36,14 +36,9 @@ const AnimatedCard: React.FC<{ children: React.ReactNode; direction: 'left' | 'r
     const hiddenClass = direction === 'left' ? "opacity-0 -translate-x-24" : "opacity-0 translate-x-24";
     const visibleClass = "opacity-100 translate-x-0";
 
-    const delayStyle = { '--delay': `${delay}ms` } as React.CSSProperties;
-
     return (
-        <div // NOSONAR
-            ref={ref} 
-            className={`${baseClass} ${isVisible ? visibleClass : hiddenClass} transition-delay-var`} 
-            style={delayStyle} 
-        >
+        <div ref={ref} className={`${baseClass} ${isVisible ? visibleClass : hiddenClass} dynamic-delay-${delay}`}>
+            <style>{`.dynamic-delay-${delay} { transition-delay: ${delay}ms; }`}</style>
             {children}
         </div>
     );
@@ -128,18 +123,10 @@ const MockUpdatingCharts = ({ activeTab }: { activeTab: 'layout' | 'users' | 'an
                     <div className="absolute top-4 right-4 text-xs font-bold text-emerald-600">+24% MoM</div>
                     <div className="flex items-end gap-2 h-2/3 w-full mt-auto">
                     {bars.map((height, i) => {
-                        const containerStyle = { height: `${height}%` } as React.CSSProperties;
-                        const innerStyle = { height: `${height * 0.8}%` } as React.CSSProperties;
                         return (
-                        <div // NOSONAR
-                            key={i} 
-                            className="flex-1 bg-indigo-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out" 
-                            style={containerStyle}
-                        >
-                            <div // NOSONAR
-                                className="w-full bg-indigo-500 absolute bottom-0 rounded-t-sm transition-all duration-1000" 
-                                style={innerStyle}
-                            ></div>
+                        <div key={i} className={`flex-1 bg-indigo-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out dynamic-bar-${i}`}>
+                            <style>{`.dynamic-bar-${i} { height: ${height}%; } .dynamic-inner-${i} { height: ${height * 0.8}%; }`}</style>
+                            <div className={`w-full bg-indigo-500 absolute bottom-0 rounded-t-sm transition-all duration-1000 dynamic-inner-${i}`}></div>
                         </div>
                     )})}
                     </div>
@@ -172,19 +159,11 @@ const MockUpdatingCharts = ({ activeTab }: { activeTab: 'layout' | 'users' | 'an
                 </div>
                 <div className="flex items-end gap-2 h-24 w-full">
                     {bars.map((height, i) => {
-                        const containerStyle = { height: `${height}%` } as React.CSSProperties;
-                        const innerStyle = { height: `${height * 0.7}%` } as React.CSSProperties;
                         return (
-                        <div // NOSONAR
-                            key={i} 
-                            className="flex-1 bg-primary-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out" 
-                            style={containerStyle}
-                        >
+                        <div key={i} className={`flex-1 bg-primary-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out dynamic-bar-primary-${i}`}>
+                            <style>{`.dynamic-bar-primary-${i} { height: ${height}%; } .dynamic-inner-primary-${i} { height: ${height * 0.7}%; }`}</style>
                             <div className="absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 transition-opacity w-full text-center text-[10px] font-bold text-primary-700">${(height * 150).toLocaleString()}</div>
-                            <div // NOSONAR
-                                className="w-full bg-primary-500 absolute bottom-0 rounded-t-sm transition-all duration-1000" 
-                                style={innerStyle}
-                            ></div>
+                            <div className={`w-full bg-primary-500 absolute bottom-0 rounded-t-sm transition-all duration-1000 dynamic-inner-primary-${i}`}></div>
                         </div>
                     )})}
                 </div>
@@ -511,18 +490,13 @@ const InteractiveFeatures = () => {
                                         <div className="text-[9px] text-slate-600 font-bold mt-1 text-center">{row.role}</div>
                                     </div>
                                     <div className="flex-1 h-12 relative bg-slate-100/50 rounded-xl border border-slate-200/50 group-hover:bg-slate-100 transition-colors">
-                                        {row.jobs.map((job, j) => {
-                                            const jobStyle = { width: job.w, left: job.l } as React.CSSProperties;
-                                            return (
-                                            <div // NOSONAR
-                                                key={j} 
-                                                className={`absolute top-1/2 -translate-y-1/2 h-8 rounded-lg shadow-md flex items-center px-2 overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer ${row.color}`} 
-                                                style={jobStyle}
-                                            >
+                                        {row.jobs.map((job, j) => (
+                                            <div key={j} className={`absolute top-1/2 -translate-y-1/2 h-8 rounded-lg shadow-md flex items-center px-2 overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer ${row.color} dynamic-job-${i}-${j}`}>
+                                                <style>{`.dynamic-job-${i}-${j} { width: ${job.w}; left: ${job.l}; }`}</style>
                                                 <div className="w-1 h-full bg-black/10 absolute left-0 top-0"></div>
                                                 <span className="text-[10px] font-bold truncate ml-1">{job.t}</span>
                                             </div>
-                                        )})}
+                                        ))}
                                     </div>
                                 </div>
                             ))}

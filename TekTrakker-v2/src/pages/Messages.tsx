@@ -4,11 +4,9 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
-import Button from 'components/ui/Button';
-import Input from 'components/ui/Input';
 import { db } from 'lib/firebase';
 import type { Message, User as AppUser } from 'types';
-import { User, Users, Mail, MessageSquare, Phone, Search, Send, Clock, AlertCircle, Trash2, ArrowLeft, RefreshCw, CheckCircle2, AlertTriangle, ShieldAlert, Edit, X, Paperclip } from 'lucide-react';
+import { User, Users, Search, Send, Clock, AlertCircle, Trash2, ArrowLeft, RefreshCw, CheckCircle2, ShieldAlert, Edit, X, Paperclip } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import { sendNotification } from 'lib/notificationService';
 
@@ -17,15 +15,15 @@ const Messages: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { currentUser: user } = state;
 
-    const parseTimestamp = (ts: any): number => {
+    const parseTimestamp = (ts: unknown): number => {
         if (!ts) return 0;
         if (typeof ts === 'string') {
             const d = new Date(ts);
             return isNaN(d.getTime()) ? 0 : d.getTime();
         }
-        if (ts?.toDate) return ts.toDate().getTime();
+        if ((ts as { toDate?: () => Date })?.toDate) return (ts as { toDate: () => Date }).toDate().getTime();
         if (typeof ts === 'number') return ts;
-        const d = new Date(ts);
+        const d = new Date(ts as string | number | Date);
         return isNaN(d.getTime()) ? 0 : d.getTime();
     };
     const [activeTab, setActiveTab] = useState<'team' | 'customers'>('team');
@@ -49,6 +47,7 @@ const Messages: React.FC = () => {
     const [includeCustomers, setIncludeCustomers] = useState(false);
     const [broadcastTarget, setBroadcastTarget] = useState<'all' | 'all_admins' | 'all_sales'>('all');
     const scrollRef = useRef<HTMLDivElement>(null);
+    const [lastSeenBroadcastId, setLastSeenBroadcastId] = useState(() => localStorage.getItem(`tt_last_broadcast_${user?.id}`));
 
     // --- DATA TRANSFORMATION ---
     const isMe = (id?: string) => {
@@ -96,7 +95,7 @@ const Messages: React.FC = () => {
                         username: 'client_org',
                         payRate: 0,
                         ptoAccrued: 0
-                    } as any);
+                    } as AppUser);
                 }
             });
         } else {
@@ -119,7 +118,7 @@ const Messages: React.FC = () => {
                     username: 'tektrakker_admin',
                     payRate: 0,
                     ptoAccrued: 0
-                } as any);
+                } as AppUser);
             }
 
             // Inject Dedicated Platform Sales Representative Contact
@@ -134,7 +133,7 @@ const Messages: React.FC = () => {
                     username: 'platform_sales_rep',
                     payRate: 0,
                     ptoAccrued: 0
-                } as any);
+                } as AppUser);
             }
         }
 
@@ -154,7 +153,7 @@ const Messages: React.FC = () => {
                         otherUsers.push(foundUser);
                     } else {
                         // Fallback generic contact if user somehow doesn't exist in cache yet
-                        otherUsers.push({ id, uid: id, firstName: 'External', lastName: 'User', role: 'admin', organizationId: 'unknown', username: id, payRate: 0, ptoAccrued: 0 } as any);
+                        otherUsers.push({ id, uid: id, firstName: 'External', lastName: 'User', role: 'admin', organizationId: 'unknown', username: id, payRate: 0, ptoAccrued: 0 } as AppUser);
                     }
                 }
             });
@@ -181,7 +180,6 @@ const Messages: React.FC = () => {
     }, [state.users, state.messages, user?.id, user?.role, state.currentOrganization?.id]);
 
     const broadcastUnreadCount = useMemo(() => {
-        const lastSeenId = localStorage.getItem(`tt_last_broadcast_${user?.id}`);
         const broadcasts = state.messages.filter(m => {
             if (user?.role === 'master_admin') {
                 return ['all', 'all_customers', 'all_admins', 'all_sales'].includes(m.receiverId);
@@ -203,10 +201,10 @@ const Messages: React.FC = () => {
             }
         });
 
-        if (!lastSeenId) return uniqueBroadcasts.length;
-        const lastIndex = uniqueBroadcasts.findIndex(m => m.id === lastSeenId);
+        if (!lastSeenBroadcastId) return uniqueBroadcasts.length;
+        const lastIndex = uniqueBroadcasts.findIndex(m => m.id === lastSeenBroadcastId);
         return lastIndex === -1 ? uniqueBroadcasts.length : Math.max(0, uniqueBroadcasts.length - 1 - lastIndex);
-    }, [state.messages, user?.id, user?.role]);
+    }, [state.messages, user?.id, user?.role, lastSeenBroadcastId]);
 
     const threadMessages = useMemo(() => {
         if (activeTab === 'team') {
@@ -265,9 +263,12 @@ const Messages: React.FC = () => {
 
         if (activeTab === 'team' && selectedPartnerId === 'all' && threadMessages.length > 0) {
             const lastId = threadMessages[threadMessages.length - 1].id;
-            localStorage.setItem(`tt_last_broadcast_${user?.id}`, lastId);
+            if (lastSeenBroadcastId !== lastId) {
+                localStorage.setItem(`tt_last_broadcast_${user?.id}`, lastId);
+                setLastSeenBroadcastId(lastId);
+            }
         }
-    }, [threadMessages, activeTab, selectedPartnerId, user?.id]);
+    }, [threadMessages, activeTab, selectedPartnerId, user?.id, lastSeenBroadcastId]);
 
     // --- ACTIONS ---
 
@@ -361,7 +362,7 @@ const Messages: React.FC = () => {
                 } else {
                     // Trigger global broadcast cascade
                     // Tenant admins are isolated strictly to their company `teamPartners`. Master Admins can broadcast platform-wide.
-                    let usersToNotify: any[] = teamPartners;
+                    let usersToNotify: AppUser[] = teamPartners;
                     if (state.currentOrganization.id === 'platform' && user?.role === 'master_admin') {
                         const senderEmail = (user?.email || '').toLowerCase();
                         // Deduplicate self to prevent multiple push notifications sending to the master admin's alt-tenant accounts
@@ -373,17 +374,21 @@ const Messages: React.FC = () => {
                         }
                     }
                            
-                    const promises = usersToNotify.map(p => sendNotification(p.id, {
-                        title: `Broadcast from ${user.email === 'rodzelem@gmail.com' ? 'TekTrakker Admin' : user.firstName}`,
-                        body: newMessage.trim(),
-                        type: 'broadcast',
-                        data: { senderId: user.id }
-                    }));
-                    await Promise.all(promises);
+                    const BATCH_SIZE = 50;
+                    for (let i = 0; i < usersToNotify.length; i += BATCH_SIZE) {
+                        const chunk = usersToNotify.slice(i, i + BATCH_SIZE);
+                        const promises = chunk.map(p => sendNotification(p.id, {
+                            title: `Broadcast from ${user.email === 'rodzelem@gmail.com' ? 'TekTrakker Admin' : user.firstName}`,
+                            body: newMessage.trim(),
+                            type: 'broadcast',
+                            data: { senderId: user.id }
+                        }));
+                        await Promise.all(promises);
+                    }
                     
                     // Dispatch secondary explicit customer push explicitly if explicitly requested
                     if (state.currentOrganization.id === 'platform' && user?.role === 'master_admin' && includeCustomers) {
-                         const custMsg = { ...msg, id: `${msgId}-cust`, receiverId: 'all_customers', type: 'sms' as any };
+                         const custMsg = { ...msg, id: `${msgId}-cust`, receiverId: 'all_customers', type: 'sms' };
                          await db.collection('messages').doc(custMsg.id).set(custMsg);
                     }
                 }
@@ -394,7 +399,7 @@ const Messages: React.FC = () => {
             dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });
             
             setNewMessage('');
-        } catch (error: any) {
+        } catch (error) {
             console.error(error);
             showToast.warn("Send failed. Please check your connection.");
         } finally {
@@ -441,7 +446,7 @@ const Messages: React.FC = () => {
             const updatedMessages = state.messages.map(m => m.id === msg.id ? { ...m, content: editContent.trim(), isEdited: true } : m);
             dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });
             setEditingMessageId(null);
-        } catch (e) {
+        } catch {
             showToast.warn("Edit failed.");
         }
     };
@@ -499,6 +504,13 @@ const Messages: React.FC = () => {
                     if (isStaffAdmin) navigate(`/admin/financials?tab=invoices&invoiceId=${id}`);
                     else showToast.warn('Restricted: Invoices require administrator privileges.');
                 }} className="underline font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
+            }
+            if (part.match(/^#REPORT-(.+)/)) {
+                const id = part.replace('#REPORT-', '');
+                return <button key={i} onClick={(e) => { 
+                    e.preventDefault(); 
+                    navigate(`/admin/ai-reports?reportId=${id}`);
+                }} className="underline font-bold bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded shadow-sm hover:opacity-80 transition-opacity whitespace-nowrap">{part}</button>;
             }
             if (part.match(/^#PROP-(.+)/)) {
                 const id = part.replace('#PROP-', '');
@@ -652,7 +664,6 @@ const Messages: React.FC = () => {
                                                 className="bg-slate-100 dark:bg-slate-900 border-none rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500 w-48 md:w-64"
                                                 value={editContent}
                                                 onChange={e => setEditContent(e.target.value)}
-                                                autoFocus
                                             />
                                             <button title="Save Edit" aria-label="Save Edit" onClick={() => handleSaveEdit(msg)} className="p-1.5 bg-emerald-500 text-white rounded hover:bg-emerald-600 transition-colors">
                                                 <CheckCircle2 size={16}/>
@@ -706,8 +717,8 @@ const Messages: React.FC = () => {
                                                     let d;
                                                     if (typeof msg.timestamp === 'string') {
                                                         d = new Date(msg.timestamp);
-                                                    } else if ((msg.timestamp as any)?.toDate) {
-                                                        d = (msg.timestamp as any).toDate();
+                                                    } else if ((msg.timestamp as { toDate?: () => Date })?.toDate) {
+                                                        d = (msg.timestamp as { toDate: () => Date }).toDate();
                                                     } else {
                                                         d = new Date(msg.timestamp);
                                                     }
@@ -753,11 +764,12 @@ const Messages: React.FC = () => {
                             {selectedPartnerId === 'all' && user?.role === 'master_admin' && (
                                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-y-2 px-3 py-2 mt-2 bg-slate-50 dark:bg-slate-800/40 rounded-lg">
                                     <div className="flex items-center">
-                                        <label className="text-[10px] uppercase tracking-[0.1em] font-extrabold text-slate-400 dark:text-slate-500 mr-3">Audience:</label>
+                                        <label htmlFor="broadcastTarget" className="text-[10px] uppercase tracking-[0.1em] font-extrabold text-slate-400 dark:text-slate-500 mr-3">Audience:</label>
                                         <select
+                                            id="broadcastTarget"
                                             aria-label="Broadcast Audience Target"
                                             value={broadcastTarget}
-                                            onChange={e => setBroadcastTarget(e.target.value as any)}
+                                            onChange={e => setBroadcastTarget(e.target.value as 'all' | 'all_admins' | 'all_sales')}
                                             className="text-xs bg-white dark:bg-slate-800 border-none rounded shadow-sm px-2.5 py-1.5 focus:ring-2 focus:ring-primary-500 font-semibold text-slate-700 dark:text-slate-200 outline-none"
                                         >
                                             <option value="all">All Tenant Users</option>

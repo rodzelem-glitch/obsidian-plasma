@@ -61,6 +61,7 @@ const PlatformCampaignStudio: React.FC = () => {
 
     // Load all platform data
     useEffect(() => {
+        if (!state.currentUser) return;
         const unsubOrgs = db.collection('organizations').onSnapshot(snap => {
             setOrgs(snap.docs.map(d => ({ id: d.id, ...d.data() } as OrgRecord)));
         });
@@ -181,18 +182,29 @@ USER PROMPT: ${aiPrompt}`;
                 sentBy: state.currentUser?.email || 'master_admin'
             });
 
-            const batch: Promise<any>[] = [];
+            const batches = [];
+            let currentBatch = db.batch();
+            let count = 0;
             selectedEmails.forEach(email => {
-                batch.push(db.collection('mail_queue').add({
+                currentBatch.set(db.collection('mail_queue').doc(), {
                     to: [email],
                     message: { subject: subject.trim(), html: htmlContent, replyTo: state.currentUser?.email || 'noreply@tektrakker.com' },
                     organizationId: 'platform',
                     type: 'PlatformCampaign',
                     campaignId: campaignRef.id,
                     createdAt: new Date().toISOString()
-                }));
+                });
+                count++;
+                if (count === 400) {
+                    batches.push(currentBatch);
+                    currentBatch = db.batch();
+                    count = 0;
+                }
             });
-            await Promise.all(batch);
+            if (count > 0) batches.push(currentBatch);
+            for (const b of batches) {
+                await b.commit();
+            }
             toast.success(`Campaign dispatched to ${selectedEmails.size} recipients!`);
             setSelectedEmails(new Set());
         } catch (e: any) {

@@ -9,6 +9,7 @@ import TimeSheetReview from 'pages/admin/TimeSheetReview';
 import TechTracking from 'pages/admin/TechTracking';
 import TechPerformance from 'pages/admin/TechPerformance';
 import SubcontractorsTab from './workforce/components/SubcontractorsTab';
+import type { ShiftLog } from 'types';
 
 const WorkforceView: React.FC = () => {
     const { state } = useAppContext();
@@ -29,14 +30,22 @@ const WorkforceView: React.FC = () => {
     const activeTechs = orgUsers.filter(u => u.role === 'employee' || u.role === 'both' || u.role === 'Technician');
     const subcontractorsCount = state.subcontractors?.length || 0;
     
+    const visibleUsers = useMemo(() => {
+        return orgUsers.filter(u => 
+            (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id)
+        );
+    }, [orgUsers, currentUser]);
+
     // `state.shiftLogs` is actually stored as a dictionary `{ [userId]: ShiftLog[] }` at runtime.
-    const allShiftLogs = Object.values(state.shiftLogs || {}).flat();
+    const allShiftLogs = useMemo(() => {
+        return visibleUsers.flatMap(u => state.shiftLogs?.[u.id] || []);
+    }, [visibleUsers, state.shiftLogs]);
     
     // Check if there are any active shift logs clocking in right now
-    const activeShifts = allShiftLogs.filter((log: any) => !log.clockOut).length || 0;
+    const activeShifts = allShiftLogs.filter((log: ShiftLog) => !log.clockOut).length || 0;
     
     // Check if there are any pending timesheets needing approval
-    const pendingTimesheets = allShiftLogs.filter((log: any) => log.clockOut && !log.isApproved).length || 0;
+    const pendingTimesheets = allShiftLogs.filter((log: ShiftLog) => log.clockOut && !log.isApproved).length || 0;
 
     const topPerformingTech = useMemo(() => {
         if (!activeTechs.length) return null;
@@ -56,6 +65,9 @@ const WorkforceView: React.FC = () => {
                 {/* Team Roster */}
                 <div 
                     onClick={() => setIsRosterOpen(true)}
+                    onKeyDown={(e) => e.key === 'Enter' && setIsRosterOpen(true)}
+                    role="button"
+                    tabIndex={0}
                     className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
                 >
                     <div className="flex items-center gap-3 mb-4">
@@ -74,14 +86,17 @@ const WorkforceView: React.FC = () => {
                             <span className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/30 px-2 py-1 rounded text-xs">{activeTechs.length}</span>
                         </div>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
                         Manage Employees
-                    </button>
+                    </div>
                 </div>
 
                 {/* Tracking & Map */}
                 <div 
                     onClick={() => setIsTrackingOpen(true)}
+                    onKeyDown={(e) => e.key === 'Enter' && setIsTrackingOpen(true)}
+                    role="button"
+                    tabIndex={0}
                     className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden relative"
                 >
                     <div className="flex items-center gap-3 mb-4 relative z-10">
@@ -114,14 +129,17 @@ const WorkforceView: React.FC = () => {
                             <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-1 rounded-full uppercase tracking-wider">{activeTechs.filter(t => t.location).length} Tracked</span>
                         </div>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
                         Open Full Map
-                    </button>
+                    </div>
                 </div>
 
                 {/* Subcontractors Card */}
                 <div 
                     onClick={() => setIsSubcontractorsOpen(true)}
+                    onKeyDown={(e) => e.key === 'Enter' && setIsSubcontractorsOpen(true)}
+                    role="button"
+                    tabIndex={0}
                     className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
                 >
                     <div className="flex items-center gap-3 mb-4">
@@ -137,14 +155,17 @@ const WorkforceView: React.FC = () => {
                          <span className="text-5xl font-black text-amber-600 dark:text-amber-400 mb-2 relative z-10 drop-shadow-sm">{subcontractorsCount}</span>
                          <span className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold tracking-widest relative z-10">Active Subs</span>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
                         Manage Subcontractors
-                    </button>
+                    </div>
                 </div>
 
                 {/* Scheduling */}
                 <div 
                     onClick={() => setIsScheduleOpen(true)}
+                    onKeyDown={(e) => e.key === 'Enter' && setIsScheduleOpen(true)}
+                    role="button"
+                    tabIndex={0}
                     className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
                 >
                     <div className="flex items-center gap-3 mb-4">
@@ -183,14 +204,17 @@ const WorkforceView: React.FC = () => {
                              </div>
                          )}
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
                         View Schedule
-                    </button>
+                    </div>
                 </div>
 
                 {/* Time Sheets */}
                 <div 
                     onClick={() => setIsTimesheetsOpen(true)}
+                    onKeyDown={(e) => e.key === 'Enter' && setIsTimesheetsOpen(true)}
+                    role="button"
+                    tabIndex={0}
                     className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
                 >
                     <div className="flex items-center gap-3 mb-4">
@@ -209,14 +233,17 @@ const WorkforceView: React.FC = () => {
                             <span className="font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 px-2 py-1 rounded text-xs tracking-wide">{pendingTimesheets} Sheets</span>
                         </div>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
                         Review Timesheets
-                    </button>
+                    </div>
                 </div>
 
                 {/* Performance Analytics */}
                 <div 
                     onClick={() => setIsPerformanceOpen(true)}
+                    onKeyDown={(e) => e.key === 'Enter' && setIsPerformanceOpen(true)}
+                    role="button"
+                    tabIndex={0}
                     className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
                 >
                     <div className="flex items-center gap-3 mb-4">
@@ -246,9 +273,9 @@ const WorkforceView: React.FC = () => {
                             </div>
                         )}
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
                         View Analytics
-                    </button>
+                    </div>
                 </div>
 
             </div>

@@ -22,6 +22,8 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     // UI State
     const [customerName, setCustomerName] = useState('');
     const [address, setAddress] = useState('');
+    const [billToName, setBillToName] = useState('');
+    const [billToAddress, setBillToAddress] = useState('');
     const [overrideOrg, setOverrideOrg] = useState<Organization | null>(null);
     
     // Modal States
@@ -52,7 +54,10 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 setTaxRate(job.invoice?.taxRate ? job.invoice.taxRate * 100 : (currentOrganization?.taxRate || 8.25));
                 setCustomerName(job.customerName);
                 setAddress(formatAddress(job.address));
-                // Load warranty fields
+                
+                // Load split billing / warranty fields
+                setBillToName((job.invoice as any)?.billToName || job.customerName);
+                setBillToAddress((job.invoice as any)?.billToAddress || formatAddress(job.address));
                 setWorkmanshipWarrantyMonths((job.invoice as any)?.workmanshipWarrantyMonths || 0);
                 setPartsWarrantyMonths((job.invoice as any)?.partsWarrantyMonths || 0);
                 setWarrantyNotes((job.invoice as any)?.warrantyNotes || '');
@@ -173,6 +178,8 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 taxAmount: totals.tax,
                 totalAmount: totals.total,
                 amount: totals.total,
+                billToName,
+                billToAddress,
                 workmanshipWarrantyMonths,
                 partsWarrantyMonths,
                 warrantyNotes,
@@ -476,6 +483,8 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         currentJob,
         customerName, setCustomerName,
         address, setAddress,
+        billToName, setBillToName,
+        billToAddress, setBillToAddress,
         lineItems, setLineItems,
         handleAddItem, handleUpdateItem, handleDeleteItem,
         totals,

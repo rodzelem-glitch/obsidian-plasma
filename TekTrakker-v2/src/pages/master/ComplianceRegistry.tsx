@@ -128,7 +128,8 @@ const ComplianceRegistry: React.FC = () => {
     const generateVerificationLink = () => {
         // In a real scenario, generate a secure token. For now, use a static key.
         // The secure route is '/compliance-view?key=tw-verify-8823'
-        const link = `${getBaseUrl()}/#/compliance-view?key=tw-verify-8823`;
+        const targetOrgId = orgFilter !== 'All' ? orgFilter : (state.currentUser?.organizationId || '');
+        const link = `${getBaseUrl()}/#/compliance-view?key=tw-verify-8823&orgId=${targetOrgId}`;
         setVerificationLink(link);
         setIsLinkGenerated(true);
     };

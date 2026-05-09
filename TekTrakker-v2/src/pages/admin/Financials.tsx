@@ -352,8 +352,11 @@ const Financials: React.FC = () => {
                 
                 {/* Sales Pipeline */}
                 <div 
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsSalesOpen(true); e.preventDefault(); } }}
                     onClick={() => setIsSalesOpen(true)}
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
                 >
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-3 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg group-hover:scale-110 transition-transform">
@@ -375,15 +378,18 @@ const Financials: React.FC = () => {
                              </div>
                          </div>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
                         View Pipeline
-                    </button>
+                    </div>
                 </div>
 
                 {/* Profit & Loss */}
                 <div 
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsPnLOpen(true); e.preventDefault(); } }}
                     onClick={() => setIsPnLOpen(true)}
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
                 >
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg group-hover:scale-110 transition-transform">
@@ -400,15 +406,18 @@ const Financials: React.FC = () => {
                              {pnlMargin.toFixed(1)}% MARGIN
                          </div>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
                         View P&L Report
-                    </button>
+                    </div>
                 </div>
 
                 {/* Accounts Receivable */}
                 <div 
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsInvoicesOpen(true); e.preventDefault(); } }}
                     onClick={() => setIsInvoicesOpen(true)}
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
                 >
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
@@ -430,15 +439,18 @@ const Financials: React.FC = () => {
                             </span>
                         </div>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
                         Manage Invoices
-                    </button>
+                    </div>
                 </div>
 
                 {/* Expenses */}
                 <div 
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsExpensesOpen(true); e.preventDefault(); } }}
                     onClick={() => setIsExpensesOpen(true)}
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
                 >
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg group-hover:scale-110 transition-transform">
@@ -456,15 +468,18 @@ const Financials: React.FC = () => {
                              <span>{expenseCount}</span>
                          </div>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
                         Manage Expenses
-                    </button>
+                    </div>
                 </div>
 
                 {/* Accounts Payable */}
                 <div 
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsPayablesOpen(true); e.preventDefault(); } }}
                     onClick={() => setIsPayablesOpen(true)}
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
                 >
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-3 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform">
@@ -479,15 +494,18 @@ const Financials: React.FC = () => {
                          <span className="text-3xl font-black text-amber-600 mb-1 relative z-10 drop-shadow-sm">$0.00</span>
                          <span className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold tracking-widest relative z-10">Outstanding Bills</span>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
                         Vendor Payables
-                    </button>
+                    </div>
                 </div>
 
                 {/* Warranty Claims */}
                 <div 
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsWarrantyOpen(true); e.preventDefault(); } }}
                     onClick={() => setIsWarrantyOpen(true)}
-                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden"
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
                 >
                     <div className="flex items-center gap-3 mb-4">
                         <div className="p-3 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg group-hover:scale-110 transition-transform">
@@ -509,9 +527,9 @@ const Financials: React.FC = () => {
                             </span>
                         </div>
                     </div>
-                    <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
                         Manage Claims
-                    </button>
+                    </div>
                 </div>
             </div>
 
@@ -551,10 +569,43 @@ const Financials: React.FC = () => {
                         />
                     </div>
                     <Input label="Vendor" value={newExpense.vendor} onChange={e => setNewExpense({...newExpense, vendor: e.target.value})} required />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label htmlFor="category-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Category (Tax Classification)</label>
+                            <select 
+                                id="category-select"
+                                aria-label="Category"
+                                title="Category"
+                                className="w-full border p-2 rounded-lg dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                                value={newExpense.category}
+                                onChange={e => setNewExpense({...newExpense, category: e.target.value})}
+                                required
+                            >
+                                <option value="Advertising">Advertising</option>
+                                <option value="Car and truck expenses">Car and truck expenses</option>
+                                <option value="Commissions and fees">Commissions and fees</option>
+                                <option value="Contract labor">Contract labor</option>
+                                <option value="Insurance">Insurance</option>
+                                <option value="Legal and professional">Legal and professional</option>
+                                <option value="Office expense">Office expense</option>
+                                <option value="Rent or lease">Rent or lease</option>
+                                <option value="Repairs and maintenance">Repairs and maintenance</option>
+                                <option value="Supplies">Supplies</option>
+                                <option value="Taxes and licenses">Taxes and licenses</option>
+                                <option value="Travel">Travel</option>
+                                <option value="Meals (50% deductible)">Meals (50% deductible)</option>
+                                <option value="Utilities">Utilities</option>
+                                <option value="Materials (COGS)">Materials (COGS)</option>
+                                <option value="Other expenses">Other expenses</option>
+                            </select>
+                        </div>
+                        <Input label="Description / Notes" value={newExpense.description} onChange={e => setNewExpense({...newExpense, description: e.target.value})} />
+                    </div>
                     
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Attach to Inventory Item (Optional)</label>
+                        <label htmlFor="inventory-item-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Attach to Inventory Item (Optional)</label>
                         <select 
+                            id="inventory-item-select"
                             title="Attach to Inventory Item (Optional)"
                             aria-label="Attach to Inventory Item (Optional)"
                             className="w-full border p-2 rounded-lg dark:bg-slate-800 dark:border-slate-700 dark:text-white form-select"
@@ -570,7 +621,7 @@ const Financials: React.FC = () => {
                     </div>
 
                     <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Receipt Images</label>
+                        <p className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Receipt Images</p>
                         <Button type="button" variant="secondary" onClick={handleCaptureReceipt} className="w-full flex items-center justify-center gap-2 mb-2">
                             <Plus size={16} /> Capture Receipt / Add Page
                         </Button>
@@ -593,7 +644,14 @@ const Financials: React.FC = () => {
                 <div className="mt-4 space-y-2 max-h-[300px] overflow-y-auto">
                     <Button onClick={() => handleCreateInvoice()} variant="secondary" className="w-full text-xs font-bold mb-2">Create Blank Invoice</Button>
                     {state.customers.filter(c => c.name.toLowerCase().includes(custSearch.toLowerCase())).slice(0,10).map(c => (
-                        <div key={c.id} onClick={() => handleCreateInvoice(c)} className="p-3 border rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-white">
+                        <div 
+                            key={c.id} 
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { handleCreateInvoice(c); e.preventDefault(); } }}
+                            onClick={() => handleCreateInvoice(c)} 
+                            className="p-3 border rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-white"
+                        >
                             {c.name}
                         </div>
                     ))}

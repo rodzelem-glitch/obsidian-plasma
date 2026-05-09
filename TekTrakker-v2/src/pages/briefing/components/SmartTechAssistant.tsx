@@ -38,6 +38,7 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        if (!state.currentUser) return;
         if (state.isDemoMode || !jobId || !organizationId) {
             setMessages([]);
             return;

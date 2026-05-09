@@ -211,6 +211,57 @@ const DatabaseMigration: React.FC = () => {
                 }
             }
 
+            // 6. MIGRATING CUSTOMERS TO PROPERTY MANAGEMENT SCHEMA
+            log("Scanning Customers for Schema Upgrade...");
+            const schemaCustSnap = await db.collection('customers').get();
+            for (const doc of schemaCustSnap.docs) {
+                const data = doc.data();
+                const updates: any = {};
+                let changed = false;
+
+                // Enforce Residential Type
+                if (!data.customerType || !['Residential', 'Commercial', 'Property Management'].includes(data.customerType)) {
+                    updates.customerType = 'Residential';
+                    changed = true;
+                }
+
+                // Check for Service Location
+                const locationsSnap = await db.collection('serviceLocations').where('customerId', '==', doc.id).get();
+                if (locationsSnap.empty) {
+                    foundCount++;
+                    log(`Creating default Service Location for Customer: ${doc.id}`);
+                    try {
+                        const locId = doc.id + "_default_loc";
+                        const defaultLoc = {
+                            id: locId,
+                            organizationId: data.organizationId || 'default',
+                            customerId: doc.id,
+                            propertyName: data.name || 'Primary Residence',
+                            address: data.address || '',
+                            city: data.city || '',
+                            state: data.state || '',
+                            zip: data.zip || '',
+                            propertyType: 'Residential',
+                            createdAt: new Date().toISOString()
+                        };
+                        await db.collection('serviceLocations').doc(locId).set(defaultLoc);
+                        
+                        // Also update embedded array for quick access
+                        updates.serviceLocations = [defaultLoc];
+                        changed = true;
+                        fixedCount++;
+                    } catch (e) {
+                        errorCount++;
+                        log(`Error creating Service Location for Customer: ${doc.id}`);
+                    }
+                }
+
+                if (changed) {
+                    await db.collection('customers').doc(doc.id).update(updates);
+                    log(`Upgraded Customer Schema: ${doc.id}`);
+                }
+            }
+
             log(`--- MIGRATION COMPLETE ---`);
             
         } catch (error: any) {

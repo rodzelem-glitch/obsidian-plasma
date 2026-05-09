@@ -34,7 +34,7 @@ const PublicBookingPage: React.FC = () => {
     const businessTypes = [
         'HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General', 'Cleaning',
         'Painting', 'Roofing', 'Contracting', 'Masonry', 'Telecommunications',
-        'Solar', 'Security', 'Pet Grooming'
+        'Solar', 'Security', 'Pet Grooming', 'Property Management'
     ];
 
     useEffect(() => {
@@ -244,10 +244,12 @@ const PublicBookingPage: React.FC = () => {
 
                         <Textarea label="Notes / Issues" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} rows={3} placeholder="Describe the issue or any special instructions..." />
 
-                        <label className="flex items-start gap-2 mt-2 p-3 bg-blue-50 rounded border border-blue-100 text-xs text-blue-800 cursor-pointer">
-                             <input type="checkbox" required className="mt-0.5" />
-                             <span>I agree to receive automated SMS/Email notifications regarding this request. Msg & data rates may apply.</span>
-                        </label>
+                            <label className="flex items-start gap-2 text-xs text-blue-800 cursor-pointer">
+                                <input type="checkbox" required className="mt-0.5 rounded border-blue-300 text-blue-600 focus:ring-blue-500" defaultChecked />
+                                <span>
+                                    By checking this box, you consent to receive SMS messages from TekAir Inc. regarding your service request. Message and data rates may apply. Message frequency varies. Reply STOP to opt-out or HELP for help. View our Privacy Policy at <a href="https://tekairinc.com/privacy" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">https://tekairinc.com/privacy</a>
+                                </span>
+                            </label>
 
                         <Button type="submit" disabled={isSubmitting} className="w-full h-12 text-lg font-bold mt-4" style={{ backgroundColor: brandColor }}>
                             {isSubmitting ? 'Submitting...' : 'Request Appointment'}

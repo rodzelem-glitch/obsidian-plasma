@@ -1,20 +1,28 @@
-
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { db } from '../../lib/firebase';
-import { ShieldCheck, Lock, CheckCircle } from 'lucide-react';
-import { Logo } from '../../components/ui/Logo';
+import { ShieldCheck, Lock, CheckCircle, Download } from 'lucide-react';
+import { LandingHeader } from './components/LandingHeader';
+import { LandingFooter } from './components/LandingFooter';
+
+interface ConsentRecord {
+    id: string;
+    name: string;
+    phone: string;
+    rawPhone: string;
+    source: string;
+    timestamp: string;
+}
 
 const ComplianceReport: React.FC = () => {
     const [searchParams] = useSearchParams();
     const key = searchParams.get('key');
+    const orgId = searchParams.get('orgId');
     const [authorized, setAuthorized] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [recentConsents, setRecentConsents] = useState<any[]>([]);
+    const [recentConsents, setRecentConsents] = useState<ConsentRecord[]>([]);
 
     useEffect(() => {
-        // Hardcoded verification key for simplicity as requested by logic flow
-        // In production this would validate against a stored secret or auth token
         if (key === 'tw-verify-8823') {
             setAuthorized(true);
             fetchSampleData();
@@ -25,18 +33,18 @@ const ComplianceReport: React.FC = () => {
 
     const fetchSampleData = async () => {
         try {
-            // Fetch recent 50 consents for verification proof
-            const snap = await db.collection('customers')
-                .where('marketingConsent.sms', '==', true)
-                .limit(20)
-                .get();
-            
+            let query: firebase.default.firestore.Query<firebase.default.firestore.DocumentData> = db.collection('customers').where('marketingConsent.sms', '==', true);
+            if (orgId) {
+                query = query.where('organizationId', '==', orgId);
+            }
+            const snap = await query.limit(20).get();
             const data = snap.docs.map(d => {
                 const dat = d.data();
                 return {
                     id: d.id,
-                    name: dat.name ? dat.name.substring(0, 3) + '***' : 'Unknown', // Mask PII
-                    phone: dat.phone ? '***-***-' + dat.phone.slice(-4) : 'N/A', // Mask PII
+                    name: dat.name ? dat.name.substring(0, 3) + '***' : 'Unknown',
+                    phone: dat.phone ? '***-***-' + dat.phone.slice(-4) : 'N/A',
+                    rawPhone: dat.phone || '',
                     source: dat.marketingConsent?.source || 'Unknown',
                     timestamp: dat.marketingConsent?.agreedAt || new Date().toISOString()
                 };
@@ -49,6 +57,31 @@ const ComplianceReport: React.FC = () => {
         }
     };
 
+    const handleDownloadCSV = () => {
+        const headers = ["External number", "Consent status", "Coverage", "Individual number", "Registration type", "Notes", "DO NOT MODIFY"];
+        let csvContent = headers.join(",") + "\n";
+        recentConsents.forEach((rec, index) => {
+            const phone = rec.rawPhone || "N/A";
+            const consentStatus = "Opt-in";
+            const coverage = "US & Canada";
+            const individualNum = "";
+            const regType = "";
+            const notes = `Opted in via ${rec.source}`;
+            let doNotModify = "";
+            if (index === 0) doNotModify = "Required";
+            if (index === 1) doNotModify = "Optional";
+            csvContent += `"${phone}","${consentStatus}","${coverage}","${individualNum}","${regType}","${notes}","${doNotModify}"\n`;
+        });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", "Carrier_Consent_Upload.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     if (loading) return <div className="min-h-screen bg-slate-50 flex items-center justify-center">Loading verification...</div>;
 
     if (!authorized) {
@@ -57,23 +90,30 @@ const ComplianceReport: React.FC = () => {
                 <Lock size={48} className="text-red-500 mb-4" />
                 <h1 className="text-2xl font-bold">Access Denied</h1>
                 <p className="text-slate-400 mt-2">Invalid or missing verification key.</p>
+                <button onClick={() => window.location.href = '/'} className="mt-8 bg-white text-slate-900 px-6 py-2 rounded-full font-bold">Back to Home</button>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-white font-sans text-slate-900 p-4 md:p-8 md:p-12">
-            <div className="max-w-4xl mx-auto">
-                <header className="border-b border-slate-200 pb-8 mb-8 flex justify-between items-end">
+        <div className="min-h-screen bg-white font-sans text-slate-900 flex flex-col">
+            <LandingHeader 
+                backButton={{ label: 'Back to Home', href: '/' }}
+            />
+
+            <main className="flex-1 max-w-4xl mx-auto p-4 md:p-8 md:p-12 py-32 mt-4">
+                <header className="border-b border-slate-200 pb-8 mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
                     <div>
-                        <Logo className="h-10 w-auto mb-4" />
                         <h1 className="text-3xl font-black text-slate-900">Communication Compliance Report</h1>
                         <p className="text-slate-500 mt-2">Generated for Carrier / Provider Verification</p>
                     </div>
-                    <div className="text-right">
-                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-full font-bold text-sm">
+                    <div className="text-right flex flex-col items-end">
+                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 border border-green-200 rounded-full font-bold text-sm mb-2">
                             <ShieldCheck size={16} /> Verified Registry
                         </div>
+                        <button onClick={handleDownloadCSV} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold text-sm transition-colors cursor-pointer shadow-lg shadow-blue-600/20">
+                            <Download size={16} /> Download CSV List
+                        </button>
                         <p className="text-xs text-slate-400 mt-2">Generated: {new Date().toLocaleString()}</p>
                     </div>
                 </header>
@@ -133,7 +173,9 @@ const ComplianceReport: React.FC = () => {
                 <footer className="mt-12 pt-8 border-t border-slate-200 text-center text-xs text-slate-400">
                     <p>Confidential Compliance Data. Intended for authorized provider verification only.</p>
                 </footer>
-            </div>
+            </main>
+
+            <LandingFooter />
         </div>
     );
 };

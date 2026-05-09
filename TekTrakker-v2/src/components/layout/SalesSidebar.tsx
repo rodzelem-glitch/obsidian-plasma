@@ -54,7 +54,7 @@ const SalesSidebar: React.FC<SalesSidebarProps> = ({ user, onLogout, isOpen = fa
         <div className="fixed inset-0 z-20 bg-black bg-opacity-50 sm:hidden transition-opacity" onClick={onClose}></div>
       )}
 
-      <aside className={`fixed sm:static inset-y-0 left-0 z-30 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'} flex flex-col h-full`}>
+      <aside className={`fixed sm:sticky top-0 inset-y-0 left-0 z-30 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'} flex flex-col h-[100dvh] max-h-[100dvh] shrink-0`}>
         <div className="flex items-center justify-center h-16 border-b border-slate-200 dark:border-slate-700 px-4 pt-safe">
             <Logo className="h-8 w-auto" />
             <span className="ml-2 text-xs font-black text-primary-600 uppercase tracking-widest border border-primary-200 rounded px-1">SALES</span>

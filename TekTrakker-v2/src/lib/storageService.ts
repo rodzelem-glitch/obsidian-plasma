@@ -21,14 +21,23 @@ export const uploadFileToStorage = async (path: string, fileData: File | string)
         const orgId = pathParts[0] === 'organizations' ? pathParts[1] : null;
 
         if (orgId) {
-            const orgUsageDoc = await db.collection('storageUsage').doc(orgId).get();
-            if (orgUsageDoc.exists) {
-                const data = orgUsageDoc.data();
-                if (data?.limitBytes && data.totalBytesUsed !== undefined) {
-                    if (data.totalBytesUsed + byteSize > data.limitBytes) {
-                        throw new Error(`Storage quota exceeded. Please contact your administrator. Limit: ${(data.limitBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+            try {
+                const orgUsageDoc = await db.collection('storageUsage').doc(orgId).get();
+                if (orgUsageDoc.exists) {
+                    const data = orgUsageDoc.data();
+                    if (data?.limitBytes && data.totalBytesUsed !== undefined) {
+                        if (data.totalBytesUsed + byteSize > data.limitBytes) {
+                            throw new Error(`Storage quota exceeded. Please contact your administrator. Limit: ${(data.limitBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+                        }
                     }
                 }
+            } catch (err: unknown) {
+                // Ignore permission denied errors for unauthenticated uploads (e.g. ATS resumes)
+                // If it's a quota exceeded error from inside the try, we MUST rethrow it
+                if (err instanceof Error && err.message.includes('Storage quota exceeded')) {
+                    throw err;
+                }
+                console.warn("Non-fatal: Could not check storage quota", err);
             }
         }
 

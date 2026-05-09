@@ -13,6 +13,7 @@ import SolarTools from './SolarTools';
 import SecurityTools from './SecurityTools';
 import TelecomTools from './TelecomTools';
 import PetGroomingTools from './PetGroomingTools';
+import PropertyManagementTools from './PropertyManagementTools';
 import Card from '../../components/ui/Card';
 import { Wrench } from 'lucide-react';
 
@@ -74,6 +75,10 @@ const IndustryToolsHub: React.FC = () => {
 
         if (ind.includes('grooming') || ind.includes('pet') || ind.includes('dog') || ind.includes('cat')) {
             return <PetGroomingTools />;
+        }
+
+        if (ind.includes('property') || ind.includes('management') || ind.includes('real estate')) {
+            return <PropertyManagementTools />;
         }
 
         // Default / Fallback

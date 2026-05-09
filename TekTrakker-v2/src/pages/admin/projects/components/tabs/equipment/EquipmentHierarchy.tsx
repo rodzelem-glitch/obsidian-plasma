@@ -185,7 +185,7 @@ const EquipmentHierarchy: React.FC<Props> = ({ customer }) => {
         return (
             <div key={loc.id} className="border-b border-slate-200 dark:border-slate-700 last:border-0">
                 <div className="hierarchy-depth-node flex items-center justify-between py-2 px-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group" data-depth={depth}>
-                    <div className="flex items-center gap-2 flex-1 cursor-pointer" onClick={() => toggleExpand(loc.id)}>
+                    <div role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') toggleExpand(loc.id); }} className="flex items-center gap-2 flex-1 cursor-pointer" onClick={() => toggleExpand(loc.id)}>
                         <div className="w-5 flex justify-center text-slate-400">
                             {hasChildren ? (isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />) : <div className="w-4 h-4" />}
                         </div>
@@ -268,7 +268,7 @@ const EquipmentHierarchy: React.FC<Props> = ({ customer }) => {
             {/* Location Modal */}
             <Modal isOpen={isLocationModalOpen} onClose={() => setIsLocationModalOpen(false)} title={editingLocation?.id ? "Edit Location" : "Add Location"} size="md">
                 <div className="space-y-4">
-                    <Select label="Location Type" value={editingLocation?.locationType || locationOptions[0]} onChange={e => setEditingLocation({...editingLocation, locationType: e.target.value as any})}>
+                    <Select label="Location Type" value={editingLocation?.locationType || locationOptions[0]} onChange={e => setEditingLocation({...editingLocation, locationType: e.target.value})}>
                         {locationOptions.map(opt => (
                             <option key={opt} value={opt}>{opt}</option>
                         ))}
@@ -299,31 +299,25 @@ const EquipmentHierarchy: React.FC<Props> = ({ customer }) => {
                         ))}
                     </Select>
                     
-                    <div className="grid grid-cols-2 gap-3">
-                        <Input label="Asset Name" value={editingEquipment?.name || ''} onChange={e => setEditingEquipment({...editingEquipment, name: e.target.value})} placeholder="e.g. RTU-1" />
-                        <Select label="Type" value={editingEquipment?.type || equipmentOptions[0]} onChange={e => setEditingEquipment({...editingEquipment, type: e.target.value})}>
-                            {equipmentOptions.map(opt => (
-                                <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                        </Select>
-                    </div>
+                    <Input label="Asset Name" value={editingEquipment?.name || ''} onChange={e => setEditingEquipment({...editingEquipment, name: e.target.value})} placeholder="e.g. RTU-1" />
+                    <Select label="Type" value={editingEquipment?.type || equipmentOptions[0]} onChange={e => setEditingEquipment({...editingEquipment, type: e.target.value})}>
+                        {equipmentOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                    </Select>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <Input label="Brand" value={editingEquipment?.brand || ''} onChange={e => setEditingEquipment({...editingEquipment, brand: e.target.value})} placeholder="e.g. Trane" />
-                        <Input label="Model" value={editingEquipment?.model || ''} onChange={e => setEditingEquipment({...editingEquipment, model: e.target.value})} placeholder="Model #" />
-                    </div>
+                    <Input label="Brand" value={editingEquipment?.brand || ''} onChange={e => setEditingEquipment({...editingEquipment, brand: e.target.value})} placeholder="e.g. Trane" />
+                    <Input label="Model" value={editingEquipment?.model || ''} onChange={e => setEditingEquipment({...editingEquipment, model: e.target.value})} placeholder="Model #" />
                     
-                    <div className="grid grid-cols-2 gap-3">
-                        <Input label="Serial Number" value={editingEquipment?.serial || ''} onChange={e => setEditingEquipment({...editingEquipment, serial: e.target.value})} placeholder="Serial #" />
-                        <Select label="Condition" value={editingEquipment?.condition || ''} onChange={e => setEditingEquipment({...editingEquipment, condition: e.target.value as any})}>
-                            <option value="">-- Select --</option>
-                            <option value="Excellent">Excellent</option>
-                            <option value="Good">Good</option>
-                            <option value="Fair">Fair</option>
-                            <option value="Poor">Poor</option>
-                            <option value="Critical">Critical</option>
-                        </Select>
-                    </div>
+                    <Input label="Serial Number" value={editingEquipment?.serial || ''} onChange={e => setEditingEquipment({...editingEquipment, serial: e.target.value})} placeholder="Serial #" />
+                    <Select label="Condition" value={editingEquipment?.condition || ''} onChange={e => setEditingEquipment({...editingEquipment, condition: e.target.value as EquipmentAsset['condition']})}>
+                        <option value="">-- Select --</option>
+                        <option value="Excellent">Excellent</option>
+                        <option value="Good">Good</option>
+                        <option value="Fair">Fair</option>
+                        <option value="Poor">Poor</option>
+                        <option value="Critical">Critical</option>
+                    </Select>
 
                     <Input label="Specific Sub-Location" value={editingEquipment?.location || ''} onChange={e => setEditingEquipment({...editingEquipment, location: e.target.value})} placeholder="e.g. Roof, Mech Room 2" />
 

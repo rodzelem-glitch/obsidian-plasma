@@ -1,6 +1,6 @@
 import React, { useRef, useImperativeHandle, forwardRef } from 'react';
-// @ts-ignore
-import SignatureCanvas from 'react-signature-canvas';
+import SignatureCanvasModule from 'react-signature-canvas';
+const SignatureCanvas = (SignatureCanvasModule as any).default || SignatureCanvasModule;
 
 export interface SignaturePadHandle {
     clear: () => void;

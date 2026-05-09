@@ -31,7 +31,7 @@ const Payables: React.FC = () => {
     const [filterStatus, setFilterStatus] = useState<'all' | 'Unpaid' | 'Paid'>('all');
 
     useEffect(() => {
-        if (!state.currentOrganization) return;
+        if (!state.currentUser || !state.currentOrganization) return;
         const unsub = db.collection('payables')
             .where('organizationId', '==', state.currentOrganization.id)
             .onSnapshot(snap => {
@@ -41,7 +41,7 @@ const Payables: React.FC = () => {
                 setLoading(false);
             });
         return () => unsub();
-    }, [state.currentOrganization]);
+    }, [state.currentOrganization, state.currentUser]);
 
     const handleMarkPaid = async (id: string) => {
         if (!await globalConfirm("Mark this payable as settled?")) return;
@@ -96,6 +96,8 @@ const Payables: React.FC = () => {
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">
                         <select 
+                            title="Filter by status"
+                            aria-label="Filter by status"
                             className="text-sm border border-slate-200 rounded-xl px-4 py-2 bg-white dark:bg-slate-800 dark:border-slate-700 font-bold"
                             value={filterStatus}
                             onChange={e => setFilterStatus(e.target.value as any)}

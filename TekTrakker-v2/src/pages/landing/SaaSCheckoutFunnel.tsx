@@ -1,25 +1,17 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Shield, Zap, Lock, PlayCircle, Star } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Shield, PlayCircle, Star } from 'lucide-react';
+import { LandingHeader } from './components/LandingHeader';
+import { LandingFooter } from './components/LandingFooter';
 
 const SaaSCheckoutFunnel: React.FC = () => {
     const navigate = useNavigate();
 
     return (
         <div className="min-h-screen bg-[#0a0f1c] text-white font-sans selection:bg-blue-500/30">
-            {/* Minimal Header */}
-            <header className="p-6 border-b border-white/5 bg-black/20 backdrop-blur-md sticky top-0 z-50">
-                <div className="max-w-6xl mx-auto flex justify-between items-center">
-                    <div className="font-black text-2xl tracking-tighter text-white flex items-center gap-2">
-                        <Zap size={24} className="text-blue-500" /> TekTrakker
-                    </div>
-                    <div className="flex items-center gap-4 text-sm font-medium text-slate-400">
-                        <Lock size={16} /> Secure Checkout
-                    </div>
-                </div>
-            </header>
+            <LandingHeader />
 
-            <main className="max-w-5xl mx-auto px-4 py-16 md:py-24">
+            <main className="max-w-5xl mx-auto px-4 py-32 md:py-48">
                 
                 {/* VSL Hero Section */}
                 <div className="text-center mb-16">
@@ -124,6 +116,8 @@ const SaaSCheckoutFunnel: React.FC = () => {
                     </div>
                 </div>
             </main>
+
+            <LandingFooter />
         </div>
     );
 };

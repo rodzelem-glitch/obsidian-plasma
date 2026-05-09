@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-    Wrench, ArrowRight, ShieldCheck, History, FileText, 
-    Search, CheckCircle, Home
+    ArrowRight, ShieldCheck, History, FileText, 
+    Search, Home
 } from 'lucide-react';
-import { Logo } from '../../components/ui/Logo';
 import LandingChatbot from '../../components/LandingChatbot';
+import { LandingHeader } from './components/LandingHeader';
+import { LandingFooter } from './components/LandingFooter';
 
 const PropertyOwnerMarketing: React.FC = () => {
     const navigate = useNavigate();
@@ -15,31 +16,15 @@ const PropertyOwnerMarketing: React.FC = () => {
     }, []);
 
     return (
-        <div className="min-h-screen flex flex-col font-sans bg-slate-50 selection:bg-blue-500 selection:text-white">
-            
-            {/* Navbar */}
-            <nav className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm transition-all duration-300">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center h-16 md:h-20">
-                        <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}>
-                            <Logo className="h-8 md:h-10 w-auto" />
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <button 
-                                onClick={() => navigate('/login')} 
-                                className="text-slate-600 font-bold hover:text-blue-600 transition-colors whitespace-nowrap"
-                            >
-                                Pro Software Login
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </nav>
+        <div className="min-h-screen font-sans bg-slate-50 selection:bg-blue-500 selection:text-white">
+            <LandingHeader 
+                backButton={{ label: 'Back to Home', href: '/' }}
+            />
 
             {/* Content */}
-            <div className="pt-24 md:pt-32 pb-20 flex-1 flex flex-col justify-center items-center text-center px-4 relative overflow-hidden">
+            <div className="pt-32 md:pt-48 pb-20 text-center px-4 relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-100/50 to-white opacity-100 z-0" />
-                <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#2563eb 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
+                <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[radial-gradient(#2563eb_1px,transparent_1px)] bg-[length:30px_30px]"></div>
                 
                 <div className="relative z-10 max-w-3xl mx-auto">
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-100 text-blue-800 text-sm font-bold uppercase tracking-widest mb-8 border border-blue-200 shadow-sm">
@@ -96,18 +81,7 @@ const PropertyOwnerMarketing: React.FC = () => {
                 </div>
             </div>
 
-            {/* Trust Footer */}
-            <footer className="bg-slate-950 border-t border-white/5 py-12 px-6 relative z-10 w-full">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all"><Logo className="h-8 w-auto" /></div>
-                    <div className="flex gap-8 text-sm text-slate-500 font-medium">
-                        <a href="/#/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
-                        <a href="/#/terms" className="hover:text-white transition-colors">Terms of Service</a>
-                        <a href="/#/eula" className="hover:text-white transition-colors">EULA</a>
-                    </div>
-                    <div className="text-slate-600 text-xs font-medium">&copy; 2025 TekTrakker Inc. All rights reserved.</div>
-                </div>
-            </footer>
+            <LandingFooter />
 
             <LandingChatbot />
         </div>

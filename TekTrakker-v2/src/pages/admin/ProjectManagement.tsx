@@ -102,7 +102,7 @@ const ProjectManagement: React.FC = () => {
         if (!form.name || !form.customerId || !state.currentOrganization) { showToast.warn("Project Name and Customer are required."); return; }
         const customer = state.customers.find(c => c.id === form.customerId);
         const project: Project = { ...form, organizationId: state.currentOrganization.id, customerName: customer?.name || 'Unknown', id: form.id || `proj-${Date.now()}`, createdAt: form.createdAt || new Date().toISOString() } as Project;
-        await db.collection('projects').doc(project.id).set(project, { merge: true });
+        await db.collection('projects').doc(project.id).set(JSON.parse(JSON.stringify(project)), { merge: true });
         dispatch({ type: form.id ? 'UPDATE_PROJECT' : 'ADD_PROJECT', payload: project });
         setSelectedProject(project);
         setIsProjectModalOpen(false);
@@ -119,7 +119,7 @@ const ProjectManagement: React.FC = () => {
         if (!selectedProject || !form.number) return;
         const permit: Permit = { ...form, id: form.id || `perm-${Date.now()}` } as Permit;
         const updatedPermits = form.id ? (selectedProject.permits || []).map(p => p.id === permit.id ? permit : p) : [...(selectedProject.permits || []), permit];
-        await db.collection('projects').doc(selectedProject.id).update({ permits: updatedPermits });
+        await db.collection('projects').doc(selectedProject.id).update({ permits: JSON.parse(JSON.stringify(updatedPermits)) });
         dispatch({ type: 'UPDATE_PROJECT', payload: { ...selectedProject, permits: updatedPermits } });
         setIsPermitModalOpen(false);
     };
@@ -128,7 +128,7 @@ const ProjectManagement: React.FC = () => {
         if (!state.currentOrganization || !subData.companyName) return;
         const subId = subData.id || `sub-${Date.now()}`;
         const sub: Subcontractor = { ...subData, organizationId: state.currentOrganization.id, id: subId } as Subcontractor;
-        await db.collection('subcontractors').doc(sub.id).set(sub, { merge: true });
+        await db.collection('subcontractors').doc(sub.id).set(JSON.parse(JSON.stringify(sub)), { merge: true });
         dispatch({ type: subData.id ? 'UPDATE_SUBCONTRACTOR' : 'ADD_SUBCONTRACTOR', payload: sub });
         setIsSubModalOpen(false);
     };
@@ -136,7 +136,7 @@ const ProjectManagement: React.FC = () => {
     const handleSaveRental = async (form: Partial<EquipmentRental>) => {
         if (!state.currentOrganization || !form.equipmentName) return;
         const rental: EquipmentRental = { ...form, organizationId: state.currentOrganization.id, projectId: selectedProject?.id, id: form.id || `rent-${Date.now()}` } as EquipmentRental;
-        await db.collection('rentals').doc(rental.id).set(rental, { merge: true });
+        await db.collection('rentals').doc(rental.id).set(JSON.parse(JSON.stringify(rental)), { merge: true });
         dispatch({ type: form.id ? 'UPDATE_RENTAL' : 'ADD_RENTAL', payload: rental });
         setIsRentalModalOpen(false);
     };
@@ -148,10 +148,10 @@ const ProjectManagement: React.FC = () => {
         const id = form.id || `${form.type.toLowerCase()}-${Date.now()}`;
         
         if (form.type === 'Phase') {
-            const phase = { id, name: form.name, description: form.description, status: form.status as any, startDate: form.startDate, endDate: form.endDate, deliverables: [] };
+            const phase = { id, name: form.name, description: form.description, status: form.status as 'Pending' | 'In Progress' | 'Completed', startDate: form.startDate, endDate: form.endDate, deliverables: [] };
             updatedProject.phases = form.id ? (updatedProject.phases || []).map(p => p.id === id ? { ...p, ...phase } : p) : [...(updatedProject.phases || []), phase];
         } else if (form.type === 'Deliverable' && form.parentId) {
-            const deliverable = { id, name: form.name, description: form.description, status: form.status as any, dueDate: form.dueDate, workPackages: [] };
+            const deliverable = { id, name: form.name, description: form.description, status: form.status as 'Pending' | 'In Progress' | 'Completed', dueDate: form.dueDate, workPackages: [] };
             updatedProject.phases = updatedProject.phases?.map(p => {
                 if (p.id === form.parentId) {
                     return { ...p, deliverables: form.id ? (p.deliverables || []).map(d => d.id === id ? { ...d, ...deliverable } : d) : [...(p.deliverables || []), deliverable] };
@@ -171,7 +171,7 @@ const ProjectManagement: React.FC = () => {
             }));
         }
 
-        await db.collection('projects').doc(selectedProject.id).update(updatedProject);
+        await db.collection('projects').doc(selectedProject.id).update(JSON.parse(JSON.stringify(updatedProject)));
         dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
         setIsWBSNodeModalOpen(false);
     };
@@ -206,7 +206,7 @@ const ProjectManagement: React.FC = () => {
             updatedProject.projectTasks = upsertTask(updatedProject.projectTasks);
         }
 
-        await db.collection('projects').doc(selectedProject.id).update(updatedProject);
+        await db.collection('projects').doc(selectedProject.id).update(JSON.parse(JSON.stringify(updatedProject)));
         dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
         setIsTaskModalOpen(false);
     };
@@ -218,7 +218,7 @@ const ProjectManagement: React.FC = () => {
             ? (selectedProject.sprints || []).map(s => s.id === sprint.id ? sprint : s) 
             : [...(selectedProject.sprints || []), sprint];
         const updatedProject = { ...selectedProject, sprints: updatedSprints };
-        await db.collection('projects').doc(selectedProject.id).update({ sprints: updatedSprints });
+        await db.collection('projects').doc(selectedProject.id).update({ sprints: JSON.parse(JSON.stringify(updatedSprints)) });
         dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
         setIsSprintModalOpen(false);
     };
@@ -226,7 +226,7 @@ const ProjectManagement: React.FC = () => {
     const handleTaskStatusChange = async (taskId: string, newStatus: string) => {
         if (!selectedProject) return;
         let updatedProject = { ...selectedProject };
-        const updateStatus = (tasks: ProjectTask[] = []) => tasks.map(t => t.id === taskId ? { ...t, status: newStatus as any, completedAt: newStatus === 'Completed' ? new Date().toISOString() : t.completedAt } : t);
+        const updateStatus = (tasks: ProjectTask[] = []) => tasks.map(t => t.id === taskId ? { ...t, status: newStatus as ProjectTask['status'], completedAt: newStatus === 'Completed' ? new Date().toISOString() : t.completedAt } : t);
         
         updatedProject.projectTasks = updateStatus(updatedProject.projectTasks);
         updatedProject.backlog = updateStatus(updatedProject.backlog);
@@ -241,14 +241,14 @@ const ProjectManagement: React.FC = () => {
             })) || []
         })) || [];
 
-        await db.collection('projects').doc(selectedProject.id).update(updatedProject);
+        await db.collection('projects').doc(selectedProject.id).update(JSON.parse(JSON.stringify(updatedProject)));
         dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
     };
 
     const handleSaveExpense = async (form: Partial<Expense>) => {
         if (!selectedProject || !state.currentOrganization || !form.amount) return;
         const expense: Expense = { ...form, organizationId: state.currentOrganization.id, projectId: selectedProject.id, id: form.id || `exp-${Date.now()}` } as Expense;
-        await db.collection('expenses').doc(expense.id).set(expense, { merge: true });
+        await db.collection('expenses').doc(expense.id).set(JSON.parse(JSON.stringify(expense)), { merge: true });
         dispatch({ type: form.id ? 'UPDATE_EXPENSE' : 'ADD_EXPENSE', payload: expense });
         setIsExpenseModalOpen(false);
     };
@@ -292,11 +292,9 @@ const ProjectManagement: React.FC = () => {
                 <>
                     {canSeeAllTasks && (
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                            {/* eslint-disable */}
                             <Card className="bg-blue-50 border-blue-200"><p className="text-xs font-bold text-blue-700 uppercase">Budget Used</p><div className="mt-2"><p className="text-2xl font-black text-blue-900">${projectFinancials.totalExpenses.toLocaleString()}</p><div className="w-full bg-blue-200 rounded-full h-1.5 mt-2"><div className="bg-blue-600 h-1.5 rounded-full" ref={e => e && (e.style.width = `${Math.min((projectFinancials.totalExpenses / (selectedProject.budget || 1)) * 100, 100)}%`)}></div></div><p className="text-[10px] text-blue-600 mt-1">of ${(selectedProject.budget || 0).toLocaleString()}</p></div></Card>
                             <Card className="bg-emerald-50 border-emerald-200"><p className="text-xs font-bold text-emerald-700 uppercase">Billed / Paid</p><p className="text-2xl font-black text-emerald-900">${projectFinancials.totalBilled.toLocaleString()}</p><p className="text-[10px] text-emerald-600 mt-1 font-bold">Collected: ${projectFinancials.totalCollected.toLocaleString()}</p></Card>
                             <Card className="bg-purple-50 border-purple-200"><p className="text-xs font-bold text-purple-700 uppercase">Task Progress</p><div className="mt-2"><p className="text-2xl font-black text-purple-900">{progressStats.percent.toFixed(0)}%</p><div className="w-full bg-purple-200 rounded-full h-1.5 mt-2"><div className="bg-purple-600 h-1.5 rounded-full" ref={e => e && (e.style.width = `${progressStats.percent}%`)}></div></div><p className="text-[10px] text-purple-600 mt-1">{progressStats.completed} / {progressStats.total} Tasks</p></div></Card>
-                            {/* eslint-enable */}
                             <Card className="bg-gray-50 border-gray-200"><p className="text-xs font-bold text-gray-500 uppercase">Team Members</p><div className="flex -space-x-2 mt-2">{selectedProject.teamIds?.map(uid => { const u = employees.find(e => e.id === uid); return u ? <div key={uid} className="w-8 h-8 rounded-full bg-slate-300 border-2 border-white flex items-center justify-center text-xs font-bold text-slate-700" title={`${u.firstName} ${u.lastName}`}>{u.firstName[0]}</div> : null;})}{(!selectedProject.teamIds || selectedProject.teamIds.length === 0) && <span className="text-sm text-gray-400 italic">None</span>}</div></Card>
                         </div>
                     )}
@@ -310,7 +308,7 @@ const ProjectManagement: React.FC = () => {
                             ].map(tab => (
                                 <button 
                                     key={tab.id} 
-                                    onClick={() => setActiveTab(tab.id as any)} 
+                                    onClick={() => setActiveTab(tab.id as 'overview' | 'tasks' | 'permits' | 'subs' | 'rentals' | 'financials' | 'equipment')} 
                                     className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold whitespace-nowrap rounded-xl transition-all shadow-sm ${
                                         activeTab === tab.id 
                                             ? 'bg-primary-600 text-white border-transparent' 

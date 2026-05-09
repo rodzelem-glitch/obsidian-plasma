@@ -79,21 +79,44 @@ const PublicProposal: React.FC = () => {
 
             // --- NOTIFY FIELD TECHNICIAN IMMEDIATELY ---
             const recipientId = proposal.technicianId || proposal.createdById;
-            if (recipientId) {
-                try {
+            const notificationContent = `🎉 ${proposal.customerName || 'Your customer'} just signed and accepted the "${finalTier}" option of Proposal ${proposal.id} for $${total.toFixed(2)}!`;
+
+            try {
+                const { sendNotification, notifyAdmins } = await import('lib/notificationService');
+                
+                // Notify the technician via Push Notification
+                if (recipientId) {
+                    await sendNotification(recipientId, {
+                        title: 'Proposal Accepted!',
+                        body: notificationContent,
+                        type: 'proposal_accepted'
+                    }, proposal.organizationId || organization?.id);
+                }
+                
+                // Notify Admins via Push Notification
+                if (proposal.organizationId || organization?.id) {
+                    await notifyAdmins(proposal.organizationId || organization?.id || '', {
+                        title: 'Proposal Accepted!',
+                        body: notificationContent,
+                        type: 'proposal_accepted'
+                    });
+                }
+                
+                // Keep the old messages alert system for fallback
+                if (recipientId) {
                     await db.collection('messages').add({
                         organizationId: proposal.organizationId || organization?.id || 'unknown',
                         senderId: 'system',
                         senderName: 'System Alerts',
                         receiverId: recipientId,
-                        content: `🎉 ${proposal.customerName || 'Your customer'} just signed and accepted the "${finalTier}" option of Proposal ${proposal.id} for $${total.toFixed(2)}!`,
+                        content: notificationContent,
                         type: 'alert',
                         timestamp: new Date().toISOString(),
                         read: false,
                         targetUrl: `/briefing/proposal?proposalId=${proposal.id}` 
                     });
-                } catch(e) { console.error('Failed to notify tech', e); }
-            }
+                }
+            } catch(e) { console.error('Failed to notify tech', e); }
 
             setProposal({ ...proposal, status: 'Accepted', selectedOption: finalTier, signatureDataUrl, subtotal, taxAmount, total });
             setIsSigningOpen(false);

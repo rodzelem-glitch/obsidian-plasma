@@ -10,7 +10,95 @@ import {
 } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
 import { useAppContext } from 'context/AppContext';
+import { LandingHeader } from './components/LandingHeader';
+import { LandingFooter } from './components/LandingFooter';
 import LandingChatbot from '../../components/LandingChatbot';
+
+const FEATURES = [
+    {
+        id: 'invoicing',
+        title: 'Automated Invoicing & Payments',
+        desc: 'Generate professional invoices, accept online payments, process credit cards directly on the field, and automate follow-ups to get paid faster.',
+        icon: HandCoins,
+        color: 'text-green-600',
+        bgColor: 'bg-green-50',
+        borderColor: 'border-green-200'
+    },
+    {
+        id: 'gps',
+        title: 'Geofenced Time Tracking',
+        desc: 'Automatically track technician arrival and departure times using precise GPS geofencing. Ensure 100% accurate payroll and eliminate time theft effortlessly.',
+        icon: MapPin,
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-50',
+        borderColor: 'border-orange-200'
+    },
+    {
+        id: 'mobile',
+        title: 'Mobile App for Technicians',
+        desc: 'Empower your field team with a dedicated mobile app for job details, checklists, time tracking, picture taking, and full on-site sales presentations.',
+        icon: Smartphone,
+        color: 'text-sky-600',
+        bgColor: 'bg-sky-50',
+        borderColor: 'border-sky-200'
+    },
+    {
+        id: 'memberships',
+        title: 'Recurring Memberships',
+        desc: 'Build incredible recurring revenue with native membership plans. Automatically charge cards on file, schedule preventative maintenance, and drive loyalty with ease.',
+        icon: Heart,
+        color: 'text-red-600',
+        bgColor: 'bg-red-50',
+        borderColor: 'border-red-200'
+    },
+    {
+        id: 'analytics',
+        title: 'Powerful Analytics & Reporting',
+        desc: 'Gain insights into your business performance with customizable dashboards, real-time P&L tracking, and advanced technician efficiency reports.',
+        icon: BarChart3,
+        color: 'text-purple-600',
+        bgColor: 'bg-purple-50',
+        borderColor: 'border-purple-200'
+    },
+    {
+        id: 'crm',
+        title: 'Client Management (CRM)',
+        desc: 'Keep all customer information, detailed service history, equipment age, and native communication logs in one centralized, search-friendly place.',
+        icon: UserCircle,
+        color: 'text-teal-600',
+        bgColor: 'bg-teal-50',
+        borderColor: 'border-teal-200'
+    },
+    {
+        id: 'ai-estimating',
+        title: 'AI-Powered Estimating',
+        desc: 'Generate accurate quotes and Good/Better/Best proposals faster with our intelligent estimating tools that learn from your historical data and win rates.',
+        icon: Cpu,
+        color: 'text-pink-600',
+        bgColor: 'bg-pink-50',
+        borderColor: 'border-pink-200'
+    },
+    {
+        id: 'bid-network',
+        title: 'Contractor Bid Network',
+        desc: 'Outsource excess work or bid on available jobs from other businesses. Expand your capacity instantly without hiring.',
+        icon: Layers,
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-200',
+        isNew: true
+    },
+    {
+        id: 'ai-marketing',
+        title: 'AI Omni-Channel Marketing',
+        desc: 'Automatically preview and publish perfectly formatted marketing content across all your social networks with a single click.',
+        icon: Bot,
+        color: 'text-fuchsia-600',
+        bgColor: 'bg-fuchsia-50',
+        borderColor: 'border-fuchsia-200',
+        isNew: true
+    }
+];
 
 
 const AnimatedCard: React.FC<{ children: React.ReactNode; direction: 'left' | 'right'; delay?: number }> = ({ children, direction, delay = 0 }) => {
@@ -33,14 +121,9 @@ const AnimatedCard: React.FC<{ children: React.ReactNode; direction: 'left' | 'r
     const hiddenClass = direction === 'left' ? "opacity-0 -translate-x-24" : "opacity-0 translate-x-24";
     const visibleClass = "opacity-100 translate-x-0";
 
-    const delayStyle = { '--delay': `${delay}ms` } as React.CSSProperties;
-
     return (
-        <div // NOSONAR
-            ref={ref} 
-            className={`${baseClass} ${isVisible ? visibleClass : hiddenClass} transition-delay-var`} 
-            style={delayStyle} 
-        >
+        <div ref={ref} className={`${baseClass} ${isVisible ? visibleClass : hiddenClass} dynamic-delay-${delay}`}>
+            <style>{`.dynamic-delay-${delay} { transition-delay: ${delay}ms; }`}</style>
             {children}
         </div>
     );
@@ -125,18 +208,10 @@ const MockUpdatingCharts = ({ activeTab }: { activeTab: 'layout' | 'users' | 'an
                     <div className="absolute top-4 right-4 text-xs font-bold text-emerald-600">+24% MoM</div>
                     <div className="flex items-end gap-2 h-2/3 w-full mt-auto">
                     {bars.map((height, i) => {
-                        const containerStyle = { height: `${height}%` } as React.CSSProperties;
-                        const innerStyle = { height: `${height * 0.8}%` } as React.CSSProperties;
                         return (
-                        <div // NOSONAR
-                            key={i} 
-                            className="flex-1 bg-indigo-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out" 
-                            style={containerStyle} 
-                        >
-                            <div // NOSONAR
-                                className="w-full bg-indigo-500 absolute bottom-0 rounded-t-sm transition-all duration-1000" 
-                                style={innerStyle} 
-                            ></div>
+                        <div key={i} className={`flex-1 bg-indigo-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out dynamic-bar-${i}`}>
+                            <style>{`.dynamic-bar-${i} { height: ${height}%; } .dynamic-inner-${i} { height: ${height * 0.8}%; }`}</style>
+                            <div className={`w-full bg-indigo-500 absolute bottom-0 rounded-t-sm transition-all duration-1000 dynamic-inner-${i}`}></div>
                         </div>
                     )})}
                     </div>
@@ -169,19 +244,11 @@ const MockUpdatingCharts = ({ activeTab }: { activeTab: 'layout' | 'users' | 'an
                 </div>
                 <div className="flex items-end gap-2 h-24 w-full">
                     {bars.map((height, i) => {
-                        const containerStyle = { height: `${height}%` } as React.CSSProperties;
-                        const innerStyle = { height: `${height * 0.7}%` } as React.CSSProperties;
                         return (
-                        <div // NOSONAR
-                            key={i} 
-                            className="flex-1 bg-primary-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out" 
-                            style={containerStyle} 
-                        >
+                        <div key={i} className={`flex-1 bg-primary-200 rounded-t-sm relative group transition-all duration-1000 ease-in-out dynamic-bar-primary-${i}`}>
+                            <style>{`.dynamic-bar-primary-${i} { height: ${height}%; } .dynamic-inner-primary-${i} { height: ${height * 0.7}%; }`}</style>
                             <div className="absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 transition-opacity w-full text-center text-[10px] font-bold text-primary-700">${(height * 150).toLocaleString()}</div>
-                            <div // NOSONAR
-                                className="w-full bg-primary-500 absolute bottom-0 rounded-t-sm transition-all duration-1000" 
-                                style={innerStyle} 
-                            ></div>
+                            <div className={`w-full bg-primary-500 absolute bottom-0 rounded-t-sm transition-all duration-1000 dynamic-inner-primary-${i}`}></div>
                         </div>
                     )})}
                 </div>
@@ -203,10 +270,10 @@ const IntegrationsMarquee = () => {
                     <span className="w-8 h-px bg-slate-300"></span>
                 </p>
             </div>
-            <div className="flex w-[200%] animate-marquee">
-                <div className="flex w-1/2 justify-around items-center">
+            <div className="flex w-[200%] animate-marquee flex-nowrap">
+                <div className="flex w-1/2 justify-start items-center flex-nowrap gap-16">
                     {integrations.map((name, i) => (
-                        <div key={i} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap mx-8">
+                        <div key={i} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap min-w-max">
                             {name}
                         </div>
                     ))}
@@ -221,6 +288,83 @@ const IntegrationsMarquee = () => {
             </div>
             <div className="absolute top-0 left-0 w-32 md:w-64 h-full bg-gradient-to-r from-white to-transparent pointer-events-none"></div>
             <div className="absolute top-0 right-0 w-32 md:w-64 h-full bg-gradient-to-l from-white to-transparent pointer-events-none"></div>
+        </div>
+    );
+};
+
+const InteractiveFeatureShowcase = () => {
+    const [activeIndex, setActiveIndex] = useState(0);
+
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Feature List */}
+            <div className="lg:col-span-5 space-y-3">
+                {FEATURES.map((feature, idx) => (
+                    <div 
+                        key={feature.id}
+                        onClick={() => setActiveIndex(idx)}
+                        onMouseEnter={() => setActiveIndex(idx)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setActiveIndex(idx); }}
+                        className={`group p-4 rounded-2xl border transition-all duration-300 cursor-pointer text-left flex items-center gap-4 ${
+                            activeIndex === idx 
+                            ? `${feature.bgColor} ${feature.borderColor} shadow-md scale-[1.02]` 
+                            : 'bg-white border-transparent hover:bg-slate-50'
+                        }`}
+                    >
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-transform ${
+                            activeIndex === idx ? 'scale-110' : 'group-hover:scale-110'
+                        } ${feature.bgColor} ${feature.color}`}>
+                            <feature.icon size={24} />
+                        </div>
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                                <h4 className={`font-bold transition-colors ${activeIndex === idx ? 'text-slate-900' : 'text-slate-500'}`}>
+                                    {feature.title}
+                                </h4>
+                                {feature.isNew && (
+                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-500 text-white rounded-full">New</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Feature Detail Display */}
+            <div className="lg:col-span-7 h-full sticky top-32">
+                <div className="bg-white rounded-[2.5rem] border border-slate-200 p-8 md:p-12 shadow-2xl h-full flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                    <div className={`absolute top-0 right-0 p-40 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-20 transition-colors duration-700 ${FEATURES[activeIndex].bgColor}`}></div>
+                    
+                    <div className="relative z-10 w-full animate-fade-in" key={FEATURES[activeIndex].id}>
+                        <div className={`w-20 h-20 rounded-3xl mx-auto mb-8 flex items-center justify-center shadow-xl ${FEATURES[activeIndex].bgColor} ${FEATURES[activeIndex].color}`}>
+                            {React.createElement(FEATURES[activeIndex].icon, { size: 40 })}
+                        </div>
+                        <h3 className="text-3xl md:text-4xl font-black text-slate-900 mb-6">{FEATURES[activeIndex].title}</h3>
+                        <p className="text-lg md:text-xl text-slate-600 leading-relaxed max-w-2xl mx-auto mb-10">
+                            {FEATURES[activeIndex].desc}
+                        </p>
+                        
+                        <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 text-left">
+                            <div className="flex items-center gap-2 text-primary-600 font-bold text-sm mb-4">
+                                <CheckCircle size={16} /> Key Benefit
+                            </div>
+                            <p className="text-slate-700 font-medium italic leading-relaxed">
+                                {activeIndex === 0 && "Technicians reported a 40% reduction in billing disputes and same-day payment collection increase."}
+                                {activeIndex === 1 && "GPS precision eliminates 'buddy punching' and ensures your customers get billed for every minute on site."}
+                                {activeIndex === 2 && "A unified field experience that works offline and keeps everyone synced without a single phone call."}
+                                {activeIndex === 3 && "Secure monthly cash flow that allows you to predict revenue and schedule maintenance during slow seasons."}
+                                {activeIndex === 4 && "Stop guessing. See exactly which technicians are most profitable and which jobs are losing you money."}
+                                {activeIndex === 5 && "Every interaction, every picture, and every invoice ever sent to a customer, organized perfectly."}
+                                {activeIndex === 6 && "The system suggests tiers and upsells based on job type, increasing average ticket size by 25%."}
+                                {activeIndex === 7 && "Never turn down a customer again. Pass the job to a verified partner and take a platform commission."}
+                                {activeIndex === 8 && "One click to generate and schedule content for Facebook, Instagram, LinkedIn, and more."}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
@@ -395,17 +539,7 @@ const SupportModal: React.FC<SupportModalProps> = ({ onClose, onSubmit }) => {
     );
 };
 
-const TikTok = ({ size = 20, className = "" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5v3a3 3 0 0 1-3-3v11a7 7 0 1 1-7-7" />
-    </svg>
-);
-
-const XLogo = ({ size = 20, className = "" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
-        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-    </svg>
-);
+// Social icons moved to shared LandingFooter component
 
 const SaaSMarketing: React.FC = () => {
     const navigate = useNavigate();
@@ -421,17 +555,10 @@ const SaaSMarketing: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-primary-500 selection:text-white">
-            {/* Navbar */}
-            <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/80">
-                <div className="max-w-7xl mx-auto px-6 h-24 flex justify-between items-center">
-                    <div role="button" aria-label="Go to Home" title="Go to Home" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} className="flex items-center cursor-pointer" onClick={() => navigate('/')}><Logo className="h-14 w-auto text-primary-600" /></div>
-                    <div className="flex gap-4 items-center">
-                        <button onClick={() => navigate('/login')} className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap">Customer Portal / Login</button>
-                        <button onClick={() => setShowDemoOptions(true)} className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Free Interactive Demo</button>
-                        <button onClick={() => navigate('/login?view=register_business')} className="bg-orange-600 hover:bg-orange-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</button>
-                    </div>
-                </div>
-            </nav>
+            <LandingHeader 
+                showAuthButtons 
+                onShowDemoOptions={() => setShowDemoOptions(true)} 
+            />
 
             {/* DEMO OPTIONS MODAL */}
             {showDemoOptions && (
@@ -514,23 +641,15 @@ const SaaSMarketing: React.FC = () => {
 
             <IntegrationsMarquee />
 
-            <section className="py-20 px-6 bg-slate-100">
+            <section className="py-24 px-6 bg-slate-50 border-y border-slate-200">
                 <div className="max-w-7xl mx-auto text-center">
-                    <h2 className="text-4xl font-black text-slate-900 mb-4">Streamline Your Entire Operation</h2>
-                    <p className="text-xl text-slate-600 max-w-2xl mx-auto mb-16">TekTrakker offers an all-in-one platform to manage every aspect of your service business, from first contact to final payment.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg lg:col-span-2"><Zap className="text-primary-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Effortless Scheduling & Dispatch</h3><p className="text-slate-600">Drag-and-drop job scheduling, automated dispatching, and real-time technician tracking keep your team on track and your customers informed.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-indigo-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg shadow-indigo-500/10 relative overflow-hidden lg:col-span-2"><div className="absolute top-0 right-0 bg-indigo-500 text-white text-[10px] font-black uppercase px-3 py-1 rounded-bl-lg">Exclusive</div><Users className="text-indigo-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Free Premium Homeowner Leads</h3><p className="text-slate-600">Stop paying per lead. TekTrakker connects you natively with local homeowners actively requesting service through our standalone Consumer Portal, entirely for free.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><HandCoins className="text-green-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Automated Invoicing & Payments</h3><p className="text-slate-600">Generate professional invoices, accept online payments, process credit cards directly on the field, and automate follow-ups to get paid faster.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><MapPin className="text-orange-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Geofenced Time Tracking</h3><p className="text-slate-600">Automatically track technician arrival and departure times using precise GPS geofencing. Ensure 100% accurate payroll and eliminate time theft effortlessly.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><Smartphone className="text-sky-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Mobile App for Technicians</h3><p className="text-slate-600">Empower your field team with a dedicated mobile app for job details, checklists, time tracking, picture taking, and full on-site sales presentations.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><Heart className="text-red-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Recurring Memberships</h3><p className="text-slate-600">Build incredible recurring revenue with native membership plans. Automatically charge cards on file, schedule preventative maintenance, and drive loyalty with ease.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><BarChart3 className="text-purple-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Powerful Analytics & Reporting</h3><p className="text-slate-600">Gain insights into your business performance with customizable dashboards, real-time P&L tracking, and advanced technician efficiency reports.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><UserCircle className="text-teal-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Client Management (CRM)</h3><p className="text-slate-600">Keep all customer information, detailed service history, equipment age, and native communication logs in one centralized, search-friendly place.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-slate-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg"><Cpu className="text-pink-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">AI-Powered Estimating</h3><p className="text-slate-600">Generate accurate quotes and Good/Better/Best proposals faster with our intelligent estimating tools that learn from your historical data and win rates.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-blue-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg shadow-blue-500/10 relative overflow-hidden"><div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-black uppercase px-3 py-1 rounded-bl-lg">New</div><Layers className="text-blue-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">Contractor Bid Network</h3><p className="text-slate-600">Outsource excess work or bid on available jobs from other businesses. Expand your capacity instantly without hiring.</p></div>
-                        <div className="bg-white p-4 md:p-8 rounded-2xl border border-fuchsia-200 text-left transform hover:scale-[1.02] transition-transform shadow-lg shadow-fuchsia-500/10 relative overflow-hidden"><div className="absolute top-0 right-0 bg-fuchsia-500 text-white text-[10px] font-black uppercase px-3 py-1 rounded-bl-lg">New</div><Bot className="text-fuchsia-600 mb-4" size={36} /><h3 className="text-2xl font-bold text-slate-900 mb-2">AI Omni-Channel Marketing</h3><p className="text-slate-600">Automatically preview and publish perfectly formatted marketing content across all your social networks with a single click.</p></div>
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-50 border border-primary-200 text-primary-700 text-sm font-bold mb-8">
+                        <Layers size={16} /> Complete Feature Set
                     </div>
+                    <h2 className="text-4xl md:text-6xl font-black text-slate-900 mb-6 tracking-tight leading-tight">Streamline Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600">Entire Operation</span></h2>
+                    <p className="text-xl text-slate-600 max-w-3xl mx-auto mb-20 leading-relaxed font-medium">TekTrakker offers an all-in-one platform to manage every aspect of your service business, from first contact to final payment.</p>
+                    
+                    <InteractiveFeatureShowcase />
                 </div>
             </section>
 
@@ -656,23 +775,8 @@ const SaaSMarketing: React.FC = () => {
 
             <PartnerTestimonial />
 
-            <footer className="bg-slate-950 border-t border-white/5 py-12 px-6">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all"><Logo className="h-8 w-auto" /></div>
-                    <div className="flex items-center gap-6 text-sm text-slate-500 font-medium">
-                        <a href="/#/faq" className="hover:text-white transition-colors">FAQ</a>
-                        <a href="/#/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
-                        <a href="/#/terms" className="hover:text-white transition-colors">Terms of Service</a>
-                        <button onClick={() => setShowSupportModal(true)} className="hover:text-white transition-colors">Support</button>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <a href="https://www.facebook.com/share/1AyPhsNeN3/" target="_blank" rel="noopener noreferrer" aria-label="Facebook" title="Facebook" className="text-slate-500 hover:text-[#1877F2] transition-all hover:scale-110"><Facebook size={20} /></a>
-                        <a href="https://twitter.com/TrakkerPlatform" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)" title="X (Twitter)" className="text-slate-500 hover:text-white transition-all hover:scale-110"><XLogo size={20} /></a>
-                        <a href="https://www.tiktok.com/@tektrakker" target="_blank" rel="noopener noreferrer" aria-label="TikTok" title="TikTok" className="text-slate-500 hover:text-[#00f2fe] transition-all hover:scale-110"><TikTok size={20} /></a>
-                    </div>
-                    <div className="text-slate-600 text-xs font-medium">&copy; 2026 TekTrakker Inc. All rights reserved.</div>
-                </div>
-            </footer>
+            <PartnerTestimonial />
+            <LandingFooter onShowSupport={() => setShowSupportModal(true)} />
 
             <LandingChatbot />
         </div>

@@ -46,8 +46,12 @@ export const notifyAdmins = async (organizationId: string, payload: Notification
             .where('role', 'in', ['admin', 'master_admin', 'both'])
             .get();
 
-        const notifications = adminsSnapshot.docs.map(doc => sendNotification(doc.id, payload));
-        await Promise.all(notifications);
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < adminsSnapshot.docs.length; i += BATCH_SIZE) {
+            const chunk = adminsSnapshot.docs.slice(i, i + BATCH_SIZE);
+            const notifications = chunk.map(doc => sendNotification(doc.id, payload));
+            await Promise.all(notifications);
+        }
     } catch (error) {
         console.error("Failed to notify admins:", error);
     }

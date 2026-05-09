@@ -164,13 +164,84 @@ const Memberships: React.FC = () => {
         }
     };
 
+    const handleGeneratePMs = async () => {
+        if (!await globalConfirm("Generate PM Work Orders for all active memberships due for a visit? This will route jobs to preferred technicians if configured.")) return;
+        
+        let generatedCount = 0;
+        const activeAgreements = state.serviceAgreements.filter(a => a.status === 'Active' && a.visitsRemaining > 0);
+        
+        for (const agreement of activeAgreements) {
+            const customer = state.customers.find(c => c.id === agreement.customerId);
+            if (!customer) continue;
+
+            // Determine target locations
+            const targetLocations = (customer.customerType as string) === 'Property Management' && customer.serviceLocations && customer.serviceLocations.length > 0 
+                ? customer.serviceLocations 
+                : [{ id: 'default', address: customer.address, propertyName: 'Primary Location', name: 'Primary Location', preferredTechnicianId: null as string | null }];
+
+            for (const loc of targetLocations) {
+                const techId = (loc as any).preferredTechnicianId || null;
+                const tech = techId ? state.users.find((u: any) => u.id === techId) : null;
+                const techName = tech ? `${tech.firstName} ${tech.lastName}` : 'Unassigned (Queue)';
+
+                const newJobId = `job-pm-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+                const newJob = {
+                    id: newJobId,
+                    organizationId: state.currentOrganization?.id || '',
+                    customerName: customer.name,
+                    customerId: customer.id,
+                    address: loc.address || customer.address,
+                    locationId: loc.id !== 'default' ? loc.id : null,
+                    locationName: loc.propertyName || loc.name,
+                    tasks: ['Preventative Maintenance'],
+                    jobStatus: 'Scheduled',
+                    priority: 'Normal',
+                    appointmentTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // Schedule 1 week out
+                    assignedTechnicianId: techId,
+                    assignedTechnicianName: techName,
+                    source: 'Auto-PM',
+                    specialInstructions: `Auto-generated PM for ${agreement.planName} Membership.`,
+                    invoice: { id: `INV-${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: 0, taxAmount: 0, totalAmount: 0, amount: 0 },
+                    jobEvents: [],
+                    createdAt: new Date().toISOString()
+                };
+
+                try {
+                    await db.collection('jobs').doc(newJobId).set(newJob);
+                    generatedCount++;
+                } catch (e) {
+                    console.error("Failed to generate PM:", e);
+                }
+            }
+
+            // Decrement visit count
+            try {
+                const updatedVisits = Math.max(0, agreement.visitsRemaining - 1);
+                await db.collection('serviceAgreements').doc(agreement.id).update({ visitsRemaining: updatedVisits });
+            } catch (e) {
+                console.error("Failed to update agreement visits:", e);
+            }
+        }
+        
+        if (generatedCount > 0) {
+            showToast.success(`Successfully generated and routed ${generatedCount} PM Work Orders.`);
+        } else {
+            showToast.warn("No active agreements found that require visits.");
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <h2 className="text-2xl font-bold dark:text-white">Membership Operations</h2>
-                <Button onClick={() => setIsEnrollModalOpen(true)} className="flex items-center gap-2">
-                    <Plus size={18} /> Manual Enrollment
-                </Button>
+                <div className="flex gap-2">
+                    <Button onClick={handleGeneratePMs} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700">
+                        <Wrench size={18} /> Generate PM Batch
+                    </Button>
+                    <Button onClick={() => setIsEnrollModalOpen(true)} className="flex items-center gap-2">
+                        <Plus size={18} /> Manual Enrollment
+                    </Button>
+                </div>
             </div>
             
 

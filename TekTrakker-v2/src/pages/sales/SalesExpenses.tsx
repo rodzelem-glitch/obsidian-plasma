@@ -1,6 +1,6 @@
 import showToast from "lib/toast";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import { useConfirm } from 'context/ConfirmContext';
@@ -13,14 +13,14 @@ import Select from 'components/ui/Select';
 import { db, functions } from 'lib/firebase';
 import { uploadFileToStorage } from 'lib/storageService';
 import type { Expense, BusinessDocument } from 'types';
-import { Receipt, Plus, Trash2, FileText, Download, PenTool, Paperclip, Camera as CameraIcon, Loader2, ArrowLeft } from 'lucide-react';
+import { Receipt, Plus, Trash2, FileText, Download, Paperclip, Camera as CameraIcon, Loader2, ArrowLeft } from 'lucide-react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { formatAddress } from 'lib/utils';
 import DOMPurify from 'dompurify';
 
 const SalesExpenses: React.FC = () => {
     const navigate = useNavigate();
-    const { state, dispatch } = useAppContext();
+    const { state } = useAppContext();
     const { confirm } = useConfirm();
     const { currentUser } = state;
     const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -87,7 +87,7 @@ const SalesExpenses: React.FC = () => {
                     try {
                         const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
                         const res = await analyzeFn({ base64Images: [dataUrl] });
-                        const extracted = (res.data as any).data;
+                        const extracted = (res.data as { data: { vendor?: string, amount?: string, date?: string, category?: string, description?: string } }).data;
                         if (extracted) {
                             setNewExpense(prev => ({
                                 ...prev,
@@ -375,7 +375,7 @@ const SalesExpenses: React.FC = () => {
         <div className="space-y-6">
             <header className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                    <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                    <button onClick={() => navigate(-1)} title="Go Back" aria-label="Go Back" className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
                         <ArrowLeft size={20} />
                     </button>
                     <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Expenses & W-9</h1>
@@ -465,17 +465,28 @@ const SalesExpenses: React.FC = () => {
                         <Input label="Amount ($)" type="number" step="0.01" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: parseFloat(e.target.value)})} required />
                     </div>
                     <Input label="Vendor" value={newExpense.vendor} onChange={e => setNewExpense({...newExpense, vendor: e.target.value})} placeholder="Hotel, Airline, Restaurant..." required />
-                    <Select label="Category" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})}>
-                        <option value="Travel">Travel</option>
-                        <option value="Meals">Meals</option>
+                    <Select label="Category (Tax Classification)" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})}>
+                        <option value="Advertising">Advertising</option>
+                        <option value="Car and truck expenses">Car and truck expenses</option>
+                        <option value="Commissions and fees">Commissions and fees</option>
+                        <option value="Contract labor">Contract labor</option>
+                        <option value="Insurance">Insurance</option>
+                        <option value="Legal and professional">Legal and professional</option>
+                        <option value="Office expense">Office expense</option>
+                        <option value="Rent or lease">Rent or lease</option>
+                        <option value="Repairs and maintenance">Repairs and maintenance</option>
                         <option value="Supplies">Supplies</option>
-                        <option value="Software">Software</option>
-                        <option value="Other">Other</option>
+                        <option value="Taxes and licenses">Taxes and licenses</option>
+                        <option value="Travel">Travel</option>
+                        <option value="Meals (50% deductible)">Meals (50% deductible)</option>
+                        <option value="Utilities">Utilities</option>
+                        <option value="Materials (COGS)">Materials (COGS)</option>
+                        <option value="Other expenses">Other expenses</option>
                     </Select>
                     <Input label="Description" value={newExpense.description} onChange={e => setNewExpense({...newExpense, description: e.target.value})} placeholder="Client lunch, Flight to HQ..." />
                     
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Receipt Images (Optional)</label>
+                        <p className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Receipt Images (Optional)</p>
                         <div className="flex gap-2 mb-2">
                             <Button type="button" variant="secondary" onClick={handleCaptureReceipt} className="w-full flex items-center justify-center gap-2">
                                 <CameraIcon size={16} /> Capture Receipt / Add Page
@@ -506,9 +517,7 @@ const SalesExpenses: React.FC = () => {
                         <Input label="1. Name (as shown on income tax return)" value={w9Data.name} onChange={e => setW9Data({...w9Data, name: e.target.value})} required />
                         <Input label="2. Business name/disregarded entity name (if different)" value={w9Data.businessName} onChange={e => setW9Data({...w9Data, businessName: e.target.value})} />
                         
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">3. Federal Tax Classification</label>
-                            <Select value={w9Data.taxClass} onChange={e => setW9Data({...w9Data, taxClass: e.target.value})}>
+                            <Select label="3. Federal Tax Classification" value={w9Data.taxClass} onChange={e => setW9Data({...w9Data, taxClass: e.target.value})}>
                                 <option value="Individual">Individual/sole proprietor or single-member LLC</option>
                                 <option value="C Corp">C Corporation</option>
                                 <option value="S Corp">S Corporation</option>
@@ -517,7 +526,7 @@ const SalesExpenses: React.FC = () => {
                                 <option value="LLC">Limited Liability Company</option>
                                 <option value="Other">Other</option>
                             </Select>
-                        </div>
+                        
 
                         {w9Data.taxClass === 'LLC' && (
                              <Input label="LLC Tax Classification (C=C Corp, S=S Corp, P=Partnership)" value={w9Data.llcClass} onChange={e => setW9Data({...w9Data, llcClass: e.target.value.toUpperCase()})} maxLength={1} />

@@ -4,8 +4,9 @@ import { getBaseUrl } from "lib/utils";
 import React, { useState } from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
-import { Trash2, Share2, Copy, Bell } from 'lucide-react';
+import { Trash2, Share2, Copy, Bell, Calculator, Download, UserPlus } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
+import Select from 'components/ui/Select';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
 import Textarea from 'components/ui/Textarea';
@@ -25,6 +26,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
     const [shareMessageText, setShareMessageText] = useState('');
     const [isSharing, setIsSharing] = useState(false);
     const [viewingInvoiceJob, setViewingInvoiceJob] = useState<any>(null);
+    const [taxMode, setTaxMode] = useState(false);
+    const [reassignInvoiceJob, setReassignInvoiceJob] = useState<any>(null);
+    const [newInvoiceCustomerId, setNewInvoiceCustomerId] = useState('');
 
     const [sortBy, setSortBy] = useState('date_desc');
 
@@ -56,6 +60,29 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
             showToast.warn("Failed to share.");
         } finally {
             setIsSharing(false);
+        }
+    };
+
+    const handleReassignInvoice = async () => {
+        if (!reassignInvoiceJob || !newInvoiceCustomerId) return;
+        const newCustomer = state.customers?.find((c: any) => c.id === newInvoiceCustomerId);
+        if (!newCustomer) return;
+        
+        try {
+            await db.collection('jobs').doc(reassignInvoiceJob.id).update({
+                customerId: newCustomer.id,
+                customerName: newCustomer.name,
+                customerEmail: newCustomer.email || null,
+                customerPhone: newCustomer.phone || null,
+                address: newCustomer.address || reassignInvoiceJob.address,
+                'invoice.billToName': newCustomer.name,
+                'invoice.billToAddress': newCustomer.address || ''
+            });
+            showToast.success("Invoice reassigned successfully.");
+            setReassignInvoiceJob(null);
+            setNewInvoiceCustomerId('');
+        } catch (e) {
+            showToast.warn("Failed to reassign invoice.");
         }
     };
 
@@ -139,6 +166,49 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
         }
     });
 
+    const taxSummary = React.useMemo(() => {
+        const summary: Record<string, number> = {
+            'Gross Receipts or Sales': 0,
+            'Returns & Allowances': 0,
+        };
+
+        jobs.filter(j => j?.invoice?.status === 'Paid').forEach(j => {
+            const amt = Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0;
+            if (amt > 0) {
+                summary['Gross Receipts or Sales'] += amt;
+            } else if (amt < 0) {
+                summary['Returns & Allowances'] += Math.abs(amt);
+            }
+        });
+
+        return Object.entries(summary)
+            .map(([category, amount]) => ({ category, amount }))
+            .filter(r => r.amount !== 0);
+    }, [jobs]);
+
+    const handleExportTaxCSV = () => {
+        const taxYear = new Date().getFullYear();
+        let csv = `TekTrakker Income Ledger - Tax Year ${taxYear}\n\n`;
+        csv += `"Tax Classification","Reportable Amount"\n`;
+        
+        taxSummary.forEach(row => {
+            csv += `"${row.category}",${row.amount.toFixed(2)}\n`;
+        });
+        
+        const totalIncome = taxSummary.find(r => r.category === 'Gross Receipts or Sales')?.amount || 0;
+        const totalReturns = taxSummary.find(r => r.category === 'Returns & Allowances')?.amount || 0;
+        const netReceipts = totalIncome - totalReturns;
+        
+        csv += `\n"NET RECEIPTS",${netReceipts.toFixed(2)}\n`;
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Income_Tax_Summary_${taxYear}.csv`;
+        a.click();
+    };
+
     return (
         <Card>
             {viewingInvoiceJob && (
@@ -149,6 +219,23 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     isInternal={true}
                 />
             )}
+            
+            <Modal isOpen={!!reassignInvoiceJob} onClose={() => setReassignInvoiceJob(null)} title="Reassign Invoice">
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-500">Select a new customer to map this invoice to. This will also update the associated job record.</p>
+                    <Select value={newInvoiceCustomerId} onChange={e => setNewInvoiceCustomerId(e.target.value)}>
+                        <option value="">Select Customer...</option>
+                        {state.customers?.map((c: any) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </Select>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="secondary" onClick={() => setReassignInvoiceJob(null)}>Cancel</Button>
+                        <Button onClick={handleReassignInvoice} disabled={!newInvoiceCustomerId}>Save Assignment</Button>
+                    </div>
+                </div>
+            </Modal>
+
             <Modal isOpen={!!shareModalInvoice} onClose={() => setShareModalInvoice(null)} title={`Share Invoice: ${shareModalInvoice?.customerName}`}>
                 <div className="space-y-4">
                     <p className="text-sm text-slate-500">Send this invoice reference to a staff member.</p>
@@ -184,24 +271,54 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
                 <h3 className="font-bold text-gray-800 dark:text-white">Accounts Receivable</h3>
-                <div className="flex items-center gap-2 text-sm">
-                    <label className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
-                    <select 
-                        aria-label="Sort Invoices"
-                        className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value)}
-                    >
-                        <option value="date_desc">Newest First</option>
-                        <option value="date_asc">Oldest First</option>
-                        <option value="name_asc">Customer (A-Z)</option>
-                        <option value="name_desc">Customer (Z-A)</option>
-                        <option value="amount_desc">Amount (High to Low)</option>
-                        <option value="amount_asc">Amount (Low to High)</option>
-                        <option value="status">Status</option>
-                    </select>
+                <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-2 text-sm">
+                        <label className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
+                        <select 
+                            aria-label="Sort Invoices"
+                            className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                        >
+                            <option value="date_desc">Newest First</option>
+                            <option value="date_asc">Oldest First</option>
+                            <option value="name_asc">Customer (A-Z)</option>
+                            <option value="name_desc">Customer (Z-A)</option>
+                            <option value="amount_desc">Amount (High to Low)</option>
+                            <option value="amount_asc">Amount (Low to High)</option>
+                            <option value="status">Status</option>
+                        </select>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button variant={taxMode ? "primary" : "secondary"} onClick={() => setTaxMode(!taxMode)} className="w-auto text-xs flex items-center gap-2">
+                            <Calculator size={14} /> {taxMode ? 'Exit Tax Prep' : 'Tax Prep Mode'}
+                        </Button>
+                    </div>
                 </div>
             </div>
+
+            {taxMode && (
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-6 mb-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h4 className="font-black text-emerald-900 dark:text-emerald-300 text-lg flex items-center gap-2"><Calculator size={20}/> IRS Income Ledger (Cash Basis)</h4>
+                            <p className="text-sm text-emerald-700 dark:text-emerald-400">Aggregated collected revenue (Paid Invoices) by tax classification.</p>
+                        </div>
+                        <Button onClick={handleExportTaxCSV} className="text-xs flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                            <Download size={14} /> Export CSV for CPA
+                        </Button>
+                    </div>
+                    
+                    <Table headers={['Tax Classification', 'Reportable Amount']}>
+                        {taxSummary.map((row, i) => (
+                            <tr key={i} className="bg-white dark:bg-slate-900/50">
+                                <td className="px-6 py-3 font-bold text-slate-800 dark:text-slate-200">{row.category}</td>
+                                <td className="px-6 py-3 font-black text-emerald-600 dark:text-emerald-400">${row.amount.toFixed(2)}</td>
+                            </tr>
+                        ))}
+                    </Table>
+                </div>
+            )}
 
             <Table headers={['Invoice #', 'Customer', 'Date', 'Amount', 'Status', 'Actions']}>
                 {sortedInvoices.map((job: any) => (
@@ -223,6 +340,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                 <button title="View Invoice" onClick={() => setViewingInvoiceJob(job)} className="text-primary-600 hover:underline text-sm font-bold">View</button>
                                 <span className="text-slate-300">|</span>
                                 <button title="Manage Invoice" onClick={() => setEditingInvoiceId(job.id)} className="text-primary-600 hover:underline text-sm font-bold">Manage</button>
+                                <button aria-label="Reassign Customer" title="Reassign Customer" onClick={(e) => { e.stopPropagation(); setReassignInvoiceJob(job); setNewInvoiceCustomerId(job.customerId || ''); }} className="p-1 text-slate-400 hover:text-orange-600"><UserPlus size={16}/></button>
                                 <button aria-label="Copy Reference" title="Copy Reference" onClick={(e) => { e.stopPropagation(); handleCopyRef(job.id); }} className="p-1 text-slate-400 hover:text-primary-600"><Copy size={16}/></button>
                                 <button aria-label="Share Invoice" title="Share Invoice" onClick={(e) => { e.stopPropagation(); setShareModalInvoice(job); }} className="p-1 text-slate-400 hover:text-primary-600"><Share2 size={16}/></button>
                                 <button title="Delete Invoice" onClick={() => handleDeleteInvoice(job.id)} className="text-red-600 hover:text-red-800 p-1"><Trash2 size={16}/></button>

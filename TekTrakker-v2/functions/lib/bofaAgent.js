@@ -45,7 +45,7 @@ const getBofaSecrets = async (db) => {
     return config;
 };
 // Initiate ACH (Accounts Payable / Outbound)
-exports.initiateCashProACH = (0, https_1.onCall)({ cors: true }, async (request) => {
+exports.initiateCashProACH = (0, https_1.onCall)({ cors: true, vpcConnector: 'cashpro-connector', vpcConnectorEgressSettings: 'ALL_TRAFFIC' }, async (request) => {
     const auth = request.auth;
     if (!auth)
         throw new https_1.HttpsError('unauthenticated', 'User must be signed in.');
@@ -71,7 +71,7 @@ exports.initiateCashProACH = (0, https_1.onCall)({ cors: true }, async (request)
     return { success: true, transactionId: `BOFA-ACH-${Date.now()}` };
 });
 // Process Transaction (Accounts Receivable / Inbound)
-exports.processCashProTransaction = (0, https_1.onCall)({ cors: true }, async (request) => {
+exports.processCashProTransaction = (0, https_1.onCall)({ cors: true, vpcConnector: 'cashpro-connector', vpcConnectorEgressSettings: 'ALL_TRAFFIC' }, async (request) => {
     // Note: We don't require auth here because customer checkout may be unauthenticated
     const { amount, customerName, invoiceId, paymentMethodToken } = request.data;
     if (!amount || !customerName || !invoiceId || !paymentMethodToken) {

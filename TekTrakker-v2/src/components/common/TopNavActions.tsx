@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { User } from 'types';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
-import { QrCode, X, User as UserIcon } from 'lucide-react';
+import { QrCode, X, User as UserIcon, PhoneCall } from 'lucide-react';
 import EmployeeProfileModal from '../modals/EmployeeProfileModal';
 import { auth, db } from 'lib/firebase';
 import VirtualWorker from '../ui/VirtualWorker';
@@ -21,6 +21,9 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user, onLogout }) => {
     const [showNotifications, setShowNotifications] = useState(false);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [isPhoneVisible, setIsPhoneVisible] = useState(() => {
+        return localStorage.getItem('rc-widget-hidden') !== 'true';
+    });
 
     useEffect(() => {
         setShowNotifications(false);
@@ -143,9 +146,17 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user, onLogout }) => {
 
     return (
         <>
+            <style>{`
+                ${!isPhoneVisible ? '#rc-widget { display: none !important; }' : ''}
+            `}</style>
             <div className="flex items-center space-x-1 sm:space-x-3">
                 <VirtualWorker variant="nav" />
                 <LiveSupportFloatingButton variant="nav" />
+                <button onClick={() => {
+                    const newVisible = !isPhoneVisible;
+                    setIsPhoneVisible(newVisible);
+                    localStorage.setItem('rc-widget-hidden', (!newVisible).toString());
+                }} className={`p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${!isPhoneVisible ? 'text-gray-400' : 'text-orange-500 bg-orange-50 dark:bg-orange-500/10'}`} title="Toggle Phone Widget"><PhoneCall className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                 <button onClick={() => setIsScannerOpen(true)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="Scan QR/Barcode"><QrCode className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                 <button onClick={() => setIsProfileModalOpen(true)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="My Profile"><UserIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                 <button onClick={toggleTheme} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="Toggle Theme">

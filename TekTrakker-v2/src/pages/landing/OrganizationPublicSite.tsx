@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { db } from 'lib/firebase';
 import type { Organization, Address } from 'types';
 import { Phone, Calendar, Star, MapPin, CheckCircle, ArrowRight, ShieldCheck, Clock, ExternalLink, Facebook, Instagram, Linkedin, Twitter, Youtube } from 'lucide-react';
+import DOMPurify from 'dompurify';
 
 const formatAddress = (addr: Address | string | undefined): string => {
     if (!addr) return '';
@@ -154,8 +155,16 @@ const OrganizationPublicSite: React.FC = () => {
     const zip = org.address?.zip || '';
     const street = org.address?.street || '';
 
+    const containerRef = React.useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (containerRef.current) {
+            containerRef.current.style.setProperty('--org-brand', brandColor);
+        }
+    }, [brandColor]);
+
     return (
-        <div className="min-h-screen bg-white font-sans text-slate-900">
+        <div ref={containerRef} className="min-h-screen bg-white font-sans text-slate-900">
             {/* Top Bar */}
             <div className="bg-slate-900 text-white text-xs py-2 px-4 text-center font-medium tracking-wide">
                 SERVING {city.toUpperCase()} AND SURROUNDING COMMUNITIES
@@ -163,10 +172,6 @@ const OrganizationPublicSite: React.FC = () => {
 
             {/* Nav */}
             <nav className="border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-md z-50">
-                <style dangerouslySetInnerHTML={{ __html: `
-                    .bg-org-brand { background-color: ${brandColor} !important; }
-                    .text-org-brand { color: ${brandColor} !important; }
-                ` }} />
                 <div className="max-w-6xl mx-auto px-6 h-20 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         {org.logoUrl ? (
@@ -182,7 +187,7 @@ const OrganizationPublicSite: React.FC = () => {
                         </a>
                         <button 
                             onClick={() => navigate(`/book?oid=${org.id}`)}
-                            className="bg-org-brand text-white font-bold text-sm px-6 py-3 rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
+                            className="bg-[var(--org-brand)] text-white font-bold text-sm px-6 py-3 rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
                         >
                             Book Online
                         </button>
@@ -210,7 +215,7 @@ const OrganizationPublicSite: React.FC = () => {
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button 
                                 onClick={() => navigate(`/book?oid=${org.id}`)}
-                                className="bg-org-brand h-14 px-4 md:px-8 rounded-xl font-bold text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2"
+                                className="bg-[var(--org-brand)] h-14 px-4 md:px-8 rounded-xl font-bold text-white shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2"
                             >
                                 Schedule Service <Calendar size={18} />
                             </button>
@@ -255,7 +260,7 @@ const OrganizationPublicSite: React.FC = () => {
                         ].map((feat, i) => (
                             <div key={i} className="p-4 md:p-8 bg-slate-50 rounded-3xl hover:shadow-lg transition-shadow duration-300">
                                 <div className="w-12 h-12 rounded-2xl bg-white shadow-sm flex items-center justify-center mb-6 text-slate-900">
-                                    <feat.icon size={24} className="text-org-brand" />
+                                    <feat.icon size={24} className="text-[var(--org-brand)]" />
                                 </div>
                                 <h3 className="text-xl font-bold mb-3">{feat.title}</h3>
                                 <p className="text-slate-500 leading-relaxed">{feat.desc}</p>
@@ -280,7 +285,7 @@ const OrganizationPublicSite: React.FC = () => {
                                     <div className="text-sm font-medium text-slate-400 mb-6 uppercase tracking-wider">
                                         {post.createdAt ? new Date(post.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
                                     </div>
-                                    <div className="prose prose-slate max-w-none prose-a:text-org-brand prose-headings:font-bold" dangerouslySetInnerHTML={{ __html: post.content }} />
+                                    <div className="prose prose-slate max-w-none prose-a:text-[var(--org-brand)] prose-headings:font-bold" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(post.content) }} />
                                 </article>
                             ))}
                         </div>
@@ -290,7 +295,7 @@ const OrganizationPublicSite: React.FC = () => {
 
             {/* CTA Section */}
             <section className="py-24 px-6 relative overflow-hidden">
-                <div className="absolute inset-0 z-0 bg-org-brand"></div>
+                <div className="absolute inset-0 z-0 bg-[var(--org-brand)]"></div>
                 <div className="absolute inset-0 bg-black/10 z-0"></div>
                 <div className="max-w-4xl mx-auto text-center relative z-10 text-white">
                     <h2 className="text-4xl md:text-5xl font-black mb-6">Ready to get started?</h2>

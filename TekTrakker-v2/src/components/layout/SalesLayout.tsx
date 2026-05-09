@@ -15,7 +15,7 @@ const SalesLayout: React.FC<SalesLayoutProps> = ({ user, onLogout, children }) =
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-200 font-sans transition-colors">
+    <div className="flex min-h-[100dvh] bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-200 font-sans transition-colors items-start">
       <SalesSidebar 
         user={user} 
         onLogout={onLogout} 
@@ -23,8 +23,8 @@ const SalesLayout: React.FC<SalesLayoutProps> = ({ user, onLogout, children }) =
         onClose={() => setIsSidebarOpen(false)} 
       />
       
-      <div className="flex-1 flex flex-col overflow-hidden">
-         <header className="bg-white dark:bg-slate-800 shadow-md border-b border-slate-200 dark:border-slate-700 pt-safe shrink-0 z-40 relative">
+      <div className="flex-1 flex flex-col min-h-[100dvh] min-w-0">
+         <header className="sticky top-0 bg-white dark:bg-slate-800 shadow-md border-b border-slate-200 dark:border-slate-700 pt-safe shrink-0 z-40 transition-colors">
            <div className="px-4 h-16 flex items-center justify-between">
               <div className="flex items-center gap-3">
                   <button 
@@ -43,7 +43,7 @@ const SalesLayout: React.FC<SalesLayoutProps> = ({ user, onLogout, children }) =
            </div>
          </header>
          
-        <main id="main-scroll-container" className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 dark:bg-slate-900 p-4 sm:p-6 lg:p-8 shrink-0">
+        <main id="main-scroll-container" className="flex-1 bg-slate-50 dark:bg-slate-900 p-4 sm:p-6 lg:p-8 pb-safe transition-colors">
 
             <div className="min-h-full max-w-7xl mx-auto pb-8">
               <PageHeader />

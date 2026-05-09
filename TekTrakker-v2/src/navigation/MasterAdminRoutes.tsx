@@ -8,6 +8,7 @@ import { useAppContext } from '../context/AppContext';
 
 // Master Admin Components
 import MasterDashboard from '../pages/master/MasterDashboard';
+import MasterInbox from '../pages/master/MasterInbox';
 import MasterOrganizations from '../pages/master/MasterOrganizations';
 import FranchiseManager from '../pages/master/FranchiseManager';
 import GlobalMembers from '../pages/master/GlobalMembers';
@@ -24,6 +25,7 @@ import Messages from '../pages/Messages';
 import AiUsageMaster from '../pages/admin/AiUsageMaster';
 import StorageUsageMaster from '../pages/admin/StorageUsageMaster';
 import VirtualWorkerReports from '../pages/admin/VirtualWorkerReports';
+import CampaignManager from '../pages/sales/CampaignManager';
 
 const MasterAdminRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({ user, handleLogout }) => {
   const { state } = useAppContext();
@@ -48,6 +50,7 @@ const MasterAdminRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({
           <Route path="campaigns" element={<PlatformCampaignStudio />} />
           <Route path="ai-reports" element={<VirtualWorkerReports />} />
           <Route path="integration-requests" element={<MasterIntegrationRequests />} />
+          <Route path="drip-campaigns" element={<CampaignManager />} />
           
           {/* Franchise Admin Only Routes */}
           {!isPlatformOwner && isAllowed && (
@@ -59,6 +62,7 @@ const MasterAdminRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({
             <>
               <Route path="billing" element={<MasterBilling />} />
               <Route path="analytics" element={<PlatformAnalytics />} /> 
+              <Route path="inbox" element={<MasterInbox />} />
             </>
           )}
 

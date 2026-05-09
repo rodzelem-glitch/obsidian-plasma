@@ -1,7 +1,7 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Calendar, ClipboardCheck, Truck, DollarSign, Briefcase, Zap } from 'lucide-react';
-import { Logo } from '../../components/ui/Logo';
+import { Users, Calendar, ClipboardCheck, Truck, DollarSign, Briefcase } from 'lucide-react';
+import { LandingHeader } from './components/LandingHeader';
+import { LandingFooter } from './components/LandingFooter';
 
 const commands = [
     {
@@ -80,23 +80,13 @@ const commands = [
 ];
 
 const VirtualWorkerCommands: React.FC = () => {
-    const navigate = useNavigate();
-
     return (
         <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans">
-            {/* Navbar */}
-            <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/90">
-                <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
-                    <div className="flex items-center cursor-pointer gap-4">
-                        <button onClick={() => navigate('/ai-worker')} aria-label="Go back to AI Worker" title="Go back to AI Worker" className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full transition-colors">
-                            <ArrowLeft size={20} />
-                        </button>
-                        <Logo className="h-10 w-auto text-indigo-600" />
-                    </div>
-                </div>
-            </nav>
+            <LandingHeader 
+                backButton={{ label: 'Back to AI Worker', href: '/ai-worker' }}
+            />
 
-            <header className="pt-32 pb-12 px-6 text-center">
+            <header className="pt-48 pb-12 px-6 text-center">
                 <div className="max-w-3xl mx-auto flex flex-col items-center">
                     <img src="/mascot.png" alt="AI Mascot" className="w-28 h-28 object-contain filter drop-shadow-xl mb-6" />
                     <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-4 text-slate-900">
@@ -108,12 +98,12 @@ const VirtualWorkerCommands: React.FC = () => {
                 </div>
             </header>
 
-            <main className="max-w-7xl mx-auto px-6">
+            <main className="max-w-7xl mx-auto px-6 mb-20">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {commands.map((section, idx) => (
                         <div key={idx} className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 hover:shadow-xl transition-all duration-300">
                             <div className="flex items-center gap-4 mb-6">
-                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 \${section.color}`}>
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${section.color}`}>
                                     <section.icon size={24} />
                                 </div>
                                 <h2 className="text-xl font-bold text-slate-900 block">{section.category}</h2>
@@ -140,18 +130,7 @@ const VirtualWorkerCommands: React.FC = () => {
                 </div>
             </main>
 
-            <footer className="mt-auto bg-slate-950 border-t border-white/5 py-12 px-6 mt-20">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all"><Logo className="h-8 w-auto" /></div>
-                    <div className="flex gap-8 text-sm text-slate-500 font-medium">
-                        <a href="/#/faq" className="hover:text-white transition-colors">FAQ</a>
-                        <a href="/#/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
-                        <a href="/#/terms" className="hover:text-white transition-colors">Terms of Service</a>
-                        <a href="mailto:platform@tektrakker.com" className="hover:text-white transition-colors">Support</a>
-                    </div>
-                    <div className="text-slate-600 text-xs font-medium">&copy; {new Date().getFullYear()} TekTrakker Inc. All rights reserved.</div>
-                </div>
-            </footer>
+            <LandingFooter />
         </div>
     );
 };

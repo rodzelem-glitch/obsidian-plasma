@@ -1,29 +1,20 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Sparkles, Zap, Shield, ArrowRight, CheckCircle, Infinity, Clock, DollarSign, Calendar, Package, FileText } from 'lucide-react';
-import { Logo } from '../../components/ui/Logo';
+import { Bot, Sparkles, Zap, Shield, ArrowRight, CheckCircle, Infinity as InfinityIcon, Clock, DollarSign, Calendar, Package, FileText } from 'lucide-react';
 import LandingChatbot from '../../components/LandingChatbot';
+import { LandingHeader } from './components/LandingHeader';
+import { LandingFooter } from './components/LandingFooter';
 
 const VirtualWorkerMarketing: React.FC = () => {
     const navigate = useNavigate();
 
     return (
-        <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500 selection:text-white">
-            {/* Navbar */}
-            <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/80">
-                <div className="max-w-7xl mx-auto px-6 h-24 flex justify-between items-center">
-                    <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}>
-                        <Logo className="h-14 w-auto text-indigo-600" />
-                    </div>
-                    <div className="flex gap-4 items-center">
-                        <button onClick={() => navigate('/login?view=login')} className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-200 text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-sm">
-                            Login
-                        </button>
-                    </div>
-                </div>
-            </nav>
+        <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500 selection:text-white">
+            <LandingHeader 
+                backButton={{ label: 'Back to Home', href: '/' }}
+            />
 
-            <header className="pt-40 pb-20 px-6 relative overflow-hidden">
+            <header className="pt-48 pb-20 px-6 relative overflow-hidden">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px] -z-10" />
                 <div className="max-w-7xl mx-auto text-center relative z-10">
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 border border-indigo-200 mb-8 animate-fade-in">
@@ -37,8 +28,8 @@ const VirtualWorkerMarketing: React.FC = () => {
                         Hire the Virtual Worker Add-On. It works 24/7/365, never takes a sick day, understands your entire database instantly, and costs less than your daily coffee.
                     </p>
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mx-auto">
-                        <button disabled className="h-16 px-10 rounded-2xl bg-indigo-600/50 text-white/50 font-black text-lg cursor-not-allowed flex items-center justify-center gap-2">
-                            Coming Soon to TekTrakker <Clock size={20} />
+                        <button onClick={() => navigate('/login')} className="h-16 px-10 rounded-2xl bg-indigo-600 text-white font-black text-lg hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 hover:scale-[1.02]">
+                            Deploy Your Agent <ArrowRight size={20} />
                         </button>
                         <button onClick={() => navigate('/ai-worker-commands')} className="h-16 px-10 rounded-2xl bg-white text-indigo-600 border-2 border-indigo-100 hover:border-indigo-300 hover:bg-slate-50 font-black text-lg transition-all flex items-center justify-center gap-2 shadow-sm">
                             What can I tell my agent? <ArrowRight size={20} />
@@ -80,7 +71,7 @@ const VirtualWorkerMarketing: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex items-start gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><Infinity size={24} /></div>
+                                <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><InfinityIcon size={24} /></div>
                                 <div>
                                     <h4 className="font-bold text-lg text-slate-900 mb-1">Infinite Context</h4>
                                     <p className="text-slate-600 text-sm">Understands complex queries comparing jobs, customers, technicians, and timelines holistically.</p>
@@ -118,10 +109,6 @@ const VirtualWorkerMarketing: React.FC = () => {
                         </div>
                     ))}
                 </div>
-                
-                <div className="text-center mt-16 w-full">
-                    <h3 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 drop-shadow-sm tracking-tight pb-2">And So Much More!</h3>
-                </div>
             </section>
             
             <section className="py-20 px-6 bg-slate-900 text-white relative">
@@ -156,10 +143,6 @@ const VirtualWorkerMarketing: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                    
-                    <p className="text-slate-500 mt-10 text-sm max-w-2xl mx-auto">
-                        If you run out of tokens, the Virtual Worker simply rests and pauses autonomous tasks until you purchase another Power Pack from your dashboard. Complete billing safely via Stripe or PayPal.
-                    </p>
                 </div>
             </section>
 
@@ -172,33 +155,19 @@ const VirtualWorkerMarketing: React.FC = () => {
                             The more your business scales, the more affordable your AI backbone becomes.
                         </p>
                         <div className="flex flex-col items-center md:items-start w-full">
-                            <button disabled className="h-16 px-12 rounded-2xl bg-slate-200 text-slate-500 font-black text-xl flex items-center justify-center gap-2 cursor-not-allowed">
-                                Coming Soon to TekTrakker <Clock size={22} />
+                            <button onClick={() => navigate('/login')} className="h-16 px-12 rounded-2xl bg-slate-900 text-white font-black text-xl flex items-center justify-center gap-2 hover:bg-indigo-600 transition-colors shadow-xl hover:shadow-2xl hover:-translate-y-1">
+                                Deploy Your Virtual Worker <ArrowRight size={22} />
                             </button>
-                            <p className="mt-6 text-sm text-slate-400 font-bold uppercase tracking-widest flex items-center">Join the waitlist to receive access</p>
+                            <p className="mt-6 text-sm text-slate-400 font-bold flex items-center">Included with select plans or available via token recharge.</p>
                         </div>
                     </div>
                     <div className="md:w-64 shrink-0 hidden md:flex items-center justify-center">
                         <img src="/mascot.png" alt="AI Mascot" className="max-h-[380px] h-full object-contain filter drop-shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:-translate-y-2 transition-transform duration-500" />
                     </div>
-                    <div className="w-full md:hidden flex justify-center mt-8">
-                        <img src="/mascot.png" alt="AI Mascot" className="h-64 object-contain filter drop-shadow-xl" />
-                    </div>
                 </div>
             </section>
 
-            <footer className="mt-auto bg-slate-950 border-t border-white/5 py-12 px-6">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-                    <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all"><Logo className="h-8 w-auto" /></div>
-                    <div className="flex gap-8 text-sm text-slate-500 font-medium">
-                        <a href="/#/faq" className="hover:text-white transition-colors">FAQ</a>
-                        <a href="/#/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
-                        <a href="/#/terms" className="hover:text-white transition-colors">Terms of Service</a>
-                        <a href="mailto:platform@tektrakker.com" className="hover:text-white transition-colors">Support</a>
-                    </div>
-                    <div className="text-slate-600 text-xs font-medium">&copy; {new Date().getFullYear()} TekTrakker Inc. All rights reserved.</div>
-                </div>
-            </footer>
+            <LandingFooter />
 
             <LandingChatbot />
         </div>

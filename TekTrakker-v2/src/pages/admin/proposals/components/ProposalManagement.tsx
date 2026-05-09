@@ -1,4 +1,5 @@
 import showToast from "lib/toast";
+import { UserPlus } from 'lucide-react';
 
 import React, { useState } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -11,6 +12,7 @@ import type { Proposal } from 'types';
 import { db } from 'lib/firebase';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import { globalConfirm } from "lib/globalConfirm";
+import Modal from 'components/ui/Modal';
 
 const ProposalManagement: React.FC = () => {
     const { state } = useAppContext();
@@ -18,6 +20,8 @@ const ProposalManagement: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
     const [viewProposalId, setViewProposalId] = useState<string | null>(null);
+    const [reassignProposal, setReassignProposal] = useState<Proposal | null>(null);
+    const [newCustomerId, setNewCustomerId] = useState('');
 
     const viewProposal = state.proposals.find(p => p.id === viewProposalId);
 
@@ -54,6 +58,25 @@ const ProposalManagement: React.FC = () => {
         }
     };
 
+    const handleReassign = async () => {
+        if (!reassignProposal || !newCustomerId) return;
+        const newCustomer = state.customers?.find((c: any) => c.id === newCustomerId);
+        if (!newCustomer) return;
+        
+        try {
+            await db.collection('proposals').doc(reassignProposal.id).update({
+                customerId: newCustomer.id,
+                customerName: newCustomer.name,
+                customerEmail: newCustomer.email || null
+            });
+            showToast.success(`Reassigned to ${newCustomer.name}`);
+            setReassignProposal(null);
+            setNewCustomerId('');
+        } catch (e) {
+            showToast.warn("Failed to reassign proposal.");
+        }
+    };
+
     return (
         <div className="space-y-6">
             {viewProposalId && viewProposal && (
@@ -64,6 +87,22 @@ const ProposalManagement: React.FC = () => {
                     isInternal={true}
                 />
             )}
+
+            <Modal isOpen={!!reassignProposal} onClose={() => setReassignProposal(null)} title="Reassign Proposal">
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-500">Select a new customer to map this proposal to.</p>
+                    <Select value={newCustomerId} onChange={e => setNewCustomerId(e.target.value)}>
+                        <option value="">Select Customer...</option>
+                        {state.customers?.map((c: any) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </Select>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="secondary" onClick={() => setReassignProposal(null)}>Cancel</Button>
+                        <Button onClick={handleReassign} disabled={!newCustomerId}>Save Assignment</Button>
+                    </div>
+                </div>
+            </Modal>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card className="bg-white dark:bg-slate-800 border-l-4 border-primary-500 shadow-sm">
@@ -134,6 +173,7 @@ const ProposalManagement: React.FC = () => {
                             <td className="px-6 py-4">
                                 <div className="flex gap-2">
                                     <button title="View Proposal" aria-label="View Proposal" onClick={(e) => { e.stopPropagation(); setViewProposalId(p.id); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-primary-600 transition-colors"><Eye size={16}/></button>
+                                    <button title="Reassign Customer" aria-label="Reassign Customer" onClick={(e) => { e.stopPropagation(); setReassignProposal(p); setNewCustomerId(p.customerId || ''); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-orange-600 transition-colors"><UserPlus size={16}/></button>
                                     <button title="Send Proposal" aria-label="Send Proposal" onClick={(e) => { e.stopPropagation(); handleSend(p); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"><Send size={16}/></button>
                                     <button title="Delete Proposal" aria-label="Delete Proposal" onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16}/></button>
                                 </div>

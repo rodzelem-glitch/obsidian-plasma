@@ -292,11 +292,14 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
             const campaignRef = await db.collection('marketingCampaigns').add(trackingPayload);
             const campaignId = campaignRef.id;
 
-            const promises = targetCustomers.map(c => {
+            const batches = [];
+            let currentBatch = db.batch();
+            let count = 0;
+            targetCustomers.forEach(c => {
                  const trackingPixel = `\n<img src="https://us-central1-tektrakker.cloudfunctions.net/trackEmailOpen?campaignId=${campaignId}&customerId=${c.id}" width="1" height="1" style="display:none; visibility:hidden; width:1px; height:1px;" alt="" />`;
                  const personalizedHtml = deliveryHtml + trackingPixel;
 
-                 return db.collection('mail_queue').add({
+                 currentBatch.set(db.collection('mail_queue').doc(), {
                     to: [c.email!.trim().toLowerCase()], 
                     message: {
                         subject: subject.trim(),
@@ -308,9 +311,17 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                     campaignId: campaignId,
                     createdAt: new Date().toISOString()
                  });
+                 count++;
+                 if (count === 400) {
+                     batches.push(currentBatch);
+                     currentBatch = db.batch();
+                     count = 0;
+                 }
             });
-
-            await Promise.all(promises);
+            if (count > 0) batches.push(currentBatch);
+            for (const b of batches) {
+                await b.commit();
+            }
             
             toast.success(`Campaign successfully dispatched to ${targetCustomers.length} recipient(s)! Analytics telemetry is live.`);
             setSelectedCustomerIds(new Set());

@@ -77,7 +77,7 @@ const RepairStep: React.FC<RepairStepProps> = ({
                                     <p className="text-xs font-bold text-slate-800 dark:text-white">{part.name}</p>
                                     <p className="text-[9px] text-slate-400 uppercase font-black">QTY: {part.quantity} • {part.location || 'Truck'}</p>
                                 </div>
-                                <button onClick={() => onRemovePart(i)} className="p-1.5 text-slate-400 hover:text-red-700 dark:hover:text-red-400 transition-colors">
+                                <button title="Remove Part" aria-label="Remove Part" onClick={() => onRemovePart(i)} className="p-1.5 text-slate-400 hover:text-red-700 dark:hover:text-red-400 transition-colors">
                                     <X size={14}/>
                                 </button>
                             </div>
@@ -112,21 +112,28 @@ const RepairStep: React.FC<RepairStepProps> = ({
                     <label htmlFor="repair-gallery" className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors bg-white dark:bg-slate-900 dark:border-slate-700">
                         <Plus size={24} className="text-slate-400 mb-1"/>
                         <span className="text-[10px] font-bold text-slate-500">Gallery</span>
-                        <input id="repair-gallery" type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, 'Completed Work')} className="hidden" />
+                        <input id="repair-gallery" type="file" multiple accept="image/*" onChange={(e) => handlePhotoUpload(e, 'Completed Work')} className="hidden" />
                     </label>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     {files.filter(f => (f.metadata?.label || (f as any).label) === 'Completed Work').map(f => (
                         <div key={f.id} className="relative group w-20 h-20 rounded-lg overflow-hidden border border-green-200/50 shadow-sm">
-                            <img 
-                                src={f.dataUrl || (f as any).url} 
-                                alt={f.fileName} 
-                                className="w-full h-full object-cover cursor-pointer"
-                                onClick={() => onViewPhoto(f)}
-                            />
                             <button 
+                                type="button"
+                                onClick={() => onViewPhoto(f)}
+                                className="w-full h-full p-0 border-none outline-none block"
+                            >
+                                <img 
+                                    src={f.dataUrl || (f as any).url} 
+                                    alt={f.fileName} 
+                                    className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
+                                />
+                            </button>
+                            <button 
+                                title="Delete Photo"
+                                aria-label="Delete Photo"
                                 onClick={(e) => { e.stopPropagation(); onDeletePhoto(f); }}
-                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-lg"
                             >
                                 <X size={10}/>
                             </button>

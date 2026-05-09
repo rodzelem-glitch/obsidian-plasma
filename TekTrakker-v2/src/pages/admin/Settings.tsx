@@ -26,7 +26,7 @@ import { syncOrgAIContext } from 'lib/aiContext';
 const ALL_INDUSTRIES: IndustryVertical[] = [
     'HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General',
     'Cleaning', 'Painting', 'Roofing', 'Contracting', 'Masonry',
-    'Telecommunications', 'Solar', 'Security', 'Pet Grooming'
+    'Telecommunications', 'Solar', 'Security', 'Pet Grooming', 'Property Management'
 ];
 
 const DEFAULT_GOOGLE_CLIENT_ID = "655867451194-3p9dkm7tjb15a2njggqa2jcc64i4vibh.apps.googleusercontent.com";
@@ -116,6 +116,7 @@ const Settings: React.FC = () => {
     // Accounting Integrations
     const [quickbooksConnected, setQuickbooksConnected] = useState(false);
     const [isConnectingQuickbooks, setIsConnectingQuickbooks] = useState(false);
+    const [isConnectingRingCentral, setIsConnectingRingCentral] = useState(false);
 
     // IoT Integrations
     const [seamApiKey, setSeamApiKey] = useState('');
@@ -153,7 +154,15 @@ const Settings: React.FC = () => {
 
     // Communications
     const [ringCentralClientId, setRingCentralClientId] = useState('');
+    const [rcBackendClientId, setRcBackendClientId] = useState('');
     const [ringCentralClientSecret, setRingCentralClientSecret] = useState('');
+    const [ringCentralJwtToken, setRingCentralJwtToken] = useState('');
+    const [rcPrimarySms, setRcPrimarySms] = useState(false);
+    const [rcEnableVoiceAi, setRcEnableVoiceAi] = useState(false);
+    const [rcRingsBeforeAi, setRcRingsBeforeAi] = useState('');
+    const [rcSmsOnMissed, setRcSmsOnMissed] = useState(false);
+    const [rcSmsTemplate, setRcSmsTemplate] = useState('');
+    const [rcMappings, setRcMappings] = useState<{ phoneNumber: string, assignedUserId: string, forwardToUserId: string }[]>([]);
 
     // Widgets & Extras
     const [openWeatherApiKey, setOpenWeatherApiKey] = useState('');
@@ -268,7 +277,15 @@ const Settings: React.FC = () => {
                         if (sec.goodLeapApiKey) setGoodLeapApiKey(sec.goodLeapApiKey);
                         if (sec.checkrApiKey) setCheckrApiKey(sec.checkrApiKey);
                         if (sec.ringCentralClientId) setRingCentralClientId(sec.ringCentralClientId);
+                        if (sec.rcBackendClientId) setRcBackendClientId(sec.rcBackendClientId);
                         if (sec.ringCentralClientSecret) setRingCentralClientSecret(sec.ringCentralClientSecret);
+                        if (sec.ringCentralJwtToken) setRingCentralJwtToken(sec.ringCentralJwtToken);
+                        if (sec.rcPrimarySms !== undefined) setRcPrimarySms(sec.rcPrimarySms);
+                        if (sec.rcEnableVoiceAi !== undefined) setRcEnableVoiceAi(sec.rcEnableVoiceAi);
+                        if (sec.rcRingsBeforeAi) setRcRingsBeforeAi(sec.rcRingsBeforeAi);
+                        if (sec.rcSmsOnMissed !== undefined) setRcSmsOnMissed(sec.rcSmsOnMissed);
+                        if (sec.rcSmsTemplate) setRcSmsTemplate(sec.rcSmsTemplate);
+                        if (sec.rcMappings && Array.isArray(sec.rcMappings)) setRcMappings(sec.rcMappings);
 
                         if (sec.smtpConfig) {
                             setSmtpHost(sec.smtpConfig.host || '');
@@ -400,7 +417,15 @@ const Settings: React.FC = () => {
             goodLeapApiKey,
             checkrApiKey,
             ringCentralClientId,
+            rcBackendClientId,
             ringCentralClientSecret,
+            ringCentralJwtToken,
+            rcPrimarySms,
+            rcEnableVoiceAi,
+            rcRingsBeforeAi,
+            rcSmsOnMissed,
+            rcSmsTemplate,
+            rcMappings,
             squareToken,
             squareLocId,
             squareAppId,
@@ -494,6 +519,46 @@ const Settings: React.FC = () => {
                 setGoogleApiConnected(false);
                 dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...state.currentOrganization, googleApiConnected: false } });
             } catch (e) { showToast.error("Failed to disconnect."); }
+        }
+    };
+
+    const handleConnectRingCentral = async () => {
+        if (!state.currentOrganization) return;
+        if (!ringCentralClientId || !ringCentralJwtToken) {
+            showToast.error("Please enter both Client ID and JWT Token first.");
+            return;
+        }
+
+        setIsConnectingRingCentral(true);
+        try {
+            const registerWebhook = functions.httpsCallable('registerRingCentralWebhook');
+            // Hardcode the webhook URL since it's known
+            const webhookUrl = `https://us-central1-tektrakker.cloudfunctions.net/ringCentralWebhook`;
+            await registerWebhook({
+                orgId: state.currentOrganization.id,
+                clientId: rcBackendClientId || ringCentralClientId,
+                clientSecret: ringCentralClientSecret || '', // Some apps don't need a secret if using JWT
+                jwtToken: ringCentralJwtToken,
+                webhookUrl
+            });
+
+            // Also instantly save the configuration block
+            await db.collection('organizations').doc(state.currentOrganization.id).collection('secrets').doc('config').set({
+                ringCentralClientId,
+                ringCentralClientSecret: ringCentralClientSecret || '',
+                ringCentralJwtToken,
+                rcEnableVoiceAi,
+                rcRingsBeforeAi,
+                rcSmsOnMissed,
+                rcSmsTemplate
+            }, { merge: true });
+
+            showToast.success("Successfully registered RingCentral webhook and saved settings!");
+        } catch (error: any) {
+            console.error("RingCentral connection error:", error);
+            showToast.error(error.message || "Failed to connect to RingCentral.");
+        } finally {
+            setIsConnectingRingCentral(false);
         }
     };
 
@@ -699,7 +764,7 @@ const Settings: React.FC = () => {
                 {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled }} />}
                 {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
                 {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths }} />}
-                {activeTab === 'integrations' && <IntegrationsTab {...{ paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, ringCentralClientSecret, setRingCentralClientSecret, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
+                {activeTab === 'integrations' && <IntegrationsTab {...{ paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
                 {activeTab === 'branding' && <BrandingTab {...{ brandingColor, setBrandingColor, financingLink, setFinancingLink, logoUrl, setLogoUrl, publicLogoUrl, setPublicLogoUrl, letterheadUrl, setLetterheadUrl, footerImageUrl, setFooterImageUrl, bannerUrl, setBannerUrl, handleFileUpload, publicProfileEnabled, setPublicProfileEnabled, publicDescription, setPublicDescription, publicCredentials, setPublicCredentials, publicServices, setPublicServices, acceptsSubcontracting, setAcceptsSubcontracting }} />}
                 {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling, handleReactivate }} />}
                 {activeTab === 'data' && <DataTab {...{ handleExportData, handleDetectDuplicates, handleCleanupRecords, handleFlushCache, handleResetOverlays, handleImportFile: (e) => { e.target.value = ''; showToast.info('Bulk import is currently disabled. Contact support to migrate data.'); }, handleDownloadTemplate }} />}

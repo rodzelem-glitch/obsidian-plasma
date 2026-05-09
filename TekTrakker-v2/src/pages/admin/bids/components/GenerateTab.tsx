@@ -13,9 +13,11 @@ interface GenerateTabProps {
     onGlobalEdit: (prompt: string) => void;
     onEditDoc: (docIndex: number, prompt: string) => void;
     onDownload: (doc: BidDoc) => void;
+    onSubmit: () => void;
+    hasSubmissionEmail: boolean;
 }
 
-const GenerateTab: React.FC<GenerateTabProps> = ({ docs, onGenerate, isGenerating, onGlobalEdit, onEditDoc, onDownload }) => {
+const GenerateTab: React.FC<GenerateTabProps> = ({ docs, onGenerate, isGenerating, onGlobalEdit, onEditDoc, onDownload, onSubmit, hasSubmissionEmail }) => {
     const [globalEditPrompt, setGlobalEditPrompt] = useState('');
     const [editPrompts, setEditPrompts] = useState<Record<number, string>>({});
     const [openDocIndices, setOpenDocIndices] = useState(new Set<number>());
@@ -73,10 +75,15 @@ const GenerateTab: React.FC<GenerateTabProps> = ({ docs, onGenerate, isGeneratin
                         </div>
                     </div>
                     <div className="w-px bg-slate-200 dark:bg-slate-700 h-20 hidden md:block"></div>
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 flex flex-col gap-3">
                         <Button onClick={onGenerate} disabled={isGenerating} className="h-14 px-10 text-lg bg-gradient-to-r from-purple-600 to-blue-600 shadow-xl flex items-center gap-2">
                             {isGenerating ? <><Spinner /> Generating...</> : 'Generate Documents'}
                         </Button>
+                        {docs.length > 0 && hasSubmissionEmail && (
+                            <Button onClick={onSubmit} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow">
+                                Submit Final Package
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>

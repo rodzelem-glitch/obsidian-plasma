@@ -26,7 +26,7 @@ service cloud.firestore {
         (request.auth.token.organizationId != null && request.auth.token.organizationId == resourceOrgId) ||
         (exists(userPath) && get(userPath).data.get('organizationId', '') == resourceOrgId)
       );
-      return isDirectMember || isOrgFranchiseAdmin(resourceOrgId);
+      return isDirectMember || isMaster() || isPlatformSales() || isOrgFranchiseAdmin(resourceOrgId);
     }
     
     function isFranchiseAdmin(docFranchiseId) {
@@ -163,7 +163,22 @@ service cloud.firestore {
 
       match /aiLongTasks/{taskId} {
          allow read: if isMaster() || isPlatformSales() || isOrgMember(orgId);
-         allow write: if false; // Written only by Cloud Functions
+         allow write: if isMaster() || isOrgMember(orgId);
+      }
+
+      match /aiTasks/{taskId} {
+         allow read: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+         allow write: if isMaster() || isOrgMember(orgId);
+      }
+
+      match /active_calls/{callId} {
+         allow read: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+         allow write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+      }
+
+      match /fleet_positions/{posId} {
+         allow read: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+         allow write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
       }
     }
 
@@ -216,6 +231,16 @@ service cloud.firestore {
       allow create: if isSignedIn();
     }
 
+    match /applicants/{applicantId} {
+      allow create: if true; // Public applicant submissions
+      allow read, write: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+    }
+
+    match /messages/{messageId} {
+      allow create: if true; // Unauthenticated system alerts (e.g. from applicant submissions)
+      allow read, write: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+    }
+
     match /inventory/{itemId} {
       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
       allow write: if isMaster() || isOrgMember(resource.data.organizationId);
@@ -226,6 +251,18 @@ service cloud.firestore {
       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
       allow write: if isMaster() || isOrgMember(resource.data.organizationId);
       allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /serviceLocations/{locationId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || isCustomerOwner(request.resource.data);
+    }
+
+    match /equipment/{equipmentId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || isCustomerOwner(request.resource.data);
     }
 
     match /payables/{payableId} {

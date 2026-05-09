@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { useAppContext } from '../../context/AppContext';
 import { db } from '../../lib/firebase';
 import { Network, Search, CheckCircle, Clock, ExternalLink } from 'lucide-react';
 import showToast from '../../lib/toast';
@@ -15,11 +16,13 @@ interface IntegrationRequest {
 }
 
 const MasterIntegrationRequests: React.FC = () => {
+  const { state } = useAppContext();
   const [requests, setRequests] = useState<IntegrationRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
+    if (!state.currentUser) return;
     const q = query(collection(db, 'integration_requests'), orderBy('requestedAt', 'desc'));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {

@@ -26,6 +26,8 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         currentJob,
         customerName, setCustomerName,
         address, setAddress,
+        billToName, setBillToName,
+        billToAddress, setBillToAddress,
         lineItems,
         handleAddItem, handleUpdateItem, handleDeleteItem,
         totals,
@@ -110,6 +112,10 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     setCustomerName={setCustomerName}
                     address={address}
                     setAddress={setAddress}
+                    billToName={billToName}
+                    setBillToName={setBillToName}
+                    billToAddress={billToAddress}
+                    setBillToAddress={setBillToAddress}
                     currentJob={currentJob}
                 />
 

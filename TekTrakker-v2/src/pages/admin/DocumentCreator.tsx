@@ -103,7 +103,8 @@ const DocumentCreator: React.FC = () => {
         
         setIsSaving(true);
 
-        const content = contentEditableRef.current?.innerHTML || editingDoc.content || '';
+        const rawContent = contentEditableRef.current?.innerHTML || editingDoc.content || '';
+        const content = DOMPurify.sanitize(rawContent);
         const isUpdating = !!editingDoc.id;
 
         const docToSave: BusinessDocument = {
@@ -163,7 +164,7 @@ const DocumentCreator: React.FC = () => {
             setEditingDoc(prev => prev ? { ...prev, content: data.text } : null);
             
             if (contentEditableRef.current) {
-                contentEditableRef.current.innerHTML = data.text;
+                contentEditableRef.current.innerHTML = DOMPurify.sanitize(data.text);
             }
 
             setIsAiModalOpen(false);
@@ -267,7 +268,8 @@ const DocumentCreator: React.FC = () => {
     };
 
     const handlePrint = () => {
-        const content = contentEditableRef.current?.innerHTML || editingDoc?.content || '';
+        const rawContent = contentEditableRef.current?.innerHTML || editingDoc?.content || '';
+        const content = DOMPurify.sanitize(rawContent);
         const win = window.open('', '', 'width=800,height=600');
         win?.document.write(`<html><head><title>${editingDoc?.title || 'Document'}</title></head><body>${content}</body></html>`);
         win?.document.close();

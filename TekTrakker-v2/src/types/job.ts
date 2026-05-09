@@ -16,6 +16,9 @@ export interface Job {
   address: string | Address;
   tasks: string[];
   customerId?: string | null;
+  locationId?: string | null;
+  locationName?: string | null;
+  poNumber?: string | null;
   customerPhone?: string | null;
   customerEmail?: string | null;
   jobStatus: 'Scheduled' | 'In Progress' | 'Completed';

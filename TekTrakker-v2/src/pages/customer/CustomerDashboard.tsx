@@ -47,6 +47,7 @@ const CustomerDashboard: React.FC = () => {
     const [activeCustomerRecord, setActiveCustomerRecord] = useState<Customer | null>(null);
     const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
     const [orgPlans, setOrgPlans] = useState<MembershipPlan[]>([]);
+    const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
 
     const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -214,23 +215,31 @@ const CustomerDashboard: React.FC = () => {
     const myJobs = useMemo<Job[]>(() => {
         if (!activeCustomerRecord) return [];
         const cleanName = activeCustomerRecord.name.trim().toLowerCase();
-        return jobs.filter(j => 
+        let filtered = jobs.filter(j => 
             j.organizationId === activeOrg?.id && 
             (j.customerId === activeCustomerRecord.id || j.customerName?.trim().toLowerCase() === cleanName)
-        ).sort((a, b) => new Date(b.appointmentTime).getTime() - new Date(a.appointmentTime).getTime());
-    }, [activeCustomerRecord, activeOrg, jobs]);
+        );
+        if (selectedLocationId !== 'all') {
+            filtered = filtered.filter(j => j.locationId === selectedLocationId);
+        }
+        return filtered.sort((a, b) => new Date(b.appointmentTime).getTime() - new Date(a.appointmentTime).getTime());
+    }, [activeCustomerRecord, activeOrg, jobs, selectedLocationId]);
 
     const myProposals = useMemo<Proposal[]>(() => {
         if (!state.currentUser?.email) return [];
         const email = state.currentUser.email.toLowerCase();
         const cleanName = (state.currentUser.firstName + " " + state.currentUser.lastName).toLowerCase();
 
-        return state.proposals.filter(p => 
+        let filtered = state.proposals.filter(p => 
             p.customerEmail?.toLowerCase() === email || 
             p.customerName?.toLowerCase() === cleanName ||
             (activeCustomerRecord && p.customerId === activeCustomerRecord.id)
         );
-    }, [state.currentUser, state.proposals, activeCustomerRecord]);
+        if (selectedLocationId !== 'all') {
+            filtered = filtered.filter(p => p.locationId === selectedLocationId);
+        }
+        return filtered;
+    }, [state.currentUser, state.proposals, activeCustomerRecord, selectedLocationId]);
 
     const upcomingJobs = useMemo<Job[]>(() => myJobs.filter((j: Job) => j.jobStatus !== 'Completed'), [myJobs]);
     const activeJob = useMemo<Job | null>(() => myJobs.find(j => j.jobStatus === 'In Progress') || upcomingJobs[0] || null, [myJobs, upcomingJobs]);
@@ -618,6 +627,24 @@ const CustomerDashboard: React.FC = () => {
                       <div>
                           <h1 className="text-3xl font-black text-slate-900 dark:text-white">Welcome, {activeCustomerRecord.firstName || activeCustomerRecord.name.split(' ')[0]}</h1>
                           <p className="text-slate-500 flex items-center gap-2"><MapPinIcon size={14}/> {formatAddress(activeCustomerRecord.address)}</p>
+                          {(activeCustomerRecord.customerType as string) === 'Property Management' && (
+                              <div className="mt-2 flex items-center gap-2">
+                                  <span className="text-sm font-bold text-slate-600 dark:text-slate-400">View Location:</span>
+                                  <select 
+                                      title="Select Location View"
+                                      aria-label="Select Location View"
+                                      value={selectedLocationId} 
+                                      onChange={(e) => setSelectedLocationId(e.target.value)}
+                                      className="text-sm bg-slate-100 dark:bg-slate-800 border-none rounded-md px-3 py-1 font-medium text-slate-900 dark:text-white"
+                                  >
+                                      <option value="all">All Locations</option>
+                                      <option value="default">Main Office / Unassigned</option>
+                                      {activeCustomerRecord.serviceLocations?.map(loc => (
+                                          <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name}</option>
+                                      ))}
+                                  </select>
+                              </div>
+                          )}
                       </div>
                   </div>
                   <div className="flex flex-col items-end gap-3">
@@ -767,6 +794,71 @@ const CustomerDashboard: React.FC = () => {
                              <Input label="Address" value={profileData.address || ''} onChange={e => setProfileData({...profileData, address: e.target.value as any})} />
                         </div>
                     </div>
+                    {(activeCustomerRecord.customerType as string) === 'Property Management' && (
+                        <div className="space-y-4 pt-4 border-t">
+                            <div className="flex justify-between items-center">
+                                <h4 className="font-bold text-sm">Managed Locations</h4>
+                                <Button type="button" variant="secondary" onClick={() => {
+                                    const newLoc = { id: `loc-${Date.now()}`, name: '', address: '', propertyName: '' };
+                                    setProfileData({ ...profileData, serviceLocations: [...(profileData.serviceLocations || []), newLoc] });
+                                }} className="text-xs py-1 px-2">Add Location</Button>
+                            </div>
+                            <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                                {(profileData.serviceLocations || []).map((loc, idx) => (
+                                    <div key={loc.id} className="bg-slate-50 dark:bg-slate-800 p-3 rounded border border-slate-200 dark:border-slate-700 space-y-3">
+                                        <div className="flex justify-between">
+                                            <Input label="Property Name" value={loc.propertyName || loc.name || ''} onChange={e => {
+                                                const newLocs = [...(profileData.serviceLocations || [])];
+                                                newLocs[idx].propertyName = e.target.value;
+                                                newLocs[idx].name = e.target.value;
+                                                setProfileData({ ...profileData, serviceLocations: newLocs });
+                                            }} />
+                                            <button type="button" aria-label="Delete Location" title="Delete Location" onClick={() => {
+                                                const newLocs = profileData.serviceLocations?.filter(l => l.id !== loc.id);
+                                                setProfileData({ ...profileData, serviceLocations: newLocs });
+                                            }} className="text-red-500 hover:text-red-700 ml-2 mt-6"><TrashIcon size={16}/></button>
+                                        </div>
+                                        <Input label="Address" value={loc.address || ''} onChange={e => {
+                                            const newLocs = [...(profileData.serviceLocations || [])];
+                                            newLocs[idx].address = e.target.value;
+                                            setProfileData({ ...profileData, serviceLocations: newLocs });
+                                        }} />
+                                        <div>
+                                            <h5 className="text-xs font-bold text-slate-500 mb-2">Location Contacts</h5>
+                                            {(loc.contacts || []).map((contact, cIdx) => (
+                                                <div key={cIdx} className="flex gap-2 mb-2">
+                                                    <Input placeholder="Name" value={contact.name} onChange={e => {
+                                                        const newLocs = [...(profileData.serviceLocations || [])];
+                                                        newLocs[idx].contacts![cIdx].name = e.target.value;
+                                                        setProfileData({ ...profileData, serviceLocations: newLocs });
+                                                    }} />
+                                                    <Input placeholder="Phone" value={contact.phone} onChange={e => {
+                                                        const newLocs = [...(profileData.serviceLocations || [])];
+                                                        newLocs[idx].contacts![cIdx].phone = e.target.value;
+                                                        setProfileData({ ...profileData, serviceLocations: newLocs });
+                                                    }} />
+                                                    <button type="button" aria-label="Delete Contact" title="Delete Contact" onClick={() => {
+                                                        const newLocs = [...(profileData.serviceLocations || [])];
+                                                        newLocs[idx].contacts = newLocs[idx].contacts?.filter((_, i) => i !== cIdx);
+                                                        setProfileData({ ...profileData, serviceLocations: newLocs });
+                                                    }} className="text-red-500 hover:text-red-700 p-2"><TrashIcon size={14}/></button>
+                                                </div>
+                                            ))}
+                                            <button type="button" onClick={() => {
+                                                const newLocs = [...(profileData.serviceLocations || [])];
+                                                if (!newLocs[idx].contacts) newLocs[idx].contacts = [];
+                                                newLocs[idx].contacts!.push({ name: '', phone: '', email: '', role: 'Site Contact' });
+                                                setProfileData({ ...profileData, serviceLocations: newLocs });
+                                            }} className="text-[10px] uppercase font-bold text-primary-600">+ Add Contact</button>
+                                        </div>
+                                    </div>
+                                ))}
+                                {(profileData.serviceLocations?.length === 0 || !profileData.serviceLocations) && (
+                                    <p className="text-sm text-slate-500 italic">No locations added yet.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
                      <div className="flex justify-between items-center pt-4 border-t">
                         <button type="button" onClick={() => { setIsProfileModalOpen(false); setIsDeleteModalOpen(true); }} className="text-red-500 text-xs font-bold hover:underline py-2 flex items-center gap-1"><LogOut size={12}/> Delete Account</button>
                         <div className="flex gap-2">

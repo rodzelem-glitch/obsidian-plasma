@@ -3,6 +3,7 @@ import showToast from "lib/toast";
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import Button from 'components/ui/Button';
 import { db } from 'lib/firebase';
 import type { Bid } from 'types';
@@ -27,12 +28,17 @@ const BidOptimizationTool: React.FC = () => {
     useEffect(() => {
         if (noticeId) {
             setIsCreateModalOpen(true);
-            // Fetch RFP title to pre-fill
-            db.collection('rfp_notices').doc(noticeId).get().then(doc => {
-                if (doc.exists) {
-                    setInitialBidTitle(`Bid for: ${doc.data()?.title}`);
-                }
-            });
+            const titleParam = searchParams.get('title');
+            if (titleParam) {
+                setInitialBidTitle(`Federal Bid: ${titleParam}`);
+            } else {
+                // Fetch RFP title to pre-fill
+                db.collection('rfp_notices').doc(noticeId).get().then(doc => {
+                    if (doc.exists) {
+                        setInitialBidTitle(`Bid for: ${doc.data()?.title}`);
+                    }
+                });
+            }
         }
     }, [noticeId]);
 
@@ -53,14 +59,105 @@ const BidOptimizationTool: React.FC = () => {
     const handleStartNewBid = async (title: string, linkedNoticeId?: string) => {
         if (!org) return;
         setIsProcessing(true);
+        
+        let initialRequirements: string[] = [];
+        let initialFiles: any[] = [];
+        let fetchedTitle = title;
+        
+        // If there is a noticeId, check if it's a SAM.gov notice (32 char hex)
+        if (linkedNoticeId && linkedNoticeId.length === 32) {
+            try {
+                const functions = getFunctions();
+                const fetchContracts = httpsCallable(functions, 'fetchFederalContracts');
+                const result = await fetchContracts({ noticeId: linkedNoticeId }) as any;
+                
+                if (result.data?.success && result.data.opportunities?.length > 0) {
+                    const opp = result.data.opportunities[0];
+                    fetchedTitle = `Federal Bid: ${opp.title}`;
+                    
+                    let summaryText = `SAM.gov Opportunity Details:\n`;
+                    if (opp.solicitationNumber) summaryText += `Solicitation Number: ${opp.solicitationNumber}\n`;
+                    if (opp.fullParentPathName || opp.agency) summaryText += `Agency: ${opp.fullParentPathName || opp.agency}\n`;
+                    if (opp.type) summaryText += `Notice Type: ${opp.type}\n`;
+                    if (opp.setAside) summaryText += `Set Aside: ${opp.setAside}\n`;
+                    if (opp.naicsCode) summaryText += `NAICS Code: ${opp.naicsCode}\n`;
+                    if (opp.classificationCode) summaryText += `Classification Code: ${opp.classificationCode}\n`;
+                    if (opp.responseDeadLine) summaryText += `Response Deadline: ${opp.responseDeadLine}\n`;
+                    
+                    summaryText += `\nOpportunity Description:\n${opp.description || 'No description provided.'}`;
+                    
+                    let extractedEmail = '';
+                    if (opp.pointOfContact && opp.pointOfContact.length > 0) {
+                        summaryText += `\n\nPoint of Contact:\n`;
+                        opp.pointOfContact.forEach((poc: any) => {
+                            if (poc.fullName) summaryText += `Name: ${poc.fullName}\n`;
+                            if (poc.email) {
+                                summaryText += `Email: ${poc.email}\n`;
+                                if (!extractedEmail) extractedEmail = poc.email;
+                            }
+                            if (poc.phone) summaryText += `Phone: ${poc.phone}\n\n`;
+                        });
+                    }
+                    
+                    initialRequirements.push(summaryText);
+
+                    if (opp.resourceLinks && Array.isArray(opp.resourceLinks)) {
+                        initialFiles = opp.resourceLinks.map((link: string, idx: number) => {
+                            const urlParts = link.split('/');
+                            const hash = urlParts[urlParts.length - 2] || `doc-${idx}`;
+                            return {
+                                id: `sam-file-${idx}`,
+                                fileName: `SAM_Attachment_${hash.substring(0, 6)}`,
+                                dataUrl: link,
+                                fileType: 'application/octet-stream',
+                                uploadedBy: 'sam.gov'
+                            };
+                        });
+                    }
+                    
+                    const bidId = `bid-${Date.now()}`;
+                    const newBid: Bid = { 
+                        id: bidId, 
+                        organizationId: org.id, 
+                        title: fetchedTitle, 
+                        solicitationNumber: opp.solicitationNumber || '',
+                        agency: opp.fullParentPathName || opp.agency || '',
+                        dueDate: opp.responseDeadLine ? opp.responseDeadLine.split('T')[0] : '',
+                        status: 'Draft', 
+                        requirements: initialRequirements, 
+                        files: initialFiles, 
+                        createdAt: new Date().toISOString(), 
+                        lineItems: [], 
+                        generatedDocs: [], 
+                        questions: [],
+                        paymentStatus: 'Pending',
+                        submissionEmail: extractedEmail || '',
+                        ...(linkedNoticeId ? { noticeId: linkedNoticeId } : {})
+                    };
+                    
+                    await db.collection('bids').doc(bidId).set(newBid);
+                    setIsCreateModalOpen(false);
+                    setViewBid(newBid);
+                    setIsProcessing(false);
+                    if (noticeId) {
+                        searchParams.delete('noticeId');
+                        setSearchParams(searchParams);
+                    }
+                    return; // Exit early since we created it
+                }
+            } catch (err) {
+                console.error("Error fetching SAM notice details:", err);
+            }
+        }
+
         const bidId = `bid-${Date.now()}`;
         const newBid: Bid = { 
             id: bidId, 
             organizationId: org.id, 
-            title: title, 
+            title: fetchedTitle, 
             status: 'Draft', 
-            requirements: [], 
-            files: [], 
+            requirements: initialRequirements, 
+            files: initialFiles, 
             createdAt: new Date().toISOString(), 
             lineItems: [], 
             generatedDocs: [], 

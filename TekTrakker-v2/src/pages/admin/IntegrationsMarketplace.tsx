@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import { doc, getDoc, setDoc, addDoc, collection } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { db, functions } from '../../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 import showToast from 'lib/toast';
 import {
   ArrowLeft, Search, Filter, CheckCircle2, Plus, ExternalLink, Key, Shield,
@@ -113,7 +114,7 @@ const INTEGRATIONS: Integration[] = [
   { id: 'schedule_engine', name: 'Schedule Engine', description: 'After-hours call handling and live booking with AI-powered scheduling.', category: 'Communications', icon: Headphones, iconColor: 'text-orange-500', fields: [{ key: 'scheduleEngineApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'twilio', name: 'Twilio', description: 'Provide Twilio credentials to send "On My Way" texts and appointment reminders.', category: 'Communications', icon: MessageSquare, iconColor: 'text-red-500', fields: [{ key: 'twilioSid', label: 'Account SID' }, { key: 'twilioToken', label: 'Auth Token', type: 'password' }, { key: 'twilioNumber', label: 'Origin Phone Number', placeholder: '+15551234567' }] },
   { id: 'smtp', name: 'Custom SMTP Server', description: 'Ensure maximum inbox deliverability for invoices and proposals by sending from your own email servers.', category: 'Communications', icon: Mail, iconColor: 'text-slate-500', fields: [{ key: 'smtpHost', label: 'SMTP Host', placeholder: 'smtp.gmail.com' }, { key: 'smtpPort', label: 'SMTP Port', placeholder: '587' }, { key: 'smtpUser', label: 'Username (Email)' }, { key: 'smtpPass', label: 'Password or App Password', type: 'password' }] },
-  { id: 'ringcentral', name: 'RingCentral VoIP', description: 'Enable screen-pops. When a customer calls your RingCentral numbers, their profile pops up instantly on the dashboard.', category: 'Communications', icon: PhoneCall, iconColor: 'text-orange-500', fields: [{ key: 'ringCentralClientId', label: 'Client ID', placeholder: 'Enter RingCentral Client ID' }, { key: 'ringCentralClientSecret', label: 'Client Secret', type: 'password', placeholder: 'Enter RingCentral Client Secret' }] },
+  { id: 'ringcentral', name: 'RingCentral VoIP', description: 'Enable screen-pops, automated missed-call SMS, and Virtual Worker AI Voice Answering for your inbound numbers.', category: 'Communications', icon: PhoneCall, iconColor: 'text-orange-500', fields: [{ key: 'ringCentralClientId', label: 'Widget Client ID (Browser App)', placeholder: 'Enter Browser-Based App Client ID' }, { key: 'rcBackendClientId', label: 'Backend Client ID (Server Web App)', placeholder: 'Enter Server Web App Client ID' }, { key: 'ringCentralClientSecret', label: 'Backend Client Secret', type: 'password', placeholder: 'Enter Server Web App Client Secret' }, { key: 'ringCentralJwtToken', label: 'Backend JWT Token', type: 'password', placeholder: 'Enter RingCentral JWT Token' }, { key: 'rcPrimarySms', label: 'Use as Primary SMS Provider (Replaces Twilio)', type: 'checkbox' }, { key: 'rcEnableVoiceAi', label: 'Enable AI Voice Answering', type: 'checkbox' }, { key: 'rcRingsBeforeAi', label: 'Rings before AI Answers', type: 'number', placeholder: 'e.g., 3' }, { key: 'rcSmsOnMissed', label: 'Send SMS on Missed Call', type: 'checkbox' }, { key: 'rcSmsTemplate', label: 'Missed Call SMS Template', placeholder: 'Sorry we missed you! Book online at...' }] },
   { id: 'xoi', name: 'XOi Technologies', description: 'AI-powered video documentation and remote visual assistance for field technicians.', category: 'On-The-Job', icon: Camera, iconColor: 'text-indigo-500', fields: [{ key: 'xoiCompanyId', label: 'Company ID' }, { key: 'xoiApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'profit_rhino', name: 'Profit Rhino', description: 'Dynamic flat-rate pricing engine with real-time material cost updates.', category: 'Estimations', icon: Hammer, iconColor: 'text-amber-600', fields: [{ key: 'profitRhinoApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'salesrabbit', name: 'SalesRabbit', description: 'Door-to-door sales tracking with territory mapping and lead management.', category: 'Marketing & CRM', icon: TrendingUp, iconColor: 'text-green-600', fields: [{ key: 'salesRabbitApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
@@ -178,6 +179,41 @@ const IntegrationsMarketplace: React.FC = () => {
       await setDoc(doc(db, 'organizations', orgId, 'settings', 'marketplace_integrations'), { integrations: updated }, { merge: true });
       setEnabledIntegrations(updated);
       setConfiguring(null);
+
+      // Handle specific integrations that require instant cloud function execution
+      if (integration.id === 'ringcentral') {
+        const { ringCentralClientId, rcBackendClientId, ringCentralClientSecret, ringCentralJwtToken } = fieldValues;
+        if ((ringCentralClientId || rcBackendClientId) && ringCentralJwtToken) {
+           showToast.info("Registering RingCentral Webhook...");
+           try {
+               const registerWebhook = httpsCallable(functions, 'registerRingCentralWebhook');
+               await registerWebhook({
+                   orgId,
+                   clientId: rcBackendClientId || ringCentralClientId,
+                   clientSecret: ringCentralClientSecret || '',
+                   jwtToken: ringCentralJwtToken,
+                   webhookUrl: `https://us-central1-tektrakker.cloudfunctions.net/ringCentralWebhook`
+               });
+               // Store secrets in the secure config block
+               await setDoc(doc(db, 'organizations', orgId, 'secrets', 'config'), {
+                   ringCentralClientId,
+                   rcBackendClientId,
+                   ringCentralClientSecret: ringCentralClientSecret || '',
+                   ringCentralJwtToken,
+                   rcEnableVoiceAi: fieldValues.rcEnableVoiceAi === 'true',
+                   rcRingsBeforeAi: fieldValues.rcRingsBeforeAi || '3',
+                   rcSmsOnMissed: fieldValues.rcSmsOnMissed === 'true',
+                   rcSmsTemplate: fieldValues.rcSmsTemplate || ''
+               }, { merge: true });
+               showToast.success("Successfully registered RingCentral webhook!");
+           } catch (error) {
+               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+               showToast.error("Webhook Registration Failed: " + errorMessage);
+           }
+        } else {
+           showToast.warn("Saved, but webhook not registered. Client ID and JWT Token are required.");
+        }
+      }
 
       if (integration.isStubbed && isNewEnable) {
         // Log a notification for the engineering team
@@ -360,19 +396,49 @@ const IntegrationsMarketplace: React.FC = () => {
                       </div>
                     )}
 
+                    {integration.id === 'ringcentral' && (
+                      <div className="mb-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-400">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <strong>Web Phone Required Setup:</strong> To use the in-browser softphone dialer, you MUST add the following Redirect URI to your RingCentral App configuration in their Developer Console:
+                            <code className="block mt-1 p-1.5 bg-blue-100 dark:bg-blue-950 rounded select-all font-mono text-[10px]">https://ringcentral.github.io/ringcentral-embeddable/redirect.html</code>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-3">
                       {integration.fields.map(field => (
-                        <div key={field.key}>
-                          <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">{field.label}</label>
-                          <input
-                            type={field.type || 'text'}
-                            value={fieldValues[field.key] || ''}
-                            onChange={e => setFieldValues({ ...fieldValues, [field.key]: e.target.value })}
-                            placeholder={field.placeholder || ''}
-                            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary-500"
-                            autoComplete="new-password"
-                            data-lpignore="true"
-                          />
+                        <div key={field.key} className={field.type === 'checkbox' ? 'flex items-center gap-3 pt-2' : ''}>
+                          {field.type === 'checkbox' ? (
+                            <>
+                              <input
+                                id={`field-${field.key}`}
+                                type="checkbox"
+                                checked={fieldValues[field.key] === 'true'}
+                                onChange={e => setFieldValues({ ...fieldValues, [field.key]: e.target.checked.toString() })}
+                                className="w-5 h-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                                title={field.label}
+                              />
+                              <label htmlFor={`field-${field.key}`} className="text-sm font-bold text-slate-700 dark:text-slate-300">{field.label}</label>
+                            </>
+                          ) : (
+                            <>
+                              <label htmlFor={`field-${field.key}`} className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">{field.label}</label>
+                              <input
+                                id={`field-${field.key}`}
+                                type={field.type || 'text'}
+                                value={fieldValues[field.key] || ''}
+                                onChange={e => setFieldValues({ ...fieldValues, [field.key]: e.target.value })}
+                                placeholder={field.placeholder || ''}
+                                title={field.label}
+                                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary-500"
+                                autoComplete="new-password"
+                                data-lpignore="true"
+                              />
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>

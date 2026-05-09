@@ -2,7 +2,7 @@ import showToast from "lib/toast";
 // ... [Adding territories to FranchiseManager] ... Look below
 import React, { useState, useEffect } from 'react';
 import { db, storage, functions } from '../../lib/firebase';
-import { Network, Plus, Settings, Trash2, Key, Globe, Store, Loader2, Save, Map, Handshake, CornerDownLeft, CloudLightning, Copy, Upload, CreditCard, ShieldCheck } from 'lucide-react';
+import { Network, Plus, Trash2, Key, Globe, Store, Loader2, Save, Map, Handshake, CloudLightning, Copy, Upload, CreditCard, ShieldCheck } from 'lucide-react';
 import type { Franchise } from '../../types/franchise';
 import { useAppContext } from '../../context/AppContext';
 import { generateColorShades } from '../../lib/colorUtils';
@@ -26,7 +26,7 @@ const FranchiseManager: React.FC = () => {
     const [formGeminiKey, setFormGeminiKey] = useState('');
     const [formAnthropicKey, setFormAnthropicKey] = useState('');
     const [formOpenaiKey, setFormOpenaiKey] = useState('');
-    const [formActiveProvider, setFormActiveProvider] = useState<'openai' | 'anthropic' | 'gemini'>('openai');
+    const [formActiveProvider, setFormActiveProvider] = useState<'openai' | 'anthropic' | 'gemini' | 'tektrakker'>('openai');
     
     // Advanced Franchise Controls
     const [formTerritoryStates, setFormTerritoryStates] = useState('');
@@ -38,6 +38,7 @@ const FranchiseManager: React.FC = () => {
     const [provisioningDomain, setProvisioningDomain] = useState(false);
 
     useEffect(() => {
+        if (!state.currentUser) return;
         if (isFranchiseAdmin && !isMasterAdmin && myFranchiseId) {
             const unsubscribe = db.collection('franchises').doc(myFranchiseId).onSnapshot(doc => {
                 if (doc.exists) {
@@ -66,7 +67,6 @@ const FranchiseManager: React.FC = () => {
             setLoading(false);
             setFranchises([]);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isFranchiseAdmin, isMasterAdmin, myFranchiseId]);
 
     // Auto-select if they only have exactly 1 record visible (for Franchise Admins)
@@ -74,7 +74,6 @@ const FranchiseManager: React.FC = () => {
         if (isFranchiseAdmin && !isMasterAdmin && franchises.length === 1 && !isEditing) {
             handleSelect(franchises[0]);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [franchises, isFranchiseAdmin, isMasterAdmin, isEditing]);
 
     // Live Color Preview
@@ -100,7 +99,7 @@ const FranchiseManager: React.FC = () => {
         };
     }, [formColor, isEditing, selectedFranchise]);
 
-    const handleSelect = (fr: any) => {
+    const handleSelect = (fr: Franchise) => {
         setSelectedFranchise(fr);
         setFormName(fr.name);
         setFormDomain(fr.branding?.customDomain || '');
@@ -168,7 +167,7 @@ const FranchiseManager: React.FC = () => {
             };
 
             if (selectedFranchise) {
-                await db.collection('franchises').doc(selectedFranchise.id).update(dataToSave as any);
+                await db.collection('franchises').doc(selectedFranchise.id).update(dataToSave);
             } else {
                 await db.collection('franchises').add({
                     ...dataToSave,
@@ -177,8 +176,8 @@ const FranchiseManager: React.FC = () => {
                 });
             }
             setIsEditing(false);
-        } catch (e: any) {
-            showToast.warn('Failed to save franchise: ' + e.message);
+        } catch (e: unknown) {
+            showToast.warn('Failed to save franchise: ' + (e instanceof Error ? e.message : 'Unknown error'));
         }
     };
 
@@ -226,7 +225,7 @@ const FranchiseManager: React.FC = () => {
         try {
             await db.collection('jobs').doc(jobId).set(invoiceData);
             showToast.warn(`Drafted $1,000 Franchise invoice for ${selectedFranchise.name}. View paper trail in Master Billing.`);
-        } catch(e) {
+        } catch {
             showToast.warn('Failed to bill franchise');
         }
     };
@@ -243,9 +242,9 @@ const FranchiseManager: React.FC = () => {
                 franchiseId: selectedFranchise.id
             });
             showToast.warn(`Domain provisioned successfully! Refresh to view DNS instructions.`);
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error("DNS Provisioning Failed", e);
-            showToast.warn(`DNS Provisioning Failed: ${e.message}`);
+            showToast.warn(`DNS Provisioning Failed: ${e instanceof Error ? e.message : 'Unknown'}`);
         } finally {
             setProvisioningDomain(false);
         }
@@ -291,8 +290,8 @@ const FranchiseManager: React.FC = () => {
                         <div className="space-y-6">
                             <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-2"><Store size={16}/> Identity</h3>
                             <div>
-                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Franchise Internal Name</label>
-                                <input aria-label="Franchise Internal Name" title="Franchise Internal Name" type="text" readOnly={!isMasterAdmin} value={formName} onChange={e => isMasterAdmin && setFormName(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 opacity-80" placeholder="e.g. Acme Services Southeast" />
+                                <label htmlFor="formNameInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Franchise Internal Name</label>
+                                <input id="formNameInput" aria-label="Franchise Internal Name" title="Franchise Internal Name" type="text" readOnly={!isMasterAdmin} value={formName} onChange={e => isMasterAdmin && setFormName(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 opacity-80" placeholder="e.g. Acme Services Southeast" />
                             </div>
 
                             {selectedFranchise && (
@@ -317,9 +316,9 @@ const FranchiseManager: React.FC = () => {
                             
                             <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-2 mt-8"><Globe size={16}/> White-Label Branding</h3>
                             <div>
-                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Custom Domain Hostname (No https://)</label>
+                                <label htmlFor="formDomainInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Custom Domain Hostname (No https://)</label>
                                 <div className="flex gap-2 mt-1">
-                                    <input aria-label="Custom Domain Hostname" title="Custom Domain Hostname" type="text" value={formDomain} onChange={e => setFormDomain(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="e.g. portal.acmeservices.com" />
+                                    <input id="formDomainInput" aria-label="Custom Domain Hostname" title="Custom Domain Hostname" type="text" value={formDomain} onChange={e => setFormDomain(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="e.g. portal.acmeservices.com" />
                                     {selectedFranchise && (
                                         <button 
                                             onClick={handleProvisionDomain} 
@@ -345,7 +344,7 @@ const FranchiseManager: React.FC = () => {
                                     <p className="text-xs text-slate-500 mb-4">Add these TXT verify records to your DNS provider to complete setup and activate SSL.</p>
                                     
                                     <div className="space-y-3">
-                                        {Object.entries(selectedFranchise.dnsConfig.records).map(([key, record]: [string, any]) => (
+                                        {Object.entries(selectedFranchise.dnsConfig.records).map(([key, record]: [string, { txtRecord?: string; domainName?: string }]) => (
                                             record.txtRecord && (
                                                 <div key={key} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-xs font-mono group">
                                                     <div className="flex justify-between items-center mb-1">
@@ -364,9 +363,9 @@ const FranchiseManager: React.FC = () => {
                                 </div>
                             )}
                             <div>
-                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Custom Logo URL (SVG or Transparent PNG)</label>
+                                <label htmlFor="formLogoInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Custom Logo URL (SVG or Transparent PNG)</label>
                                 <div className="flex gap-2 mt-1 items-center bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg pr-1">
-                                    <input aria-label="Custom Logo URL" title="Custom Logo URL" type="text" value={formLogo} onChange={e => setFormLogo(e.target.value)} className="w-full bg-transparent px-4 py-2 outline-none" placeholder="https://..." />
+                                    <input id="formLogoInput" aria-label="Custom Logo URL" title="Custom Logo URL" type="text" value={formLogo} onChange={e => setFormLogo(e.target.value)} className="w-full bg-transparent px-4 py-2 outline-none" placeholder="https://..." />
                                     <label className="cursor-pointer bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 p-2 rounded-md transition-colors" title="Upload Logo image">
                                          <Upload size={16} />
                                          <input type="file" aria-label="Logo Upload" title="Logo Upload" accept="image/*" className="hidden" onChange={handleLogoUpload} />
@@ -375,9 +374,9 @@ const FranchiseManager: React.FC = () => {
                                 {formLogo && <img src={formLogo} alt="Logo preview" className="mt-4 h-16 w-auto object-contain rounded-lg border border-slate-200 dark:border-slate-700 p-2 bg-white dark:bg-slate-800" />}
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 mb-2 block">Primary Brand Color</label>
+                                <label htmlFor="formColorInput" className="text-xs font-bold text-slate-600 dark:text-slate-400 mb-2 block">Primary Brand Color</label>
                                 <div className="flex items-center gap-3">
-                                    <input aria-label="Primary Brand Color Picker" title="Primary Brand Color Picker" type="color" value={formColor} onChange={e => setFormColor(e.target.value)} className="w-12 h-12 rounded cursor-pointer border-0 p-0" />
+                                    <input id="formColorInput" aria-label="Primary Brand Color Picker" title="Primary Brand Color Picker" type="color" value={formColor} onChange={e => setFormColor(e.target.value)} className="w-12 h-12 rounded cursor-pointer border-0 p-0" />
                                     <input aria-label="Primary Brand Color Hex" title="Primary Brand Color Hex" type="text" value={formColor} onChange={e => setFormColor(e.target.value)} className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2 uppercase font-mono" placeholder="#000000" />
                                 </div>
                             </div>
@@ -389,12 +388,12 @@ const FranchiseManager: React.FC = () => {
                                     <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-2"><Map size={16}/> Territory & Licensing</h3>
                                     
                                     <div>
-                                        <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Allowed US States (Comma separated)</label>
-                                        <input aria-label="Allowed US States" title="Allowed US States" type="text" value={formTerritoryStates} onChange={e => setFormTerritoryStates(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="e.g. FL, GA, SC" />
+                                        <label htmlFor="formTerritoryStatesInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Allowed US States (Comma separated)</label>
+                                        <input id="formTerritoryStatesInput" aria-label="Allowed US States" title="Allowed US States" type="text" value={formTerritoryStates} onChange={e => setFormTerritoryStates(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="e.g. FL, GA, SC" />
                                     </div>
                                     <div>
-                                        <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Allowed Business Types (Comma separated)</label>
-                                        <input aria-label="Allowed Business Types" title="Allowed Business Types" type="text" value={formBusinessTypes} onChange={e => setFormBusinessTypes(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="e.g. HVAC, Plumbing, Electrical" />
+                                        <label htmlFor="formBusinessTypesInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Allowed Business Types (Comma separated)</label>
+                                        <input id="formBusinessTypesInput" aria-label="Allowed Business Types" title="Allowed Business Types" type="text" value={formBusinessTypes} onChange={e => setFormBusinessTypes(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="e.g. HVAC, Plumbing, Electrical" />
                                     </div>
 
                                     <div className="mt-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-900/50 rounded-xl space-y-3">
@@ -424,12 +423,12 @@ const FranchiseManager: React.FC = () => {
                                         </label>
                                         <div className="grid grid-cols-2 gap-4 mt-2">
                                             <div>
-                                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">TekTrakker Rev-Share: Per User ($)</label>
-                                                <input aria-label="Per User Fee" title="Per User Fee" type="number" placeholder="0" value={formPerUserFee} onChange={e => setFormPerUserFee(parseFloat(e.target.value) || 0)} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5" />
+                                                <label htmlFor="formPerUserFeeInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">TekTrakker Rev-Share: Per User ($)</label>
+                                                <input id="formPerUserFeeInput" aria-label="Per User Fee" title="Per User Fee" type="number" placeholder="0" value={formPerUserFee} onChange={e => setFormPerUserFee(parseFloat(e.target.value) || 0)} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5" />
                                             </div>
                                             <div>
-                                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">TekTrakker Rev-Share: Per Virtual Worker ($)</label>
-                                                <input aria-label="Per Virtual Worker Fee" title="Per Virtual Worker Fee" type="number" placeholder="0" value={formPerVirtualWorkerFee} onChange={e => setFormPerVirtualWorkerFee(parseFloat(e.target.value) || 0)} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5" />
+                                                <label htmlFor="formPerVirtualWorkerFeeInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">TekTrakker Rev-Share: Per Virtual Worker ($)</label>
+                                                <input id="formPerVirtualWorkerFeeInput" aria-label="Per Virtual Worker Fee" title="Per Virtual Worker Fee" type="number" placeholder="0" value={formPerVirtualWorkerFee} onChange={e => setFormPerVirtualWorkerFee(parseFloat(e.target.value) || 0)} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5" />
                                             </div>
                                         </div>
                                     </div>
@@ -439,8 +438,8 @@ const FranchiseManager: React.FC = () => {
                             <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-2 mt-8"><Key size={16}/> AI Provider & BYOK</h3>
                             
                             <div>
-                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Active AI Routing</label>
-                                <select aria-label="Active AI Routing" title="Active AI Routing" value={formActiveProvider} onChange={e => setFormActiveProvider(e.target.value as any)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2">
+                                <label htmlFor="formActiveProviderInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Active AI Routing</label>
+                                <select id="formActiveProviderInput" aria-label="Active AI Routing" title="Active AI Routing" value={formActiveProvider} onChange={e => setFormActiveProvider(e.target.value as 'openai' | 'anthropic' | 'gemini' | 'tektrakker')} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2">
                                     <option value="openai">OpenAI (Strict BYOK)</option>
                                     <option value="anthropic">Anthropic (Strict BYOK)</option>
                                     <option value="gemini">Google Gemini (Strict BYOK)</option>
@@ -449,18 +448,18 @@ const FranchiseManager: React.FC = () => {
                             </div>
 
                             <div className="pt-4 border-t border-slate-100 dark:border-slate-700">
-                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">OpenAI API Key</label>
-                                <input aria-label="OpenAI API Key" title="OpenAI API Key" type="password" value={formOpenaiKey} onChange={e => setFormOpenaiKey(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="sk-..." />
+                                <label htmlFor="formOpenaiKeyInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">OpenAI API Key</label>
+                                <input id="formOpenaiKeyInput" aria-label="OpenAI API Key" title="OpenAI API Key" type="password" value={formOpenaiKey} onChange={e => setFormOpenaiKey(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="sk-..." />
                             </div>
                             
                             <div>
-                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Anthropic API Key</label>
-                                <input aria-label="Anthropic API Key" title="Anthropic API Key" type="password" value={formAnthropicKey} onChange={e => setFormAnthropicKey(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="sk-ant-..." />
+                                <label htmlFor="formAnthropicKeyInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Anthropic API Key</label>
+                                <input id="formAnthropicKeyInput" aria-label="Anthropic API Key" title="Anthropic API Key" type="password" value={formAnthropicKey} onChange={e => setFormAnthropicKey(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="sk-ant-..." />
                             </div>
 
                             <div>
-                                <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Google Gemini API Key</label>
-                                <input aria-label="Google Gemini API Key" title="Google Gemini API Key" type="password" value={formGeminiKey} onChange={e => setFormGeminiKey(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="AIzaSy..." />
+                                <label htmlFor="formGeminiKeyInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Google Gemini API Key</label>
+                                <input id="formGeminiKeyInput" aria-label="Google Gemini API Key" title="Google Gemini API Key" type="password" value={formGeminiKey} onChange={e => setFormGeminiKey(e.target.value)} className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-2" placeholder="AIzaSy..." />
                             </div>
                         </div>
                     </div>
@@ -477,12 +476,17 @@ const FranchiseManager: React.FC = () => {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {franchises.map(fr => (
-                        <div key={fr.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 flex flex-col group hover:border-primary-500 transition-all shadow-sm hover:shadow-md cursor-pointer" onClick={() => handleSelect(fr)}>
+                        <button type="button" key={fr.id} className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 flex flex-col group hover:border-primary-500 transition-all shadow-sm hover:shadow-md cursor-pointer appearance-none" onClick={() => handleSelect(fr)}>
                             <div className="flex items-center gap-4 mb-4">
-                                {/* eslint-disable-next-line react/forbid-dom-props */}
-                                <div className="w-12 h-12 rounded-xl flex items-center justify-center border border-slate-100 dark:border-slate-700" style={{ backgroundColor: fr.branding?.primaryColor ? `${fr.branding.primaryColor}20` : '#f1f5f9' }}> {/* NOSONAR */}
-                                    {fr.branding?.logoUrl ? <img src={fr.branding.logoUrl} className="w-8 h-8 object-contain" alt="Logo" /> : <Network className="text-slate-400" />}
-                                </div>
+                                {(() => {
+                                    const brandStyle = { '--brand-bg': fr.branding?.primaryColor ? `${fr.branding.primaryColor}20` : '#f1f5f9', backgroundColor: 'var(--brand-bg)' } as React.CSSProperties;
+                                    return (
+                                        // eslint-disable-next-line
+                                        <div className="w-12 h-12 rounded-xl flex items-center justify-center border border-slate-100 dark:border-slate-700" style={brandStyle}>
+                                            {fr.branding?.logoUrl ? <img src={fr.branding.logoUrl} className="w-8 h-8 object-contain" alt="Logo" /> : <Network className="text-slate-400" />}
+                                        </div>
+                                    );
+                                })()}
                                 <div>
                                     <h3 className="font-bold text-slate-900 dark:text-white">{fr.name}</h3>
                                     <p className="text-xs text-slate-500">{fr.id}</p>
@@ -503,7 +507,7 @@ const FranchiseManager: React.FC = () => {
                                     <span className="font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded text-xs uppercase">{fr.aiApiKeys?.activeProvider || 'BYOK Missing'}</span>
                                 </div>
                             </div>
-                        </div>
+                        </button>
                     ))}
                     {franchises.length === 0 && <div className="col-span-full text-center py-12 text-slate-500">No franchises found. Create one.</div>}
                 </div>

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import Button from 'components/ui/Button';
-import { Edit, Trash2, Paperclip, Camera as CameraIcon, Image as ImageIcon, Share2, Copy } from 'lucide-react';
+import { Edit, Trash2, Paperclip, Camera as CameraIcon, Image as ImageIcon, Share2, Copy, Calculator, Download, FileText } from 'lucide-react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
 import { useAppContext } from 'context/AppContext';
@@ -120,6 +120,43 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
     }, [allExpenses, reconcileMode]);
 
     const [sortBy, setSortBy] = useState('date_desc');
+    const [taxMode, setTaxMode] = useState(false);
+    const [taxYear, setTaxYear] = useState(new Date().getFullYear().toString());
+
+    const taxSummary = React.useMemo(() => {
+        if (!taxMode) return [];
+        const summary: Record<string, { total: number, deductible: number, count: number }> = {};
+        allExpenses.forEach(exp => {
+            const dateStr = exp.date || '';
+            if (dateStr.startsWith(taxYear)) {
+                const cat = exp.category || 'Other expenses';
+                const amt = Number(exp.amount) || 0;
+                let deductPct = 1.0;
+                if (cat.includes('Meals')) deductPct = 0.5;
+                if (!summary[cat]) summary[cat] = { total: 0, deductible: 0, count: 0 };
+                summary[cat].total += amt;
+                summary[cat].deductible += (amt * deductPct);
+                summary[cat].count += 1;
+            }
+        });
+        return Object.entries(summary).map(([category, data]) => ({ category, ...data })).sort((a,b) => b.deductible - a.deductible);
+    }, [allExpenses, taxMode, taxYear]);
+
+    const handleExportTaxCSV = () => {
+        let csv = 'Tax Category,Total Amount,Deductible Amount,Transaction Count\n';
+        taxSummary.forEach(row => {
+            csv += `"${row.category}",${row.total.toFixed(2)},${row.deductible.toFixed(2)},${row.count}\n`;
+        });
+        const totalDeductible = taxSummary.reduce((sum, r) => sum + r.deductible, 0);
+        csv += `\n"TOTAL DEDUCTIBLE EXPENDITURES",,${totalDeductible.toFixed(2)},`;
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Tax_Summary_${taxYear}.csv`;
+        a.click();
+    };
 
     const sortedExpenses = React.useMemo(() => {
         return [...allExpenses].sort((a, b) => {
@@ -179,8 +216,9 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                 <h3 className="font-bold text-gray-800 dark:text-white">Accounts Payable & Expenses</h3>
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2 text-sm">
-                        <label className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
+                        <label htmlFor="sort-expenses" className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
                         <select 
+                            id="sort-expenses"
                             aria-label="Sort Expenses"
                             className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
                             value={sortBy}
@@ -195,6 +233,9 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                         </select>
                     </div>
                     <div className="flex gap-2">
+                        <Button variant={taxMode ? "primary" : "secondary"} onClick={() => setTaxMode(!taxMode)} className="w-auto text-xs flex items-center gap-2">
+                            <Calculator size={14} /> {taxMode ? 'Exit Tax Prep' : 'Tax Prep Mode'}
+                        </Button>
                         <Button onClick={() => { 
                             setNewExpense({date: new Date().toISOString().split('T')[0], category: 'Materials', description: '', amount: 0, vendor: '', paidBy: currentUser?.firstName || 'Admin', projectId: ''}); 
                             setIsExpenseModalOpen(true); 
@@ -209,7 +250,50 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                 </div>
             )}
             
-            {(reconcileMode && duplicateGroups.length > 0) ? (
+            {taxMode ? (
+                <div className="space-y-4 animate-fade-in">
+                    <div className="flex flex-wrap justify-between items-center bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800">
+                        <div>
+                            <h4 className="font-bold text-indigo-900 dark:text-indigo-100 flex items-center gap-2"><FileText size={18}/> Schedule C / 1120S Tax Preparation</h4>
+                            <p className="text-xs text-indigo-700 dark:text-indigo-300">Expenditures mapped to IRS tax categories for the selected year.</p>
+                        </div>
+                        <div className="flex gap-3 items-center">
+                            <select 
+                                aria-label="Tax Year"
+                                className="border rounded-lg p-1.5 font-bold dark:bg-slate-800 dark:border-slate-600"
+                                value={taxYear}
+                                onChange={(e) => setTaxYear(e.target.value)}
+                            >
+                                <option value="2026">2026</option>
+                                <option value="2025">2025</option>
+                                <option value="2024">2024</option>
+                                <option value="2023">2023</option>
+                            </select>
+                            <Button variant="secondary" onClick={handleExportTaxCSV} className="text-xs flex items-center gap-1 bg-white dark:bg-slate-800"><Download size={14}/> Export CSV</Button>
+                        </div>
+                    </div>
+                    
+                    <Table headers={['Tax Category', 'Transaction Count', 'Total Spend', 'Deductible Amount']}>
+                        {taxSummary.map(row => (
+                            <tr key={row.category} className="hover:bg-slate-50 dark:hover:bg-slate-800">
+                                <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{row.category}</td>
+                                <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{row.count} Receipts</td>
+                                <td className="px-6 py-4 text-slate-600 dark:text-slate-400">${row.total.toFixed(2)}</td>
+                                <td className="px-6 py-4 font-bold text-emerald-600 dark:text-emerald-400">${row.deductible.toFixed(2)}</td>
+                            </tr>
+                        ))}
+                    </Table>
+                    
+                    <div className="flex justify-end mt-4">
+                        <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right">
+                            <div className="text-sm text-emerald-700 dark:text-emerald-300 uppercase tracking-wider font-bold">Estimated Total Deductions</div>
+                            <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
+                                ${taxSummary.reduce((sum, r) => sum + r.deductible, 0).toFixed(2)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            ) : (reconcileMode && duplicateGroups.length > 0) ? (
                 <div className="space-y-6">
                     {duplicateGroups.map((group, gIdx) => (
                         <div key={gIdx} className="border-2 border-amber-200 dark:border-amber-900/40 rounded-xl overflow-hidden bg-amber-50/30 dark:bg-amber-900/10">

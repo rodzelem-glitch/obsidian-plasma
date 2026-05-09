@@ -40,6 +40,12 @@
         .tt-widget-footer img { height: 20px; margin-left: 8px; }
         #tt-hvac-details, #tt-owner-details { display: none; margin-top: 16px; padding-top: 16px; border-top: 1px dashed #e5e7eb; }
         .tt-widget-success-message { text-align: center; padding: 40px; color: #059669; font-size: 1.2rem; }
+        @media (max-width: 768px) {
+            .tt-widget-grid { display: flex !important; flex-direction: column; width: 100%; gap: 12px; }
+            .tt-widget-group { width: 100%; display: flex; flex-direction: column; }
+            .tt-widget-input, .tt-widget-select { width: 100%; box-sizing: border-box; }
+            .tt-widget-container { border-radius: 0; }
+        }
     `;
 
     // 4. HTML Structure
@@ -90,6 +96,12 @@
                         </div>
                         <h4 class="tt-widget-section-title">Extras</h4>
                         <div class="tt-widget-group"><label class="tt-widget-label">Upload a Photo (Optional)</label><input class="tt-widget-input" type="file" name="photo" accept="image/*"></div>
+                        <label style="display:flex; align-items:flex-start; gap:8px; margin-top:16px; padding:12px; background-color:#eff6ff; border:1px solid #dbeafe; border-radius:4px; font-size:0.75rem; color:#1e40af; cursor:pointer; line-height:1.4;">
+                             <input type="checkbox" required name="consent" value="true" style="margin-top:2px;" checked>
+                             <span>
+                                By checking this box, you consent to receive SMS messages from TekAir Inc. regarding your service request. Message and data rates may apply. Message frequency varies. Reply STOP to opt-out or HELP for help. View our Privacy Policy at <a href="https://tekairinc.com/privacy" target="_blank" style="color:#1d4ed8; text-decoration:underline;">https://tekairinc.com/privacy</a>
+                             </span>
+                        </label>
                         <button type="submit" class="tt-widget-button" style="margin-top:24px;">Confirm Booking</button>
                     </form>
                 </div>

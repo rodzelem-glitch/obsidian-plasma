@@ -21,8 +21,8 @@ const OAuthCallback: React.FC = () => {
         const exchangeTikTok = async () => {
             setStatus('Exchanging authorization code with TikTok...');
             try {
-                const client_key = import.meta.env.VITE_TIKTOK_CLIENT_KEY || '';
-                const client_secret = import.meta.env.VITE_TIKTOK_CLIENT_SECRET || '';
+                const client_key = import.meta.env.VITE_TIKTOK_CLIENT_KEY || 'awr6ierl6qanqdxc';
+                const client_secret = import.meta.env.VITE_TIKTOK_CLIENT_SECRET || 'aksv3ly5XTUPVfayLxxA0tzyEDJ2jpF6';
                 const tokenUrl = 'https://open.tiktokapis.com/v2/oauth/token/';
                 
                 const params = new URLSearchParams();

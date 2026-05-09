@@ -657,11 +657,14 @@ export interface Bid {
     agency?: string;
     solicitationNumber?: string;
     dueDate?: string;
+    importantDates?: {name: string, date: string}[];
     status: 'Draft' | 'Analyzing' | 'Costing' | 'Review' | 'Submitted' | 'Won' | 'Lost';
     requirements: string[];
     deliverables?: string[];
     summary?: string;
     notes?: string;
+    submissionEmail?: string;
+    submissionLink?: string;
     files: StoredFile[];
     lineItems?: BidLineItem[];
     questions?: BidQuestion[];

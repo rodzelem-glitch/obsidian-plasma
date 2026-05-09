@@ -2,7 +2,6 @@ import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
-import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
 import Modal from 'components/ui/Modal';
@@ -51,7 +50,7 @@ const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => 
             showToast.warn('Document Acknowledged.');
             setViewDoc(null);
             setSignatureName('');
-        } catch (e) {
+        } catch {
             showToast.warn("Failed to save signature.");
         }
     };
@@ -77,7 +76,7 @@ const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => 
                                 <p className="text-sm font-bold mb-2">I have read and agree to this policy.</p>
                                 <div className="flex gap-2">
                                     <Input placeholder="Type full name to sign" value={signatureName} onChange={e => setSignatureName(e.target.value)} />
-                                    <Button onClick={() => handleSign(viewDoc.id)} disabled={!signatureName}>Sign & Accept</Button>
+                                    <Button type="button" onClick={() => handleSign(viewDoc.id)} disabled={!signatureName}>Sign & Accept</Button>
                                 </div>
                             </div>
                         )}
@@ -110,7 +109,7 @@ const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => 
                                         <p className="text-[10px] text-slate-500">Updated: {new Date(doc.createdAt).toLocaleDateString()}</p>
                                     </div>
                                 </div>
-                                <Button onClick={() => setViewDoc(doc)} variant="secondary" className="text-xs" size="sm">
+                                <Button type="button" onClick={() => setViewDoc(doc)} variant="secondary" className="text-xs" size="sm">
                                     {isSigned ? 'View' : (isSelf ? 'Read & Sign' : 'View Document')}
                                 </Button>
                             </div>

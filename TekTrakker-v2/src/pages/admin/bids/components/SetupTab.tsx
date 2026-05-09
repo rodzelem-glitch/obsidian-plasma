@@ -6,7 +6,7 @@ import Textarea from 'components/ui/Textarea';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import Spinner from 'components/ui/Spinner';
-import { Wand2, FileText, ListChecks } from 'lucide-react';
+import { Wand2, FileText, ListChecks, Calendar, UploadCloud, Play } from 'lucide-react';
 import type { Bid, StoredFile, BidQuestion, BidLineItem } from 'types';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { uploadFileToStorage } from 'lib/storageService';
@@ -20,6 +20,7 @@ interface SetupTabProps {
 
 const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analyzingFileId, setAnalyzingFileId] = useState<string | null>(null);
     const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
 
     const functions = getFunctions();
@@ -33,80 +34,81 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
         }
     };
 
-    const handleAnalyze = async () => {
-        if (!selectedFiles || selectedFiles.length === 0) {
-            showToast.warn("Please select at least one file first.");
-            return;
-        }
+    const processAnalysisResult = (data: { analyses: any[] }, newFiles: StoredFile[] = []) => {
+        let combinedRequirements: string[] = [];
+        let combinedDeliverables: string[] = [];
+        let combinedQuestions: BidQuestion[] = [];
+        let combinedLineItems: BidLineItem[] = [];
+        let combinedImportantDates: {name: string, date: string}[] = [];
+        let combinedSummary = "";
+        let finalSolicitationNumber = bid.solicitationNumber;
+        let finalAgency = bid.agency;
+        let finalDueDate = bid.dueDate;
 
+        data.analyses.forEach((analysis, index) => {
+            if (analysis.requirements) combinedRequirements = [...combinedRequirements, ...analysis.requirements];
+            if (analysis.deliverables) combinedDeliverables = [...combinedDeliverables, ...analysis.deliverables];
+            if (analysis.importantDates) combinedImportantDates = [...combinedImportantDates, ...analysis.importantDates];
+            if (analysis.summary) combinedSummary += analysis.summary + "\n\n";
+            if (analysis.solicitationNumber && !finalSolicitationNumber) finalSolicitationNumber = analysis.solicitationNumber;
+            if (analysis.agency && !finalAgency) finalAgency = analysis.agency;
+            if (analysis.dueDate && !finalDueDate) finalDueDate = analysis.dueDate;
+            
+            if (analysis.questions) {
+                const validQuestions = analysis.questions.filter((q: any) => {
+                     const text = q.question || q.text;
+                     return text && typeof text === 'string' && text.trim().length > 5;
+                });
+
+                const uniqueQuestions = validQuestions.map((q: any, qi: number) => ({
+                    id: `ai-q-${index}-${qi}-${Date.now()}`,
+                    question: (q.question || q.text || '').trim(), 
+                    answer: q.answer || ''
+                }));
+                combinedQuestions = [...combinedQuestions, ...uniqueQuestions];
+            }
+
+            if (analysis.lineItems) {
+                 const validItems = analysis.lineItems.filter((item: any) => {
+                      return item.description && typeof item.description === 'string' && item.description.trim().length > 2;
+                 });
+
+                 const uniqueItems = validItems.map((item: any, ii: number) => ({
+                    id: `ai-item-${index}-${ii}-${Date.now()}`,
+                    description: item.description.trim(),
+                    qty: item.qty || 1,
+                    unit: item.unit || 'EA',
+                    unitPrice: item.unitPrice || 0,
+                    totalPrice: (item.qty || 1) * (item.unitPrice || 0),
+                    source: 'AI Extracted'
+                }));
+                combinedLineItems = [...combinedLineItems, ...uniqueItems];
+            }
+        });
+
+        onUpdate({
+            requirements: [...(bid.requirements || []), ...combinedRequirements],
+            deliverables: [...(bid.deliverables || []), ...combinedDeliverables],
+            importantDates: [...(bid.importantDates || []), ...combinedImportantDates],
+            questions: [...(bid.questions || []), ...combinedQuestions],
+            lineItems: [...(bid.lineItems || []), ...combinedLineItems],
+            summary: bid.summary ? `${bid.summary}\n\n${combinedSummary.trim()}` : combinedSummary.trim(),
+            solicitationNumber: finalSolicitationNumber,
+            agency: finalAgency,
+            dueDate: finalDueDate,
+            files: [...(bid.files || []), ...newFiles]
+        });
+    };
+
+    const handleUploadOnly = async () => {
+        if (!selectedFiles || selectedFiles.length === 0) return;
         setIsAnalyzing(true);
         try {
             const uploadedFilesData: StoredFile[] = [];
-            const filesForAI: { fileData: string, mimeType: string, fileName: string }[] = [];
-
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
-                const isDocx = file.name.endsWith('.docx');
-                const isXlsx = file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv');
-
-                // 1. Upload Original File to Firebase Storage (keep original for records)
                 const path = `bids/${bid.organizationId}/${bid.id}/${Date.now()}_${file.name}`;
                 const downloadUrl = await uploadFileToStorage(path, file);
-
-                // 2. Prepare Data for AI Analysis
-                let finalBase64Data = "";
-                let finalMimeType = file.type || 'application/octet-stream';
-
-                if (isDocx) {
-                    // PARSE DOCX ON FRONTEND
-                    const arrayBuffer = await file.arrayBuffer();
-                    const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                    const extractedText = result.value;
-                    
-                    if (!extractedText.trim()) {
-                         throw new Error(`Could not extract text from ${file.name}. It may be empty or corrupted.`);
-                    }
-
-                    // Convert extracted text to Base64 to send to backend as a text file
-                    finalBase64Data = btoa(unescape(encodeURIComponent(extractedText)));
-                    finalMimeType = 'text/plain'; 
-                } else if (isXlsx) {
-                    // PARSE EXCEL ON FRONTEND
-                    const arrayBuffer = await file.arrayBuffer();
-                    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-                    let extractedText = "";
-                    for (const sheetName of workbook.SheetNames) {
-                        extractedText += `--- Sheet: ${sheetName} ---\n`;
-                        extractedText += XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
-                        extractedText += `\n\n`;
-                    }
-                    if (!extractedText.trim()) {
-                         throw new Error(`Could not extract text from ${file.name}. It may be empty or corrupted.`);
-                    }
-
-                    // Convert extracted text to Base64 to send to backend as a text file
-                    finalBase64Data = btoa(unescape(encodeURIComponent(extractedText)));
-                    finalMimeType = 'text/plain'; 
-                } else {
-                    // Standard processing for PDF, TXT, etc.
-                    finalBase64Data = await new Promise<string>((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.readAsDataURL(file);
-                        reader.onload = () => {
-                            const base64 = (reader.result as string).split(',')[1];
-                            resolve(base64);
-                        };
-                        reader.onerror = reject;
-                    });
-                }
-
-                filesForAI.push({
-                    fileData: finalBase64Data,
-                    mimeType: finalMimeType,
-                    fileName: file.name
-                });
-
-                // 3. Construct File Object for Firestore
                 uploadedFilesData.push({
                     id: `file-${Date.now()}-${i}`,
                     organizationId: bid.organizationId,
@@ -119,85 +121,138 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                     uploadedBy: 'user'
                 });
             }
+            onUpdate({ files: [...(bid.files || []), ...uploadedFilesData] });
+            setSelectedFiles(null);
+            const fileInput = document.getElementById('rfp-file-upload') as HTMLInputElement;
+            if (fileInput) fileInput.value = '';
+            showToast.success("Files uploaded successfully!");
+        } catch (e: any) {
+            showToast.error("Failed to upload files.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
 
-            // 4. Call the AI analysis Cloud Function with the array of files
+    const handleAnalyzeSingle = async (file: StoredFile) => {
+        setAnalyzingFileId(file.id);
+        setIsAnalyzing(true);
+        try {
+            const filesForAI = [{
+                fileData: file.dataUrl,
+                mimeType: file.fileType || 'application/pdf',
+                fileName: file.fileName
+            }];
             const result = await analyzeRFP({ files: filesForAI });
-            
-            const data = result.data as { analyses: any[] };
-            
-            // 5. Combine results from multiple analyses
-            let combinedRequirements: string[] = [];
-            let combinedDeliverables: string[] = [];
-            let combinedQuestions: BidQuestion[] = [];
-            let combinedLineItems: BidLineItem[] = [];
-            let combinedSummary = "";
-            let finalSolicitationNumber = bid.solicitationNumber;
-            let finalAgency = bid.agency;
-            let finalDueDate = bid.dueDate;
+            processAnalysisResult(result.data as { analyses: any[] });
+            showToast.success(`Analyzed ${file.fileName} successfully!`);
+        } catch (error: any) {
+            console.error("Error analyzing file:", error);
+            let message = "Failed to analyze document.";
+            if (error.message?.includes("exceeds the maximum")) message += " The file is too large for the AI service.";
+            showToast.warn(`${message} Details: ${error.message}`);
+        } finally {
+            setAnalyzingFileId(null);
+            setIsAnalyzing(false);
+        }
+    };
 
-            data.analyses.forEach((analysis, index) => {
-                if (analysis.requirements) combinedRequirements = [...combinedRequirements, ...analysis.requirements];
-                if (analysis.deliverables) combinedDeliverables = [...combinedDeliverables, ...analysis.deliverables];
-                if (analysis.summary) combinedSummary += analysis.summary + "\n\n";
-                if (analysis.solicitationNumber && !finalSolicitationNumber) finalSolicitationNumber = analysis.solicitationNumber;
-                if (analysis.agency && !finalAgency) finalAgency = analysis.agency;
-                if (analysis.dueDate && !finalDueDate) finalDueDate = analysis.dueDate;
-                
-                // Add unique IDs to questions and line items to prevent React key collisions
-                if (analysis.questions) {
-                    const validQuestions = analysis.questions.filter((q: any) => {
-                         const text = q.question || q.text;
-                         return text && typeof text === 'string' && text.trim().length > 5;
+    const handleAnalyzeBatch = async () => {
+        const samFilesToAnalyze = (bid.files || []).filter(f => f.uploadedBy === 'sam.gov');
+
+        if ((!selectedFiles || selectedFiles.length === 0) && samFilesToAnalyze.length === 0) {
+            showToast.warn("Please select at least one file first.");
+            return;
+        }
+
+        setIsAnalyzing(true);
+        try {
+            const uploadedFilesData: StoredFile[] = [];
+            const filesForAI: { fileData: string, mimeType: string, fileName: string }[] = [];
+
+            if (selectedFiles) {
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const file = selectedFiles[i];
+                    const isDocx = file.name.endsWith('.docx');
+                    const isXlsx = file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv');
+
+                    const path = `bids/${bid.organizationId}/${bid.id}/${Date.now()}_${file.name}`;
+                    const downloadUrl = await uploadFileToStorage(path, file);
+
+                    let finalBase64Data = "";
+                    let finalMimeType = file.type || 'application/octet-stream';
+
+                    if (isDocx) {
+                        const arrayBuffer = await file.arrayBuffer();
+                        const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                        const extractedText = result.value;
+                        if (!extractedText.trim()) throw new Error(`Could not extract text from ${file.name}.`);
+                        finalBase64Data = btoa(unescape(encodeURIComponent(extractedText)));
+                        finalMimeType = 'text/plain'; 
+                    } else if (isXlsx) {
+                        const arrayBuffer = await file.arrayBuffer();
+                        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                        let extractedText = "";
+                        for (const sheetName of workbook.SheetNames) {
+                            extractedText += `--- Sheet: ${sheetName} ---\n`;
+                            extractedText += XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+                            extractedText += `\n\n`;
+                        }
+                        if (!extractedText.trim()) throw new Error(`Could not extract text from ${file.name}.`);
+                        finalBase64Data = btoa(unescape(encodeURIComponent(extractedText)));
+                        finalMimeType = 'text/plain'; 
+                    } else {
+                        finalBase64Data = await new Promise<string>((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.readAsDataURL(file);
+                            reader.onload = () => {
+                                const base64 = (reader.result as string).split(',')[1];
+                                resolve(base64);
+                            };
+                            reader.onerror = reject;
+                        });
+                    }
+
+                    filesForAI.push({
+                        fileData: finalBase64Data,
+                        mimeType: finalMimeType,
+                        fileName: file.name
                     });
 
-                    const uniqueQuestions = validQuestions.map((q: any, qi: number) => ({
-                        id: `ai-q-${index}-${qi}-${Date.now()}`,
-                        question: (q.question || q.text || '').trim(), 
-                        answer: q.answer || ''
-                    }));
-                    combinedQuestions = [...combinedQuestions, ...uniqueQuestions];
+                    uploadedFilesData.push({
+                        id: `file-${Date.now()}-${i}`,
+                        organizationId: bid.organizationId,
+                        parentId: bid.id,
+                        parentType: 'bid',
+                        fileName: file.name,
+                        fileType: file.type,
+                        dataUrl: downloadUrl,
+                        createdAt: new Date().toISOString(),
+                        uploadedBy: 'user'
+                    });
                 }
+            }
 
-                if (analysis.lineItems) {
-                     const validItems = analysis.lineItems.filter((item: any) => {
-                          return item.description && typeof item.description === 'string' && item.description.trim().length > 2;
-                     });
+            for (const samFile of samFilesToAnalyze) {
+                filesForAI.push({
+                    fileData: samFile.dataUrl,
+                    mimeType: samFile.fileType || 'application/pdf',
+                    fileName: samFile.fileName
+                });
+            }
 
-                     const uniqueItems = validItems.map((item: any, ii: number) => ({
-                        id: `ai-item-${index}-${ii}-${Date.now()}`,
-                        description: item.description.trim(),
-                        qty: item.qty || 1,
-                        unit: item.unit || 'EA',
-                        unitPrice: item.unitPrice || 0,
-                        totalPrice: (item.qty || 1) * (item.unitPrice || 0),
-                        source: 'AI Extracted'
-                    }));
-                    combinedLineItems = [...combinedLineItems, ...uniqueItems];
-                }
-            });
-
-            // 6. Update the bid document in Firestore
-            onUpdate({
-                requirements: [...(bid.requirements || []), ...combinedRequirements],
-                deliverables: [...(bid.deliverables || []), ...combinedDeliverables],
-                questions: combinedQuestions, // Replace instead of append to prevent dupes/empties from previous runs
-                lineItems: combinedLineItems, // Replace instead of append
-                summary: combinedSummary.trim() || bid.summary || '',
-                solicitationNumber: finalSolicitationNumber,
-                agency: finalAgency,
-                dueDate: finalDueDate,
-                files: [...(bid.files || []), ...uploadedFilesData]
-            });
+            const result = await analyzeRFP({ files: filesForAI });
+            
+            processAnalysisResult(result.data as { analyses: any[] }, uploadedFilesData);
             
             setSelectedFiles(null);
             const fileInput = document.getElementById('rfp-file-upload') as HTMLInputElement;
             if (fileInput) fileInput.value = '';
             
-            showToast.warn("RFP(s) Analyzed successfully! Inputs and Pricing tabs have been populated.");
+            showToast.success("RFP(s) Analyzed successfully! Inputs and Pricing tabs have been populated.");
         } catch (error: any) {
             console.error("Error analyzing RFP:", error);
             let message = "Failed to analyze document.";
-            if (error.message?.includes("exceeds the maximum")) message += " The files are too large for the AI service.";
+            if (error.message?.includes("exceeds the maximum")) message += " The files are too large for the AI service. Try analyzing 1 by 1.";
             if (error.code === 'functions/internal') message += " AI service error.";
             showToast.warn(`${message} Details: ${error.message}`);
         } finally {
@@ -222,27 +277,48 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                                 className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100" 
                             />
                         </div>
-                        <Button 
-                            onClick={handleAnalyze} 
-                            disabled={isAnalyzing || !selectedFiles || selectedFiles.length === 0}
-                            className="w-full flex items-center justify-center gap-2"
-                        >
-                            {isAnalyzing ? <Spinner size="sm" /> : <Wand2 size={16} />}
-                            {isAnalyzing ? 'Analyzing...' : `Analyze ${selectedFiles ? selectedFiles.length : ''} RFP(s)`}
-                        </Button>
+                        <div className="flex gap-2">
+                            <Button 
+                                onClick={handleAnalyzeBatch} 
+                                disabled={isAnalyzing || ((!selectedFiles || selectedFiles.length === 0) && !(bid.files || []).some(f => f.uploadedBy === 'sam.gov'))}
+                                className="flex-1 flex items-center justify-center gap-2"
+                            >
+                                {isAnalyzing && !analyzingFileId ? <Spinner size="sm" /> : <Wand2 size={16} />}
+                                {isAnalyzing && !analyzingFileId ? 'Analyzing...' : 'Analyze All'}
+                            </Button>
+                            <Button 
+                                variant="secondary"
+                                onClick={handleUploadOnly} 
+                                disabled={isAnalyzing || !selectedFiles || selectedFiles.length === 0}
+                                className="flex items-center justify-center gap-2 px-3"
+                                title="Upload files without analyzing"
+                            >
+                                <UploadCloud size={16} /> Upload
+                            </Button>
+                        </div>
                         <p className="text-xs text-gray-500 mt-2 italic text-center">
-                            Note: If analysis fails or times out, please try uploading and analyzing 1 file at a time to reduce the payload size.
+                            Note: If analyzing all files fails, upload them first and analyze them 1 by 1 below.
                         </p>
                     </div>
                     
                     {bid.files && bid.files.length > 0 && (
                         <div className="mt-6">
                             <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">Uploaded Documents:</h4>
-                            <ul className="list-disc list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                            <ul className="space-y-2">
                                 {bid.files.map((file: StoredFile) => (
-                                    <li key={file.id} className="flex items-center gap-2">
-                                        <FileText size={14} className="text-gray-500" /> 
-                                        <a href={file.dataUrl} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">{file.fileName}</a>
+                                    <li key={file.id} className="flex flex-col gap-1 bg-slate-50 dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700">
+                                        <div className="flex items-center gap-2">
+                                            <FileText size={14} className="text-gray-500 flex-shrink-0" /> 
+                                            <a href={file.dataUrl} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline text-sm truncate">{file.fileName}</a>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleAnalyzeSingle(file)}
+                                            disabled={isAnalyzing}
+                                            className="self-end text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 hover:bg-blue-200 px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
+                                        >
+                                            {analyzingFileId === file.id ? <Spinner size="sm" className="text-blue-700" /> : <Play size={10} />}
+                                            {analyzingFileId === file.id ? 'Analyzing...' : 'Analyze Single'}
+                                        </button>
                                     </li>
                                 ))}
                             </ul>
@@ -273,6 +349,19 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                             </select>
                         </div>
                         <Input type="date" label="Due Date" value={bid.dueDate || ''} onChange={e => onUpdate({ dueDate: e.target.value })} />
+                        {bid.importantDates && bid.importantDates.length > 0 && (
+                            <div className="mt-4 p-3 bg-blue-50 dark:bg-slate-800 rounded-lg">
+                                <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2"><Calendar size={14}/> Important Dates</h4>
+                                <ul className="space-y-1">
+                                    {bid.importantDates.map((d, i) => (
+                                        <li key={i} className="text-xs text-blue-800 dark:text-blue-200 flex justify-between">
+                                            <span>{d.name}</span>
+                                            <span className="font-medium">{d.date}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
                 </Card>
             </div>

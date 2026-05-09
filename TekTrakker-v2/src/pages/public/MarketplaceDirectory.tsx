@@ -11,7 +11,7 @@ import { Building, MapPin, Search, Award, Briefcase } from 'lucide-react';
 const ALL_INDUSTRIES: IndustryVertical[] = [
     'HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General', 
     'Cleaning', 'Painting', 'Roofing', 'Contracting', 'Masonry',
-    'Telecommunications', 'Solar', 'Security', 'Pet Grooming'
+    'Telecommunications', 'Solar', 'Security', 'Pet Grooming', 'Property Management'
 ];
 
 const SkeletonCard: React.FC = () => (

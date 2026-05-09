@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, functions } from '../../lib/firebase';
+import { useAppContext } from '../../context/AppContext';
 import { Camera, RefreshCw, ExternalLink } from 'lucide-react';
 import Button from '../ui/Button';
 import showToast from '../../lib/toast';
@@ -14,8 +15,10 @@ const CompanyCamGallery: React.FC<CompanyCamGalleryProps> = ({ jobId, orgId, add
     const [photos, setPhotos] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [integrationActive, setIntegrationActive] = useState(false);
+    const { state } = useAppContext();
 
     useEffect(() => {
+        if (!state.currentUser) return;
         const checkIntegration = async () => {
             const snap = await db.doc(`organizations/${orgId}/settings/marketplace_integrations`).get();
             const integrations = snap.data()?.integrations || {};
@@ -30,7 +33,7 @@ const CompanyCamGallery: React.FC<CompanyCamGalleryProps> = ({ jobId, orgId, add
             });
 
         return () => unsubscribe();
-    }, [jobId, orgId]);
+    }, [jobId, orgId, state.currentUser]);
 
     const handleSync = async () => {
         setLoading(true);

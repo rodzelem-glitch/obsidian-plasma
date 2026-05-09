@@ -362,10 +362,10 @@ const LoginPage: React.FC = () => {
                                email: true, 
                                agreedAt: new Date().toISOString(), 
                                source: 'GoogleSignIn',
-                               gclid: localStorage.getItem('tt_gclid') || undefined
+                               gclid: localStorage.getItem('tt_gclid') || null
                            } as any,
                            lastLoginAt: new Date().toISOString(),
-                           gclid: localStorage.getItem('tt_gclid') || undefined
+                           gclid: localStorage.getItem('tt_gclid') || null
                        };
 
                        await db.collection('users').doc(uid).set(newUserProfile, { merge: true });
@@ -392,10 +392,10 @@ const LoginPage: React.FC = () => {
                                email: true, 
                                agreedAt: new Date().toISOString(), 
                                source: 'GoogleSignIn',
-                               gclid: localStorage.getItem('tt_gclid') || undefined
+                               gclid: localStorage.getItem('tt_gclid') || null
                            } as any,
                            lastLoginAt: new Date().toISOString(),
-                           gclid: localStorage.getItem('tt_gclid') || undefined
+                           gclid: localStorage.getItem('tt_gclid') || null
                        };
                        await db.collection('users').doc(uid).set(newUserProfile, { merge: true });
                        window.location.reload();
@@ -504,7 +504,7 @@ const LoginPage: React.FC = () => {
                   email: true,
                   agreedAt: new Date().toISOString(),
                   source: 'Registration',
-                  gclid: localStorage.getItem('tt_gclid') || undefined
+                  gclid: localStorage.getItem('tt_gclid') || null
               };
 
               const newUserProfile: User = {
@@ -526,7 +526,7 @@ const LoginPage: React.FC = () => {
                   address: safeAddress, // Now guaranteed object or null
                   marketingConsent: marketingConsent as any,
                   lastLoginAt: new Date().toISOString(), // Set initial login time
-                  gclid: localStorage.getItem('tt_gclid') || undefined
+                  gclid: localStorage.getItem('tt_gclid') || null
               };
 
               // CREATE PROFILE (Even if invite failed)
@@ -535,7 +535,7 @@ const LoginPage: React.FC = () => {
                   await db.collection('users').doc(user.uid).set(newUserProfile, { merge: true });
               } catch (profileError) {
                   console.error("Profile creation failed:", profileError);
-                  throw new Error("Failed to create user profile. Please contact support.");
+                  throw new Error("Failed to create user profile. Please contact support.", { cause: profileError });
               }
               
               // Delete invite if we found it to clean up
@@ -787,13 +787,13 @@ const LoginPage: React.FC = () => {
                       documents: true,
                       time_tracking: true
                   },
-                  gclid: localStorage.getItem('tt_gclid') || undefined,
+                  gclid: localStorage.getItem('tt_gclid') || null,
                   marketingConsent: {
                       sms: true,
                       email: true,
                       agreedAt: new Date().toISOString(),
                       source: 'Registration',
-                      gclid: localStorage.getItem('tt_gclid') || undefined
+                      gclid: localStorage.getItem('tt_gclid') || null
                   }
               };
 
@@ -803,7 +803,7 @@ const LoginPage: React.FC = () => {
                   email: true,
                   agreedAt: new Date().toISOString(),
                   source: 'Registration',
-                  gclid: localStorage.getItem('tt_gclid') || undefined
+                  gclid: localStorage.getItem('tt_gclid') || null
               };
 
               const newUserProfile: User = {
@@ -815,7 +815,7 @@ const LoginPage: React.FC = () => {
                   preferences: { theme: 'dark' }, payRate: 0, ptoAccrued: 0,
                   marketingConsent: marketingConsent as any,
                   lastLoginAt: new Date().toISOString(), // Set initial login time
-                  gclid: localStorage.getItem('tt_gclid') || undefined
+                  gclid: localStorage.getItem('tt_gclid') || null
               };
               
               const batch = db.batch();
@@ -870,7 +870,7 @@ const LoginPage: React.FC = () => {
       </div>
 
       <div className="w-full max-w-lg relative z-10">
-        <div className="text-center mb-8 cursor-pointer" onClick={() => navigate('/')}>
+        <div role="button" aria-label="Go to Home" title="Go to Home" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} className="text-center mb-8 cursor-pointer" onClick={() => navigate('/')}>
             {isBranded ? (
                 <>
                     <div className="inline-flex items-center justify-center p-4 rounded-2xl shadow-2xl shadow-blue-500/20 mb-6 bg-slate-900 border border-slate-700">

@@ -17,11 +17,12 @@ const AdminRoutes = lazy(() => import('./navigation/AdminRoutes'));
 const CustomerRoutes = lazy(() => import('./navigation/CustomerRoutes'));
 const EmployeeRoutes = lazy(() => import('./navigation/EmployeeRoutes'));
 const PublicRoutes = lazy(() => import('./navigation/PublicRoutes'));
-import SaaSMarketing from './pages/landing/SaaSMarketing';
+
 import LocationTracker from './components/common/LocationTracker';
 import ScrollToTop from './components/common/ScrollToTop';
+import { CallListener } from './components/common/CallListener';
 
-const FieldProposal = lazy(() => import('./pages/FieldProposal'));
+
 const PublicProposal = lazy(() => import('./pages/PublicProposal'));
 const PublicEquipmentReport = lazy(() => import('./pages/PublicEquipmentReport'));
 const FranchiseOpportunities = lazy(() => import('./pages/landing/FranchiseOpportunities'));
@@ -30,13 +31,20 @@ const ComplianceReport = lazy(() => import('./pages/landing/ComplianceReport'));
 const PrivacyPolicy = lazy(() => import('./pages/landing/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('./pages/landing/TermsOfService'));
 const EULA = lazy(() => import('./pages/landing/EULA'));
-import { LiveSupportFloatingButton } from './components/common/LiveSupportComponent';
+
 
 // Lazy Load Payment and Marketplace
 const CustomerPayment = lazy(() => import('./pages/CustomerPayment'));
 const MarketplaceDirectory = lazy(() => import('./pages/marketplace/ProviderDirectory'));
 const ProviderProfile = lazy(() => import('./pages/marketplace/ProviderProfile'));
 const Unsubscribe = lazy(() => import('./pages/Unsubscribe'));
+
+// Public Landing Pages - accessible to both guests and authenticated users
+const VirtualWorkerMarketing = lazy(() => import('./pages/landing/VirtualWorkerMarketing'));
+const VirtualWorkerCommands = lazy(() => import('./pages/landing/VirtualWorkerCommands'));
+const PropertyOwnerMarketing = lazy(() => import('./pages/landing/PropertyOwnerMarketing'));
+const FAQ = lazy(() => import('./pages/landing/FAQ'));
+const ReviewsWidget = lazy(() => import('./pages/landing/ReviewsWidget'));
 
 // A simple loading spinner component
 const LoadingSpinner: React.FC = () => (
@@ -56,11 +64,28 @@ const BackgroundDelayer: React.FC<{ children: React.ReactNode }> = ({ children }
 };
 
 const App: React.FC = () => {
-  const { state, dispatch } = useAppContext();
+  const { state, dispatch, startDemo } = useAppContext();
   const { currentUser: user, isMasterAdmin, loading, isDemoMode } = state;
   const navigate = useNavigate();
 
-  const isNative = Capacitor.isNativePlatform();
+  // Parse demo mode immediately during render. If we wait for useEffect, the <Navigate> fallback 
+  // for public routes may redirect to /login and destroy the hash query parameters first.
+  const hash = window.location.hash || '';
+  const hashQueryIndex = hash.indexOf('?');
+  const hashSearch = hashQueryIndex >= 0 ? hash.substring(hashQueryIndex) : '';
+  const urlParams = new URLSearchParams(hashSearch || window.location.search);
+  const demoRole = urlParams.get('demo');
+
+  useEffect(() => {
+    if (demoRole === 'admin' || demoRole === 'employee' || demoRole === 'customer') {
+      // Remove demo param from URL to prevent infinite loops on reload
+      const cleanHash = hashQueryIndex >= 0 ? hash.substring(0, hashQueryIndex) : hash;
+      window.history.replaceState({}, document.title, window.location.pathname + (cleanHash || '#/'));
+      startDemo(demoRole as 'admin' | 'employee' | 'customer');
+    }
+  }, [demoRole, startDemo, hash, hashQueryIndex]);
+
+
 
   const getRedirectPath = useCallback((user: User | null, isMasterAdmin: boolean): string => {
     if (!user) return '/login';
@@ -75,15 +100,12 @@ const App: React.FC = () => {
     }
     if (user.role === 'employee') return '/briefing';
     
-    // If unaffiliated or role unknown, send to marketplace for searching/connection
     const path = (!user.organizationId || user.organizationId === 'unaffiliated' || !user.role) ? '/marketplace' : '/login';
-    console.log(`[Navigation] User: ${user.email}, Role: ${user.role}, Org: ${user.organizationId} -> Path: ${path}`);
     return path;
   }, []); // Dependencies for useCallback should be empty if it only uses its arguments, or include external state if needed.
 
   useEffect(() => {
     if (user?.id) {
-      console.log(`[App] Current User: ${user.email}, Role: ${user.role}, Org: ${user.organizationId}`);
       import('./lib/pushNotificationService').then(module => {
         module.setupFCMToken(user.id);
       });
@@ -193,7 +215,6 @@ const App: React.FC = () => {
     const gclid = urlParams.get('gclid');
     
     if (gclid) {
-      console.log('[Attribution] GCLID captured:', gclid);
       localStorage.setItem('tt_gclid', gclid);
       localStorage.setItem('tt_gclid_captured_at', Date.now().toString());
     }
@@ -205,11 +226,13 @@ const App: React.FC = () => {
     navigate('/login');
   }
 
-  if (loading) {
+  if (loading || demoRole) {
     const currentHash = window.location.hash.split('?')[0].replace('#', '') || '/';
-    const publicPaths = ['/', '/offer', '/pro', '/pro/apex', '/compliance-view', '/privacy', '/terms', '/eula', '/franchise', '/franchise-agreement'];
+    const publicPaths = ['/', '/offer', '/pro', '/pro/apex', '/compliance-view', '/privacy', '/terms', '/eula', '/franchise', '/franchise-agreement', '/ai-worker', '/ai-worker-commands', '/homeowners', '/faq'];
     // Allow public marketing pages to instantly render the First Contentful Paint without waiting for Firebase Auth handshakes!
-    if (!publicPaths.includes(currentHash)) {
+    // However, if we are initializing a demo session, we must block the UI and show the loading spinner to prevent 
+    // the unauthenticated route from triggering a Navigate to /login before the demo context is built.
+    if (!publicPaths.includes(currentHash) || demoRole) {
       return <LoadingSpinner />;
     }
   }
@@ -233,13 +256,14 @@ const App: React.FC = () => {
       <DemoBanner />
       <BackgroundDelayer>
         <LocationTracker />
+        <CallListener />
       </BackgroundDelayer>
       
       <div className="safe-area-wrapper min-h-screen w-full flex flex-col">
         <ScrollToTop />
         <Suspense fallback={<LoadingSpinner />}>
           <Routes>
-            <Route path="/" element={user ? <Navigate to={getRedirectPath(user, isMasterAdmin)} replace /> : (isNative ? <Navigate to="/login" replace /> : <SaaSMarketing />)} />
+            <Route path="/" element={user ? <Navigate to={getRedirectPath(user, isMasterAdmin)} replace /> : <Navigate to="/login" replace />} />
 
             {/* Marketplace routes - available to all users */}
             <Route path="/marketplace" element={<MarketplaceDirectory />} />
@@ -262,6 +286,13 @@ const App: React.FC = () => {
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/eula" element={<EULA />} />
+
+            {/* Public Landing Pages - accessible to both guests and authenticated users */}
+            <Route path="/ai-worker" element={<VirtualWorkerMarketing />} />
+            <Route path="/ai-worker-commands" element={<VirtualWorkerCommands />} />
+            <Route path="/homeowners" element={<PropertyOwnerMarketing />} />
+            <Route path="/faq" element={<FAQ />} />
+            <Route path="/widgets/reviews/:orgId" element={<ReviewsWidget />} />
 
             {user ? (
               <>

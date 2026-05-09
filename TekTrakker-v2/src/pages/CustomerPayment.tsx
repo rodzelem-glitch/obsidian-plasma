@@ -112,16 +112,28 @@ const CustomerPayment: React.FC = () => {
               'invoice.paymentRecipientName': paymentRecipient === 'partner' ? partnerOrganization?.name : organization?.name
           });
           if (job.source === 'PlatformAdmin' && job.customerId) await db.collection('organizations').doc(job.customerId).update({ subscriptionStatus: 'active' });
+          
+          try {
+              const { sendNotification, notifyAdmins } = await import('lib/notificationService');
+              const notificationContent = `💰 Payment received for Invoice #${job.invoice.id || job.id.substring(0,8)} from ${job.customerName}. Amount: $${(typeof job.invoice.totalAmount === 'number' ? job.invoice.totalAmount : (job.invoice.amount || 0)).toFixed(2)}.`;
+              
+              const recipientId = job.assignedTechnicianId;
+              if (recipientId) {
+                  await sendNotification(recipientId, { title: 'Invoice Paid!', body: notificationContent, type: 'invoice_paid' }, job.organizationId);
+              }
+              await notifyAdmins(job.organizationId, { title: 'Invoice Paid!', body: notificationContent, type: 'invoice_paid' });
+          } catch(e) { console.error('Failed to send notifications', e); }
+
           setJob({ ...job, invoice: { ...job.invoice, status: 'Paid' } });
           setSuccess(true);
-      } catch (e) { showToast.warn("Failed to update status."); }
+      } catch { showToast.warn("Failed to update status."); }
   };
 
   const handlePayPalApprove = async (data: any, actions: any) => {
     try {
         const details = await actions.order.capture();
         if (details.status === 'COMPLETED') await markJobPaid();
-    } catch (error) { showToast.warn("Transaction failed."); }
+    } catch { showToast.warn("Transaction failed."); }
   };
   
   const handleSubscriptionApprove = async () => { await markJobPaid(); showToast.warn("Subscription Active!"); };
@@ -132,8 +144,20 @@ const CustomerPayment: React.FC = () => {
       try {
           const sig = sigPadRef.current.toDataURL();
           await db.collection('jobs').doc(job.id).update({ invoiceSignature: sig, invoiceSignedDate: new Date().toISOString() });
+          
+          try {
+              const { sendNotification, notifyAdmins } = await import('lib/notificationService');
+              const notificationContent = `✍️ ${job.customerName} has signed the invoice #${job.invoice.id || job.id.substring(0,8)}.`;
+              
+              const recipientId = job.assignedTechnicianId;
+              if (recipientId) {
+                  await sendNotification(recipientId, { title: 'Invoice Signed', body: notificationContent, type: 'invoice_signed' }, job.organizationId);
+              }
+              await notifyAdmins(job.organizationId, { title: 'Invoice Signed', body: notificationContent, type: 'invoice_signed' });
+          } catch(e) { console.error('Failed to send notifications', e); }
+
           setJob({ ...job, invoiceSignature: sig });
-      } catch (e) { showToast.warn("Failed to save."); } finally { setIsSigning(false); }
+      } catch { showToast.warn("Failed to save."); } finally { setIsSigning(false); }
   };
 
   const isPlatformSubscription = job?.source === 'PlatformAdmin';

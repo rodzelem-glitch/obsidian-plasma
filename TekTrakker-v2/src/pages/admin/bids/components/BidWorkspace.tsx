@@ -1,7 +1,8 @@
 import showToast from "lib/toast";
+import DOMPurify from 'dompurify';
 
 import React, { useState } from 'react';
-import { Bid, BidDoc, BidLineItem, ProposalPreset, Organization } from 'types';
+import { Bid, BidDoc, BidLineItem, ProposalPreset } from 'types';
 import BidWorkspaceHeader from './BidWorkspaceHeader';
 import SetupTab from './SetupTab';
 import InputsTab from './InputsTab';
@@ -14,6 +15,10 @@ import { globalConfirm } from "lib/globalConfirm";
 import { db } from 'lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
+import Modal from 'components/ui/Modal';
+import Input from 'components/ui/Input';
+import Textarea from 'components/ui/Textarea';
+import Button from 'components/ui/Button';
 
 interface BidWorkspaceProps {
     bid: Bid;
@@ -27,6 +32,10 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
     const [isGenerating, setIsGenerating] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
     const [isGeneratingAIPricing, setIsGeneratingAIPricing] = useState(false);
+    const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+    const [submitEmail, setSubmitEmail] = useState('');
+    const [submitMessage, setSubmitMessage] = useState('');
+    const [isSubmittingPackage, setIsSubmittingPackage] = useState(false);
 
     const [isConverting, setIsConverting] = useState(false);
     const navigate = useNavigate();
@@ -237,9 +246,9 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
         let filename;
     
         if (isSpreadsheet) {
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = doc.content;
-            const table = tempDiv.querySelector('table');
+            const parser = new DOMParser();
+            const parsedDoc = parser.parseFromString(DOMPurify.sanitize(doc.content), 'text/html');
+            const table = parsedDoc.querySelector('table');
             if (table) {
                 let csvContent = '';
                 const rows = table.querySelectorAll('tr');
@@ -278,6 +287,92 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    };
+
+    const handleSubmitBidClick = () => {
+        setSubmitEmail(bid.submissionEmail || '');
+        setSubmitMessage(`Dear Procurement Officer,\n\nPlease find attached our finalized proposal package in response to solicitation ${bid.solicitationNumber || 'N/A'}.\n\nThank you,\n${state.currentOrganization?.name || ''}`);
+        setIsSubmitModalOpen(true);
+    };
+
+    const handleConfirmSubmit = async () => {
+        if (!submitEmail) {
+            showToast.warn("Please enter a valid submission email address.");
+            return;
+        }
+
+        setIsSubmittingPackage(true);
+        try {
+            // Prepare attachments
+            const attachments = (bid.generatedDocs || []).map(doc => {
+                const isSpreadsheet = doc.title.toLowerCase().includes('financial') || doc.title.toLowerCase().includes('spreadsheet') || doc.title.toLowerCase().includes('pricing');
+                
+                if (isSpreadsheet) {
+                    const parser = new DOMParser();
+                    const parsedDoc = parser.parseFromString(DOMPurify.sanitize(doc.content), 'text/html');
+                    const table = parsedDoc.querySelector('table');
+                    if (table) {
+                        let csvContent = '';
+                        const rows = table.querySelectorAll('tr');
+                        rows.forEach(row => {
+                            const rowData = Array.from(row.querySelectorAll('th, td')).map(cell => `"${cell.textContent?.replace(/"/g, '""')}"`).join(',');
+                            csvContent += rowData + '\r\n';
+                        });
+                        return {
+                            filename: `${doc.title.replace(/ /g, '_')}.csv`,
+                            content: btoa(unescape(encodeURIComponent(csvContent))),
+                            encoding: 'base64'
+                        };
+                    } else {
+                        return {
+                            filename: `${doc.title.replace(/ /g, '_')}.html`,
+                            content: btoa(unescape(encodeURIComponent(doc.content))),
+                            encoding: 'base64'
+                        };
+                    }
+                } else {
+                    const sRgx = /<style[\s\S]*?<\/style>/gi;
+                    const sMtch = doc.content.match(sRgx) || [];
+                    const bodyOnly = doc.content.replace(sRgx, '');
+                    const hStyles = sMtch.join('\n');
+        
+                    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' "+
+                        "xmlns:w='urn:schemas-microsoft-com:office:word' "+
+                        "xmlns='http://www.w3.org/TR/REC-html40'>"+
+                        "<head><meta charset='utf-8'><title>TekTrakker</title>" + hStyles + "</head><body>";
+                    const footer = "</body></html>";
+                    const sourceHTML = header + bodyOnly + footer;
+                    
+                    return {
+                        filename: `${doc.title.replace(/ /g, '_')}.doc`,
+                        content: btoa(unescape(encodeURIComponent(sourceHTML))),
+                        encoding: 'base64'
+                    };
+                }
+            });
+
+            await db.collection('mail').add({
+                to: [submitEmail],
+                message: {
+                    subject: `Proposal Submission: ${bid.solicitationNumber || 'N/A'} - ${bid.title}`,
+                    text: submitMessage,
+                    html: submitMessage.replace(/\n/g, '<br>'),
+                    attachments: attachments
+                },
+                organizationId: state.currentOrganization?.id,
+                type: 'BidSubmission',
+                createdAt: new Date().toISOString()
+            });
+
+            onUpdate({ status: 'Review', submittedDate: new Date().toISOString() });
+            showToast.success('Bid package submitted successfully via email!');
+            setIsSubmitModalOpen(false);
+        } catch (e: any) {
+            console.error('Error submitting bid:', e);
+            showToast.error(`Failed to submit: ${e.message}`);
+        } finally {
+            setIsSubmittingPackage(false);
+        }
     };
 
     const handleConvertToProject = async () => {
@@ -324,7 +419,7 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
     const renderTabContent = () => {
         switch (activeTab) {
             case 'setup': return <SetupTab bid={bid} onUpdate={onUpdate} />;
-            case 'inputs': 
+            case 'inputs': {
                 const answers = (bid.questions || []).reduce((acc, q) => {
                     acc[q.id] = q.answer || '';
                     return acc;
@@ -336,6 +431,7 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
                         onSave={handleSaveAnswers}
                     />
                 );
+            }
             case 'pricing': return (
                 <PricingTab
                     lineItems={bid.lineItems || []}
@@ -356,6 +452,8 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
                     onGlobalEdit={handleGlobalEdit}
                     onEditDoc={handleEditDoc}
                     onDownload={downloadDocument}
+                    onSubmit={handleSubmitBidClick}
+                    hasSubmissionEmail={true}
                 />
             );
             case 'history': return <HistoryTab bid={bid} onSearch={handleSearch} isSearching={isSearching} onDownload={downloadDocument} />;
@@ -377,6 +475,39 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
             <div className="p-4 sm:p-6">
                 {renderTabContent()}
             </div>
+            <Modal isOpen={isSubmitModalOpen} onClose={() => !isSubmittingPackage && setIsSubmitModalOpen(false)} title="Submit Final Package">
+                <div className="space-y-4">
+                    <p className="text-sm text-slate-500">The platform will securely email the agency directly and attach all {bid.generatedDocs?.length} generated documents.</p>
+                    
+                    <div>
+                        <label htmlFor="submitEmail" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">To (Agency Email)</label>
+                        <Input 
+                            id="submitEmail"
+                            value={submitEmail} 
+                            onChange={e => setSubmitEmail(e.target.value)} 
+                            placeholder="officer@agency.gov" 
+                        />
+                    </div>
+                    
+                    <div>
+                        <label htmlFor="submitMessage" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Personalized Message</label>
+                        <Textarea 
+                            id="submitMessage"
+                            value={submitMessage} 
+                            onChange={e => setSubmitMessage(e.target.value)} 
+                            rows={6} 
+                            className="font-mono text-sm"
+                        />
+                    </div>
+                    
+                    <div className="flex justify-end gap-3 mt-6">
+                        <Button variant="secondary" onClick={() => setIsSubmitModalOpen(false)} disabled={isSubmittingPackage}>Cancel</Button>
+                        <Button onClick={handleConfirmSubmit} disabled={isSubmittingPackage || !submitEmail} className="bg-green-600 hover:bg-green-700 text-white">
+                            {isSubmittingPackage ? 'Sending...' : 'Send Email & Attachments'}
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

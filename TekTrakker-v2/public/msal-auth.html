@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Authenticating with Microsoft...</title>
+    <style>
+        .container {
+            font-family: sans-serif;
+            text-align: center;
+            margin-top: 100px;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Authentication Successful!</h2>
+        <p>Loading your inbox...</p>
+    </div>
+
+    <!-- Use native ES Module to completely bypass UMD wrapper conflicts (which caused 'msal is not defined') -->
+    <script type="module">
+        console.log("=== NEW MSAL AUTH V4 LOADED ===");
+        import * as msal from 'https://cdn.jsdelivr.net/npm/@azure/msal-browser@5.9.0/+esm';
+
+        // In the redirect flow, Microsoft sends the user back to this page.
+        // We parse the token, save it to localStorage, and instantly redirect back into the app.
+        const msalConfig = {
+            auth: {
+                clientId: "35863990-62d3-482c-afd0-3708087c018e",
+                authority: "https://login.microsoftonline.com/1af8f245-ea30-4fdc-a06b-020a99f26817",
+                redirectUri: window.location.origin + '/msal-auth.html'
+            },
+            cache: {
+                cacheLocation: "localStorage"
+            }
+        };
+
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+        
+        msalInstance.initialize().then(() => {
+            console.log("=== MSAL INIT COMPLETE ===");
+            console.log("=== CURRENT URL ===", window.location.href);
+            console.log("=== CURRENT HASH ===", window.location.hash);
+            console.log("=== CURRENT SEARCH ===", window.location.search);
+            msalInstance.handleRedirectPromise().then((response) => {
+                console.log("=== MSAL REDIRECT PROMISE RESOLVED ===", response);
+                if (response && response.accessToken) {
+                    console.log("=== SAVING ACCESS TOKEN TO LOCAL STORAGE ===");
+                    localStorage.setItem('msGraphToken', response.accessToken);
+                    window.location.replace(window.location.origin + '/#/master/inbox');
+                } else {
+                    console.warn("=== NO ACCESS TOKEN IN RESPONSE ===");
+                    document.body.innerHTML += "<p style='color:red;'>Error: No token received from Microsoft. Please check console.</p>";
+                }
+            }).catch(err => {
+                console.error("MSAL Redirect Error:", err);
+                document.body.innerHTML += "<p style='color:red;'>MSAL Error: " + err.message + "</p>";
+            });
+        });
+    </script>
+</body>
+</html>

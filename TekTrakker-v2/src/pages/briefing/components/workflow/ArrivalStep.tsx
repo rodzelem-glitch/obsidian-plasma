@@ -22,6 +22,7 @@ interface ArrivalStepProps {
     newAsset: any;
     setNewAsset: (asset: any) => void;
     handleAddAsset: () => void;
+    handleDeleteAsset?: (id: string) => void;
     isOcrScanning: boolean;
     handleAssetPhotoUpload: (e: React.ChangeEvent<HTMLInputElement>, photoType: 'serialPhotoUrl' | 'unitTagPhotoUrl' | 'conditionPhotoUrl') => void;
     saveCustomerInfo: () => void;
@@ -46,6 +47,7 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
     newAsset,
     setNewAsset,
     handleAddAsset,
+    handleDeleteAsset,
     isOcrScanning,
     handleAssetPhotoUpload,
     saveCustomerInfo,
@@ -154,17 +156,23 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                             <label htmlFor="arrival-gallery" className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors w-24 h-24 shadow-sm shrink-0">
                                 <ImageIcon size={24} className="text-slate-400 mb-2"/>
                                 <span className="text-xs font-bold text-slate-500">Gallery</span>
-                                <input id="arrival-gallery" type="file" accept="image/*" onChange={(e) => handlePhotoUpload(e, 'Pre-Work')} className="hidden" />
+                                <input id="arrival-gallery" type="file" multiple accept="image/*" onChange={(e) => handlePhotoUpload(e, 'Pre-Work')} className="hidden" />
                             </label>
                         )}
                         {arrivalFiles.map(file => (
                             <div key={file.id} className="relative w-24 h-24 rounded-xl shadow-md shrink-0 border border-slate-200 dark:border-slate-700 group overflow-hidden">
-                                <img src={file.dataUrl || (file as any).url} alt="Arrival" className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform" onClick={() => onViewPhoto?.(file)} />
+                                <button 
+                                    type="button"
+                                    onClick={() => onViewPhoto?.(file)}
+                                    className="w-full h-full p-0 border-none outline-none block"
+                                >
+                                    <img src={file.dataUrl || (file as any).url} alt="Arrival" className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform" />
+                                </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onDeletePhoto?.(file); }}
                                     aria-label="Delete photo"
                                     title="Delete photo"
-                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-10 shadow-md"
                                 >
                                     <X size={12}/>
                                 </button>
@@ -196,12 +204,19 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">S/N: {a.serial}</p>
                             <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Loc: {a.location || 'N/A'}</p>
                         </div>
-                        <button onClick={() => {
-                            setNewAsset(a);
-                            setIsAddAssetOpen(true);
-                        }} className="text-primary-600 font-bold text-xs hover:underline">
-                            Edit
-                        </button>
+                        <div className="flex gap-3 items-center">
+                            <button onClick={() => {
+                                setNewAsset(a);
+                                setIsAddAssetOpen(true);
+                            }} className="text-primary-600 font-bold text-xs hover:underline">
+                                Edit
+                            </button>
+                            {handleDeleteAsset && (
+                                <button onClick={() => handleDeleteAsset(a.id)} className="text-red-500 font-bold text-xs hover:underline">
+                                    Delete
+                                </button>
+                            )}
+                        </div>
                     </div>
                 )) : (
                     !isAddAssetOpen && <p className="text-sm text-slate-400 italic mb-4">No assets listed.</p>
@@ -210,15 +225,14 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                 {isAddAssetOpen && (
                     <div className="mt-4 p-4 border border-primary-200 bg-primary-50/30 dark:bg-slate-800 rounded-xl space-y-4">
                         <h5 className="font-bold text-slate-800 dark:text-slate-100">{newAsset.id ? 'Edit Asset' : 'Add New Asset'}</h5>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1">
                             <Input label="Name (e.g. Roof Unit 1)" value={newAsset.name || ''} onChange={e => setNewAsset({...newAsset, name: e.target.value})} placeholder="Optional: System Name"/>
                             <Select label="Type" value={newAsset.type || 'System'} onChange={e => setNewAsset({...newAsset, type: e.target.value as any})}>
                                 <option>System</option>
                                 <option>Unit</option>
                                 <option>Part</option>
                             </Select>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            
                             <Input label="Brand" value={newAsset.brand} onChange={e => setNewAsset({...newAsset, brand: e.target.value})} placeholder="e.g. Trane, Goodman"/>
                             <Input label="Model" value={newAsset.model} onChange={e => setNewAsset({...newAsset, model: e.target.value})} placeholder="e.g. XV20i"/>
                         </div>
@@ -230,7 +244,7 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                             {isOcrScanning && <div className="absolute right-3 top-9 text-xs text-primary-500 font-bold animate-pulse flex items-center gap-1"><Sparkles size={12}/> Scanning...</div>}
                         </div>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1">
                             <Select label="Property Mapping" value={newAsset.propertyId || ''} onChange={e => setNewAsset({...newAsset, propertyId: e.target.value})}>
                                 <option value="">Default Address</option>
                                 {customer?.serviceLocations?.map((loc: any) => (
@@ -238,9 +252,7 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                                 ))}
                             </Select>
                             <Input label="Sub-Location (e.g. Attic)" value={newAsset.location || ''} onChange={e => setNewAsset({...newAsset, location: e.target.value})} placeholder="e.g. Roof, Basement"/>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            
                             <Input label="Install Date" type="date" value={newAsset.installDate || ''} onChange={e => setNewAsset({...newAsset, installDate: e.target.value})} />
                             <Select label="Condition" value={newAsset.condition || ''} onChange={e => setNewAsset({...newAsset, condition: e.target.value as any})}>
                                 <option value="">Select Condition</option>
@@ -257,16 +269,37 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                         </div>
                         
                         <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-2 pt-2">
-                            <label className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl cursor-pointer bg-white dark:bg-slate-900 text-xs text-center w-32 h-32 relative transition-colors shadow-sm">
-                                {newAsset.serialPhotoUrl ? <img src={newAsset.serialPhotoUrl} alt="Serial" className="absolute inset-0 w-full h-full object-cover rounded-xl" /> : <><PlusCircle size={24} className="mb-2 text-primary-500" /><span className="font-medium text-slate-600 dark:text-slate-300">OCR Serial<br/>Photo</span></>}
+                            <label className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl cursor-pointer bg-white dark:bg-slate-900 text-xs text-center w-32 h-32 relative transition-colors shadow-sm overflow-hidden">
+                                {newAsset.serialPhotoUrl ? (
+                                    <>
+                                        <img src={newAsset.serialPhotoUrl} alt="Serial" className="absolute inset-0 w-full h-full object-cover rounded-xl" />
+                                        <button type="button" onClick={(e) => { e.preventDefault(); setNewAsset({...newAsset, serialPhotoUrl: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
+                                            <X size={12}/>
+                                        </button>
+                                    </>
+                                ) : <><PlusCircle size={24} className="mb-2 text-primary-500" /><span className="font-medium text-slate-600 dark:text-slate-300">OCR Serial<br/>Photo</span></>}
                                 <input type="file" className="hidden" accept="image/*" onChange={(e) => handleAssetPhotoUpload(e, 'serialPhotoUrl')} />
                             </label>
-                            <label className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl cursor-pointer bg-white dark:bg-slate-900 text-xs text-center w-32 h-32 relative transition-colors shadow-sm">
-                                {newAsset.unitTagPhotoUrl ? <img src={newAsset.unitTagPhotoUrl} alt="Tag" className="absolute inset-0 w-full h-full object-cover rounded-xl" /> : <><PlusCircle size={24} className="mb-2 text-primary-500" /><span className="font-medium text-slate-600 dark:text-slate-300">OCR Unit<br/>Data Plate</span></>}
+                            <label className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl cursor-pointer bg-white dark:bg-slate-900 text-xs text-center w-32 h-32 relative transition-colors shadow-sm overflow-hidden">
+                                {newAsset.unitTagPhotoUrl ? (
+                                    <>
+                                        <img src={newAsset.unitTagPhotoUrl} alt="Tag" className="absolute inset-0 w-full h-full object-cover rounded-xl" />
+                                        <button type="button" onClick={(e) => { e.preventDefault(); setNewAsset({...newAsset, unitTagPhotoUrl: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
+                                            <X size={12}/>
+                                        </button>
+                                    </>
+                                ) : <><PlusCircle size={24} className="mb-2 text-primary-500" /><span className="font-medium text-slate-600 dark:text-slate-300">OCR Unit<br/>Data Plate</span></>}
                                 <input type="file" className="hidden" accept="image/*" onChange={(e) => handleAssetPhotoUpload(e, 'unitTagPhotoUrl')} />
                             </label>
-                            <label className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl cursor-pointer bg-white dark:bg-slate-900 text-xs text-center w-32 h-32 relative transition-colors shadow-sm">
-                                {newAsset.conditionPhotoUrl ? <img src={newAsset.conditionPhotoUrl} alt="Condition" className="absolute inset-0 w-full h-full object-cover rounded-xl" /> : <><PlusCircle size={24} className="mb-2 text-primary-500" /><span className="font-medium text-slate-600 dark:text-slate-300">Condition<br/>Photo</span></>}
+                            <label className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl cursor-pointer bg-white dark:bg-slate-900 text-xs text-center w-32 h-32 relative transition-colors shadow-sm overflow-hidden">
+                                {newAsset.conditionPhotoUrl ? (
+                                    <>
+                                        <img src={newAsset.conditionPhotoUrl} alt="Condition" className="absolute inset-0 w-full h-full object-cover rounded-xl" />
+                                        <button type="button" onClick={(e) => { e.preventDefault(); setNewAsset({...newAsset, conditionPhotoUrl: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
+                                            <X size={12}/>
+                                        </button>
+                                    </>
+                                ) : <><PlusCircle size={24} className="mb-2 text-primary-500" /><span className="font-medium text-slate-600 dark:text-slate-300">Condition<br/>Photo</span></>}
                                 <input type="file" className="hidden" accept="image/*" onChange={(e) => handleAssetPhotoUpload(e, 'conditionPhotoUrl')} />
                             </label>
                         </div>

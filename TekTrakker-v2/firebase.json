@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "tektrakker",
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -37,6 +38,15 @@
           {
             "key": "Cache-control",
             "value": "no-cache"
+          }
+        ]
+      },
+      {
+        "source": "@(widget|hiring-widget).js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
           }
         ]
       },

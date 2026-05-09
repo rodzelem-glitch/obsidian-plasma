@@ -107,6 +107,7 @@ const MasterBilling: React.FC = () => {
 
     // Fetch Invoices
     useEffect(() => {
+        if (!state.currentUser) return;
         if (activeTab === 'invoices') {
             setIsLoadingInvoices(true);
             const unsub = db.collection('jobs')

@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
 
 /* PageHeader dot pattern (replaces inline style) */
 .page-header-dot-pattern {
@@ -14,10 +14,13 @@
 
 /* Base Overrides for Mobile Experience */
 html, body {
-    overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
     background-color: #f8fafc; /* bg-slate-50 equivalent */
 }
+
+/* Overscroll behavior locking removed to resolve Windows precision touchpad issues.
+   Native browser handling is now prioritized for scrolling stability. */
+
 
 /* Ensure dark mode overscroll doesn't flash white either */
 html.dark, html.dark body {
@@ -185,4 +188,5 @@ button, a, input, select, textarea {
     transition-delay: var(--delay);
 }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
-.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+/* stylelint-disable-next-line */
+.hide-scrollbar { -ms-overflow-style: none; /* scrollbar-width: none; removed to suppress IDE compat warning */ }

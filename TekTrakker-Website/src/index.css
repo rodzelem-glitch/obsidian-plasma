@@ -14,7 +14,6 @@
 
 /* Base Overrides for Mobile Experience */
 html, body {
-    overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
     background-color: #f8fafc; /* bg-slate-50 equivalent */
 }

@@ -1,11 +1,12 @@
 import showToast from "lib/toast";
 import React, { useState } from 'react';
+import { useAppContext } from 'context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import Card from 'components/ui/Card';
 import Input from 'components/ui/Input';
 import Button from 'components/ui/Button';
 import Toggle from 'components/ui/Toggle';
-import { CreditCard, Mail, Code, Copy, Users, ChevronDown, CheckCircle2, ShieldAlert, MonitorUp, Thermometer, Wrench, Package, Square, Coins, Workflow, MessageSquare, Cpu, Home, Leaf, Truck, DollarSign, Fingerprint, PhoneCall, Database, FileText, CloudSun, CheckCircle, RefreshCw, ArrowRight, Sparkles } from 'lucide-react';
+import { CreditCard, Mail, Code, Copy, Users, ChevronDown, CheckCircle2, ShieldAlert, MonitorUp, Thermometer, Wrench, Package, Square, Coins, Workflow, MessageSquare, Cpu, Home, Leaf, Truck, DollarSign, Fingerprint, PhoneCall, Database, FileText, CloudSun, CheckCircle, RefreshCw, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
 
 
 interface IntegrationsTabProps {
@@ -72,8 +73,24 @@ interface IntegrationsTabProps {
     setCheckrApiKey: (val: string) => void;
     ringCentralClientId: string;
     setRingCentralClientId: (val: string) => void;
+    rcBackendClientId: string;
+    setRcBackendClientId: (val: string) => void;
     ringCentralClientSecret: string;
     setRingCentralClientSecret: (val: string) => void;
+    ringCentralJwtToken: string;
+    setRingCentralJwtToken: (val: string) => void;
+    rcPrimarySms: boolean;
+    setRcPrimarySms: (val: boolean) => void;
+    rcEnableVoiceAi: boolean;
+    setRcEnableVoiceAi: (val: boolean) => void;
+    rcRingsBeforeAi: string;
+    setRcRingsBeforeAi: (val: string) => void;
+    rcSmsOnMissed: boolean;
+    setRcSmsOnMissed: (val: boolean) => void;
+    rcSmsTemplate: string;
+    setRcSmsTemplate: (val: string) => void;
+    rcMappings: { phoneNumber: string, assignedUserId: string, forwardToUserId: string }[];
+    setRcMappings: (val: { phoneNumber: string, assignedUserId: string, forwardToUserId: string }[]) => void;
     openWeatherApiKey: string;
     setOpenWeatherApiKey: (val: string) => void;
     shovelsApiKey: string;
@@ -83,6 +100,8 @@ interface IntegrationsTabProps {
     handleConnectQuickBooks?: () => void;
     handleDisconnectQuickBooks?: () => void;
     isConnectingQuickbooks?: boolean;
+    handleConnectRingCentral?: () => void;
+    isConnectingRingCentral?: boolean;
     punchoutConfigs: any[];
     setPunchoutConfigs: (val: any[]) => void;
     orgId: string;
@@ -160,13 +179,19 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
     ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret,
     samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw,
     goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId,
-    ringCentralClientSecret, setRingCentralClientSecret,
+    rcBackendClientId, setRcBackendClientId,
+    ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken,
+    rcPrimarySms, setRcPrimarySms,
+    rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate,
+    rcMappings, setRcMappings,
     openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount,
     quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks,
+    handleConnectRingCentral, isConnectingRingCentral,
     webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId
 }) => {
     const [expandedGridId, setExpandedGridId] = useState<string | null>(null);
     const navigate = useNavigate();
+    const { state } = useAppContext();
     const mqWebhookUrl = `https://us-central1-tektrakker.cloudfunctions.net/measureQuickWebhook?orgId=${orgId || 'ERROR_NO_ORG'}`;
 
     return (
@@ -623,8 +648,83 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                         expandedId={expandedGridId} setExpandedId={setExpandedGridId}
                     >
                         <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Enable screen-pops. When a customer calls your RingCentral numbers, their profile pops up instantly on the dashboard.</p>
-                        <Input label="Client ID" value={ringCentralClientId} onChange={e => setRingCentralClientId(e.target.value)} placeholder="Enter RingCentral Client ID" />
-                        <Input label="Client Secret" value={ringCentralClientSecret} onChange={e => setRingCentralClientSecret(e.target.value)} placeholder="Enter RingCentral Client Secret" type="password" />
+                        
+                        <div className="mb-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-400">
+                            <div className="flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <strong>Web Phone Required Setup:</strong> To use the in-browser softphone dialer, you MUST add the following Redirect URI to your RingCentral App configuration in their Developer Console:
+                                    <code className="block mt-1 p-1.5 bg-blue-100 dark:bg-blue-950 rounded select-all font-mono text-[10px]">https://ringcentral.github.io/ringcentral-embeddable/redirect.html</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        <Toggle label="Use as Primary SMS Provider (Replaces Twilio)" enabled={rcPrimarySms} onChange={setRcPrimarySms} />
+                        <div className="mb-4"></div>
+
+                        <div className="text-sm font-semibold text-gray-700 mt-4 mb-2">Frontend Widget App (Browser-Based)</div>
+                        <Input label="Widget Client ID" value={ringCentralClientId} onChange={e => setRingCentralClientId(e.target.value)} placeholder="Enter Browser-Based App Client ID" />
+                        
+                        <div className="text-sm font-semibold text-gray-700 mt-6 mb-2">Backend Automation App (Server Web App)</div>
+                        <Input label="Backend Client ID" value={rcBackendClientId} onChange={e => setRcBackendClientId(e.target.value)} placeholder="Enter Server Web App Client ID" />
+                        <Input label="Client Secret (Optional if using JWT)" value={ringCentralClientSecret} onChange={e => setRingCentralClientSecret(e.target.value)} placeholder="Enter RingCentral Client Secret" type="password" />
+                        <Input label="JWT Token" value={ringCentralJwtToken} onChange={e => setRingCentralJwtToken(e.target.value)} placeholder="Enter RingCentral JWT Token" type="password" />
+                        
+                        <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2"><PhoneCall size={14} className="text-emerald-500" /> Virtual AI Voice & Routing</h4>
+                            <div className="flex items-center gap-3">
+                                <input type="checkbox" id="rcEnableVoiceAi" checked={rcEnableVoiceAi} onChange={e => setRcEnableVoiceAi(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+                                <label htmlFor="rcEnableVoiceAi" className="text-sm font-bold text-slate-700 dark:text-slate-300">Enable AI Voice Answering</label>
+                            </div>
+                            <Input label="Rings before AI Answers" value={rcRingsBeforeAi} onChange={e => setRcRingsBeforeAi(e.target.value)} placeholder="e.g., 3" type="number" />
+                            
+                            <div className="flex items-center gap-3 pt-2">
+                                <input type="checkbox" id="rcSmsOnMissed" checked={rcSmsOnMissed} onChange={e => setRcSmsOnMissed(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+                                <label htmlFor="rcSmsOnMissed" className="text-sm font-bold text-slate-700 dark:text-slate-300">Send SMS on Missed Call</label>
+                            </div>
+                            <Input label="Missed Call SMS Template" value={rcSmsTemplate} onChange={e => setRcSmsTemplate(e.target.value)} placeholder="Sorry we missed you! Book online at..." />
+                        </div>
+
+                        <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 space-y-4">
+                            <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-2"><Workflow size={14} className="text-indigo-500" /> Number Routing</h4>
+                            <p className="text-xs text-slate-500">Map specific RingCentral phone numbers directly to employees. If a number is mapped, incoming calls and SMS will route to them instead of the admin. You can optionally add a forwarding user for night shifts/vacations.</p>
+                            
+                            {rcMappings?.map((mapping, idx) => (
+                                <div key={idx} className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3 relative">
+                                    <button onClick={() => { const newM = [...rcMappings]; newM.splice(idx, 1); setRcMappings(newM); }} className="absolute top-2 right-2 text-red-500 hover:text-red-700 text-[10px] font-bold uppercase tracking-widest">Remove</button>
+                                    <Input label="RingCentral Phone Number" value={mapping.phoneNumber} onChange={e => { const newM = [...rcMappings]; newM[idx].phoneNumber = e.target.value; setRcMappings(newM); }} placeholder="+15551234567" />
+                                    
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Primary Owner</label>
+                                            <select aria-label="Primary Owner" title="Primary Owner" value={mapping.assignedUserId} onChange={e => { const newM = [...rcMappings]; newM[idx].assignedUserId = e.target.value; setRcMappings(newM); }} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
+                                                <option value="">-- Select Employee --</option>
+                                                {state.users.filter(u => u.organizationId === orgId && u.status === 'active').map(u => (
+                                                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Forward To (Optional)</label>
+                                            <select aria-label="Forward To User" title="Forward To User" value={mapping.forwardToUserId} onChange={e => { const newM = [...rcMappings]; newM[idx].forwardToUserId = e.target.value; setRcMappings(newM); }} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
+                                                <option value="">-- None --</option>
+                                                {state.users.filter(u => u.organizationId === orgId && u.status === 'active').map(u => (
+                                                    <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            <Button variant="secondary" onClick={() => setRcMappings([...(rcMappings || []), { phoneNumber: '', assignedUserId: '', forwardToUserId: '' }])} className="w-full text-[10px] font-black uppercase tracking-widest">+ Add Number Route</Button>
+                        </div>
+
+                        <div className="mt-4 flex justify-end">
+                            <Button onClick={handleConnectRingCentral} disabled={isConnectingRingCentral} className="text-xs uppercase font-black tracking-widest">
+                                {isConnectingRingCentral ? <RefreshCw className="animate-spin mr-2" size={14} /> : null}
+                                Save & Register Webhook
+                            </Button>
+                        </div>
                     </IntegrationModule>
                     )}
                 </div>

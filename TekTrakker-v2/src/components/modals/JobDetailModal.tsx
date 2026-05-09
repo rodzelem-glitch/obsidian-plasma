@@ -5,14 +5,16 @@ import CompanyCamGallery from '../features/CompanyCamGallery';
 import Modal from '../ui/Modal';
 import { 
     Calendar, MapPin, Clock, CheckCircle, Package, 
-    ShieldCheck, FileText, ChevronRight, Droplets, 
-    Thermometer, Wrench, DollarSign, Printer, ArrowLeft,
-    Check, Shield
+    ShieldCheck, FileText, Droplets, 
+    Thermometer, Wrench, DollarSign, Printer,
+    Check, Shield, Trash2
 } from 'lucide-react';
 import { Job, Proposal, DiagnosticReport } from '../../types';
 import Button from '../ui/Button';
 import { db } from '../../lib/firebase';
+import firebase from 'firebase/compat/app';
 import DocumentPreview from '../ui/DocumentPreview';
+import { useAppContext } from '../../context/AppContext';
 
 interface JobDetailModalProps {
     isOpen: boolean;
@@ -24,16 +26,44 @@ interface JobDetailModalProps {
     onPrint?: () => void;
 }
 
+interface ExtendedFile {
+    id?: string;
+    dataUrl?: string;
+    url?: string;
+    label?: string;
+    contentType?: string;
+    fileType?: string;
+    metadata?: { label?: string; category?: string };
+    type?: string;
+    fileName?: string;
+    createdAt?: string | number;
+}
+
 const JobDetailModal: React.FC<JobDetailModalProps> = ({ 
     isOpen, onClose, job, isAdmin, 
     onEditInvoice, onEditRecord, onPrint 
 }) => {
-    const [proposal, setProposal] = useState<Proposal | null>(null);
-    const [previewDoc, setPreviewDoc] = useState<any>(null);
+    const [proposal, setProposal] = useState<Record<string, unknown> | null>(null);
+    const [previewDoc, setPreviewDoc] = useState<Record<string, unknown> | null>(null);
     const [diagnostics, setDiagnostics] = useState<DiagnosticReport[]>([]);
+    const [deletedFiles, setDeletedFiles] = useState<Set<string>>(new Set());
+    const { state } = useAppContext();
+
+    const handleDeletePhoto = async (file: ExtendedFile) => {
+        if (!window.confirm("Delete this photo permanently?")) return;
+        try {
+            setDeletedFiles(prev => new Set(prev).add(file.id || file.dataUrl));
+            await db.collection('jobs').doc(job.id).update({
+                files: firebase.firestore.FieldValue.arrayRemove(file)
+            });
+        } catch (e) {
+            console.error(e);
+            alert("Failed to delete photo.");
+        }
+    };
 
     useEffect(() => {
-        if (!job?.id) return;
+        if (!state.currentUser || !job?.id) return;
         setProposal(null);
 
         const promises: Promise<Proposal | null>[] = [];
@@ -65,26 +95,36 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
         });
 
         return () => unsubDiags();
-    }, [job?.id, job?.projectId]);
+    }, [job?.id, job?.projectId, state.currentUser]);
 
     if (!job) return null;
 
-    const formatAddress = (addr: any) => {
+    const formatAddress = (addr: unknown) => {
         if (typeof addr === 'string') return addr;
         if (!addr) return 'Address not recorded';
-        return `${addr.street}, ${addr.city}, ${addr.state} ${addr.zip}`;
+        const a = addr as Record<string, string>;
+        return `${a.street || ''}, ${a.city || ''}, ${a.state || ''} ${a.zip || ''}`;
     };
 
     const photoFiles = job.files?.filter(f => 
-        f.type === 'Photo' || 
-        (f as any).contentType?.startsWith('image/') || 
-        (f as any).fileType?.startsWith('image/')
+        !deletedFiles.has(f.id || (f as ExtendedFile).dataUrl || '') && (
+            f.type === 'Photo' || 
+            (f as ExtendedFile).contentType?.startsWith('image/') || 
+            (f as ExtendedFile).fileType?.startsWith('image/')
+        )
     ) || [];
+
+    const groupedPhotos = photoFiles.reduce((acc, f) => {
+        const label = f.metadata?.label || (f as ExtendedFile).label || 'Uncategorized';
+        if (!acc[label]) acc[label] = [];
+        acc[label].push(f);
+        return acc;
+    }, {} as Record<string, typeof photoFiles>);
     const docFiles = job.files?.filter(f => 
         f.type === 'Document' || 
-        (f as any).contentType === 'application/pdf' || 
-        (f as any).fileType === 'application/pdf' ||
-        (f as any).fileType === 'text/html' ||
+        (f as ExtendedFile).contentType === 'application/pdf' || 
+        (f as ExtendedFile).fileType === 'application/pdf' ||
+        (f as ExtendedFile).fileType === 'text/html' ||
         f.fileName?.toLowerCase().endsWith('.html') ||
         f.fileName?.toLowerCase().endsWith('.pdf')
     ) || [];
@@ -215,17 +255,17 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 {(() => {
                                                     try {
                                                         const items = JSON.parse(job.notes.diagnosisChecklist);
-                                                        const visibleItems = isAdmin ? items : items.filter((i: any) => !i.hiddenFromCustomer);
+                                                        const visibleItems = isAdmin ? items : items.filter((i: Record<string, unknown>) => !i.hiddenFromCustomer);
                                                         if (visibleItems.length === 0) return <p className="text-xs text-slate-400 italic">No visible items.</p>;
-                                                        return visibleItems.map((item: any, idx: number) => (
+                                                        return visibleItems.map((item: Record<string, unknown>, idx: number) => (
                                                             <div key={idx} className="flex items-start gap-3 text-xs">
                                                                 <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${item.completed ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
                                                                     <Check size={10} strokeWidth={4}/>
                                                                 </div>
-                                                                <span className={item.completed ? 'text-slate-700 dark:text-slate-200 font-medium' : 'text-slate-400 line-through'}>{item.label}</span>
+                                                                <span className={item.completed ? 'text-slate-700 dark:text-slate-200 font-medium' : 'text-slate-400 line-through'}>{item.label as string}</span>
                                                             </div>
                                                         ));
-                                                    } catch (e) { return <p className="text-xs text-red-500">Error loading checklist</p>; }
+                                                    } catch { return <p className="text-xs text-red-500">Error loading checklist</p>; }
                                                 })()}
                                             </div>
                                         </div>
@@ -239,17 +279,17 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 {(() => {
                                                     try {
                                                         const items = JSON.parse(job.notes.qualityChecklist);
-                                                        const visibleItems = isAdmin ? items : items.filter((i: any) => !i.hiddenFromCustomer);
+                                                        const visibleItems = isAdmin ? items : items.filter((i: Record<string, unknown>) => !i.hiddenFromCustomer);
                                                         if (visibleItems.length === 0) return <p className="text-xs text-slate-400 italic">No visible items.</p>;
-                                                        return visibleItems.map((item: any, idx: number) => (
+                                                        return visibleItems.map((item: Record<string, unknown>, idx: number) => (
                                                             <div key={idx} className="flex items-start gap-3 text-xs">
                                                                 <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${item.completed ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>
                                                                     <Check size={10} strokeWidth={4}/>
                                                                 </div>
-                                                                <span className={item.completed ? 'text-slate-700 dark:text-slate-200 font-medium' : 'text-slate-400 line-through'}>{item.label}</span>
+                                                                <span className={item.completed ? 'text-slate-700 dark:text-slate-200 font-medium' : 'text-slate-400 line-through'}>{item.label as string}</span>
                                                             </div>
                                                         ));
-                                                    } catch (e) { return <p className="text-xs text-red-500">Error loading checklist</p>; }
+                                                    } catch { return <p className="text-xs text-red-500">Error loading checklist</p>; }
                                                 })()}
                                             </div>
                                         </div>
@@ -525,12 +565,12 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                         </section>
 
                         {/* Warranty Coverage */}
-                        {((job.invoice as any)?.workmanshipWarrantyMonths > 0 || (job.invoice as any)?.partsWarrantyMonths > 0) && (() => {
-                            const inv = job.invoice as any;
-                            const wm: number = inv?.workmanshipWarrantyMonths || 0;
-                            const pm: number = inv?.partsWarrantyMonths || 0;
+                        {((job.invoice as Record<string, unknown>)?.workmanshipWarrantyMonths as number > 0 || (job.invoice as Record<string, unknown>)?.partsWarrantyMonths as number > 0) && (() => {
+                            const inv = job.invoice as Record<string, unknown>;
+                            const wm: number = (inv?.workmanshipWarrantyMonths as number) || 0;
+                            const pm: number = (inv?.partsWarrantyMonths as number) || 0;
                             const agreed: boolean = !!inv?.warrantyDisclaimerAgreed;
-                            const issued = inv?.warrantyIssuedDate ? new Date(inv.warrantyIssuedDate) : new Date(job.appointmentTime);
+                            const issued = inv?.warrantyIssuedDate ? new Date(inv.warrantyIssuedDate as string) : new Date(job.appointmentTime);
                             const now = new Date();
                             const addMonths = (d: Date, m: number) => { const r = new Date(d); r.setMonth(r.getMonth() + m); return r; };
                             const wmExpiry = wm > 0 ? addMonths(issued, wm) : null;
@@ -538,6 +578,20 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                             const monthsLeft = (d: Date | null) => d ? Math.max(0, Math.round((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30.44))) : 0;
                             const wmActive = agreed && !!wmExpiry && wmExpiry > now;
                             const pmActive = agreed && !!pmExpiry && pmExpiry > now;
+
+                            const getWidthClass = (percent: number) => {
+                                if (percent <= 0) return 'w-0';
+                                if (percent <= 10) return 'w-[10%]';
+                                if (percent <= 20) return 'w-[20%]';
+                                if (percent <= 30) return 'w-[30%]';
+                                if (percent <= 40) return 'w-[40%]';
+                                if (percent <= 50) return 'w-1/2';
+                                if (percent <= 60) return 'w-[60%]';
+                                if (percent <= 70) return 'w-[70%]';
+                                if (percent <= 80) return 'w-[80%]';
+                                if (percent <= 90) return 'w-[90%]';
+                                return 'w-full';
+                            };
                             return (
                                 <section className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30 shadow-sm print:bg-white print:border-slate-200">
                                     <div className="flex items-center gap-2 mb-4">
@@ -557,8 +611,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 </p>
                                                 {wmExpiry && <p className="text-[9px] text-slate-400 mt-1">{wmActive ? `Exp. ${wmExpiry.toLocaleDateString()}` : `Expired ${wmExpiry.toLocaleDateString()}`}</p>}
                                                 <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                                                    {/* eslint-disable react/forbid-dom-props */}
-                                                    <div className={`h-full rounded-full ${wmActive ? 'bg-blue-500' : 'bg-slate-300'}`} {...({style: { width: `${wmActive ? Math.min(100, (monthsLeft(wmExpiry) / wm) * 100) : 0}%` }})} />
+                                                    <div className={`h-full rounded-full ${wmActive ? 'bg-blue-500' : 'bg-slate-300'} ${getWidthClass(wmActive ? Math.min(100, (monthsLeft(wmExpiry) / wm) * 100) : 0)}`} />
                                                 </div>
                                             </div>
                                         )}
@@ -571,14 +624,13 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 </p>
                                                 {pmExpiry && <p className="text-[9px] text-slate-400 mt-1">{pmActive ? `Exp. ${pmExpiry.toLocaleDateString()}` : `Expired ${pmExpiry.toLocaleDateString()}`}</p>}
                                                 <div className="mt-2 h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                                                    {/* eslint-disable react/forbid-dom-props */}
-                                                    <div className={`h-full rounded-full ${pmActive ? 'bg-emerald-500' : 'bg-slate-300'}`} {...({style: { width: `${pmActive ? Math.min(100, (monthsLeft(pmExpiry) / pm) * 100) : 0}%` }})} />
+                                                    <div className={`h-full rounded-full ${pmActive ? 'bg-emerald-500' : 'bg-slate-300'} ${getWidthClass(pmActive ? Math.min(100, (monthsLeft(pmExpiry) / pm) * 100) : 0)}`} />
                                                 </div>
                                             </div>
                                         )}
                                     </div>
                                     {inv?.warrantyNotes && (
-                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 italic border-t border-blue-100 dark:border-blue-900/20 pt-3 mt-1">{inv.warrantyNotes}</p>
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 italic border-t border-blue-100 dark:border-blue-900/20 pt-3 mt-1">{inv.warrantyNotes as string}</p>
                                     )}
                                     {!agreed && (
                                         <p className="text-[10px] text-amber-600 font-bold mt-2">⚠️ Warranty not yet active — disclaimer agreement required.</p>
@@ -590,11 +642,29 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                         {photoFiles.length > 0 && (
                             <section className="print:hidden">
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Job Photos</h4>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {photoFiles.map((f, i) => (
-                                        <a key={i} href={f.dataUrl || (f as any).url} target="_blank" rel="noreferrer" className="aspect-square bg-white dark:bg-slate-800 rounded-2xl overflow-hidden hover:ring-2 hover:ring-primary-500 transition-all block relative shadow-sm border border-slate-100 dark:border-slate-800">
-                                            <img src={f.dataUrl || (f as any).url} className="w-full h-full object-cover" alt="Job Documentation" />
-                                        </a>
+                                <div className="space-y-4">
+                                    {Object.entries(groupedPhotos).map(([label, photos]) => (
+                                        <div key={label}>
+                                            <p className="text-[10px] font-bold text-slate-500 uppercase mb-2 border-b border-slate-100 dark:border-slate-800 pb-1 inline-block">{label}</p>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                                {(photos as ExtendedFile[]).map((f: ExtendedFile, i: number) => (
+                                                    <div key={i} className="relative group">
+                                                        <a href={f.dataUrl || f.url} target="_blank" rel="noreferrer" className="aspect-square bg-white dark:bg-slate-800 rounded-2xl overflow-hidden hover:ring-2 hover:ring-primary-500 transition-all block shadow-sm border border-slate-100 dark:border-slate-800">
+                                                            <img src={f.dataUrl || f.url} className="w-full h-full object-cover" alt={`Job Documentation - ${label}`} />
+                                                        </a>
+                                                        {isAdmin && (
+                                                            <button 
+                                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeletePhoto(f); }}
+                                                                className="absolute top-2 right-2 p-1.5 bg-red-600/90 text-white rounded-full transition-all shadow-lg backdrop-blur-sm hover:bg-red-700 hover:scale-110 z-10"
+                                                                title="Delete Photo"
+                                                            >
+                                                                <Trash2 size={12}/>
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     ))}
                                 </div>
                             </section>
@@ -609,7 +679,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                 <div className="space-y-2">
                                     {/* Signed Proposal */}
                                     {proposal && (() => {
-                                        const sig = (proposal as any).signatureDataUrl || (proposal as any).signatureImage || (proposal as any).signature;
+                                        const sig = (proposal as Record<string, unknown>).signatureDataUrl || (proposal as Record<string, unknown>).signatureImage || (proposal as Record<string, unknown>).signature;
                                         const isSigned = !!sig;
                                         return (
                                             <button onClick={() => setPreviewDoc({ ...proposal, type: 'Proposal', title: isSigned ? 'Signed Proposal' : 'Proposal' })} className="w-full text-left p-3 px-4 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 flex items-center justify-between hover:bg-primary-50 hover:text-primary-500 transition-all shadow-sm">
@@ -620,15 +690,15 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     })()}
 
                                     {/* Waivers from Embedded Data */}
-                                    {job.embeddedData?.waivers?.map((waiver, i) => (
+                                    {(job.embeddedData?.waivers as Record<string, unknown>[])?.map((waiver: Record<string, unknown>, i: number) => (
                                         <button key={i} onClick={() => setPreviewDoc({ ...waiver, type: 'Other' })} className="w-full text-left p-3 px-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase text-slate-600 dark:text-slate-400 flex items-center justify-between hover:bg-primary-50 hover:text-primary-500 transition-all shadow-sm">
-                                            <span className="flex items-center gap-2"><FileText size={12}/> {waiver.title}</span>
-                                            <span className="text-emerald-500 font-bold">{(waiver as any).signatureImage ? 'SIGNED' : 'REQUIRED'}</span>
+                                            <span className="flex items-center gap-2"><FileText size={12}/> {waiver.title as string}</span>
+                                            <span className="text-emerald-500 font-bold">{waiver.signatureImage ? 'SIGNED' : 'REQUIRED'}</span>
                                         </button>
                                     ))}
                                     {/* Other Document Files */}
                                     {docFiles.map((file, i) => {
-                                        const isHtml = file.fileName?.toLowerCase().endsWith('.html') || file.dataUrl?.includes('text/html');
+                                        const isHtml = file.fileName?.toLowerCase().endsWith('.html') || (file as ExtendedFile).dataUrl?.includes('text/html');
                                         if (isHtml) {
                                             return (
                                                 <button key={i} onClick={() => setPreviewDoc({ ...file, type: 'Other', title: file.fileName || 'Signed Document' })} className="w-full text-left p-3 px-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase text-slate-600 dark:text-slate-400 flex items-center justify-between hover:bg-primary-50 hover:text-primary-500 transition-all shadow-sm">
@@ -638,7 +708,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                             );
                                         }
                                         return (
-                                            <a key={i} href={file.dataUrl || (file as any).url} target="_blank" rel="noreferrer" className="w-full text-left p-3 px-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase text-slate-600 dark:text-slate-400 flex items-center gap-2 hover:bg-primary-50 hover:text-primary-500 transition-all shadow-sm">
+                                            <a key={i} href={(file as ExtendedFile).dataUrl || (file as ExtendedFile).url} target="_blank" rel="noreferrer" className="w-full text-left p-3 px-4 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl text-[10px] font-black uppercase text-slate-600 dark:text-slate-400 flex items-center gap-2 hover:bg-primary-50 hover:text-primary-500 transition-all shadow-sm">
                                                 <FileText size={12}/> {file.fileName || file.metadata?.label || 'Document'}
                                             </a>
                                         );
@@ -680,7 +750,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
         {/* Document Preview Modal */}
         {previewDoc && (
             <DocumentPreview 
-                type={previewDoc.type || 'Other'} 
+                type={(previewDoc.type as 'Other' | 'Proposal' | 'Invoice') || 'Other'} 
                 data={previewDoc} 
                 onClose={() => setPreviewDoc(null)} 
             />

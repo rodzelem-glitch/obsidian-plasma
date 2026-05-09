@@ -5,7 +5,8 @@ import type {
     Job, 
     Customer, 
     Appointment, 
-    InventoryItem, 
+    EquipmentAsset,
+    ServiceLocation,
     Proposal, 
     MarketingCampaign, 
     BusinessDocument, 
@@ -34,7 +35,8 @@ import type {
     Lead,
     Applicant,
     OrganizationTeam,
-    WarrantyClaim
+    WarrantyClaim,
+    InventoryItem
 } from 'types';
 
 export interface AppState {
@@ -84,6 +86,8 @@ export interface AppState {
     customerProfile: Customer | null; // Added
     teams: OrganizationTeam[];
     warrantyClaims: WarrantyClaim[];
+    serviceLocations: ServiceLocation[];
+    equipment: EquipmentAsset[];
     // Deprecated fields - TBD on removal
     marketingCampaigns: MarketingCampaign[]; 
     businessDocuments: BusinessDocument[];
@@ -139,6 +143,8 @@ export const initialState: AppState = {
     customerProfile: null, // Added
     teams: [],
     warrantyClaims: [],
+    serviceLocations: [],
+    equipment: [],
     // Deprecated
     marketingCampaigns: [],
     businessDocuments: [],
