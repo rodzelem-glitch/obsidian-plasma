@@ -32,7 +32,7 @@ export default async function IndustryPage({ params }: { params: Promise<{ slug:
             <header className="pt-40 pb-20 px-6 relative overflow-hidden bg-slate-950 text-white border-b border-slate-800">
                 {industry.heroImage && (
                     <div 
-                        className="absolute inset-0 z-0 opacity-20 bg-cover bg-center mix-blend-overlay"
+                        className="absolute inset-0 z-0 opacity-30 bg-cover bg-center mix-blend-luminosity"
                         style={{ backgroundImage: `url(${industry.heroImage})` }}
                     />
                 )}

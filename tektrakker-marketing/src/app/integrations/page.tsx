@@ -19,7 +19,14 @@ export default function IntegrationsPage() {
         { name: "Stripe", category: "Payments", description: "Secure credit card processing and vaulting." },
         { name: "Nextdoor", category: "Social", description: "Automatically publish completed jobs to local neighborhood feeds." },
         { name: "Facebook", category: "Social", description: "Omni-channel marketing directly from the field app." },
-        { name: "Google Calendar", category: "Scheduling", description: "Sync technician schedules with their personal calendars." }
+        { name: "Google Calendar", category: "Scheduling", description: "Sync technician schedules with their personal calendars." },
+        { name: "Zapier", category: "Automation", description: "Connect to over 5,000+ apps to automate repetitive tasks." },
+        { name: "Instagram", category: "Social", description: "Visually showcase completed projects and generate new leads." },
+        { name: "Angi Leads", category: "Lead Generation", description: "Automatically import and respond to high-intent customer leads." },
+        { name: "Thumbtack", category: "Lead Generation", description: "Seamlessly pull incoming service requests directly to your dispatch board." },
+        { name: "Yelp", category: "Marketing", description: "Automate review requests and manage your local reputation." },
+        { name: "Google Local Services", category: "Lead Generation", description: "Capture Google Guaranteed leads directly into your funnel." },
+        { name: "RevenueCat", category: "Payments", description: "Manage mobile in-app purchases and recurring app subscriptions." }
     ];
 
     return (

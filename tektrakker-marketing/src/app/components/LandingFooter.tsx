@@ -90,12 +90,14 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                 <div className="col-span-1">
                     <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Company</h4>
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
+                        <li><a href="/about/" className="hover:text-primary-400 transition-colors">About Us</a></li>
                         <li><a href="/franchise/" className="hover:text-primary-400 transition-colors">Franchise Opportunities</a></li>
                         {onShowSupport && (
                             <li><button onClick={onShowSupport} className="hover:text-primary-400 transition-colors">Contact Support</button></li>
                         )}
                         <li><a href="/privacy/" className="hover:text-primary-400 transition-colors">Privacy Policy</a></li>
                         <li><a href="/terms/" className="hover:text-primary-400 transition-colors">Terms of Service</a></li>
+                        <li><a href="/eula/" className="hover:text-primary-400 transition-colors">End User License Agreement (EULA)</a></li>
                     </ul>
                 </div>
             </div>
