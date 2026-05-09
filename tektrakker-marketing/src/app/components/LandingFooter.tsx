@@ -103,7 +103,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
             </div>
 
             <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center md:items-end gap-8 mt-16 pt-8 border-t border-slate-800/50 relative z-10">
-                <div className="text-slate-500 text-sm font-medium w-full md:w-1/3 text-center md:text-left order-3 md:order-1">
+                <div className="text-slate-400 text-sm font-medium w-full md:w-1/3 text-center md:text-left order-3 md:order-1">
                     &copy; {new Date().getFullYear()} TekTrakker Inc.<br />All rights reserved.
                 </div>
 
@@ -111,7 +111,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                     <Link href="/" className="opacity-90 hover:opacity-100 transition-opacity">
                         <Logo className="h-6 w-auto" />
                     </Link>
-                    <p className="text-slate-500 text-xs max-w-sm mx-auto leading-relaxed">
+                    <p className="text-slate-400 text-xs max-w-sm mx-auto leading-relaxed">
                         The all-in-one operating system built specifically for the trades. Stop managing software and start managing your business.
                     </p>
                     <div className="flex items-center justify-center gap-3">

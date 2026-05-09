@@ -8,6 +8,8 @@ const Logo = ({ className }: { className?: string }) => (
     <img 
         src="/tektrakker-logo-web.png" 
         alt="TekTrakker" 
+        width={150}
+        height={40}
         className={`max-w-full max-h-full object-contain ${className || 'h-auto'}`}
     />
 );
@@ -37,11 +39,11 @@ export const LandingHeader: React.FC<LandingHeaderProps> = ({ backButton, onShow
                 
                 {!backButton && (
                     <div className="flex gap-4 items-center">
-                        <Link href="https://app.tektrakker.com/#/login" className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap">Customer Portal / Login</Link>
+                        <Link href="https://app.tektrakker.com/#/login" className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap p-2">Customer Portal / Login</Link>
                         {onShowDemoOptions && (
-                            <button onClick={onShowDemoOptions} className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Free Interactive Demo</button>
+                            <button onClick={onShowDemoOptions} className="bg-primary-700 hover:bg-primary-800 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Free Interactive Demo</button>
                         )}
-                        <Link href="https://app.tektrakker.com/#/login?view=register_business" className="bg-orange-600 hover:bg-orange-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</Link>
+                        <Link href="https://app.tektrakker.com/#/login?view=register_business" className="bg-orange-700 hover:bg-orange-800 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</Link>
                     </div>
                 )}
 

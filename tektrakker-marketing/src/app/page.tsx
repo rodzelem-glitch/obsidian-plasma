@@ -137,11 +137,11 @@ const InteractiveFeatureShowcase = () => {
                         </div>
                         <div className="flex-1">
                             <div className="flex items-center gap-2">
-                                <h4 className={`font-bold transition-colors ${activeIndex === idx ? 'text-slate-900' : 'text-slate-500'}`}>
+                                <h3 className={`font-bold transition-colors ${activeIndex === idx ? 'text-slate-900' : 'text-slate-500'}`}>
                                     {feature.title}
-                                </h4>
+                                </h3>
                                 {feature.isNew && (
-                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-500 text-white rounded-full">New</span>
+                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-600 text-white rounded-full">New</span>
                                 )}
                             </div>
                         </div>
@@ -163,7 +163,7 @@ const InteractiveFeatureShowcase = () => {
                         </p>
                         
                         <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 text-left">
-                            <div className="flex items-center gap-2 text-primary-600 font-bold text-sm mb-4">
+                            <div className="flex items-center gap-2 text-primary-700 font-bold text-sm mb-4">
                                 <CheckCircle size={16} /> Key Benefit
                             </div>
                             <p className="text-slate-700 font-medium italic leading-relaxed">
@@ -357,14 +357,14 @@ const IntegrationsMarquee = () => {
             <div className="flex w-max animate-marquee flex-nowrap hover:[animation-play-state:paused]">
                 <div className="flex shrink-0 justify-start items-center flex-nowrap gap-16 pr-16">
                     {integrations.map((name, i) => (
-                        <div key={i} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap">
+                        <div key={i} className="text-xl md:text-2xl font-black text-slate-400 hover:text-slate-600 transition-colors cursor-default whitespace-nowrap">
                             {name}
                         </div>
                     ))}
                 </div>
                 <div className="flex shrink-0 justify-start items-center flex-nowrap gap-16 pr-16">
                     {integrations.map((name, i) => (
-                        <div key={`dup-${i}`} className="text-xl md:text-2xl font-black text-slate-300 hover:text-slate-500 transition-colors cursor-default whitespace-nowrap">
+                        <div key={`dup-${i}`} className="text-xl md:text-2xl font-black text-slate-400 hover:text-slate-600 transition-colors cursor-default whitespace-nowrap">
                             {name}
                         </div>
                     ))}
@@ -417,9 +417,9 @@ const ROICalculator = () => {
     return (
         <div className="bg-white rounded-3xl p-4 md:p-8 border border-slate-200 shadow-2xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 p-32 bg-primary-600/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-primary-600/20 transition-all duration-700"></div>
-            <h3 className="text-2xl font-black text-slate-900 mb-2 flex items-center gap-2 relative z-10">
+            <h2 className="text-2xl font-black text-slate-900 mb-2 flex items-center gap-2 relative z-10">
                 <DollarSign className="text-emerald-500" /> Your Potential Growth
-            </h3>
+            </h2>
             <p className="text-slate-500 text-sm mb-6 relative z-10">See how much money you&apos;re leaving on the table.</p>
 
             <div className="space-y-6 mb-8 relative z-10">
@@ -570,6 +570,8 @@ export default function Home() {
                 onShowDemoOptions={() => setShowDemoOptions(true)} 
             />
 
+            <main>
+
             {/* DEMO OPTIONS MODAL */}
             {showDemoOptions && (
                 <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
@@ -608,7 +610,7 @@ export default function Home() {
                         <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-8 leading-tight text-slate-900">Stop Being a Slave to <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600">Paperwork.</span></h1>
                         <p className="text-xl text-slate-600 max-w-xl mb-10 leading-relaxed font-medium">You didn&apos;t start a business to work 16 hours a day. TekTrakker eliminates the chaos of scheduling, chasing payments, and managing techs so you can finally breathe.</p>
                         <div className="flex flex-col sm:flex-row gap-4">
-                            <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-primary-600 text-white font-black text-lg hover:bg-primary-700 transition-all shadow-lg shadow-primary-600/20 hover:scale-[1.02] flex items-center justify-center gap-2">Start Exploring Now <ArrowRight size={20} /></button>
+                            <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-primary-700 text-white font-black text-lg hover:bg-primary-800 transition-all shadow-lg shadow-primary-700/20 hover:scale-[1.02] flex items-center justify-center gap-2">Start Exploring Now <ArrowRight size={20} /></button>
                         </div>
                         <div className="mt-6 flex flex-col sm:flex-row gap-4 sm:items-center">
                             <div className="flex items-center gap-1">
@@ -693,7 +695,7 @@ export default function Home() {
                 <div className="max-w-3xl mx-auto mb-20">
                     <h2 className="text-4xl md:text-5xl font-black text-slate-900 mb-6 leading-tight">Ready to Stop Drowning in Paperwork?</h2>
                     <p className="text-xl text-slate-600 mb-10">Join hundreds of service businesses who are reclaiming their time and scaling their operations with TekTrakker.</p>
-                    <Link href="https://app.tektrakker.com/#/login?view=register_business" className="h-16 px-12 rounded-2xl bg-orange-600 text-white font-black text-xl hover:bg-orange-700 transition-all shadow-lg shadow-orange-600/20 hover:scale-[1.02] flex items-center justify-center gap-2 mx-auto">Start Your Free 14-Day Trial <ArrowRight size={22} /></Link>
+                    <Link href="https://app.tektrakker.com/#/login?view=register_business" className="h-16 px-12 rounded-2xl bg-orange-700 text-white font-black text-xl hover:bg-orange-800 transition-all shadow-lg shadow-orange-700/20 hover:scale-[1.02] flex items-center justify-center gap-2 mx-auto">Start Your Free 14-Day Trial <ArrowRight size={22} /></Link>
                 </div>
 
                 {/* Property Owners Cross-Pitch */}
@@ -791,6 +793,7 @@ export default function Home() {
             </section>
 
             <PartnerTestimonial />
+            </main>
 
             <LandingFooter onShowSupport={() => setShowSupportModal(true)} />
             <LandingChatbot />
