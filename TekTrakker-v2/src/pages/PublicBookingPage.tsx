@@ -34,7 +34,7 @@ const PublicBookingPage: React.FC = () => {
     const businessTypes = [
         'HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General', 'Cleaning',
         'Painting', 'Roofing', 'Contracting', 'Masonry', 'Telecommunications',
-        'Solar', 'Security', 'Pet Grooming', 'Property Management'
+        'Solar', 'Security', 'Pet Grooming', 'Property Management', 'Appliance Repair', 'Garage Door'
     ];
 
     useEffect(() => {

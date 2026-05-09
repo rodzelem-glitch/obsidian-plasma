@@ -48,30 +48,32 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                     </ul>
                 </div>
 
-                <div className="col-span-1 lg:col-span-2">
+                <div className="col-span-1">
                     <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Industries</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <ul className="space-y-4 text-sm font-medium text-slate-400">
-                            <li><a href="/industries/hvac/" className="hover:text-primary-400 transition-colors">HVAC</a></li>
-                            <li><a href="/industries/plumbing/" className="hover:text-primary-400 transition-colors">Plumbing</a></li>
-                            <li><a href="/industries/electrical/" className="hover:text-primary-400 transition-colors">Electrical</a></li>
-                            <li><a href="/industries/landscaping/" className="hover:text-primary-400 transition-colors">Landscaping</a></li>
-                            <li><a href="/industries/cleaning/" className="hover:text-primary-400 transition-colors">Cleaning Services</a></li>
-                            <li><a href="/industries/painting/" className="hover:text-primary-400 transition-colors">Painting</a></li>
-                            <li><a href="/industries/roofing/" className="hover:text-primary-400 transition-colors">Roofing</a></li>
-                            <li><a href="/industries/contracting/" className="hover:text-primary-400 transition-colors">General Contracting</a></li>
-                        </ul>
-                        <ul className="space-y-4 text-sm font-medium text-slate-400">
-                            <li><a href="/industries/masonry/" className="hover:text-primary-400 transition-colors">Masonry</a></li>
-                            <li><a href="/industries/garage-door/" className="hover:text-primary-400 transition-colors">Garage Door</a></li>
-                            <li><a href="/industries/appliance-repair/" className="hover:text-primary-400 transition-colors">Appliance Repair</a></li>
-                            <li><a href="/industries/telecommunications/" className="hover:text-primary-400 transition-colors">Telecommunications</a></li>
-                            <li><a href="/industries/solar/" className="hover:text-primary-400 transition-colors">Solar Installation</a></li>
-                            <li><a href="/industries/security/" className="hover:text-primary-400 transition-colors">Security & Alarm</a></li>
-                            <li><a href="/industries/property-management/" className="hover:text-primary-400 transition-colors">Property Management</a></li>
-                            <li><a href="/industries/pet-grooming/" className="hover:text-primary-400 transition-colors">Pet Grooming</a></li>
-                        </ul>
-                    </div>
+                    <ul className="space-y-4 text-sm font-medium text-slate-400">
+                        <li><a href="/industries/hvac/" className="hover:text-primary-400 transition-colors">HVAC</a></li>
+                        <li><a href="/industries/plumbing/" className="hover:text-primary-400 transition-colors">Plumbing</a></li>
+                        <li><a href="/industries/electrical/" className="hover:text-primary-400 transition-colors">Electrical</a></li>
+                        <li><a href="/industries/landscaping/" className="hover:text-primary-400 transition-colors">Landscaping</a></li>
+                        <li><a href="/industries/cleaning/" className="hover:text-primary-400 transition-colors">Cleaning Services</a></li>
+                        <li><a href="/industries/painting/" className="hover:text-primary-400 transition-colors">Painting</a></li>
+                        <li><a href="/industries/roofing/" className="hover:text-primary-400 transition-colors">Roofing</a></li>
+                        <li><a href="/industries/contracting/" className="hover:text-primary-400 transition-colors">General Contracting</a></li>
+                    </ul>
+                </div>
+
+                <div className="col-span-1">
+                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Industries</h4>
+                    <ul className="space-y-4 text-sm font-medium text-slate-400">
+                        <li><a href="/industries/masonry/" className="hover:text-primary-400 transition-colors">Masonry</a></li>
+                        <li><a href="/industries/garage-door/" className="hover:text-primary-400 transition-colors">Garage Door</a></li>
+                        <li><a href="/industries/appliance-repair/" className="hover:text-primary-400 transition-colors">Appliance Repair</a></li>
+                        <li><a href="/industries/telecommunications/" className="hover:text-primary-400 transition-colors">Telecommunications</a></li>
+                        <li><a href="/industries/solar/" className="hover:text-primary-400 transition-colors">Solar Installation</a></li>
+                        <li><a href="/industries/security/" className="hover:text-primary-400 transition-colors">Security & Alarm</a></li>
+                        <li><a href="/industries/property-management/" className="hover:text-primary-400 transition-colors">Property Management</a></li>
+                        <li><a href="/industries/pet-grooming/" className="hover:text-primary-400 transition-colors">Pet Grooming</a></li>
+                    </ul>
                 </div>
 
                 <div className="col-span-1">

@@ -42,26 +42,26 @@ export default function ROICalculatorPage() {
                         <div className="space-y-8">
                             <div>
                                 <div className="flex justify-between mb-2">
-                                    <label className="font-bold text-slate-700">Number of Field Technicians</label>
+                                    <label htmlFor="techCount" className="font-bold text-slate-700">Number of Field Technicians</label>
                                     <span className="font-bold text-primary-600">{techCount}</span>
                                 </div>
-                                <input type="range" min="1" max="50" value={techCount} onChange={(e) => setTechCount(parseInt(e.target.value))} className="w-full accent-primary-600" />
+                                <input id="techCount" title="Number of Field Technicians" type="range" min="1" max="50" value={techCount} onChange={(e) => setTechCount(parseInt(e.target.value))} className="w-full accent-primary-600" />
                             </div>
 
                             <div>
                                 <div className="flex justify-between mb-2">
-                                    <label className="font-bold text-slate-700">Average Ticket Size ($)</label>
+                                    <label htmlFor="avgTicket" className="font-bold text-slate-700">Average Ticket Size ($)</label>
                                     <span className="font-bold text-primary-600">${avgTicket}</span>
                                 </div>
-                                <input type="range" min="100" max="5000" step="50" value={avgTicket} onChange={(e) => setAvgTicket(parseInt(e.target.value))} className="w-full accent-primary-600" />
+                                <input id="avgTicket" title="Average Ticket Size" type="range" min="100" max="5000" step="50" value={avgTicket} onChange={(e) => setAvgTicket(parseInt(e.target.value))} className="w-full accent-primary-600" />
                             </div>
 
                             <div>
                                 <div className="flex justify-between mb-2">
-                                    <label className="font-bold text-slate-700">Jobs Per Tech, Per Day</label>
+                                    <label htmlFor="jobsPerDay" className="font-bold text-slate-700">Jobs Per Tech, Per Day</label>
                                     <span className="font-bold text-primary-600">{jobsPerDay}</span>
                                 </div>
-                                <input type="range" min="1" max="10" value={jobsPerDay} onChange={(e) => setJobsPerDay(parseInt(e.target.value))} className="w-full accent-primary-600" />
+                                <input id="jobsPerDay" title="Jobs Per Tech, Per Day" type="range" min="1" max="10" value={jobsPerDay} onChange={(e) => setJobsPerDay(parseInt(e.target.value))} className="w-full accent-primary-600" />
                             </div>
                         </div>
                     </div>

@@ -49,7 +49,7 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
             
             setForm({ ...form, attachments: newAttachments });
             showToast.success(`Successfully attached ${files.length} file(s).`);
-        } catch (err: any) {
+        } catch (err) {
             console.error("Upload Error:", err);
             showToast.warn("Failed to upload files.");
         } finally {
@@ -90,7 +90,7 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
 
             const files = await Promise.all(filePromises);
             
-            const result: any = await analyzeRFPWithAI({ files });
+            const result = await analyzeRFPWithAI({ files }) as { data?: { success?: boolean, data?: any } };
             if (result.data?.success && result.data?.data) {
                 const aiData = result.data.data;
                 setForm(prev => ({
@@ -104,7 +104,7 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                 }));
                 showToast.success("AI successfully extracted RFP details!");
             }
-        } catch (error: any) {
+        } catch (error) {
             console.error("OCR Analysis Failed:", error);
             showToast.warn("AI analysis failed or returned no data.");
         } finally {
@@ -134,8 +134,9 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                     <form id="rfp-form" onSubmit={handleSubmit} className="space-y-6">
                         <div className="space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">RFP Title</label>
+                                <label htmlFor="rfpTitle" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">RFP Title</label>
                                 <input
+                                    id="rfpTitle"
                                     type="text"
                                     required
                                     className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-primary-500"
@@ -146,8 +147,9 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description & Scope of Work</label>
+                                <label htmlFor="rfpDesc" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Description & Scope of Work</label>
                                 <textarea
+                                    id="rfpDesc"
                                     required
                                     rows={4}
                                     className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-primary-500"
@@ -159,9 +161,9 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="sm:col-span-2">
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Required Trades / Components</label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {['HVAC', 'Plumbing', 'Electrical', 'General Contracting', 'Roofing', 'Landscaping', 'Masonry', 'Carpentry', 'Painting', 'Other'].map(tradeOpt => {
+                                    <label id="tradesLabel" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Required Trades / Components</label>
+                                    <div className="flex flex-wrap gap-2" role="group" aria-labelledby="tradesLabel">
+                                        {['HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General Contracting', 'Cleaning', 'Painting', 'Roofing', 'Masonry', 'Telecommunications', 'Solar', 'Security', 'Pet Grooming', 'Property Management', 'Appliance Repair', 'Garage Door'].map(tradeOpt => {
                                             const isSelected = form.trades?.includes(tradeOpt) || form.trade === tradeOpt;
                                             return (
                                                 <button
@@ -197,10 +199,11 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                                     )}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Location</label>
+                                    <label htmlFor="rfpLocation" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Location</label>
                                     <div className="relative">
                                         <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                         <input
+                                            id="rfpLocation"
                                             type="text"
                                             required
                                             className="w-full pl-10 rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2.5 text-sm focus:border-primary-500 focus:ring-primary-500"
@@ -214,10 +217,11 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Budget Range (Optional)</label>
+                                    <label htmlFor="rfpBudget" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Budget Range (Optional)</label>
                                     <div className="relative">
                                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                         <input
+                                            id="rfpBudget"
                                             type="text"
                                             className="w-full pl-10 rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 py-2.5 text-sm focus:border-primary-500 focus:ring-primary-500"
                                             placeholder="e.g. $10k - $25k"
@@ -227,10 +231,11 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due Date</label>
+                                    <label htmlFor="rfpDueDate" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Due Date</label>
                                     <div className="relative">
                                         <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                         <input
+                                            id="rfpDueDate"
                                             type="date"
                                             title="Due Date"
                                             required
@@ -243,8 +248,9 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Visibility</label>
+                                <label htmlFor="rfpVis" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Visibility</label>
                                 <select
+                                    id="rfpVis"
                                     title="Visibility"
                                     aria-label="Visibility"
                                     className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-primary-500"
@@ -257,8 +263,9 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Link to Project (Optional)</label>
+                                <label htmlFor="rfpProject" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Link to Project (Optional)</label>
                                 <select
+                                    id="rfpProject"
                                     title="Link to Project"
                                     aria-label="Link to Project"
                                     className="w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-primary-500"
@@ -273,8 +280,8 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                             </div>
 
                             <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Attachments & AI Extraction</label>
-                                <div className="flex flex-col gap-3">
+                                <label id="attachLabel" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Attachments & AI Extraction</label>
+                                <div className="flex flex-col gap-3" role="group" aria-labelledby="attachLabel">
                                     <div className="flex flex-col sm:flex-row gap-2">
                                         <button 
                                             type="button" 

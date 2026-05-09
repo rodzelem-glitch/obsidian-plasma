@@ -140,18 +140,18 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
             }
 
             const systemInstruction = `You are the Omni-Manager AI for field technicians.
-If the technician reports HVAC system vitals, measurements, or diagnostics (e.g. RLA is 15 amps, 230v on load side, filter is 16x20x1 dirty), you MUST extract them and output a JSON block at the VERY TOP of your response formatted exactly like this:
+If the technician reports HVAC system vitals, Appliance Repair diagnostics (e.g. error codes, amp draw), or Garage Door metrics (e.g. IPPT, weight, door balance), you MUST extract them and output a JSON block at the VERY TOP of your response formatted exactly like this:
 \`\`\`json
 {
   "action": "update_vitals",
   "vitals": {
     "comp_rla": "15",
-    "contactor_load_v": "230",
-    "filter_size": "16x20x1 Dirty"
+    "appliance_error": "OE",
+    "garage_ippt": "115"
   }
 }
 \`\`\`
-Followed by a friendly message confirming what you saved. Supported keys: comp_lra, comp_rla, comp_ohms_ground, comp_winding_ohms, contactor_coil_v, contactor_line_v, contactor_load_v, cap_herm_mfd, cap_fan_mfd, cond_fan_amps, cond_coil_status, defrost_board, reversing_valve, blower_amps, blower_cap_mfd, evap_coil_status, drain_pan, heat_strip_amps, gas_inlet_pressure, gas_manifold_pressure, flame_sensor_ua, inducer_amps, co_ppm, heat_exchanger, filter_size.`;
+Followed by a friendly message confirming what you saved. Supported HVAC keys: comp_lra, comp_rla, comp_ohms_ground, comp_winding_ohms, contactor_coil_v, contactor_line_v, contactor_load_v, cap_herm_mfd, cap_fan_mfd, cond_fan_amps, cond_coil_status, defrost_board, reversing_valve, blower_amps, blower_cap_mfd, evap_coil_status, drain_pan, heat_strip_amps, gas_inlet_pressure, gas_manifold_pressure, flame_sensor_ua, inducer_amps, co_ppm, heat_exchanger, filter_size. Supported Appliance keys: appliance_error, appliance_brand, appliance_measured_amps. Supported Garage Door keys: garage_door_weight, garage_ippt, garage_force_up, garage_force_down.`;
 
             const completePrompt = `${systemInstruction}\n\nTechnician: ${userMessage.text || "Analyze this image."}`;
 

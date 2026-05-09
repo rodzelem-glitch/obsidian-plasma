@@ -31,9 +31,9 @@ export const LandingHeader: React.FC<LandingHeaderProps> = ({
                         aria-label="Go to Home" 
                         title="Go to Home" 
                         tabIndex={0} 
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} 
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') window.location.href = 'https://tektrakker.com'; }} 
                         className="flex items-center cursor-pointer" 
-                        onClick={() => navigate('/')}
+                        onClick={() => window.location.href = 'https://tektrakker.com'}
                     >
                         <Logo className="h-14 w-auto text-primary-600" />
                         {title && (

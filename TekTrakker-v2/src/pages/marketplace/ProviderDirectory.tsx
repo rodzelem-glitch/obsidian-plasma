@@ -17,7 +17,8 @@ import { useAppContext } from 'context/AppContext';
 const ALL_INDUSTRIES: IndustryVertical[] = [
     'HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General', 
     'Cleaning', 'Painting', 'Roofing', 'Contracting', 'Masonry',
-    'Telecommunications', 'Solar', 'Security', 'Pet Grooming', 'Property Management'
+    'Telecommunications', 'Solar', 'Security', 'Pet Grooming', 'Property Management',
+    'Appliance Repair', 'Garage Door'
 ];
 
 interface ProviderData extends Organization {

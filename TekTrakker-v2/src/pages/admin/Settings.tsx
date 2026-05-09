@@ -26,7 +26,8 @@ import { syncOrgAIContext } from 'lib/aiContext';
 const ALL_INDUSTRIES: IndustryVertical[] = [
     'HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General',
     'Cleaning', 'Painting', 'Roofing', 'Contracting', 'Masonry',
-    'Telecommunications', 'Solar', 'Security', 'Pet Grooming', 'Property Management'
+    'Telecommunications', 'Solar', 'Security', 'Pet Grooming', 'Property Management',
+    'Appliance Repair', 'Garage Door'
 ];
 
 const DEFAULT_GOOGLE_CLIENT_ID = "655867451194-3p9dkm7tjb15a2njggqa2jcc64i4vibh.apps.googleusercontent.com";

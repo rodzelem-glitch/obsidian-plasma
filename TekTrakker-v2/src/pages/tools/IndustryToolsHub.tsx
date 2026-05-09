@@ -14,6 +14,8 @@ import SecurityTools from './SecurityTools';
 import TelecomTools from './TelecomTools';
 import PetGroomingTools from './PetGroomingTools';
 import PropertyManagementTools from './PropertyManagementTools';
+import ApplianceRepairTools from './ApplianceRepairTools';
+import GarageDoorTools from './GarageDoorTools';
 import Card from '../../components/ui/Card';
 import { Wrench } from 'lucide-react';
 
@@ -79,6 +81,14 @@ const IndustryToolsHub: React.FC = () => {
 
         if (ind.includes('property') || ind.includes('management') || ind.includes('real estate')) {
             return <PropertyManagementTools />;
+        }
+
+        if (ind.includes('appliance')) {
+            return <ApplianceRepairTools />;
+        }
+
+        if (ind.includes('garage') || ind.includes('door')) {
+            return <GarageDoorTools />;
         }
 
         // Default / Fallback

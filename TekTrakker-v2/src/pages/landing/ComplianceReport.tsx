@@ -90,7 +90,7 @@ const ComplianceReport: React.FC = () => {
                 <Lock size={48} className="text-red-500 mb-4" />
                 <h1 className="text-2xl font-bold">Access Denied</h1>
                 <p className="text-slate-400 mt-2">Invalid or missing verification key.</p>
-                <button onClick={() => window.location.href = '/'} className="mt-8 bg-white text-slate-900 px-6 py-2 rounded-full font-bold">Back to Home</button>
+                <button onClick={() => window.location.href = 'https://tektrakker.com'} className="mt-8 bg-white text-slate-900 px-6 py-2 rounded-full font-bold">Back to Home</button>
             </div>
         );
     }

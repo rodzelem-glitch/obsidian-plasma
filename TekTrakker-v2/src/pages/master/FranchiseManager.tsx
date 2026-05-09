@@ -481,6 +481,7 @@ const FranchiseManager: React.FC = () => {
                                 {(() => {
                                     const brandStyle = { '--brand-bg': fr.branding?.primaryColor ? `${fr.branding.primaryColor}20` : '#f1f5f9', backgroundColor: 'var(--brand-bg)' } as React.CSSProperties;
                                     return (
+                                        // eslint-disable-next-line react/forbid-dom-props
                                         <div className="w-12 h-12 rounded-xl flex items-center justify-center border border-slate-100 dark:border-slate-700" style={brandStyle}>
                                             {fr.branding?.logoUrl ? <img src={fr.branding.logoUrl} className="w-8 h-8 object-contain" alt="Logo" /> : <Network className="text-slate-400" />}
                                         </div>

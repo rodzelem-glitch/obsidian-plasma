@@ -30,7 +30,14 @@ export default async function IndustryPage({ params }: { params: Promise<{ slug:
             <LandingHeader />
             
             <header className="pt-40 pb-20 px-6 relative overflow-hidden bg-slate-950 text-white border-b border-slate-800">
-                <div className="absolute top-0 right-0 w-[800px] h-[500px] bg-primary-600/20 rounded-full blur-[120px] pointer-events-none transform translate-x-1/3 -translate-y-1/3" />
+                {industry.heroImage && (
+                    <div 
+                        className="absolute inset-0 z-0 opacity-20 bg-cover bg-center mix-blend-overlay"
+                        style={{ backgroundImage: `url(${industry.heroImage})` }}
+                    />
+                )}
+                <div className="absolute top-0 right-0 w-[800px] h-[500px] bg-primary-600/40 rounded-full blur-[120px] pointer-events-none transform translate-x-1/3 -translate-y-1/3 z-0" />
+                <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-900/30 rounded-full blur-[150px] pointer-events-none transform -translate-x-1/2 translate-y-1/2 z-0" />
                 <div className="max-w-4xl mx-auto text-center relative z-10">
                     <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-500/10 border border-primary-500/30 mb-8">
                         <Briefcase size={16} className="text-primary-400" />

@@ -870,7 +870,7 @@ const LoginPage: React.FC = () => {
       </div>
 
       <div className="w-full max-w-lg relative z-10">
-        <div role="button" aria-label="Go to Home" title="Go to Home" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} className="text-center mb-8 cursor-pointer" onClick={() => navigate('/')}>
+        <div role="button" aria-label="Go to Home" title="Go to Home" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') window.location.href = 'https://tektrakker.com'; }} className="text-center mb-8 cursor-pointer" onClick={() => window.location.href = 'https://tektrakker.com'}>
             {isBranded ? (
                 <>
                     <div className="inline-flex items-center justify-center p-4 rounded-2xl shadow-2xl shadow-blue-500/20 mb-6 bg-slate-900 border border-slate-700">

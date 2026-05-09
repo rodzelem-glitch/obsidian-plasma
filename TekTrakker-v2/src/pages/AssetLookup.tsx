@@ -33,7 +33,7 @@ const AssetLookup: React.FC = () => {
             <div className="p-4 md:p-8 text-center">
                 <h2 className="text-xl font-bold text-red-600">Asset Not Found</h2>
                 <p className="text-gray-500">The scanned code does not match a known customer record.</p>
-                <Button onClick={() => navigate('/')} className="mt-4 w-auto">Go Home</Button>
+                <Button onClick={() => window.location.href = 'https://tektrakker.com'} className="mt-4 w-auto">Go Home</Button>
             </div>
         );
     }
@@ -41,7 +41,7 @@ const AssetLookup: React.FC = () => {
     return (
         <div className="p-4 max-w-2xl mx-auto space-y-6">
             <header className="flex items-center gap-4">
-                <button onClick={() => navigate(-1)} className="p-2 bg-gray-200 dark:bg-gray-700 rounded-full">
+                <button onClick={() => navigate(-1)} className="p-2 bg-gray-200 dark:bg-gray-700 rounded-full" title="Go Back" aria-label="Go Back">
                     <ArrowLeft size={20} className="text-gray-600 dark:text-gray-300" />
                 </button>
                 <div>

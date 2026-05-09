@@ -49,7 +49,7 @@ const Unsubscribe: React.FC = () => {
                     <p className="text-gray-500 mb-6">
                         <strong>{email}</strong> has been removed from our mailing list. You will no longer receive marketing communications. (Important account updates may still be sent).
                     </p>
-                    <Button onClick={() => window.location.href = '/'} variant="secondary" className="w-full">
+                    <Button onClick={() => window.location.href = 'https://tektrakker.com'} variant="secondary" className="w-full">
                         Return to Homepage
                     </Button>
                 </Card>
@@ -77,7 +77,7 @@ const Unsubscribe: React.FC = () => {
                         {status === 'loading' ? 'Processing...' : 'Yes, Unsubscribe Me'}
                     </Button>
                     <Button 
-                        onClick={() => window.location.href = '/'} 
+                        onClick={() => window.location.href = 'https://tektrakker.com'} 
                         variant="ghost" 
                         className="w-full"
                     >
