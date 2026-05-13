@@ -8,6 +8,23 @@
       "**/node_modules/**"
     ],
     "cleanUrls": true,
+    "redirects": [
+      {
+        "source": "/p/:slug*",
+        "destination": "https://app.tektrakker.com/#/p/:slug*",
+        "type": 301
+      },
+      {
+        "source": "/p",
+        "destination": "https://app.tektrakker.com/#/p",
+        "type": 301
+      },
+      {
+        "source": "/site/:orgId*",
+        "destination": "https://app.tektrakker.com/#/site/:orgId*",
+        "type": 301
+      }
+    ],
     "headers": [
       {
         "source": "**/*.@(js|css|png|jpg|jpeg|gif|svg|json|webp|woff2|mp4)",

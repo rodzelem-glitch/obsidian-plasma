@@ -784,7 +784,7 @@ export default function Home() {
                         </p>
                     </div>
                     <div className="relative z-10 w-full md:w-auto shrink-0 flex flex-col gap-4">
-                        <Link href="https://app.tektrakker.com/#/franchise" className="w-full md:w-auto px-10 py-5 bg-gradient-to-r from-yellow-500 to-yellow-600 text-slate-900 font-black text-lg rounded-2xl hover:from-yellow-400 hover:to-yellow-500 transition-all shadow-xl shadow-yellow-500/25 flex items-center justify-center gap-3 group-hover:scale-105 active:scale-95">
+                        <Link href="/franchise" className="w-full md:w-auto px-10 py-5 bg-gradient-to-r from-yellow-500 to-yellow-600 text-slate-900 font-black text-lg rounded-2xl hover:from-yellow-400 hover:to-yellow-500 transition-all shadow-xl shadow-yellow-500/25 flex items-center justify-center gap-3 group-hover:scale-105 active:scale-95">
                             Explore Franchising <ArrowRight size={22} className="text-slate-900" />
                         </Link>
                     </div>

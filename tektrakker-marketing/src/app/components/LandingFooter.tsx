@@ -3,7 +3,6 @@
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Facebook, Linkedin } from 'lucide-react';
 
 const Logo = ({ className }: { className?: string }) => (
     <Image 
@@ -27,6 +26,18 @@ const XLogo = ({ size = 20, className = "" }) => (
     </svg>
 );
 
+const FacebookIcon = ({ size = 20, className = "" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+    </svg>
+);
+
+const LinkedinIcon = ({ size = 20, className = "" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
+    </svg>
+);
+
 interface LandingFooterProps {
     onShowSupport?: () => void;
 }
@@ -39,49 +50,49 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                 <div className="col-span-1">
                     <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Platform</h4>
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
-                        <li><a href="/features/scheduling-dispatch/" className="hover:text-primary-400 transition-colors">Scheduling & Dispatch</a></li>
-                        <li><a href="/features/invoicing-payments/" className="hover:text-primary-400 transition-colors">Invoicing & Payments</a></li>
-                        <li><a href="/features/field-service-app/" className="hover:text-primary-400 transition-colors">Field Service App</a></li>
-                        <li><a href="/features/estimating-proposals/" className="hover:text-primary-400 transition-colors">Estimating & Proposals</a></li>
-                        <li><a href="/features/service-agreements/" className="hover:text-primary-400 transition-colors">Service Agreements</a></li>
-                        <li><a href="/features/ai-virtual-worker/" className="hover:text-primary-400 transition-colors">AI Virtual Worker</a></li>
+                        <li><Link href="/features/scheduling-dispatch/" className="hover:text-primary-400 transition-colors">Scheduling & Dispatch</Link></li>
+                        <li><Link href="/features/invoicing-payments/" className="hover:text-primary-400 transition-colors">Invoicing & Payments</Link></li>
+                        <li><Link href="/features/field-service-app/" className="hover:text-primary-400 transition-colors">Field Service App</Link></li>
+                        <li><Link href="/features/estimating-proposals/" className="hover:text-primary-400 transition-colors">Estimating & Proposals</Link></li>
+                        <li><Link href="/features/service-agreements/" className="hover:text-primary-400 transition-colors">Service Agreements</Link></li>
+                        <li><Link href="/features/ai-virtual-worker/" className="hover:text-primary-400 transition-colors">AI Virtual Worker</Link></li>
                     </ul>
                 </div>
 
                 <div className="col-span-1">
                     <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Industries</h4>
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
-                        <li><a href="/industries/hvac/" className="hover:text-primary-400 transition-colors">HVAC</a></li>
-                        <li><a href="/industries/plumbing/" className="hover:text-primary-400 transition-colors">Plumbing</a></li>
-                        <li><a href="/industries/electrical/" className="hover:text-primary-400 transition-colors">Electrical</a></li>
-                        <li><a href="/industries/landscaping/" className="hover:text-primary-400 transition-colors">Landscaping</a></li>
-                        <li><a href="/industries/cleaning/" className="hover:text-primary-400 transition-colors">Cleaning Services</a></li>
-                        <li><a href="/industries/painting/" className="hover:text-primary-400 transition-colors">Painting</a></li>
-                        <li><a href="/industries/roofing/" className="hover:text-primary-400 transition-colors">Roofing</a></li>
-                        <li><a href="/industries/contracting/" className="hover:text-primary-400 transition-colors">General Contracting</a></li>
+                        <li><Link href="/industries/hvac/" className="hover:text-primary-400 transition-colors">HVAC</Link></li>
+                        <li><Link href="/industries/plumbing/" className="hover:text-primary-400 transition-colors">Plumbing</Link></li>
+                        <li><Link href="/industries/electrical/" className="hover:text-primary-400 transition-colors">Electrical</Link></li>
+                        <li><Link href="/industries/landscaping/" className="hover:text-primary-400 transition-colors">Landscaping</Link></li>
+                        <li><Link href="/industries/cleaning/" className="hover:text-primary-400 transition-colors">Cleaning Services</Link></li>
+                        <li><Link href="/industries/painting/" className="hover:text-primary-400 transition-colors">Painting</Link></li>
+                        <li><Link href="/industries/roofing/" className="hover:text-primary-400 transition-colors">Roofing</Link></li>
+                        <li><Link href="/industries/contracting/" className="hover:text-primary-400 transition-colors">General Contracting</Link></li>
                     </ul>
                 </div>
 
                 <div className="col-span-1">
                     <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Industries</h4>
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
-                        <li><a href="/industries/masonry/" className="hover:text-primary-400 transition-colors">Masonry</a></li>
-                        <li><a href="/industries/garage-door/" className="hover:text-primary-400 transition-colors">Garage Door</a></li>
-                        <li><a href="/industries/appliance-repair/" className="hover:text-primary-400 transition-colors">Appliance Repair</a></li>
-                        <li><a href="/industries/telecommunications/" className="hover:text-primary-400 transition-colors">Telecommunications</a></li>
-                        <li><a href="/industries/solar/" className="hover:text-primary-400 transition-colors">Solar Installation</a></li>
-                        <li><a href="/industries/security/" className="hover:text-primary-400 transition-colors">Security & Alarm</a></li>
-                        <li><a href="/industries/property-management/" className="hover:text-primary-400 transition-colors">Property Management</a></li>
-                        <li><a href="/industries/pet-grooming/" className="hover:text-primary-400 transition-colors">Pet Grooming</a></li>
+                        <li><Link href="/industries/masonry/" className="hover:text-primary-400 transition-colors">Masonry</Link></li>
+                        <li><Link href="/industries/garage-door/" className="hover:text-primary-400 transition-colors">Garage Door</Link></li>
+                        <li><Link href="/industries/appliance-repair/" className="hover:text-primary-400 transition-colors">Appliance Repair</Link></li>
+                        <li><Link href="/industries/telecommunications/" className="hover:text-primary-400 transition-colors">Telecommunications</Link></li>
+                        <li><Link href="/industries/solar/" className="hover:text-primary-400 transition-colors">Solar Installation</Link></li>
+                        <li><Link href="/industries/security/" className="hover:text-primary-400 transition-colors">Security & Alarm</Link></li>
+                        <li><Link href="/industries/property-management/" className="hover:text-primary-400 transition-colors">Property Management</Link></li>
+                        <li><Link href="/industries/pet-grooming/" className="hover:text-primary-400 transition-colors">Pet Grooming</Link></li>
                     </ul>
                 </div>
 
                 <div className="col-span-1">
                     <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Resources</h4>
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
-                        <li><a href="/faq/" className="hover:text-primary-400 transition-colors">Help Center / FAQ</a></li>
-                        <li><a href="/roi-calculator/" className="hover:text-primary-400 transition-colors">ROI Calculator</a></li>
-                        <li><a href="/integrations/" className="hover:text-primary-400 transition-colors">Integration Directory</a></li>
+                        <li><Link href="/faq/" className="hover:text-primary-400 transition-colors">Help Center / FAQ</Link></li>
+                        <li><Link href="/roi-calculator/" className="hover:text-primary-400 transition-colors">ROI Calculator</Link></li>
+                        <li><Link href="/integrations/" className="hover:text-primary-400 transition-colors">Integration Directory</Link></li>
                         <li><a href="https://app.tektrakker.com/#/homeowners" className="hover:text-primary-400 transition-colors">Homeowner Portal</a></li>
                         <li><a href="https://app.tektrakker.com/#/login" className="hover:text-primary-400 transition-colors">Customer Login</a></li>
                     </ul>
@@ -90,14 +101,14 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                 <div className="col-span-1">
                     <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Company</h4>
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
-                        <li><a href="/about/" className="hover:text-primary-400 transition-colors">About Us</a></li>
-                        <li><a href="/franchise/" className="hover:text-primary-400 transition-colors">Franchise Opportunities</a></li>
+                        <li><Link href="/about/" className="hover:text-primary-400 transition-colors">About Us</Link></li>
+                        <li><Link href="/franchise/" className="hover:text-primary-400 transition-colors">Franchise Opportunities</Link></li>
                         {onShowSupport && (
                             <li><button onClick={onShowSupport} className="hover:text-primary-400 transition-colors">Contact Support</button></li>
                         )}
-                        <li><a href="/privacy/" className="hover:text-primary-400 transition-colors">Privacy Policy</a></li>
-                        <li><a href="/terms/" className="hover:text-primary-400 transition-colors">Terms of Service</a></li>
-                        <li><a href="/eula/" className="hover:text-primary-400 transition-colors">End User License Agreement (EULA)</a></li>
+                        <li><Link href="/privacy/" className="hover:text-primary-400 transition-colors">Privacy Policy</Link></li>
+                        <li><Link href="/terms/" className="hover:text-primary-400 transition-colors">Terms of Service</Link></li>
+                        <li><Link href="/eula/" className="hover:text-primary-400 transition-colors">End User License Agreement (EULA)</Link></li>
                     </ul>
                 </div>
             </div>
@@ -115,10 +126,10 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                         The all-in-one operating system built specifically for the trades. Stop managing software and start managing your business.
                     </p>
                     <div className="flex items-center justify-center gap-3">
-                        <a href="https://www.facebook.com/share/1AyPhsNeN3/" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-[#1877F2] hover:border-[#1877F2] hover:bg-[#1877F2]/10 transition-all"><Facebook size={14} /></a>
+                        <a href="https://www.facebook.com/share/1AyPhsNeN3/" target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-[#1877F2] hover:border-[#1877F2] hover:bg-[#1877F2]/10 transition-all"><FacebookIcon size={14} /></a>
                         <a href="https://twitter.com/TrakkerPlatform" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)" className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:border-white hover:bg-white/10 transition-all"><XLogo size={14} /></a>
                         <a href="https://www.tiktok.com/@tektrakker" target="_blank" rel="noopener noreferrer" aria-label="TikTok" className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-[#00f2fe] hover:border-[#00f2fe] hover:bg-[#00f2fe]/10 transition-all"><TikTok size={14} /></a>
-                        <a href="https://www.linkedin.com/company/tektrakker" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 transition-all"><Linkedin size={14} /></a>
+                        <a href="https://www.linkedin.com/company/tektrakker" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-[#0A66C2] hover:border-[#0A66C2] hover:bg-[#0A66C2]/10 transition-all"><LinkedinIcon size={14} /></a>
                     </div>
                 </div>
 
