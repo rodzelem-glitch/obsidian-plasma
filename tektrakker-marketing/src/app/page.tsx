@@ -724,7 +724,7 @@ export default function Home() {
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 text-white text-xs font-bold uppercase tracking-widest animate-pulse">Coming Soon</div>
                         </div>
                         <h3 className="text-3xl font-black text-slate-900 mb-4">Stop Overpaying on Processing Fees</h3>
-                        <p className="text-lg text-slate-600 mb-0">Tired of unpredictable rates and hidden fees eating into your margins? Whether you use our full Field Service Management suite or just our payment tools, our transparent, flat-rate pricing guarantees you keep more of your hard-earned money.</p>
+                        <p className="text-lg text-slate-600 mb-0">Tired of unpredictable rates and hidden fees eating into your margins? Whether you use our full Field Service Management suite or just our payment tools, our transparent IC+ pricing guarantees you keep more of your hard-earned money.</p>
                     </div>
                     <div className="relative z-10 w-full md:w-auto shrink-0">
                         <Link href="/payment-processing" className="w-full md:w-auto px-8 py-4 bg-orange-600 text-white font-black text-lg rounded-xl hover:bg-orange-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
