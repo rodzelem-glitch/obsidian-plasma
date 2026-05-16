@@ -365,7 +365,7 @@ const VirtualWorkerReports: React.FC = () => {
                                 className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left group"
                             >
                                 <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold">
-                                    {member.firstName[0]}{member.lastName[0]}
+                                    {member.firstName?.charAt(0) || ''}{member.lastName?.charAt(0) || ''}
                                 </div>
                                 <div className="flex-1">
                                     <p className="text-sm font-bold text-slate-900 dark:text-white">{member.firstName} {member.lastName}</p>

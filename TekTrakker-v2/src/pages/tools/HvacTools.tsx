@@ -160,7 +160,7 @@ const IndustryToolsHub: React.FC = () => {
         if (job) {
             const existingVitals = job.toolReadings?.find(r => r.type === 'HVAC_Vitals' as any);
             if (existingVitals && existingVitals.data) {
-                setVitalsData(existingVitals.data);
+                setVitalsData(existingVitals.data as Record<string, string>);
             } else {
                 setVitalsData({});
             }

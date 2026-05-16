@@ -51,7 +51,11 @@ export interface Organization {
     squareApplicationId?: string | null;
     squareLocationId?: string | null;
     squareToken?: string | null;
-    defaultPaymentGateway?: 'paypal' | 'stripe' | 'square';
+    kortAccountId?: string | null;
+    kortAccountStatus?: string | null;
+    defaultPaymentGateway?: 'paypal' | 'stripe' | 'square' | 'kort';
+    platformVaultedPaymentMethodId?: string | null;
+    platformVaultedPaymentType?: string | null;
     enabledPanels?: {
         inventory?: boolean;
         marketing?: boolean;

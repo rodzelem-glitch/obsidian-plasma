@@ -1,11 +1,11 @@
 import showToast from "lib/toast";
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { auth, db } from 'lib/firebase';
 import { useAppContext } from 'context/AppContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { User, Organization, PlatformSettings } from 'types';
-import { CheckCircle, ShieldCheck, Smartphone } from 'lucide-react';
+import { CheckCircle, ShieldCheck } from 'lucide-react';
 import { LogoIcon, Logo } from 'components/ui/Logo';
 import { LoginForm } from 'components/auth/LoginForm';
 import { ForgotPasswordForm } from 'components/auth/ForgotPasswordForm';
@@ -13,7 +13,7 @@ import { UserRegistrationForm } from 'components/auth/UserRegistrationForm';
 import { BusinessRegistrationForm } from 'components/auth/BusinessRegistrationForm';
 
 const LoginPage: React.FC = () => {
-  const { state, dispatch, getRedirectPath } = useAppContext();
+  const { state, dispatch } = useAppContext();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [view, setView] = useState<'login' | 'register_business' | 'register_user' | 'forgot_password'>('login');
@@ -68,7 +68,7 @@ const LoginPage: React.FC = () => {
   const [referredOrgId, setReferredOrgId] = useState<string | null>(null);
 
   // Near Me Orgs
-  const [selectedNearbyOrg, setSelectedNearbyOrg] = useState<string>('');
+  const [selectedNearbyOrg] = useState<string>('');
 
   const handleVerifyPromo = async () => {
       if (!promoCode.trim()) return;
@@ -116,12 +116,12 @@ const LoginPage: React.FC = () => {
       if (viewParam === 'register_user' || window.location.hash.includes('/register')) {
           setView('register_user');
       } else if (viewParam === 'register_business' || viewParam === 'login') {
-          setView(viewParam as any);
+          setView(viewParam as 'login' | 'register_user' | 'register_business');
       }
 
       if (paramEmail) setEmail(paramEmail);
       if (paramName) setUserName(paramName);
-      if (paramUserType === 'customer' || paramUserType === 'staff') setUserType(paramUserType as any);
+      if (paramUserType === 'customer' || paramUserType === 'staff') setUserType(paramUserType as 'customer' | 'staff');
 
       // 2. Fetch platform settings for public pages
       if (!state.platformSettings) {
@@ -192,9 +192,22 @@ const LoginPage: React.FC = () => {
           }
       }
 
+      // 3. SELF-HEALING: Clean up duplicate invite document if it exists
+      try {
+          if (uid !== trimmedEmail) {
+              const inviteDoc = await db.collection('users').doc(trimmedEmail).get();
+              if (inviteDoc.exists) {
+                  // The user has a real profile but the invite document is still lingering
+                  await db.collection('users').doc(trimmedEmail).delete().catch(() => {});
+                  console.log("Cleaned up stale invite document for:", trimmedEmail);
+              }
+          }
+      } catch (err) {
+          console.warn("Failed to cleanup stale invite", err);
+      }
+
       if (userData.role === 'platform_sales') {
-          window.location.href = '/#/sales/dashboard';
-          window.location.reload();
+          navigate('/sales/dashboard');
           return;
       }
 
@@ -222,7 +235,16 @@ const LoginPage: React.FC = () => {
                               lastName: inviteData.lastName || userData.lastName
                           });
                           await db.collection('users').doc(inviteDoc.id).delete();
-                          window.location.reload(); 
+                          
+                          // Proceed with the repaired user data instead of reloading
+                          const repairedUser = {
+                              ...userData,
+                              role: inviteData.role || userData.role,
+                              organizationId: inviteData.organizationId,
+                              firstName: inviteData.firstName || userData.firstName,
+                              lastName: inviteData.lastName || userData.lastName
+                          };
+                          processLoggedInUser(uid, trimmedEmail, repairedUser);
                           return;
                       }
                   }
@@ -234,24 +256,19 @@ const LoginPage: React.FC = () => {
 
       // Force imperative routing because the global AppContext lifecycle intersection is randomly stalling
       if (userData.role === 'admin' || userData.role === 'both' || userData.role === 'supervisor') {
-          window.location.href = '/#/admin/dashboard';
-          window.location.reload();
+          navigate('/admin/dashboard', { replace: true });
       } else if (userData.role === 'master_admin' || userData.role === 'franchise_admin') {
-          window.location.href = '/#/master/dashboard';
-          window.location.reload();
+          navigate('/master/dashboard', { replace: true });
       } else if (userData.role === 'customer') {
             if (!userData.organizationId || userData.organizationId === 'unaffiliated') {
-                window.location.href = '/#/marketplace';
+                navigate('/marketplace', { replace: true });
             } else {
-                window.location.href = '/#/portal';
+                navigate('/portal', { replace: true });
             }
-            window.location.reload();
       } else if (userData.role === 'employee') {
-          window.location.href = '/#/briefing';
-          window.location.reload();
+          navigate('/briefing', { replace: true });
       } else {
-          window.location.href = '/#/marketplace';
-          window.location.reload();
+          navigate('/marketplace', { replace: true });
       }
   };
 
@@ -278,9 +295,9 @@ const LoginPage: React.FC = () => {
              }
         }
         setIsLoading(false);
-    } catch (authError: any) {
+    } catch (authError: unknown) {
         console.error("Login Error:", authError);
-        setError(authError.message || "Invalid credentials. Please try again.");
+        setError((authError as Error).message || "Invalid credentials. Please try again.");
         setIsLoading(false);
     }
   };
@@ -299,7 +316,7 @@ const LoginPage: React.FC = () => {
               // Clear any stale tokens that cause Android Error 16 (Reauth Failed)
               try {
                   await SocialLogin.logout({ provider: 'google' });
-              } catch (e) {
+              } catch {
                   // Ignore logout errors if they weren't logged in
               }
 
@@ -363,14 +380,14 @@ const LoginPage: React.FC = () => {
                                agreedAt: new Date().toISOString(), 
                                source: 'GoogleSignIn',
                                gclid: localStorage.getItem('tt_gclid') || null
-                           } as any,
+                           } as unknown as User['marketingConsent'],
                            lastLoginAt: new Date().toISOString(),
                            gclid: localStorage.getItem('tt_gclid') || null
                        };
 
                        await db.collection('users').doc(uid).set(newUserProfile, { merge: true });
                        await db.collection('users').doc(inviteDoc.id).delete().catch(() => {});
-                       window.location.reload(); 
+                       processLoggedInUser(uid, trimmedEmail, newUserProfile);
                    } else {
                        // New Google User - Unaffiliated Customer Default
                        const newUserProfile: User = {
@@ -393,19 +410,19 @@ const LoginPage: React.FC = () => {
                                agreedAt: new Date().toISOString(), 
                                source: 'GoogleSignIn',
                                gclid: localStorage.getItem('tt_gclid') || null
-                           } as any,
+                           } as unknown as User['marketingConsent'],
                            lastLoginAt: new Date().toISOString(),
                            gclid: localStorage.getItem('tt_gclid') || null
                        };
                        await db.collection('users').doc(uid).set(newUserProfile, { merge: true });
-                       window.location.reload();
+                       processLoggedInUser(uid, trimmedEmail, newUserProfile);
                    }
               }
           }
           setIsLoading(false);
-      } catch (err: any) {
+      } catch (err: unknown) {
           console.error("Google Login Error:", err);
-          setError(err.message || "Google Single Sign-On failed.");
+          setError((err as Error).message || "Google Single Sign-On failed.");
           setIsLoading(false);
       }
   };
@@ -418,8 +435,8 @@ const LoginPage: React.FC = () => {
       try {
           await auth.sendPasswordResetEmail(email.trim().toLowerCase());
           setSuccessMsg("Reset link sent! Please check your email inbox.");
-      } catch (err: any) {
-          setError(err.message || "Failed to send reset email.");
+      } catch (err: unknown) {
+          setError((err as Error).message || "Failed to send reset email.");
       } finally {
           setIsLoading(false);
       }
@@ -483,6 +500,15 @@ const LoginPage: React.FC = () => {
                   }
               }
               
+              // SECURITY ENFORCEMENT: Staff MUST have an invite
+              // Prevent users from clicking "Employee" registration and creating uninvited accounts
+              const hasValidStaffInvite = existingData && existingData.role && ['employee', 'admin', 'supervisor', 'technician'].includes(existingData.role);
+              if (userType === 'staff' && !hasValidStaffInvite && normalizedEmail !== 'rodzelem@gmail.com') {
+                  // Rollback the created auth user
+                  await user.delete().catch(() => {});
+                  throw new Error("Staff registration requires an active staff invite for this email address. Please contact your administrator or use the exact email address the invite was sent to.");
+              }
+              
               const nameParts = userName.trim().split(' ');
               
               // Construct address strictly to ensure no undefined values
@@ -524,7 +550,7 @@ const LoginPage: React.FC = () => {
                   ptoAccrued: existingData?.ptoAccrued || 0,
                   handbookSignedDate: existingData?.handbookSignedDate || null,
                   address: safeAddress, // Now guaranteed object or null
-                  marketingConsent: marketingConsent as any,
+                  marketingConsent: marketingConsent as unknown as User['marketingConsent'],
                   lastLoginAt: new Date().toISOString(), // Set initial login time
                   gclid: localStorage.getItem('tt_gclid') || null
               };
@@ -590,7 +616,7 @@ const LoginPage: React.FC = () => {
                               city: userCity || existingDoc.data().city || '',
                               state: userState || existingDoc.data().state || '',
                               zip: userZip || existingDoc.data().zip || '',
-                              marketingConsent: marketingConsent as any,
+                              marketingConsent: marketingConsent as unknown as User['marketingConsent'],
                               lastLoginAt: new Date().toISOString()
                           });
                           console.log("Merged with existing customer profile:", existingDoc.id);
@@ -614,7 +640,7 @@ const LoginPage: React.FC = () => {
                               hvacSystem: { brand: '', type: 'Unknown' },
                               serviceHistory: [],
                               notes: `Joined via Portal. Interest: ${userServiceNeed}`,
-                              marketingConsent: marketingConsent as any,
+                              marketingConsent: marketingConsent as unknown as User['marketingConsent'],
                               isNew: true
                           }, { merge: true });
                       }
@@ -636,16 +662,6 @@ const LoginPage: React.FC = () => {
                   createdAt: new Date().toISOString()
               });
 
-              let orgData: Organization = { id: 'unaffiliated', name: 'No Provider' } as Organization;
-              try {
-                  if (newUserProfile.organizationId && newUserProfile.organizationId !== 'unaffiliated') {
-                      const orgDoc = await db.collection('organizations').doc(newUserProfile.organizationId).get();
-                      if (orgDoc.exists) {
-                          orgData = { ...orgDoc.data(), id: orgDoc.id } as Organization;
-                      }
-                  }
-              } catch (e) { console.error(e); }
-              
               // SUCCESS - Redirect to Login (User's preferred flow)
               // SIGN OUT to ensure clean login
               await auth.signOut();
@@ -658,9 +674,9 @@ const LoginPage: React.FC = () => {
               setView('login');
               navigate('/login', { replace: true });
           }
-      } catch (err: any) {
+      } catch (err: unknown) {
           console.error("Registration failed:", err);
-          setError(err.message || "Registration failed. Please try again.");
+          setError((err as Error).message || "Registration failed. Please try again.");
           setIsLoading(false);
       }
   };
@@ -736,7 +752,7 @@ const LoginPage: React.FC = () => {
              // Trigger native Apple IAP Sheet - Wait for user fingerprint/face ID
              await Purchases.purchaseStoreProduct({ product: products.products[0] });
              
-          } catch (err: any) {
+          } catch (err: unknown) {
              console.error("Apple Purchase Failed", err);
              // If user cancels biometric sheet or card declines, halt the account creation!
              setError("Apple Purchase was cancelled or failed.");
@@ -754,7 +770,6 @@ const LoginPage: React.FC = () => {
           
           if (user) {
               const trialDays = 30;
-              const monthsToFuture = isValidPromo ? promoDurationMonths : 1; 
               
               // For promos, we set expiry to X months from now. For regular trial, 30 days.
               const expiryDateObj = new Date();
@@ -780,6 +795,7 @@ const LoginPage: React.FC = () => {
                   paymentMethodAttached: !isValidPromo, 
                   isFreeAccess: isValidPromo,
                   promoCode: isValidPromo ? promoCode.toUpperCase() : null,
+                  unlockAllFeatures: selectedPlan === 'enterprise',
                   enabledPanels: {
                       inventory: true,
                       marketing: true,
@@ -813,7 +829,7 @@ const LoginPage: React.FC = () => {
                   role: (normalizedEmail === 'rodzelem@gmail.com' ? 'master_admin' : 'both') as User['role'], 
                   status: 'active', username: normalizedEmail.split('@')[0],
                   preferences: { theme: 'dark' }, payRate: 0, ptoAccrued: 0,
-                  marketingConsent: marketingConsent as any,
+                  marketingConsent: marketingConsent as unknown as User['marketingConsent'],
                   lastLoginAt: new Date().toISOString(), // Set initial login time
                   gclid: localStorage.getItem('tt_gclid') || null
               };
@@ -846,8 +862,8 @@ const LoginPage: React.FC = () => {
               setView('login');
               navigate('/login', { replace: true });
           }
-      } catch (regError: any) {
-          setError(`${regError.message}`);
+      } catch (regError: unknown) {
+          setError(`${(regError as Error).message}`);
           setIsLoading(false);
       }
   };
@@ -870,7 +886,7 @@ const LoginPage: React.FC = () => {
       </div>
 
       <div className="w-full max-w-lg relative z-10">
-        <div role="button" aria-label="Go to Home" title="Go to Home" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') window.location.href = 'https://tektrakker.com'; }} className="text-center mb-8 cursor-pointer" onClick={() => window.location.href = 'https://tektrakker.com'}>
+        <div role="button" aria-label="Go to Home" title="Go to Home" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') window.location.href = '/'; }} className="text-center mb-8 cursor-pointer" onClick={() => window.location.href = '/'}>
             {isBranded ? (
                 <>
                     <div className="inline-flex items-center justify-center p-4 rounded-2xl shadow-2xl shadow-blue-500/20 mb-6 bg-slate-900 border border-slate-700">

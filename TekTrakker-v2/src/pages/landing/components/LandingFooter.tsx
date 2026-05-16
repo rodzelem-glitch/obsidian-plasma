@@ -1,6 +1,6 @@
 import React from 'react';
 import { Logo } from '../../../components/ui/Logo';
-import { Facebook } from 'lucide-react';
+import { Facebook, ChevronDown } from 'lucide-react';
 
 const TikTok = ({ size = 20, className = "" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -18,13 +18,31 @@ interface LandingFooterProps {
     onShowSupport?: () => void;
 }
 
+const FooterSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
+    const [isOpen, setIsOpen] = React.useState(false);
+
+    return (
+        <div className="col-span-1 border-b border-slate-800/50 md:border-none">
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full text-left flex justify-between items-center py-4 md:py-0 text-white font-bold md:mb-6 uppercase tracking-wider text-xs focus:outline-none"
+            >
+                {title}
+                <ChevronDown size={16} className={`md:hidden text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            <div className={`${isOpen ? 'block' : 'hidden'} md:block pb-6 md:pb-0`}>
+                {children}
+            </div>
+        </div>
+    );
+};
+
 export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) => {
     return (
-        <footer className="bg-slate-950 border-t border-white/5 py-16 md:py-24 px-6 w-full relative overflow-hidden">
+        <footer className="bg-slate-950 border-t border-white/5 py-8 md:py-24 px-6 w-full relative overflow-hidden">
             <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-600/10 rounded-full blur-[100px] pointer-events-none transform translate-x-1/2 -translate-y-1/2"></div>
-            <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-x-8 gap-y-16 relative z-10">
-                <div className="col-span-1">
-                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Platform</h4>
+            <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-x-8 md:gap-y-16 relative z-10">
+                <FooterSection title="Platform">
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
                         <li><a href="https://tektrakker.com/features/scheduling-dispatch" className="hover:text-primary-400 transition-colors">Scheduling & Dispatch</a></li>
                         <li><a href="https://tektrakker.com/features/invoicing-payments" className="hover:text-primary-400 transition-colors">Invoicing & Payments</a></li>
@@ -33,10 +51,9 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                         <li><a href="https://tektrakker.com/features/service-agreements" className="hover:text-primary-400 transition-colors">Service Agreements</a></li>
                         <li><a href="https://tektrakker.com/features/ai-virtual-worker" className="hover:text-primary-400 transition-colors">AI Virtual Worker</a></li>
                     </ul>
-                </div>
+                </FooterSection>
 
-                <div className="col-span-1">
-                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Industries</h4>
+                <FooterSection title="Industries">
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
                         <li><a href="https://tektrakker.com/industries/hvac/" className="hover:text-primary-400 transition-colors">HVAC</a></li>
                         <li><a href="https://tektrakker.com/industries/plumbing/" className="hover:text-primary-400 transition-colors">Plumbing</a></li>
@@ -47,10 +64,9 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                         <li><a href="https://tektrakker.com/industries/roofing/" className="hover:text-primary-400 transition-colors">Roofing</a></li>
                         <li><a href="https://tektrakker.com/industries/contracting/" className="hover:text-primary-400 transition-colors">General Contracting</a></li>
                     </ul>
-                </div>
+                </FooterSection>
 
-                <div className="col-span-1">
-                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Industries</h4>
+                <FooterSection title="More Industries">
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
                         <li><a href="https://tektrakker.com/industries/masonry/" className="hover:text-primary-400 transition-colors">Masonry</a></li>
                         <li><a href="https://tektrakker.com/industries/garage-door/" className="hover:text-primary-400 transition-colors">Garage Door</a></li>
@@ -61,32 +77,30 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                         <li><a href="https://tektrakker.com/industries/property-management/" className="hover:text-primary-400 transition-colors">Property Management</a></li>
                         <li><a href="https://tektrakker.com/industries/pet-grooming/" className="hover:text-primary-400 transition-colors">Pet Grooming</a></li>
                     </ul>
-                </div>
+                </FooterSection>
 
-                <div className="col-span-1">
-                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Resources</h4>
+                <FooterSection title="Resources">
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
-                        <li><a href="https://tektrakker.com/faq" className="hover:text-primary-400 transition-colors">Help Center / FAQ</a></li>
+                        <li><a href="/#/faq" className="hover:text-primary-400 transition-colors">Help Center / FAQ</a></li>
                         <li><a href="/#/login?view=register_business" className="hover:text-primary-400 transition-colors">ROI Calculator</a></li>
                         <li><a href="/#/login?view=register_business" className="hover:text-primary-400 transition-colors">Integration Directory</a></li>
                         <li><a href="/#/homeowners" className="hover:text-primary-400 transition-colors">Homeowner Portal</a></li>
                         <li><a href="/#/login" className="hover:text-primary-400 transition-colors">Customer Login</a></li>
                     </ul>
-                </div>
+                </FooterSection>
 
-                <div className="col-span-1">
-                    <h4 className="text-white font-bold mb-6 uppercase tracking-wider text-xs">Company</h4>
+                <FooterSection title="Company">
                     <ul className="space-y-4 text-sm font-medium text-slate-400">
                         <li><a href="https://tektrakker.com/about" className="hover:text-primary-400 transition-colors">About Us</a></li>
-                        <li><a href="https://tektrakker.com/franchise" className="hover:text-primary-400 transition-colors">Franchise Opportunities</a></li>
+                        <li><a href="/#/franchise" className="hover:text-primary-400 transition-colors">Franchise Opportunities</a></li>
                         {onShowSupport && (
                             <li><button onClick={onShowSupport} className="hover:text-primary-400 transition-colors">Contact Support</button></li>
                         )}
-                        <li><a href="https://tektrakker.com/privacy" className="hover:text-primary-400 transition-colors">Privacy Policy</a></li>
-                        <li><a href="https://tektrakker.com/terms" className="hover:text-primary-400 transition-colors">Terms of Service</a></li>
-                        <li><a href="https://tektrakker.com/eula" className="hover:text-primary-400 transition-colors">End User License Agreement (EULA)</a></li>
+                        <li><a href="/#/privacy" className="hover:text-primary-400 transition-colors">Privacy Policy</a></li>
+                        <li><a href="/#/terms" className="hover:text-primary-400 transition-colors">Terms of Service</a></li>
+                        <li><a href="/#/eula" className="hover:text-primary-400 transition-colors">End User License Agreement (EULA)</a></li>
                     </ul>
-                </div>
+                </FooterSection>
             </div>
 
             <div className="max-w-7xl mx-auto w-full flex flex-col md:flex-row justify-between items-center md:items-end gap-8 mt-16 pt-8 border-t border-slate-800/50 relative z-10">
@@ -95,7 +109,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                 </div>
 
                 <div className="flex flex-col items-center text-center w-full md:w-1/3 gap-4 order-1 md:order-2">
-                    <a href="https://tektrakker.com" className="opacity-90 hover:opacity-100 transition-opacity" title="TekTrakker Homepage" aria-label="TekTrakker Homepage">
+                    <a href="/#/" className="opacity-90 hover:opacity-100 transition-opacity" title="TekTrakker Homepage" aria-label="TekTrakker Homepage">
                         <Logo className="h-6 w-auto" />
                     </a>
                     <p className="text-slate-500 text-xs max-w-sm mx-auto leading-relaxed">

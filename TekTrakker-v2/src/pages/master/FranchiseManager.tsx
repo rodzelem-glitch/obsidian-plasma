@@ -34,7 +34,7 @@ const FranchiseManager: React.FC = () => {
     const [formAgreementSigned, setFormAgreementSigned] = useState(false);
     const [formSetupFeePaid, setFormSetupFeePaid] = useState(false);
     const [formPerUserFee, setFormPerUserFee] = useState(10);
-    const [formPerVirtualWorkerFee, setFormPerVirtualWorkerFee] = useState(10);
+    const [formPerVirtualWorkerFee, setFormPerVirtualWorkerFee] = useState(50);
     const [provisioningDomain, setProvisioningDomain] = useState(false);
 
     useEffect(() => {
@@ -114,7 +114,7 @@ const FranchiseManager: React.FC = () => {
         setFormAgreementSigned(fr.billing?.agreementSigned || false);
         setFormSetupFeePaid(fr.billing?.setupFeePaid || false);
         setFormPerUserFee(fr.billing?.perUserFee ?? 10);
-        setFormPerVirtualWorkerFee(fr.billing?.perVirtualWorkerFee ?? 10);
+        setFormPerVirtualWorkerFee(fr.billing?.perVirtualWorkerFee ?? 50);
         setIsEditing(true);
     };
 
@@ -134,7 +134,7 @@ const FranchiseManager: React.FC = () => {
         setFormAgreementSigned(false);
         setFormSetupFeePaid(false);
         setFormPerUserFee(10);
-        setFormPerVirtualWorkerFee(10);
+        setFormPerVirtualWorkerFee(50);
     };
 
     const handleSave = async () => {
@@ -418,8 +418,12 @@ const FranchiseManager: React.FC = () => {
                                             )}
                                         </div>
                                         <label className="flex items-center gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={true} readOnly disabled className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500 opacity-60" />
+                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">$1,000 Per month subscription</span>
+                                        </label>
+                                        <label className="flex items-center gap-3 cursor-pointer">
                                             <input type="checkbox" checked={formSetupFeePaid} onChange={e => setFormSetupFeePaid(e.target.checked)} className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500" />
-                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">$1,500 Setup & DNS Fee Paid via PayPal/Square</span>
+                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">$1,500 Setup & DNS Fee Paid via PayPal/Square (1 time)</span>
                                         </label>
                                         <div className="grid grid-cols-2 gap-4 mt-2">
                                             <div>
@@ -479,10 +483,12 @@ const FranchiseManager: React.FC = () => {
                         <button type="button" key={fr.id} className="w-full text-left bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-6 flex flex-col group hover:border-primary-500 transition-all shadow-sm hover:shadow-md cursor-pointer appearance-none" onClick={() => handleSelect(fr)}>
                             <div className="flex items-center gap-4 mb-4">
                                 {(() => {
-                                    const brandStyle = { '--brand-bg': fr.branding?.primaryColor ? `${fr.branding.primaryColor}20` : '#f1f5f9', backgroundColor: 'var(--brand-bg)' } as React.CSSProperties;
+                                    const bgColor = fr.branding?.primaryColor || '#f1f5f9';
                                     return (
-                                        <div className="w-12 h-12 rounded-xl flex items-center justify-center border border-slate-100 dark:border-slate-700" style={brandStyle}>
-                                            {fr.branding?.logoUrl ? <img src={fr.branding.logoUrl} className="w-8 h-8 object-contain" alt="Logo" /> : <Network className="text-slate-400" />}
+                                        <div className="w-12 h-12 rounded-xl flex items-center justify-center border border-slate-100 dark:border-slate-700 relative overflow-hidden">
+                                            <style>{`#bg-${fr.id} { background-color: ${bgColor}; }`}</style>
+                                            <div id={`bg-${fr.id}`} className="absolute inset-0 opacity-20" />
+                                            {fr.branding?.logoUrl ? <img src={fr.branding.logoUrl} className="w-8 h-8 object-contain z-10 relative" alt="Logo" /> : <Network className="text-slate-400 z-10 relative" />}
                                         </div>
                                     );
                                 })()}

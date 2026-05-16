@@ -40,6 +40,10 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     const [warrantyNotes, setWarrantyNotes] = useState<string>('');
     const [warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed] = useState<boolean>(false);
     const [membershipEnrollment, setMembershipEnrollment] = useState<any>(null);
+    const [recommendations, setRecommendations] = useState<string>('');
+
+    const [additionalFeePercent, setAdditionalFeePercent] = useState<number>(0);
+    const [additionalFeeName, setAdditionalFeeName] = useState<string>('Processing Fee');
 
     const sigPadRef = useRef<SignaturePadHandle>(null);
 
@@ -63,6 +67,9 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 setWarrantyNotes((job.invoice as any)?.warrantyNotes || '');
                 setWarrantyDisclaimerAgreed((job.invoice as any)?.warrantyDisclaimerAgreed || false);
                 setMembershipEnrollment((job.invoice as any)?.membershipEnrollment || null);
+                setRecommendations((job.invoice as any)?.recommendations || '');
+                setAdditionalFeePercent((job.invoice as any)?.additionalFeePercent || 0);
+                setAdditionalFeeName((job.invoice as any)?.additionalFeeName || 'Processing Fee');
 
                 if (job.source === 'PlatformAdmin') {
                     db.collection('organizations').doc('platform').get().then(doc => {
@@ -78,9 +85,11 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         const subtotal = lineItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
         const taxableAmount = lineItems.filter(i => i.taxable !== false).reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
         const tax = taxableAmount * (taxRate / 100);
-        const total = subtotal + tax;
-        return { subtotal: parseFloat(subtotal.toFixed(2)), tax: parseFloat(tax.toFixed(2)), total: parseFloat(total.toFixed(2)) };
-    }, [lineItems, taxRate]);
+        let total = subtotal + tax;
+        const additionalFeeAmount = additionalFeePercent ? (total * (additionalFeePercent / 100)) : 0;
+        total += additionalFeeAmount;
+        return { subtotal: parseFloat(subtotal.toFixed(2)), tax: parseFloat(tax.toFixed(2)), total: parseFloat(total.toFixed(2)), additionalFeeAmount: parseFloat(additionalFeeAmount.toFixed(2)) };
+    }, [lineItems, taxRate, additionalFeePercent]);
 
     const handleAddItem = (type: InvoiceLineItem['type'] = 'Labor', description: string = '') => {
         const newItem: InvoiceLineItem = { id: `item-${Date.now()}`, name: 'New Item', description, quantity: 1, unitPrice: 0, total: 0, type, taxable: true };
@@ -186,6 +195,10 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 warrantyDisclaimerAgreed,
                 warrantyIssuedDate: (currentJob.invoice as any)?.warrantyIssuedDate || (workmanshipWarrantyMonths > 0 || partsWarrantyMonths > 0 ? new Date().toISOString() : null),
                 membershipEnrollment: membershipEnrollment || null,
+                recommendations: recommendations || '',
+                additionalFeePercent,
+                additionalFeeName,
+                additionalFeeAmount: totals.additionalFeeAmount,
             },
             updatedAt: new Date().toISOString(),
             updatedById: currentUser?.id,
@@ -517,5 +530,8 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         warrantyNotes, setWarrantyNotes,
         warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed,
         membershipEnrollment, setMembershipEnrollment,
+        recommendations, setRecommendations,
+        additionalFeePercent, setAdditionalFeePercent,
+        additionalFeeName, setAdditionalFeeName,
     };
 };

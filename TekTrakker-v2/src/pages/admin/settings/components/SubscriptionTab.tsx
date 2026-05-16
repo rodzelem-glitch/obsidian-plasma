@@ -8,6 +8,8 @@ import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { useAppContext } from 'context/AppContext';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { Capacitor } from '@capacitor/core';
+import { KortSetupForm } from 'components/payment/KortSetupForm';
+import { CreditCard, Building2 } from 'lucide-react';
 
 interface SubscriptionTabProps {
     billingDetails: {
@@ -34,6 +36,9 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
     const orgId = state.currentOrganization?.id;
     const isVwEnabled = state.currentOrganization?.virtualWorkerEnabled;
     const platformPaypalClientId = state.platformSettings?.platformPaypalClientId;
+    const hasVaultedMethod = !!state.currentOrganization?.platformVaultedPaymentMethodId;
+    const vaultedType = state.currentOrganization?.platformVaultedPaymentType;
+    const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
 
     useEffect(() => {
         if (!orgId || !isVwEnabled) return;
@@ -123,6 +128,63 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
                     onClose={() => setIsCancelModalOpen(false)} 
                 />
             </Card>
+
+            {orgId === 'tektestsub' && (
+                <Card className="border border-slate-200 shadow-sm">
+                    <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
+                            <CreditCard size={24} />
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-lg text-slate-900">Payment Method</h3>
+                            <p className="text-sm text-slate-500">Manage your card or bank account for automated subscription billing.</p>
+                        </div>
+                    </div>
+                    {!isAddingPaymentMethod && (
+                        <button 
+                            onClick={() => setIsAddingPaymentMethod(true)}
+                            className="text-sm font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-4 py-2 rounded-lg"
+                        >
+                            {hasVaultedMethod ? 'Update Payment Method' : 'Add Payment Method'}
+                        </button>
+                    )}
+                </div>
+
+                {isAddingPaymentMethod ? (
+                    <div className="mt-4 flex flex-col items-center border-t border-slate-100 pt-6">
+                        <KortSetupForm 
+                            onSuccess={() => {
+                                setIsAddingPaymentMethod(false);
+                            }}
+                            onError={(err) => console.error(err)}
+                        />
+                        <button 
+                            onClick={() => setIsAddingPaymentMethod(false)}
+                            className="mt-4 text-sm text-slate-500 hover:text-slate-700 font-medium"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                ) : (
+                    hasVaultedMethod ? (
+                        <div className="mt-4 p-4 border border-emerald-200 bg-emerald-50 rounded-lg flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                                {vaultedType === 'ach_debit' ? <Building2 size={16} /> : <CreditCard size={16} />}
+                            </div>
+                            <div>
+                                <p className="font-semibold text-emerald-900 text-sm">Securely Vaulted</p>
+                                <p className="text-xs text-emerald-700">Your {vaultedType === 'ach_debit' ? 'bank account' : 'credit card'} is linked for automatic payments.</p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="mt-4 p-4 border border-amber-200 bg-amber-50 rounded-lg text-amber-800 text-sm">
+                            No payment method on file. Please add a payment method to ensure uninterrupted service.
+                        </div>
+                    )
+                )}
+            </Card>
+            )}
 
             {isVwEnabled && (
                 <Card className="border border-indigo-100 shadow-sm">

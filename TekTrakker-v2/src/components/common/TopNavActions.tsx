@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import { QrCode, X, User as UserIcon, PhoneCall } from 'lucide-react';
 import EmployeeProfileModal from '../modals/EmployeeProfileModal';
-import { auth, db } from 'lib/firebase';
+import { db } from 'lib/firebase';
 import VirtualWorker from '../ui/VirtualWorker';
 import { LiveSupportFloatingButton } from '../common/LiveSupportComponent';
 import Modal from '../ui/Modal';
@@ -14,7 +14,7 @@ interface TopNavActionsProps {
     onLogout?: () => void;
 }
 
-const TopNavActions: React.FC<TopNavActionsProps> = ({ user, onLogout }) => {
+const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const { state, dispatch } = useAppContext();
@@ -40,6 +40,7 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user, onLogout }) => {
 
     useEffect(() => {
         let isMounted = true;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let html5QrCode: any = null;
 
         const startScanner = async () => {
@@ -75,6 +76,7 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user, onLogout }) => {
                 html5QrCode = new Html5Qrcode("qr-reader-topnav");
                 const qrConfig = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
                 
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 let startConfig: any = { facingMode: "environment" };
                 try {
                     const devices = await Html5Qrcode.getCameras();
@@ -129,10 +131,11 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user, onLogout }) => {
                             }
                         }
                     },
-                    (errorMessage: string) => {}
+                    (_errorMessage: string) => {}
                 );
-            } catch (err: any) {
-                if (container) container.innerHTML = `<div class='p-4 text-red-500 text-center text-sm'>${err.message || 'Camera Error'}</div>`;
+            } catch (err: unknown) {
+                const errorMsg = err instanceof Error ? err.message : 'Camera Error';
+                if (container) container.innerHTML = `<div class='p-4 text-red-500 text-center text-sm'>${errorMsg}</div>`;
             }
         };
 
@@ -148,6 +151,9 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user, onLogout }) => {
         <>
             <style>{`
                 ${!isPhoneVisible ? '#rc-widget { display: none !important; }' : ''}
+                @media (max-width: 767px) {
+                    #rc-widget { display: none !important; }
+                }
             `}</style>
             <div className="flex items-center space-x-1 sm:space-x-3">
                 <VirtualWorker variant="nav" />
@@ -156,7 +162,7 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user, onLogout }) => {
                     const newVisible = !isPhoneVisible;
                     setIsPhoneVisible(newVisible);
                     localStorage.setItem('rc-widget-hidden', (!newVisible).toString());
-                }} className={`p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${!isPhoneVisible ? 'text-gray-400' : 'text-orange-500 bg-orange-50 dark:bg-orange-500/10'}`} title="Toggle Phone Widget"><PhoneCall className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+                }} className={`hidden md:block p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${!isPhoneVisible ? 'text-gray-400' : 'text-orange-500 bg-orange-50 dark:bg-orange-500/10'}`} title="Toggle Phone Widget"><PhoneCall className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                 <button onClick={() => setIsScannerOpen(true)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="Scan QR/Barcode"><QrCode className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                 <button onClick={() => setIsProfileModalOpen(true)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="My Profile"><UserIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                 <button onClick={toggleTheme} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="Toggle Theme">
@@ -183,12 +189,27 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user, onLogout }) => {
                             {myNotifications.filter(n => !n.read).length === 0 ? (
                                 <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm">No new alerts</div>
                             ) : myNotifications.filter(n => !n.read).map(n => (
-                                <div key={n.id} className={`p-4 border rounded-xl dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors ${!n.read ? 'bg-primary-50/50 border-primary-100 dark:bg-primary-900/10 dark:border-primary-800/30' : 'border-slate-100'}`} onClick={() => { 
-                                    dispatch({type:'MARK_NOTIFICATION_READ', payload: n.id}); 
-                                    if (!n.read) db.collection('notifications').doc(n.id).update({ read: true }).catch(console.error);
-                                    if(n.link) navigate(n.link); 
-                                    setShowNotifications(false); 
-                                }}>
+                                <div 
+                                    key={n.id} 
+                                    role="button"
+                                    tabIndex={0}
+                                    className={`p-4 border rounded-xl dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors ${!n.read ? 'bg-primary-50/50 border-primary-100 dark:bg-primary-900/10 dark:border-primary-800/30' : 'border-slate-100'}`} 
+                                    onClick={() => { 
+                                        dispatch({type:'MARK_NOTIFICATION_READ', payload: n.id}); 
+                                        if (!n.read) db.collection('notifications').doc(n.id).update({ read: true }).catch(console.error);
+                                        if(n.link) navigate(n.link); 
+                                        setShowNotifications(false); 
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            dispatch({type:'MARK_NOTIFICATION_READ', payload: n.id}); 
+                                            if (!n.read) db.collection('notifications').doc(n.id).update({ read: true }).catch(console.error);
+                                            if(n.link) navigate(n.link); 
+                                            setShowNotifications(false);
+                                        }
+                                    }}
+                                >
                                     <p className="font-semibold text-slate-900 dark:text-white text-sm">{n.title}</p>
                                     <p className="text-slate-600 dark:text-slate-400 mt-1 text-xs leading-relaxed">{n.message}</p>
                                 </div>

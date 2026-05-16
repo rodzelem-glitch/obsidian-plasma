@@ -23,9 +23,11 @@ interface AdminSidebarProps {
   onLogout: () => void;
   isOpen?: boolean;
   onClose?: () => void;
+  isCollapsedOverride?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = false, onClose }) => {
+const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = false, onClose, isCollapsedOverride, onToggleCollapse }) => {
   const { state, dispatch } = useAppContext();
   const { hasFeature } = useFeatureGating();
   const navigate = useNavigate();
@@ -36,12 +38,6 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
   const [orderedPaths, setOrderedPaths] = useState<string[]>([]);
   const [customLabels, setCustomLabels] = useState<Record<string, string>>({});
   const [hiddenPaths, setHiddenPaths] = useState<string[]>([]);
-  const [isCollapsedPreference, setIsCollapsedPreference] = useState(() => {
-     if (typeof window !== 'undefined') {
-         return localStorage.getItem('sidebar-collapsed') === 'true';
-     }
-     return false;
-  });
   
   const [isMobile, setIsMobile] = useState(() => {
       if (typeof window !== 'undefined') {
@@ -58,12 +54,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
       return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const isCollapsed = isCollapsedPreference && !isMobile;
+  const isCollapsed = isCollapsedOverride ?? false;
 
   const handleToggleCollapse = () => {
-      const newVal = !isCollapsedPreference;
-      setIsCollapsedPreference(newVal);
-      localStorage.setItem('sidebar-collapsed', String(newVal));
+      if (onToggleCollapse) onToggleCollapse();
   };
 
   const navGroups = [
@@ -291,9 +285,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
       )}
 
       <aside
-        className={`fixed sm:sticky top-0 inset-y-0 left-0 z-[100] ${isCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700/80 transform transition-all duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-[100] ${isCollapsed ? 'w-20' : 'w-64'} bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700/80 transform transition-all duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'
-        } flex flex-col h-[100dvh] max-h-[100dvh] shrink-0`}
+        } flex flex-col h-[100dvh] shrink-0`}
       >
         <div className="flex items-center justify-center h-16 border-b border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 p-2 relative group pt-safe overflow-hidden shrink-0">
             {!isCollapsed ? (

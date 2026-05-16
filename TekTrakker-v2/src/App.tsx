@@ -4,10 +4,9 @@ import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
 import { useAppContext } from './context/AppContext';
 import { User } from './types';
 import { auth } from './lib/firebase';
-import PWAInstallPrompt from './components/ui/PWAInstallPrompt';
 import { Capacitor } from '@capacitor/core';
 import DemoBanner from './components/DemoBanner';
-import { ToastContainer } from 'react-toastify';
+import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 // Lazy Loaded Routing Components for Bundle Splitting
@@ -25,8 +24,6 @@ import { CallListener } from './components/common/CallListener';
 
 const PublicProposal = lazy(() => import('./pages/PublicProposal'));
 const PublicEquipmentReport = lazy(() => import('./pages/PublicEquipmentReport'));
-const FranchiseOpportunities = lazy(() => import('./pages/landing/FranchiseOpportunities'));
-const FranchiseAgreementDoc = lazy(() => import('./pages/landing/FranchiseAgreementDoc'));
 const ComplianceReport = lazy(() => import('./pages/landing/ComplianceReport'));
 const PrivacyPolicy = lazy(() => import('./pages/landing/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('./pages/landing/TermsOfService'));
@@ -39,11 +36,7 @@ const MarketplaceDirectory = lazy(() => import('./pages/marketplace/ProviderDire
 const ProviderProfile = lazy(() => import('./pages/marketplace/ProviderProfile'));
 const Unsubscribe = lazy(() => import('./pages/Unsubscribe'));
 
-// Public Landing Pages - accessible to both guests and authenticated users
-const VirtualWorkerMarketing = lazy(() => import('./pages/landing/VirtualWorkerMarketing'));
-const VirtualWorkerCommands = lazy(() => import('./pages/landing/VirtualWorkerCommands'));
-const PropertyOwnerMarketing = lazy(() => import('./pages/landing/PropertyOwnerMarketing'));
-const FAQ = lazy(() => import('./pages/landing/FAQ'));
+// Public widgets - serve app data, not marketing
 const ReviewsWidget = lazy(() => import('./pages/landing/ReviewsWidget'));
 
 // A simple loading spinner component
@@ -105,7 +98,7 @@ const App: React.FC = () => {
   }, []); // Dependencies for useCallback should be empty if it only uses its arguments, or include external state if needed.
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !isDemoMode) {
       import('./lib/pushNotificationService').then(module => {
         module.setupFCMToken(user.id);
       });
@@ -119,7 +112,7 @@ const App: React.FC = () => {
           }).catch(() => {});
       }
     }
-  }, [user, isMasterAdmin]);
+  }, [user, isMasterAdmin, isDemoMode]);
 
   useEffect(() => {
     const applyTheme = async () => {
@@ -220,11 +213,30 @@ const App: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => {
+    const handleAppUpdate = () => {
+      toast.info('A new version of TekTrakker is available! Click here to update.', {
+        position: 'bottom-center',
+        autoClose: false,
+        onClick: () => window.location.reload(),
+        toastId: 'app-update-toast',
+      });
+    };
+    window.addEventListener('app-update-available', handleAppUpdate);
+    return () => window.removeEventListener('app-update-available', handleAppUpdate);
+  }, []);
+
   const handleLogout = () => {
     auth.signOut();
     dispatch({ type: 'LOGOUT' });
     navigate('/login');
   }
+
+  useEffect(() => {
+    if (!loading && !demoRole) {
+      (window as any).appLoaded = true;
+    }
+  }, [loading, demoRole]);
 
   if (loading || demoRole) {
     const currentHash = window.location.hash.split('?')[0].replace('#', '') || '/';
@@ -236,6 +248,12 @@ const App: React.FC = () => {
       return <LoadingSpinner />;
     }
   }
+
+  // Set loaded for public routes that bypass the spinner
+  if (!loading && !demoRole) {
+      (window as any).appLoaded = true;
+  }
+
 
   return (
     <>
@@ -252,7 +270,6 @@ const App: React.FC = () => {
         toastClassName="!rounded-xl !shadow-lg !text-sm !font-medium"
         limit={3}
       />
-      <PWAInstallPrompt />
       <DemoBanner />
       <BackgroundDelayer>
         <LocationTracker />
@@ -268,8 +285,8 @@ const App: React.FC = () => {
             {/* Marketplace routes - available to all users */}
             <Route path="/marketplace" element={<MarketplaceDirectory />} />
             <Route path="/marketplace/:orgId" element={<ProviderProfile />} />
-            <Route path="/franchise" element={<FranchiseOpportunities />} />
-            <Route path="/franchise-agreement" element={<FranchiseAgreementDoc />} />
+            {/* Franchise pages live on tektrakker.com - redirect there */}
+            <Route path="/franchise" element={<Navigate to="https://tektrakker.com/franchise" replace />} />
 
             {/* Public Document Viewing (Available to guests and authenticated users) */}
             <Route path="/invoice/:jobId" element={
@@ -287,11 +304,7 @@ const App: React.FC = () => {
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/eula" element={<EULA />} />
 
-            {/* Public Landing Pages - accessible to both guests and authenticated users */}
-            <Route path="/ai-worker" element={<VirtualWorkerMarketing />} />
-            <Route path="/ai-worker-commands" element={<VirtualWorkerCommands />} />
-            <Route path="/homeowners" element={<PropertyOwnerMarketing />} />
-            <Route path="/faq" element={<FAQ />} />
+            {/* Public widgets */}
             <Route path="/widgets/reviews/:orgId" element={<ReviewsWidget />} />
 
             {user ? (

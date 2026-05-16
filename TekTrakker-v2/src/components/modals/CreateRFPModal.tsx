@@ -101,6 +101,7 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                     location: aiData.location || prev.location,
                     budgetRange: aiData.budgetRange || prev.budgetRange,
                     dueDate: aiData.dueDate || prev.dueDate,
+                    importantDates: aiData.importantDates || prev.importantDates,
                 }));
                 showToast.success("AI successfully extracted RFP details!");
             }

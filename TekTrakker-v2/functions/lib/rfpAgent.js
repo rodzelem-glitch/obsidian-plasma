@@ -44,7 +44,7 @@ const executeWithRetry = async (operation, maxRetries = 3, baseDelayMs = 1500) =
         try {
             return await operation();
         }
-        catch (error) {
+        catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             attempt++;
             if (error?.status === 429 || error?.message?.includes("429") || error?.message?.includes("quota") || error?.message?.includes("overloaded")) {
                 if (attempt >= maxRetries)
@@ -58,7 +58,7 @@ const executeWithRetry = async (operation, maxRetries = 3, baseDelayMs = 1500) =
         }
     }
 };
-exports.analyzeRFPWithAI = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).https.onCall(async (data, context) => {
+exports.analyzeRFPWithAI = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).https.onCall(async (data /* eslint-disable-line @typescript-eslint/no-explicit-any */, context) => {
     if (!context.auth)
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
     const { files } = data; // Array of { data: base64, mimeType: string }
@@ -75,8 +75,8 @@ exports.analyzeRFPWithAI = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).ht
         const parts = [{
                 text: `You are an expert construction estimator. Analyze the provided RFP document(s). 
 Extract the following information in strict JSON format: 
-{ "title": "A short, descriptive title of the project", "description": "A comprehensive summary of the scope of work and deliverables", "trade": "The primary trade category (HVAC, Plumbing, Electrical, General Contracting, Roofing, Landscaping, or Other)", "location": "The city/state or zip code", "budgetRange": "The stated or implied budget range if available, otherwise empty string", "dueDate": "The deadline for proposal submission in YYYY-MM-DD format, or empty string" }
-If you cannot find a value, use reasonable defaults or empty strings.
+{ "title": "A short, descriptive title of the project", "description": "A comprehensive summary of the scope of work and deliverables", "trade": "The primary trade category (HVAC, Plumbing, Electrical, General Contracting, Roofing, Landscaping, or Other)", "location": "The city/state or zip code", "budgetRange": "The stated or implied budget range if available, otherwise empty string", "dueDate": "The deadline for proposal submission in YYYY-MM-DD format, or empty string", "importantDates": [{"name": "Event Name (e.g. Site Visit, Questions Due)", "date": "YYYY-MM-DD"}] }
+If you cannot find a value, use reasonable defaults or empty strings. For importantDates, extract any critical project milestones or deadlines.
 Only return the raw JSON object, no markdown blocks.`
             }];
         for (const file of files) {
@@ -96,7 +96,7 @@ Only return the raw JSON object, no markdown blocks.`
         const parsed = JSON.parse(responseText);
         return { success: true, data: parsed };
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         console.error("RFP OCR Error:", error);
         throw new functions.https.HttpsError('internal', error.message || 'Failed to analyze RFP.');
     }

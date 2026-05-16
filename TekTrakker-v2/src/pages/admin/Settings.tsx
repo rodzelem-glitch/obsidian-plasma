@@ -1,6 +1,6 @@
 import { getBaseUrl } from "lib/utils";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from 'context/AppContext';
 import Button from 'components/ui/Button';
 import { db, functions } from 'lib/firebase';
@@ -90,7 +90,7 @@ const Settings: React.FC = () => {
     const [squareAppId, setSquareAppId] = useState('');
     const [squareLocId, setSquareLocId] = useState('');
     const [squareToken, setSquareToken] = useState('');
-    const [defaultPaymentGateway, setDefaultPaymentGateway] = useState<'stripe' | 'square' | 'paypal'>('stripe');
+    const [defaultPaymentGateway, setDefaultPaymentGateway] = useState<'stripe' | 'square' | 'paypal' | 'kort'>('stripe');
     const [smtpHost, setSmtpHost] = useState('');
     const [smtpPort, setSmtpPort] = useState(587);
     const [smtpUser, setSmtpUser] = useState('');
@@ -101,6 +101,7 @@ const Settings: React.FC = () => {
     const [bookingWidgetMode, setBookingWidgetMode] = useState<'popup' | 'inline'>('popup');
     const [hiringWidgetMode, setHiringWidgetMode] = useState<'popup' | 'inline'>('popup');
     const [measureQuickApiKey, setMeasureQuickApiKey] = useState('');
+    const [kortAccountId, setKortAccountId] = useState('');
 
     // B2B Supplier Integrations (cXML PunchOut)
     const [punchoutConfigs, setPunchoutConfigs] = useState<any[]>([{
@@ -184,8 +185,15 @@ const Settings: React.FC = () => {
     const [isDuplicatesModalOpen, setIsDuplicatesModalOpen] = useState(false);
     const [duplicateResults, setDuplicateResults] = useState<{ name: string, count: number }[]>([]);
 
+    const initializedOrgId = useRef<string | null>(null);
+
     useEffect(() => {
         if (state.currentOrganization) {
+            if (initializedOrgId.current === state.currentOrganization.id) {
+                return; // Already initialized, don't overwrite local edits when a snapshot comes in
+            }
+            initializedOrgId.current = state.currentOrganization.id;
+
             const org = state.currentOrganization;
             const settings = org.settings || {};
 
@@ -249,6 +257,7 @@ const Settings: React.FC = () => {
             setStripePublicKey(org.stripePublicKey || '');
             setSquareAppId(org.squareApplicationId || '');
             setSquareLocId(org.squareLocationId || '');
+            setKortAccountId((org as any).kortAccountId || '');
             setDefaultPaymentGateway((org as any).defaultPaymentGateway || 'stripe');
             // Prevent clearing the token out locally if the public map naturally doesn't have it
             if ((org as any).squareToken) setSquareToken((org as any).squareToken);
@@ -342,10 +351,18 @@ const Settings: React.FC = () => {
         const currentPlan = org.plan || 'starter';
         const planConfig = state.platformSettings?.plans?.[currentPlan];
         const activeUsers = state.users.filter(u => u.organizationId === org.id && u.status !== 'archived' && u.hasAppAccess !== false).length;
-        const monthlyCost = planConfig?.monthly || (currentPlan === 'enterprise' ? 299 : currentPlan === 'growth' ? 149 : 49);
-        const maxUsers = org.additionalUserSlots ? (planConfig?.maxUsers || 5) + org.additionalUserSlots : (planConfig?.maxUsers || 5);
+        
+        // Sync fallbacks with MasterBilling values (99, 249, 499)
+        const baseMonthlyCost = planConfig?.monthly || (currentPlan === 'enterprise' ? 499 : currentPlan === 'growth' ? 249 : 99);
+        const userFee = state.platformSettings?.excessUserFee ?? 25;
+        const additionalSlotsCost = (org.additionalUserSlots || 0) * userFee;
+        
+        const totalMonthlyCost = baseMonthlyCost + additionalSlotsCost;
+        const maxUsers = org.additionalUserSlots ? (planConfig?.maxUsers || 1) + org.additionalUserSlots : (planConfig?.maxUsers || 1);
         const discountPct = org.customDiscountPct || 0;
-        const finalCost = org.isFreeAccess ? 0 : (monthlyCost * (1 - (discountPct / 100)));
+        
+        const finalCost = org.isFreeAccess ? 0 : (totalMonthlyCost * (1 - (discountPct / 100)));
+        
         return {
             planName: currentPlan,
             monthlyCost: finalCost,
@@ -383,6 +400,7 @@ const Settings: React.FC = () => {
             termsAndConditions, proposalDisclaimer, invoiceTerms, membershipTerms, complianceFooter,
             warrantyDisclaimer, defaultWorkmanshipMonths, defaultPartsMonths,
             paypalClientId, stripePublicKey, squareApplicationId: squareAppId, squareLocationId: squareLocId,
+            kortAccountId,
             defaultPaymentGateway,
             marketMultiplier: parseFloat(marketMultiplier) || 1.0,
             aiPricebookEnabled,
@@ -442,12 +460,16 @@ const Settings: React.FC = () => {
             const orgRef = db.collection('organizations').doc(state.currentOrganization.id);
             const batch = db.batch();
 
+            // Scrub undefined values to prevent Firebase errors
+            const cleanOrgData = JSON.parse(JSON.stringify(updatedOrgData));
+            const cleanSecretsData = JSON.parse(JSON.stringify(secretsData));
+
             // Update public profile (removing exposed secrets over time as they are nullified by the backend)
-            batch.set(orgRef, updatedOrgData, { merge: true });
+            batch.set(orgRef, cleanOrgData, { merge: true });
 
             // Upsert Secrets Document
             const secretsRef = orgRef.collection('secrets').doc('config');
-            batch.set(secretsRef, secretsData, { merge: true });
+            batch.set(secretsRef, cleanSecretsData, { merge: true });
 
             await batch.commit();
 
@@ -661,8 +683,7 @@ const Settings: React.FC = () => {
         localStorage.removeItem('virtual-worker-pos');
         localStorage.removeItem('live-support-hidden');
         localStorage.removeItem('live-support-pos');
-        showToast.success("UI bubbles reset. Refreshing...");
-        window.location.reload();
+        showToast.success("UI bubbles reset. Please navigate to another page to see changes.");
     };
 
     const handleMergeCustomer = async (name: string) => {
@@ -679,7 +700,7 @@ const Settings: React.FC = () => {
         } catch (e) { showToast.error("Merge failed."); } finally { setIsSaving(false); }
     };
 
-    const handleFlushCache = async () => { if (await globalConfirm("Clear local storage and refresh?")) { localStorage.clear(); window.location.reload(); } };
+    const handleFlushCache = async () => { if (await globalConfirm("Clear local storage? You may need to sign in again.")) { localStorage.clear(); showToast.success("Cache cleared."); } };
     const handleCleanupRecords = async () => {
         if (!await globalConfirm("Wipe archived records?")) return;
         setIsSaving(true);
@@ -765,7 +786,7 @@ const Settings: React.FC = () => {
                 {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled }} />}
                 {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
                 {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths }} />}
-                {activeTab === 'integrations' && <IntegrationsTab {...{ paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
+                {activeTab === 'integrations' && <IntegrationsTab {...{ paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, kortAccountId, setKortAccountId, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
                 {activeTab === 'branding' && <BrandingTab {...{ brandingColor, setBrandingColor, financingLink, setFinancingLink, logoUrl, setLogoUrl, publicLogoUrl, setPublicLogoUrl, letterheadUrl, setLetterheadUrl, footerImageUrl, setFooterImageUrl, bannerUrl, setBannerUrl, handleFileUpload, publicProfileEnabled, setPublicProfileEnabled, publicDescription, setPublicDescription, publicCredentials, setPublicCredentials, publicServices, setPublicServices, acceptsSubcontracting, setAcceptsSubcontracting }} />}
                 {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling, handleReactivate }} />}
                 {activeTab === 'data' && <DataTab {...{ handleExportData, handleDetectDuplicates, handleCleanupRecords, handleFlushCache, handleResetOverlays, handleImportFile: (e) => { e.target.value = ''; showToast.info('Bulk import is currently disabled. Contact support to migrate data.'); }, handleDownloadTemplate }} />}

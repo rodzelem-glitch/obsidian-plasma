@@ -39,7 +39,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkApiKeyExpirations = exports.cleanupBidOnDelete = exports.automatedBidReminders = exports.postToX = exports.fetchShovelsPermits = exports.fetchIotDiagnostics = exports.enforceHardQuotas = exports.provisionCustomDomain = exports.automatedMaintenanceReminders = exports.twilioInboundVoice = exports.punchoutWebhook = exports.initiatePunchoutSession = exports.incomingLeadWebhook = exports.trackEmailOpen = exports.createUserAuth = exports.syncExternalReviews = exports.measureQuickWebhook = exports.processMailQueue = exports.manageHandshake = exports.suggestBidPricing = exports.generateBidDocument = exports.searchHistoricalBidData = exports.analyzeRFP = exports.callGeminiAI = exports.callLandingChatbot = exports.generateReviewResponse = exports.linkCustomerOnUserCreate = exports.deleteAuthUser = exports.sendSms = exports.getPlatformMetrics = exports.setUserRole = exports.generateCommissionOnSubscriptionPayment = void 0;
+exports.checkNewHireReporting = exports.checkApiKeyExpirations = exports.cleanupBidOnDelete = exports.automatedBidReminders = exports.postToX = exports.fetchShovelsPermits = exports.fetchIotDiagnostics = exports.enforceHardQuotas = exports.provisionCustomDomain = exports.automatedMaintenanceReminders = exports.twilioInboundVoice = exports.punchoutWebhook = exports.initiatePunchoutSession = exports.incomingLeadWebhook = exports.trackEmailOpen = exports.createUserAuth = exports.syncExternalReviews = exports.measureQuickWebhook = exports.processMailQueue = exports.manageHandshake = exports.suggestBidPricing = exports.generateBidDocument = exports.searchHistoricalBidData = exports.analyzeRFP = exports.callGeminiAI = exports.callLandingChatbot = exports.generateReviewResponse = exports.linkCustomerOnUserCreate = exports.deleteAuthUser = exports.sendSms = exports.getPlatformMetrics = exports.setUserRole = exports.generateCommissionOnSubscriptionPayment = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const twitter_api_v2_1 = require("twitter-api-v2");
 const admin = __importStar(require("firebase-admin"));
@@ -52,12 +52,15 @@ const squareUtils_1 = require("./squareUtils");
 const aiAgent_1 = require("./aiAgent");
 const axios_1 = __importDefault(require("axios"));
 const buffer_1 = require("buffer");
+__exportStar(require("./payments"), exports);
+__exportStar(require("./kortPayments"), exports);
+__exportStar(require("./notifications"), exports);
 try {
     if (admin.apps.length === 0) {
         admin.initializeApp();
     }
 }
-catch (e) {
+catch {
     // Ignore initialization errors if already initialized
 }
 const auth = admin.auth();
@@ -74,7 +77,7 @@ const GEMINI_PRO_MODEL = "gemini-3.1-pro-preview";
 // --- NEW COMMISSION LOGIC ---
 exports.generateCommissionOnSubscriptionPayment = functions.firestore
     .document('organizations/{orgId}')
-    .onUpdate(async (change, context) => {
+    .onUpdate(async (change) => {
     const before = change.before.data();
     const after = change.after.data();
     if (before.subscriptionStatus !== 'active' && after.subscriptionStatus === 'active') {
@@ -191,7 +194,7 @@ async function getDAU(projectId) {
         const recentUsers = listUsersResult.users.filter(user => user.metadata.lastSignInTime && new Date(user.metadata.lastSignInTime) >= twentyFourHoursAgo);
         return { count: recentUsers.length };
     }
-    catch (e) {
+    catch {
         return { count: 0, error: "Auth access limited" };
     }
 }
@@ -244,7 +247,7 @@ async function getBillingData(projectId, billingAccountId) {
         });
         costAmount = timeSeries[0]?.points?.[0]?.value?.doubleValue ?? 0;
     }
-    catch (e) {
+    catch {
         // Expected if billing export is not configured
     }
     let aiCost = 0;
@@ -291,7 +294,7 @@ async function getApiUsageMetrics(projectId) {
             });
             usageMetrics[metricType] = timeSeries[0]?.points?.reduce((sum, point) => sum + Number(point.value?.int64Value ?? point.value?.doubleValue ?? 0), 0) ?? 0;
         }
-        catch (error) {
+        catch {
             usageMetrics[metricType] = 0;
         }
     }
@@ -341,11 +344,11 @@ exports.sendSms = functions.firestore.document('messages/{msgId}').onCreate(asyn
             await snap.ref.update({ deliveryStatus: 'sent' });
         }
         else {
-            const err = await response.json();
+            const err /* eslint-disable-line @typescript-eslint/no-explicit-any */ = await response.json();
             await snap.ref.update({ deliveryStatus: 'failed', deliveryError: err.message || 'Twilio Error' });
         }
     }
-    catch (e) {
+    catch (e /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("SMS Send Error:", e);
         await snap.ref.update({ deliveryStatus: 'failed', deliveryError: e.message });
     }
@@ -465,7 +468,7 @@ exports.generateReviewResponse = functions.https.onCall(async (data, context) =>
         await trackAiUsage(orgId, 'Review Response', GEMINI_FLASH_MODEL, tokens);
         return { text: response.text() };
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("Review GenAI Error:", error);
         throw new functions.https.HttpsError("internal", error.message || "Failed to generate review response.");
     }
@@ -483,7 +486,7 @@ exports.callLandingChatbot = functions.https.onCall(async (data, context) => {
         await trackAiUsage(orgId, 'Landing Chatbot', GEMINI_FLASH_MODEL, tokens);
         return { text: response.text() };
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         throw new functions.https.HttpsError("internal", error.message);
     }
 });
@@ -517,7 +520,7 @@ exports.callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onCall(a
         let result;
         const parts = [{ text: enrichedPrompt }];
         if (imageParts && imageParts.length > 0) {
-            imageParts.forEach((part) => {
+            imageParts.forEach((part /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
                 parts.push({
                     inlineData: {
                         data: part.base64Data,
@@ -540,7 +543,7 @@ exports.callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onCall(a
         await trackAiUsage(orgId, 'General AI Content', modelName, tokens);
         return { text: response.text() };
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("Gemini AI Error:", error);
         throw new functions.https.HttpsError("internal", error.message || "Failed to generate content.");
     }
@@ -555,7 +558,7 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
         throw new functions.https.HttpsError("invalid-argument", "No files provided.");
     }
     const apiKey = await (0, aiAgent_1.getGeminiApiKey)(orgId);
-    let orgContext = null;
+    let orgContext /* eslint-disable-line @typescript-eslint/no-explicit-any */ = null;
     if (orgId && orgId !== 'unauthenticated') {
         try {
             const orgDoc = await db.collection('organizations').doc(orgId).get();
@@ -570,23 +573,48 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
     try {
         const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: GEMINI_PRO_MODEL });
-        const analyses = await Promise.all(files.map(async (file) => {
+        const analyses = await Promise.all(files.map(async (file /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
             let { fileData, mimeType, fileName } = file;
             // If the fileData is actually a URL (like a SAM.gov resource link), download it first
             if (fileData && (fileData.startsWith('http://') || fileData.startsWith('https://'))) {
                 try {
-                    const response = await axios_1.default.get(fileData, { responseType: 'arraybuffer' });
+                    const response = await axios_1.default.get(fileData, {
+                        responseType: 'arraybuffer',
+                        timeout: 60000
+                    });
                     const contentType = String(response.headers['content-type'] || '').toLowerCase();
                     const contentDisposition = String(response.headers['content-disposition'] || '');
                     let headerFileName = fileName || '';
                     const match = contentDisposition.match(/filename="?([^";]+)"?/i);
-                    if (match)
+                    if (match && match[1].includes('.')) {
                         headerFileName = match[1];
-                    const isXlsx = contentType.includes('spreadsheet') || contentType.includes('excel') || contentType.includes('csv') || (headerFileName && (headerFileName.toLowerCase().endsWith('.xlsx') || headerFileName.toLowerCase().endsWith('.xls') || headerFileName.toLowerCase().endsWith('.csv')));
-                    const isDocx = contentType.includes('wordprocessing') || contentType.includes('msword') || (headerFileName && (headerFileName.toLowerCase().endsWith('.docx') || headerFileName.toLowerCase().endsWith('.doc')));
+                    }
+                    const nameToCheck = (headerFileName + " " + (fileName || '')).toLowerCase();
+                    const buf = buffer_1.Buffer.from(response.data);
+                    const isZip = buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4B && buf[2] === 0x03 && buf[3] === 0x04;
+                    const isDocLegacy = buf.length > 8 && buf[0] === 0xD0 && buf[1] === 0xCF && buf[2] === 0x11 && buf[3] === 0xE0;
+                    let isXlsx = contentType.includes('spreadsheet') || contentType.includes('excel') || contentType.includes('csv') || nameToCheck.includes('.xlsx') || nameToCheck.includes('.xls') || nameToCheck.includes('.csv');
+                    let isDocx = contentType.includes('wordprocessing') || contentType.includes('msword') || nameToCheck.includes('.docx') || nameToCheck.includes('.doc');
+                    // If we have no clue but it's a zip file, it could be an office doc.
+                    if (!isXlsx && !isDocx && (contentType.includes('octet-stream') || !contentType)) {
+                        if (isZip) {
+                            try {
+                                const XLSX = await Promise.resolve().then(() => __importStar(require('xlsx')));
+                                const workbook = XLSX.read(buf, { type: 'buffer' });
+                                if (workbook.SheetNames.length > 0)
+                                    isXlsx = true;
+                            }
+                            catch {
+                                isDocx = true; // Guess docx if xlsx parsing fails on a zip archive
+                            }
+                        }
+                        else if (isDocLegacy) {
+                            isDocx = true;
+                        }
+                    }
                     if (isXlsx) {
                         const XLSX = await Promise.resolve().then(() => __importStar(require('xlsx')));
-                        const workbook = XLSX.read(response.data, { type: 'buffer' });
+                        const workbook = XLSX.read(buf, { type: 'buffer' });
                         let extractedText = "";
                         for (const sheetName of workbook.SheetNames) {
                             extractedText += `--- Sheet: ${sheetName} ---\n`;
@@ -598,18 +626,19 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
                     }
                     else if (isDocx) {
                         const mammoth = await Promise.resolve().then(() => __importStar(require('mammoth')));
-                        const result = await mammoth.extractRawText({ buffer: buffer_1.Buffer.from(response.data) });
+                        const result = await mammoth.extractRawText({ buffer: buf });
                         fileData = buffer_1.Buffer.from(result.value).toString('base64');
                         mimeType = 'text/plain';
                     }
                     else {
-                        fileData = buffer_1.Buffer.from(response.data).toString('base64');
-                        // Automatically detect PDF mime type if not provided
-                        if (!mimeType)
+                        fileData = buf.toString('base64');
+                        // Automatically default to PDF if no mimeType or generic octet-stream
+                        if (!mimeType || mimeType.includes('octet-stream')) {
                             mimeType = 'application/pdf';
+                        }
                     }
                 }
-                catch (dlErr) {
+                catch (dlErr /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
                     console.error("Failed to download or parse file from URL:", dlErr);
                     throw new Error(`Failed to process attached document ${fileName || ''}`, { cause: dlErr });
                 }
@@ -640,8 +669,9 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
             1. For 'deliverables', explicitly prepend each item with either '(Submittal)' if it must be included in the bid response package, or '(Contract)' if it is required after winning the award during execution.
             2. Identify key areas where the estimator needs to provide input and add them to the 'questions' array.
             3. CRITICAL: DO NOT add questions to the 'questions' array for information that is already provided in the COMPANY CONTEXT above (like CAGE Code, UEI, Website, Address, Company Name, etc.). We already have this data and will automatically populate it.
-            4. Identify all required services, products, or materials that need pricing and add them to the 'lineItems' array.
-            5. Ensure output is STRICTLY valid JSON. Do not include markdown code block tags (\`\`\`json).`;
+            4. Identify all required services, products, or materials that need pricing and add them to the 'lineItems' array. STRICT RULE: ONLY extract line items if the document contains an explicit "Schedule of Supplies/Services", "Pricing Schedule", "CLINs" (Contract Line Item Numbers), or if the document is clearly a pricing spreadsheet/form. DO NOT extract general equipment lists, narrative tasks, or sub-components as line items unless they are formatted specifically for pricing in a schedule.
+            5. For 'importantDates', thoroughly scan the entire document and aggressively extract ALL dates related to the project. This includes but is not limited to: Pre-Bid Meetings, Site Visits, RFIs/Questions Due Dates, Bid Deadlines, Expected Award Dates, Notice to Proceed, and Project Start/End dates. Format dates as YYYY-MM-DD.
+            6. Ensure output is STRICTLY valid JSON. Do not include markdown code block tags (\`\`\`json).`;
             try {
                 const result = await model.generateContent([
                     { inlineData: { data: fileData, mimeType } },
@@ -655,12 +685,12 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
                 try {
                     return JSON.parse(text);
                 }
-                catch (e) {
+                catch (e /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
                     console.error("Failed to parse AI response as JSON. Raw text:", text);
                     throw new Error("Failed to parse AI response as JSON for one of the files.", { cause: e });
                 }
             }
-            catch (err) {
+            catch (err /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
                 console.warn(`File analysis skipped or failed for ${mimeType}:`, err.message);
                 if (err.message && (err.message.includes("503") || err.message.includes("429") || err.message.includes("overloaded"))) {
                     console.warn("Pro model overloaded. Falling back to Flash model...");
@@ -677,7 +707,7 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
                         fallbackText = fallbackText.replace(/```json/g, '').replace(/```/g, '').trim();
                         return JSON.parse(fallbackText);
                     }
-                    catch (fallbackErr) {
+                    catch (fallbackErr /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
                         console.error("Fallback to Flash model also failed:", fallbackErr.message);
                         throw new Error(`AI Service is currently overloaded (503 High Demand). Please try again later. Details: ${fallbackErr.message}`, { cause: fallbackErr });
                     }
@@ -699,7 +729,7 @@ exports.analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB' }).h
         }));
         return { analyses };
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("RFP Analysis Error:", error);
         throw new functions.https.HttpsError("internal", error.message || "Failed to analyze RFP.");
     }
@@ -724,7 +754,7 @@ exports.searchHistoricalBidData = functions.https.onCall(async (data, context) =
         await trackAiUsage(orgId, 'Historical Bid Search', GEMINI_PRO_MODEL, tokens);
         return { content: response.text() };
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("Historical Search Error:", error);
         throw new functions.https.HttpsError("internal", error.message || "Failed to search historical data.");
     }
@@ -772,18 +802,23 @@ exports.generateBidDocument = functions.runWith({ timeoutSeconds: 540, memory: '
             let pricingTable = 'CLIN | Description | Unit | Qty | Unit Price | Total Price\n';
             pricingTable += '--- | --- | --- | --- | --- | ---\n';
             let grandTotal = 0;
-            lineItems.forEach((item, idx) => {
+            lineItems.forEach((item /* eslint-disable-line @typescript-eslint/no-explicit-any */, idx) => {
                 const qty = item.qty || 0;
                 const unitPrice = item.unitPrice || 0;
                 const totalPrice = item.totalPrice || (qty * unitPrice);
                 grandTotal += totalPrice;
                 pricingTable += `${idx + 1} | ${item.description || 'Item'} | ${item.unit || 'EA'} | ${qty} | $${unitPrice.toFixed(2)} | $${totalPrice.toFixed(2)}\n`;
             });
+            if (bid.additionalFeePercent && bid.additionalFeeName) {
+                const feeAmount = bid.additionalFeeAmount || (grandTotal * bid.additionalFeePercent / 100);
+                pricingTable += `FEE | ${bid.additionalFeeName} (${bid.additionalFeePercent}%) | | | | $${feeAmount.toFixed(2)}\n`;
+                grandTotal += feeAmount;
+            }
             pricingTable += `GRAND TOTAL | | | | | $${grandTotal.toFixed(2)}\n`;
             // Build Q&A context explicitly
             const questionsContext = (bid.questions || [])
-                .filter((q) => q.answer && q.answer.trim())
-                .map((q) => `Q: ${q.question || q.text || 'Unknown'}\nA: ${q.answer}`)
+                .filter((q /* eslint-disable-line @typescript-eslint/no-explicit-any */) => q.answer && q.answer.trim())
+                .map((q /* eslint-disable-line @typescript-eslint/no-explicit-any */) => `Q: ${q.question || q.text || 'Unknown'}\nA: ${q.answer}`)
                 .join('\n\n');
             // CSS stylesheet that MUST be embedded in every document
             const cssStylesheet = `<style>
@@ -876,7 +911,7 @@ Example of correct output start:
             tokens = response.usageMetadata?.totalTokenCount || 0;
             text = response.text();
         }
-        catch (err) {
+        catch (err /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             if (err.message && (err.message.includes("503") || err.message.includes("429") || err.message.includes("overloaded"))) {
                 functions.logger.warn("Pro model overloaded in document generation. Falling back to Flash model...");
                 const fallbackModel = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
@@ -899,14 +934,14 @@ Example of correct output start:
             try {
                 docs = JSON.parse(text);
             }
-            catch (e) {
+            catch {
                 // Fallback: find the outermost JSON array in the response
                 const arrayMatch = text.match(/\[[\s\S]*\]/);
                 if (arrayMatch) {
                     try {
                         docs = JSON.parse(arrayMatch[0]);
                     }
-                    catch (e2) {
+                    catch {
                         functions.logger.error("Failed to parse document generation response (both attempts)", text.substring(0, 500));
                         throw new functions.https.HttpsError("internal", "The AI failed to format the documents correctly. Please try again.");
                     }
@@ -922,7 +957,7 @@ Example of correct output start:
             return { docs: [{ title: bid.generatedDocs[docIndex].title, content: text.replace(/```html/g, '').replace(/```/g, '').trim() }] };
         }
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("Error generating bid document:", error);
         throw new functions.https.HttpsError("internal", error.message || "Failed to generate document.");
     }
@@ -953,7 +988,7 @@ exports.suggestBidPricing = functions.runWith({ timeoutSeconds: 540, memory: '1G
         if (!recentBidsSnap.empty) {
             historicalContext = recentBidsSnap.docs.map(doc => {
                 const b = doc.data();
-                return `Bid: ${b.title || 'Untitled'}\nAgency: ${b.agency || 'Unknown'}\nTotal Value: $${b.totalValue || 'Unknown'}\nItems: ${b.lineItems?.map((li) => `${li.description} - qty ${li.qty} @ $${li.unitPrice}`).join(', ') || 'None'}`;
+                return `Bid: ${b.title || 'Untitled'}\nAgency: ${b.agency || 'Unknown'}\nTotal Value: $${b.totalValue || 'Unknown'}\nItems: ${b.lineItems?.map((li /* eslint-disable-line @typescript-eslint/no-explicit-any */) => `${li.description} - qty ${li.qty} @ $${li.unitPrice}`).join(', ') || 'None'}`;
             }).join('\n\n');
         }
         // 2. Prepare the prompt
@@ -972,7 +1007,7 @@ Summary: ${bid.summary}
 ${historicalContext ? historicalContext : "No historical data available."}
 
 ### Current Line Items to Price
-${JSON.stringify(bid.lineItems.map((item) => ({
+${JSON.stringify(bid.lineItems.map((item /* eslint-disable-line @typescript-eslint/no-explicit-any */) => ({
             id: item.id,
             description: item.description,
             unit: item.unit,
@@ -1002,7 +1037,7 @@ Output Format:
                 { text: prompt }
             ]);
         }
-        catch (error) {
+        catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             if (error.message?.includes("429") || error.status === 429) {
                 functions.logger.warn(`429 Too Many Requests on gemini-2.0-flash, falling back to ${GEMINI_FLASH_MODEL}`);
                 const fallbackModel = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
@@ -1026,8 +1061,8 @@ Output Format:
             throw new Error("AI returned invalid JSON.", { cause: e });
         }
         // 3. Map recommendations back to the original line items
-        const updatedLineItems = bid.lineItems.map((item) => {
-            const rec = recommendations.find((r) => r.id === item.id);
+        const updatedLineItems = bid.lineItems.map((item /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
+            const rec = recommendations.find((r /* eslint-disable-line @typescript-eslint/no-explicit-any */) => r.id === item.id);
             if (rec && typeof rec.aiRecommendedPrice === 'number') {
                 return { ...item, aiRecommendedPrice: rec.aiRecommendedPrice };
             }
@@ -1035,7 +1070,7 @@ Output Format:
         });
         return { updatedLineItems };
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("Error generating AI pricing:", error);
         throw new functions.https.HttpsError("internal", error.message || "Failed to generate AI pricing.");
     }
@@ -1073,7 +1108,7 @@ exports.manageHandshake = functions.https.onCall(async (data, context) => {
         const requestOrgData = requestOrgDoc.data();
         if (!targetOrgData || !requestOrgData)
             throw new functions.https.HttpsError('not-found', 'Organization not found.');
-        const request = targetOrgData.partnerRequests?.find((r) => r.fromOrgId === requestingOrgId);
+        const request = targetOrgData.partnerRequests?.find((r /* eslint-disable-line @typescript-eslint/no-explicit-any */) => r.fromOrgId === requestingOrgId);
         if (!request)
             throw new functions.https.HttpsError('not-found', 'Request not found.');
         // 2. Remove Request & Link Organizations
@@ -1151,7 +1186,7 @@ exports.manageHandshake = functions.https.onCall(async (data, context) => {
         const myOrgRef = db.collection('organizations').doc(targetOrgId);
         const myOrgDoc = await myOrgRef.get();
         const myOrgData = myOrgDoc.data();
-        const request = myOrgData?.partnerRequests?.find((r) => r.fromOrgId === requestingOrgId);
+        const request = myOrgData?.partnerRequests?.find((r /* eslint-disable-line @typescript-eslint/no-explicit-any */) => r.fromOrgId === requestingOrgId);
         if (request) {
             await myOrgRef.update({
                 partnerRequests: admin.firestore.FieldValue.arrayRemove(request)
@@ -1173,7 +1208,7 @@ exports.manageHandshake = functions.https.onCall(async (data, context) => {
         const targetOrgRef = db.collection('organizations').doc(targetOrgId);
         const targetOrgDoc = await targetOrgRef.get();
         const targetOrgData = targetOrgDoc.data();
-        const request = targetOrgData?.partnerRequests?.find((r) => r.fromOrgId === requestingOrgId);
+        const request = targetOrgData?.partnerRequests?.find((r /* eslint-disable-line @typescript-eslint/no-explicit-any */) => r.fromOrgId === requestingOrgId);
         if (request) {
             await targetOrgRef.update({
                 partnerRequests: admin.firestore.FieldValue.arrayRemove(request)
@@ -1200,7 +1235,7 @@ exports.manageHandshake = functions.https.onCall(async (data, context) => {
     }
     throw new functions.https.HttpsError('invalid-argument', 'Invalid action.');
 });
-exports.processMailQueue = functions.firestore.document('mail_queue/{docId}').onCreate(async (snap, context) => {
+exports.processMailQueue = functions.firestore.document('mail_queue/{docId}').onCreate(async (snap) => {
     const payload = snap.data();
     const orgId = payload.organizationId;
     try {
@@ -1245,6 +1280,23 @@ exports.processMailQueue = functions.firestore.document('mail_queue/{docId}').on
                     }
                 }
             }
+        }
+        // Fetch global platform settings to standardise email signature across all devices
+        let signature = '<br><br><hr><p style="color: #64748b; font-size: 12px; margin-top: 20px;">Sent securely via TekTrakker Platform</p>';
+        try {
+            const platformDoc = await db.collection('platformSettings').doc('branding').get();
+            if (platformDoc.exists) {
+                const branding = platformDoc.data();
+                if (branding && branding.emailSignature) {
+                    signature = branding.emailSignature;
+                }
+            }
+        }
+        catch {
+            functions.logger.warn("Could not fetch global branding settings for email signature.");
+        }
+        if (payload.message && payload.message.html) {
+            payload.message.html += signature;
         }
         // Forward the securely populated payload to the final 'mail' collection for delivery
         await db.collection('mail').add(payload);
@@ -1422,7 +1474,7 @@ exports.syncExternalReviews = functions.runWith({ timeoutSeconds: 300, memory: '
         await batch.commit();
         return { success: true, ingested: ingestedCount };
     }
-    catch (e) {
+    catch (e /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         if (e instanceof functions.https.HttpsError) {
             throw e;
         }
@@ -1452,7 +1504,7 @@ exports.createUserAuth = functions.https.onCall(async (data, context) => {
         }
         return { uid: userRecord.uid };
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("Admin Auth provisioning failed:", error);
         throw new functions.https.HttpsError("internal", error.message);
     }
@@ -1595,7 +1647,7 @@ exports.incomingLeadWebhook = functions.runWith({
         let notes = req.body.notes || req.body.description || req.body.issue || 'Lead ingested via Webhook.';
         // Google Ads Form Payload Format
         if (req.body.user_column_data && Array.isArray(req.body.user_column_data)) {
-            req.body.user_column_data.forEach((col) => {
+            req.body.user_column_data.forEach((col /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
                 if (col.column_id === 'FIRST_NAME')
                     firstName = col.string_value;
                 if (col.column_id === 'LAST_NAME')
@@ -1611,7 +1663,7 @@ exports.incomingLeadWebhook = functions.runWith({
         const db = admin.firestore();
         // --- Advanced Webhook Deduplication and Portal Invite ---
         let customerId = '';
-        let existingCustomerData = null;
+        let existingCustomerData /* eslint-disable-line @typescript-eslint/no-explicit-any */ = null;
         const matchName = customerName.toLowerCase().trim();
         const matchPhone = phone.replace(/\D/g, '');
         const matchEmail = email.toLowerCase().trim();
@@ -1630,7 +1682,7 @@ exports.incomingLeadWebhook = functions.runWith({
         if (existingDoc) {
             customerId = existingDoc.id;
             existingCustomerData = existingDoc.data();
-            const updates = {};
+            const updates /* eslint-disable-line @typescript-eslint/no-explicit-any */ = {};
             if (phone && !existingCustomerData.phone)
                 updates.phone = phone;
             if (email && !existingCustomerData.email)
@@ -1680,7 +1732,7 @@ exports.incomingLeadWebhook = functions.runWith({
         functions.logger.info(`Successfully ingested lead job ${jobId} for Org ${orgId}`);
         res.status(200).send({ success: true, message: "Lead processed successfully." });
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("Webhook Error:", error);
         res.status(500).send({ error: "Internal Server Error processing webhook.", message: error.message });
     }
@@ -1765,7 +1817,7 @@ exports.initiatePunchoutSession = functions.https.onCall(async (data, context) =
         functions.logger.error("PunchOut Setup Failed", responseText);
         throw new functions.https.HttpsError("internal", "Supplier rejected standard handshake: " + errMsg);
     }
-    catch (e) {
+    catch (e /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("PunchOut Fetch Error:", e);
         throw new functions.https.HttpsError("internal", e.message || "Failed to contact supplier.");
     }
@@ -1777,7 +1829,7 @@ exports.punchoutWebhook = functions.https.onRequest(async (req, res) => {
         return;
     }
     // Use rawBody buffer or string fallback
-    const rawXml = req.rawBody ? req.rawBody.toString() : req.body;
+    const rawXml = req /* eslint-disable-line @typescript-eslint/no-explicit-any */.rawBody ? req /* eslint-disable-line @typescript-eslint/no-explicit-any */.rawBody.toString() : req.body;
     let orgId = req.query.orgId;
     if (!rawXml) {
         res.status(400).send("Empty payload");
@@ -1808,7 +1860,7 @@ exports.punchoutWebhook = functions.https.onRequest(async (req, res) => {
         let itemsField = orderMessage.ItemIn || [];
         if (!Array.isArray(itemsField))
             itemsField = [itemsField]; // Normalize if single item
-        const itemDescriptions = itemsField.map((i) => {
+        const itemDescriptions = itemsField.map((i /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
             const desc = i.ItemDetail?.Description?._ || i.ItemDetail?.Description || 'Unknown part';
             const price = i.ItemDetail?.UnitPrice?.Money?._ || '0.00';
             const qty = i.$?.quantity || '0';
@@ -1888,7 +1940,7 @@ exports.twilioInboundVoice = functions.https.onRequest(async (req, res) => {
 // --- AUTOMATED MAINTENANCE SWEEP & REMINDERS (CRON JOB) ---
 exports.automatedMaintenanceReminders = functions.pubsub.schedule('0 9 * * *')
     .timeZone('America/New_York')
-    .onRun(async (context) => {
+    .onRun(async () => {
     try {
         const now = new Date();
         const customersSnap = await db.collection('customers').get();
@@ -1914,7 +1966,7 @@ exports.automatedMaintenanceReminders = functions.pubsub.schedule('0 9 * * *')
             const licenseFooterText = orgLicense ? `\n\nState License: ${orgLicense}` : '';
             const licenseFooterHtml = orgLicense ? `<br/><br/><small style="color:#6b7280;font-size:12px;">State License: ${orgLicense}</small>` : '';
             let hasWarrantiedHVAC = false;
-            customer.equipment.forEach((asset) => {
+            customer.equipment.forEach((asset /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
                 if (asset.warranty?.requiresMaintenance && asset.warranty.maintenanceIntervalMonths) {
                     let nextDate;
                     if (asset.warranty.lastMaintenanceDate) {
@@ -1989,7 +2041,7 @@ exports.automatedMaintenanceReminders = functions.pubsub.schedule('0 9 * * *')
     }
 });
 __exportStar(require("./aiAgent"), exports);
-exports.provisionCustomDomain = functions.https.onCall(async (data, context) => {
+exports.provisionCustomDomain = functions.https.onCall(async (data, context /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
     if (!context.auth)
         throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
     const { domainUrl, franchiseId } = data;
@@ -2007,11 +2059,11 @@ exports.provisionCustomDomain = functions.https.onCall(async (data, context) => 
     try {
         const adminAuth = await admin.credential.applicationDefault().getAccessToken();
         const token = adminAuth.access_token;
-        let fbConfig = {};
+        let fbConfig /* eslint-disable-line @typescript-eslint/no-explicit-any */ = {};
         try {
             fbConfig = JSON.parse(process.env.FIREBASE_CONFIG || '{}');
         }
-        catch (e) { /* Ignore */ }
+        catch { /* Ignore */ }
         const projectId = fbConfig.projectId || process.env.GCLOUD_PROJECT || 'tektrakker';
         const siteId = 'tektrakker';
         // Use customDomains API
@@ -2024,7 +2076,7 @@ exports.provisionCustomDomain = functions.https.onCall(async (data, context) => 
             },
             body: JSON.stringify({})
         });
-        const result = (await response.json());
+        const result = (await response.json()); // eslint-disable-line @typescript-eslint/no-explicit-any
         let finalResult = result;
         if (!response.ok) {
             functions.logger.error("Failed to provision domain via hosting API:", result);
@@ -2046,7 +2098,7 @@ exports.provisionCustomDomain = functions.https.onCall(async (data, context) => 
             }
         }
         const requiredDns = finalResult.requiredDnsUpdates || null;
-        let dnsRecords = {};
+        let dnsRecords /* eslint-disable-line @typescript-eslint/no-explicit-any */ = {};
         if (requiredDns && requiredDns.desired) {
             dnsRecords = requiredDns.desired;
         }
@@ -2069,7 +2121,7 @@ exports.provisionCustomDomain = functions.https.onCall(async (data, context) => 
         }));
         return { success: true, domain: cleanDomain, hostingResponse: cleanHostingResponse };
     }
-    catch (error) {
+    catch (error /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("Domain Error:", error);
         throw new functions.https.HttpsError('internal', error.message || 'Unknown Error');
     }
@@ -2077,7 +2129,7 @@ exports.provisionCustomDomain = functions.https.onCall(async (data, context) => 
 // --- INFRASTRUCTURE HARD QUOTA SAFETY NET ---
 // Evaluates organization volume daily and permanently suspends any organization
 // that exceeds the equivalent of ~/month in reads/writes/storage (e.g. huge document limits).
-exports.enforceHardQuotas = functions.pubsub.schedule('every 24 hours').onRun(async (context) => {
+exports.enforceHardQuotas = functions.pubsub.schedule('every 24 hours').onRun(async () => {
     const orgsSnap = await db.collection('organizations').where('subscriptionStatus', '==', 'active').get();
     // Limits: 100,000 Customers or 100,000 Jobs per organization heavily translates to more than \/mo of reads/storage.
     const SAFETY_LIMIT_COUNT = 100000;
@@ -2122,8 +2174,8 @@ exports.fetchIotDiagnostics = functions.https.onCall(async (data, context) => {
                 body: JSON.stringify({}) // In production, filter by customerData.address
             });
             if (resp.ok) {
-                const results = await resp.json();
-                (results.devices || []).forEach((d) => {
+                const results = await resp.json(); // eslint-disable-line @typescript-eslint/no-explicit-any
+                (results.devices || []).forEach((d /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
                     if (d.device_type.includes('thermostat')) {
                         const status = d.properties?.online ? 'online' : 'offline';
                         const faults = [];
@@ -2148,7 +2200,7 @@ exports.fetchIotDiagnostics = functions.https.onCall(async (data, context) => {
                 functions.logger.error("Seam API Error:", await resp.text());
             }
         }
-        catch (e) {
+        catch (e /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             functions.logger.error("Seam Catch Error:", e);
         }
     }
@@ -2241,7 +2293,7 @@ exports.fetchShovelsPermits = functions.https.onCall(async (data, context) => {
             usageLogged: usage + 1
         };
     }
-    catch (e) {
+    catch (e /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error('Error fetching Shovels.ai permits', e);
         throw new functions.https.HttpsError('internal', 'Internal server error while searching for permits', e.message);
     }
@@ -2273,7 +2325,7 @@ exports.postToX = functions.https.onCall(async (data, context) => {
         const result = await v2Client.tweet(content);
         return { success: true, tweetId: result.data.id };
     }
-    catch (e) {
+    catch (e /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         functions.logger.error("Failed to post to X:", e);
         throw new functions.https.HttpsError("internal", e.message || "Failed to post to X.");
     }
@@ -2287,7 +2339,7 @@ __exportStar(require("./linkedin"), exports);
 __exportStar(require("./ringCentral"), exports);
 __exportStar(require("./govContracts"), exports);
 __exportStar(require("./microsoftAuth"), exports);
-exports.automatedBidReminders = functions.pubsub.schedule('0 8 * * *').timeZone('America/New_York').onRun(async (context) => {
+exports.automatedBidReminders = functions.pubsub.schedule('0 8 * * *').timeZone('America/New_York').onRun(async () => {
     try {
         const now = new Date();
         now.setHours(0, 0, 0, 0);
@@ -2308,7 +2360,7 @@ exports.automatedBidReminders = functions.pubsub.schedule('0 8 * * *').timeZone(
                     upcomingEvents.push({ name: 'Final Proposal Due', date: parsed });
             }
             if (bid.importantDates && Array.isArray(bid.importantDates)) {
-                bid.importantDates.forEach((d) => {
+                bid.importantDates.forEach((d /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
                     const parsed = new Date(d.date);
                     if (!isNaN(parsed.getTime()))
                         upcomingEvents.push({ name: d.name, date: parsed });
@@ -2344,28 +2396,7 @@ exports.automatedBidReminders = functions.pubsub.schedule('0 8 * * *').timeZone(
                     // Email Reminder
                     const adminEmail = adminDoc.data().email;
                     if (adminEmail) {
-                        promises.push(db.collection('messages').add({
-                            organizationId: orgId,
-                            senderId: 'system',
-                            senderName: 'TekTrakker System',
-                            receiverId: adminEmail,
-                            content: `
-                                <html>
-                                    <body style="font-family: sans-serif; padding: 20px;">
-                                        <h2 style="color: #1e40af;">Upcoming Bid Deadline Reminder</h2>
-                                        <p>This is an automated reminder regarding the bid: <strong>${bid.title || 'Untitled'}</strong></p>
-                                        <p>The following deadlines are approaching:</p>
-                                        <ul>
-                                            ${notificationsToSend.map(n => `<li>${n}</li>`).join('')}
-                                        </ul>
-                                        <a href="https://tektrakker.web.app/admin/bid-workspace?id=${bid.id}" style="display:inline-block; padding: 10px 15px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px;">View Bid in TekTrakker</a>
-                                    </body>
-                                </html>
-                            `,
-                            type: 'email',
-                            createdAt: new Date().toISOString(),
-                            read: false
-                        }));
+                        promises.push(db.collection('mail_queue').add({ organizationId: orgId, to: adminEmail, message: { subject: 'Upcoming Bid Deadline Reminder', html: `<html><body style="font-family: sans-serif; padding: 20px;"><h2 style="color: #1e40af;">Upcoming Bid Deadline Reminder</h2><p>This is an automated reminder regarding the bid: <strong>${bid.title || 'Untitled'}</strong></p><p>The following deadlines are approaching:</p><ul>${notificationsToSend.map(n => '<li>' + n + '</li>').join('')}</ul><a href="https://tektrakker.web.app/admin/bid-workspace?id=${bid.id}" style="display:inline-block; padding: 10px 15px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px;">View Bid in TekTrakker</a></body></html>` }, createdAt: new Date().toISOString() }));
                     }
                 }
             }
@@ -2404,7 +2435,7 @@ exports.cleanupBidOnDelete = functions.firestore.document('bids/{bidId}').onDele
         functions.logger.error("Error cleaning up bid notifications:", e);
     }
 });
-exports.checkApiKeyExpirations = functions.pubsub.schedule('0 9 * * *').timeZone('America/New_York').onRun(async (context) => {
+exports.checkApiKeyExpirations = functions.pubsub.schedule('0 9 * * *').timeZone('America/New_York').onRun(async () => {
     try {
         const now = new Date();
         now.setHours(0, 0, 0, 0);
@@ -2438,27 +2469,7 @@ exports.checkApiKeyExpirations = functions.pubsub.schedule('0 9 * * *').timeZone
             for (const adminDoc of masterAdmins.docs) {
                 const adminEmail = adminDoc.data().email;
                 if (adminEmail) {
-                    promises.push(db.collection('messages').add({
-                        organizationId: 'system',
-                        senderId: 'system',
-                        senderName: 'TekTrakker System',
-                        receiverId: adminEmail,
-                        content: `
-                            <html>
-                                <body style="font-family: sans-serif; padding: 20px;">
-                                    <h2 style="color: #ef4444;">API Key Expiration Warning</h2>
-                                    <p>This is an automated system alert regarding your platform's API keys.</p>
-                                    <ul>
-                                        ${expiringKeys.map(k => `<li><strong>${k}</strong></li>`).join('')}
-                                    </ul>
-                                    <p>Please update the keys in the codebase and the platformSettings/api_keys Firestore document to prevent service interruption.</p>
-                                </body>
-                            </html>
-                        `,
-                        type: 'email',
-                        createdAt: new Date().toISOString(),
-                        read: false
-                    }));
+                    promises.push(db.collection('mail_queue').add({ organizationId: 'system', to: adminEmail, message: { subject: 'API Key Expiration Warning', html: `<html><body style="font-family: sans-serif; padding: 20px;"><h2 style="color: #ef4444;">API Key Expiration Warning</h2><p>This is an automated system alert regarding your platform's API keys.</p><ul>${expiringKeys.map(k => '<li><strong>' + k + '</strong></li>').join('')}</ul><p>Please update the keys in the codebase and the platformSettings/api_keys Firestore document to prevent service interruption.</p></body></html>` }, createdAt: new Date().toISOString() }));
                 }
             }
         }
@@ -2468,6 +2479,50 @@ exports.checkApiKeyExpirations = functions.pubsub.schedule('0 9 * * *').timeZone
         functions.logger.error("Error in checkApiKeyExpirations:", error);
     }
 });
-__exportStar(require("./office365Webhook"), exports);
+exports.checkNewHireReporting = functions.pubsub.schedule('0 9 * * *').timeZone('America/New_York').onRun(async () => {
+    try {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const staffRoles = ['employee', 'admin', 'supervisor', 'technician'];
+        const usersSnap = await db.collection('users').where('role', 'in', staffRoles).get();
+        const promises = [];
+        for (const userDoc of usersSnap.docs) {
+            const userData = userDoc.data();
+            const hireDateStr = userData.hireDate;
+            const orgId = userData.organizationId;
+            if (!hireDateStr || !orgId)
+                continue;
+            const hireDate = new Date(hireDateStr);
+            if (isNaN(hireDate.getTime()))
+                continue;
+            hireDate.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((now.getTime() - hireDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (diffDays === 10 || diffDays === 15 || diffDays === 19) {
+                // Find admins of this org
+                const orgAdminsSnap = await db.collection('users')
+                    .where('organizationId', '==', orgId)
+                    .where('role', '==', 'admin')
+                    .get();
+                for (const adminDoc of orgAdminsSnap.docs) {
+                    const adminId = adminDoc.id;
+                    const daysLeft = 20 - diffDays;
+                    const messageText = `Reminder: Please report your new hire ${userData.firstName || ''} ${userData.lastName || ''} to the state registry. You have ${daysLeft} day(s) left.`;
+                    promises.push(db.collection('users').doc(adminId).collection('notifications').add({
+                        title: 'Action Required: New Hire Reporting',
+                        message: messageText,
+                        createdAt: new Date().toISOString(),
+                        read: false,
+                        type: 'system_alert',
+                        link: `/admin/workforce`
+                    }));
+                }
+            }
+        }
+        await Promise.allSettled(promises);
+    }
+    catch (error) {
+        functions.logger.error("Error in checkNewHireReporting:", error);
+    }
+});
 __exportStar(require("./office365Webhook"), exports);
 //# sourceMappingURL=index.js.map

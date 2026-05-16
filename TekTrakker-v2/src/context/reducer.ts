@@ -198,7 +198,9 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'SET_FRANCHISES': return { ...state, franchises: action.payload };
         case 'UPDATE_ORGANIZATION': return { ...state, currentOrganization: state.currentOrganization?.id === action.payload.id ? action.payload : state.currentOrganization, allOrganizations: state.allOrganizations.map(o => o.id === action.payload.id ? action.payload : o) };
         case 'SET_CUSTOMERS': return { ...state, customers: action.payload };
-        case 'ADD_CUSTOMER': return { ...state, customers: [...state.customers, action.payload] };
+        case 'ADD_CUSTOMER': 
+            if (state.customers.some(c => c.id === action.payload.id)) return state;
+            return { ...state, customers: [...state.customers, action.payload] };
         case 'UPDATE_CUSTOMER': return { ...state, customers: state.customers.map(c => c.id === action.payload.id ? { ...c, ...action.payload } : c) };
         case 'DELETE_CUSTOMER': return { ...state, customers: state.customers.filter(c => c.id !== action.payload) };
         case 'SET_JOBS': return { ...state, jobs: action.payload };
@@ -210,11 +212,15 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'UPDATE_JOB': return { ...state, jobs: state.jobs.map(j => j.id === action.payload.id ? { ...j, ...action.payload } : j), externalJobs: state.externalJobs.map(j => j.id === action.payload.id ? { ...j, ...action.payload } : j) };
         case 'DELETE_JOB': return { ...state, jobs: state.jobs.filter(j => j.id !== action.payload), externalJobs: state.externalJobs.filter(j => j.id !== action.payload) };
         case 'SET_APPOINTMENTS': return { ...state, appointments: action.payload };
-        case 'ADD_APPOINTMENT': return { ...state, appointments: [...state.appointments, action.payload] };
+        case 'ADD_APPOINTMENT': 
+            if (state.appointments.some(a => a.id === action.payload.id)) return state;
+            return { ...state, appointments: [...state.appointments, action.payload] };
         case 'UPDATE_APPOINTMENT': return { ...state, appointments: state.appointments.map(a => a.id === action.payload.id ? action.payload : a) };
         case 'DELETE_APPOINTMENT': return { ...state, appointments: state.appointments.filter(a => a.id !== action.payload) };
         case 'SET_INVENTORY': return { ...state, inventory: action.payload };
-        case 'ADD_INVENTORY': return { ...state, inventory: [...state.inventory, action.payload] };
+        case 'ADD_INVENTORY': 
+            if (state.inventory.some(i => i.id === action.payload.id)) return state;
+            return { ...state, inventory: [...state.inventory, action.payload] };
         case 'UPDATE_INVENTORY': return { ...state, inventory: state.inventory.map(i => i.id === action.payload.id ? { ...i, ...action.payload } : i) };
         case 'DELETE_INVENTORY': return { ...state, inventory: state.inventory.filter(i => i.id !== action.payload) };
         case 'SET_PROPOSALS': return { ...state, proposals: action.payload };
@@ -225,21 +231,29 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'UPDATE_PROPOSAL': return { ...state, proposals: state.proposals.map(p => p.id === action.payload.id ? { ...p, ...action.payload } : p) };
         case 'DELETE_PROPOSAL': return { ...state, proposals: state.proposals.filter(p => p.id !== action.payload) };
         case 'SET_CAMPAIGNS': return { ...state, campaigns: action.payload, marketingCampaigns: action.payload };
-        case 'ADD_CAMPAIGN': return { ...state, campaigns: [...state.campaigns, action.payload], marketingCampaigns: [...state.marketingCampaigns, action.payload] };
+        case 'ADD_CAMPAIGN': 
+            if (state.campaigns.some(c => c.id === action.payload.id)) return state;
+            return { ...state, campaigns: [...state.campaigns, action.payload], marketingCampaigns: [...state.marketingCampaigns, action.payload] };
         case 'UPDATE_CAMPAIGN': { const updated = state.campaigns.map(c => c.id === action.payload.id ? { ...c, ...action.payload } : c); return { ...state, campaigns: updated, marketingCampaigns: updated }; }
         case 'DELETE_CAMPAIGN': return { ...state, campaigns: state.campaigns.filter(c => c.id !== action.payload), marketingCampaigns: state.marketingCampaigns.filter(c => c.id !== action.payload) };
         case 'SET_DOCUMENTS': return { ...state, documents: action.payload, businessDocuments: action.payload };
-        case 'ADD_DOCUMENT': return { ...state, documents: [...state.documents, action.payload], businessDocuments: [...state.businessDocuments, action.payload] };
+        case 'ADD_DOCUMENT': 
+            if (state.documents.some(d => d.id === action.payload.id)) return state;
+            return { ...state, documents: [...state.documents, action.payload], businessDocuments: [...state.businessDocuments, action.payload] };
         case 'UPDATE_DOCUMENT': { const updated = state.documents.map(d => d.id === action.payload.id ? { ...d, ...action.payload } : d); return { ...state, documents: updated, businessDocuments: updated }; }
         case 'DELETE_DOCUMENT': return { ...state, documents: state.documents.filter(d => d.id !== action.payload), businessDocuments: state.businessDocuments.filter(d => d.id !== action.payload) };
         case 'SET_SCHEDULES': return { ...state, schedules: action.payload, workSchedules: action.payload };
         case 'UPDATE_SCHEDULE': { const updated = state.schedules.map(s => s.id === action.payload.id ? { ...s, ...action.payload } : s); return { ...state, schedules: updated, workSchedules: updated }; }
         case 'SET_EXPENSES': return { ...state, expenses: action.payload };
-        case 'ADD_EXPENSE': return { ...state, expenses: [...state.expenses, action.payload] };
+        case 'ADD_EXPENSE': 
+            if (state.expenses.some(e => e.id === action.payload.id)) return state;
+            return { ...state, expenses: [...state.expenses, action.payload] };
         case 'UPDATE_EXPENSE': return { ...state, expenses: state.expenses.map(e => e.id === action.payload.id ? { ...e, ...action.payload } : e) };
         case 'DELETE_EXPENSE': return { ...state, expenses: state.expenses.filter(e => e.id !== action.payload) };
         case 'SET_PROJECTS': return { ...state, projects: action.payload };
-        case 'ADD_PROJECT': return { ...state, projects: [...state.projects, action.payload] };
+        case 'ADD_PROJECT': 
+            if (state.projects.some(p => p.id === action.payload.id)) return state;
+            return { ...state, projects: [...state.projects, action.payload] };
         case 'UPDATE_PROJECT': return { ...state, projects: state.projects.map(p => p.id === action.payload.id ? { ...p, ...action.payload } : p) };
         case 'DELETE_PROJECT': return { ...state, projects: state.projects.filter(p => p.id !== action.payload) };
         case 'SYNC_DATA': return { ...state, ...action.payload };
@@ -248,21 +262,33 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'SET_MEMBERSHIP_PLANS': return { ...state, membershipPlans: action.payload };
         case 'UPDATE_MEMBERSHIP_PLAN': return { ...state, membershipPlans: state.membershipPlans.map(p => p.id === action.payload.id ? { ...p, ...action.payload } : p) };
         case 'SET_AGREEMENTS': return { ...state, serviceAgreements: action.payload };
-        case 'ADD_AGREEMENT': return { ...state, serviceAgreements: [...state.serviceAgreements, action.payload] };
+        case 'ADD_AGREEMENT': 
+            if (state.serviceAgreements.some(a => a.id === action.payload.id)) return state;
+            return { ...state, serviceAgreements: [...state.serviceAgreements, action.payload] };
         case 'SET_CYLINDERS': return { ...state, refrigerantCylinders: action.payload };
         case 'UPDATE_CYLINDER': return { ...state, refrigerantCylinders: state.refrigerantCylinders.map(c => c.id === action.payload.id ? { ...c, ...action.payload } : c) };
-        case 'ADD_CYLINDER': return { ...state, refrigerantCylinders: [...state.refrigerantCylinders, action.payload] };
+        case 'ADD_CYLINDER': 
+            if (state.refrigerantCylinders.some(c => c.id === action.payload.id)) return state;
+            return { ...state, refrigerantCylinders: [...state.refrigerantCylinders, action.payload] };
         case 'DELETE_CYLINDER': return { ...state, refrigerantCylinders: state.refrigerantCylinders.filter(c => c.id !== action.payload) };
         case 'SET_REF_TRANSACTIONS': return { ...state, refrigerantTransactions: action.payload };
-        case 'ADD_REF_TRANSACTION': return { ...state, refrigerantTransactions: [...state.refrigerantTransactions, action.payload] };
+        case 'ADD_REF_TRANSACTION': 
+            if (state.refrigerantTransactions.some(t => t.id === action.payload.id)) return state;
+            return { ...state, refrigerantTransactions: [...state.refrigerantTransactions, action.payload] };
         case 'SET_TOOL_LOGS': return { ...state, toolMaintenanceLogs: action.payload };
-        case 'ADD_TOOL_LOG': return { ...state, toolMaintenanceLogs: [...state.toolMaintenanceLogs, action.payload] };
+        case 'ADD_TOOL_LOG': 
+            if (state.toolMaintenanceLogs.some(l => l.id === action.payload.id)) return state;
+            return { ...state, toolMaintenanceLogs: [...state.toolMaintenanceLogs, action.payload] };
         case 'SET_PROPOSAL_PRESETS': return { ...state, proposalPresets: action.payload };
-        case 'ADD_PROPOSAL_PRESET': return { ...state, proposalPresets: [...state.proposalPresets, action.payload] };
+        case 'ADD_PROPOSAL_PRESET': 
+            if (state.proposalPresets.some(p => p.id === action.payload.id)) return state;
+            return { ...state, proposalPresets: [...state.proposalPresets, action.payload] };
         case 'UPDATE_PROPOSAL_PRESET': return { ...state, proposalPresets: state.proposalPresets.map(p => p.id === action.payload.id ? { ...p, ...action.payload } : p) };
         case 'DELETE_PROPOSAL_PRESET': return { ...state, proposalPresets: state.proposalPresets.filter(p => p.id !== action.payload) };
         case 'SET_INSPECTION_TEMPLATES': return { ...state, inspectionTemplates: action.payload };
-        case 'ADD_INSPECTION_TEMPLATE': return { ...state, inspectionTemplates: [...state.inspectionTemplates, action.payload] };
+        case 'ADD_INSPECTION_TEMPLATE': 
+            if (state.inspectionTemplates.some(t => t.id === action.payload.id)) return state;
+            return { ...state, inspectionTemplates: [...state.inspectionTemplates, action.payload] };
         case 'UPDATE_INSPECTION_TEMPLATE': return { ...state, inspectionTemplates: state.inspectionTemplates.map(i => i.id === action.payload.id ? { ...i, ...action.payload } : i) };
         case 'DELETE_INSPECTION_TEMPLATE': return { ...state, inspectionTemplates: state.inspectionTemplates.filter(i => i.id !== action.payload) };
         case 'SET_SHOP_ORDERS': return { ...state, shopOrders: action.payload };
@@ -287,23 +313,35 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         }
         case 'SET_VEHICLES': return { ...state, vehicles: action.payload };
         case 'UPDATE_VEHICLE': return { ...state, vehicles: state.vehicles.map(v => v.id === action.payload.id ? { ...v, ...action.payload } : v) };
-        case 'ADD_VEHICLE': return { ...state, vehicles: [...state.vehicles, action.payload] };
+        case 'ADD_VEHICLE': 
+            if (state.vehicles.some(v => v.id === action.payload.id)) return state;
+            return { ...state, vehicles: [...state.vehicles, action.payload] };
         case 'DELETE_VEHICLE': return { ...state, vehicles: state.vehicles.filter(v => v.id !== action.payload) };
         case 'SET_SUBCONTRACTORS': return { ...state, subcontractors: action.payload };
-        case 'ADD_SUBCONTRACTOR': return { ...state, subcontractors: [...state.subcontractors, action.payload] };
+        case 'ADD_SUBCONTRACTOR': 
+            if (state.subcontractors.some(s => s.id === action.payload.id)) return state;
+            return { ...state, subcontractors: [...state.subcontractors, action.payload] };
         case 'UPDATE_SUBCONTRACTOR': return { ...state, subcontractors: state.subcontractors.map(s => s.id === action.payload.id ? { ...s, ...action.payload } : s) };
         case 'SET_RENTALS': return { ...state, rentals: action.payload, equipmentRentals: action.payload };
-        case 'ADD_RENTAL': return { ...state, rentals: [...state.rentals, action.payload], equipmentRentals: [...state.equipmentRentals, action.payload] };
+        case 'ADD_RENTAL': 
+            if (state.rentals.some(r => r.id === action.payload.id)) return state;
+            return { ...state, rentals: [...state.rentals, action.payload], equipmentRentals: [...state.equipmentRentals, action.payload] };
         case 'UPDATE_RENTAL': { const updated = state.rentals.map(r => r.id === action.payload.id ? { ...r, ...action.payload } : r); return { ...state, rentals: updated, equipmentRentals: updated }; }
         case 'SET_PLATFORM_SETTINGS': return { ...state, platformSettings: action.payload };
         case 'SET_REVIEWS': return { ...state, reviews: action.payload };
-        case 'ADD_REVIEW': return { ...state, reviews: [...state.reviews, action.payload] }; 
+        case 'ADD_REVIEW': 
+            if (state.reviews.some(r => r.id === action.payload.id)) return state;
+            return { ...state, reviews: [...state.reviews, action.payload] }; 
         case 'SET_USERS': return { ...state, users: action.payload };
-        case 'ADD_USER': return { ...state, users: [...state.users, action.payload] };
+        case 'ADD_USER': 
+            if (state.users.some(u => u.id === action.payload.id)) return state;
+            return { ...state, users: [...state.users, action.payload] };
         case 'UPDATE_USER': return { ...state, users: state.users.map(u => u.id === action.payload.id ? { ...u, ...action.payload } : u) };
         case 'DELETE_USER': return { ...state, users: state.users.filter(u => u.id !== action.payload) };
         case 'SET_PART_ORDERS': return { ...state, partOrders: action.payload };
-        case 'ADD_PART_ORDER': return { ...state, partOrders: [...state.partOrders, action.payload] };
+        case 'ADD_PART_ORDER': 
+            if (state.partOrders.some(o => o.id === action.payload.id)) return state;
+            return { ...state, partOrders: [...state.partOrders, action.payload] };
         case 'UPDATE_PART_ORDER': return { ...state, partOrders: state.partOrders.map(o => o.id === action.payload.id ? { ...o, ...action.payload } : o) };
         case 'DELETE_PART_ORDER': return { ...state, partOrders: state.partOrders.filter(o => o.id !== action.payload) };
         case 'SET_MESSAGES': return { ...state, messages: action.payload };
@@ -338,7 +376,9 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'SET_ACTIVE_JOB_ID_FOR_WORKFLOW': return { ...state, activeJobIdForWorkflow: action.payload };
         
         case 'SET_TEAMS': return { ...state, teams: action.payload };
-        case 'ADD_TEAM': return { ...state, teams: [...state.teams, action.payload] };
+        case 'ADD_TEAM': 
+            if (state.teams.some(t => t.id === action.payload.id)) return state;
+            return { ...state, teams: [...state.teams, action.payload] };
         case 'UPDATE_TEAM': return { ...state, teams: state.teams.map(t => t.id === action.payload.id ? action.payload : t) };
         case 'DELETE_TEAM': return { ...state, teams: state.teams.filter(t => t.id !== action.payload) };
 

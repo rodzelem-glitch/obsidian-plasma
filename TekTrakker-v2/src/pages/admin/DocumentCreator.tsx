@@ -1,14 +1,14 @@
 import showToast from "lib/toast";
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { useSearchParams } from 'react-router-dom';
+// useNavigate available if needed
 import { useAppContext } from '../../context/AppContext';
-import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Textarea from '../../components/ui/Textarea';
 import Modal from '../../components/ui/Modal';
+import { User } from '../../types/types';
 import Select from '../../components/ui/Select'; 
 import { db } from '../../lib/firebase';
 import type { BusinessDocument } from '../../types'; 
@@ -16,7 +16,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { compressFile } from '../../lib/utils';
 import {
     FileText, Wand2, Download, Trash2, Save, Upload, Printer, Edit3, Copy, 
-    Clipboard, File as FileIcon, User as UserIcon, DollarSign, Mail, BookOpen, Layers, Archive, Share2,
+    Clipboard, DollarSign, BookOpen, Layers, Archive, Share2,
     ChevronRight, ArrowLeft
 } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
@@ -27,7 +27,7 @@ const DocumentCreator: React.FC = () => {
     const { state, dispatch } = useAppContext();
 
     // --- MAIN STATE ---
-    const [activeTab, setActiveTab] = useState<'Policies' | 'Repository' | 'Master Files' | 'Templates' | 'Tax Forms' | null>(null);
+    const [activeTab, setActiveTab] = useState<'Policies' | 'Repository' | 'Master Files' | 'Templates' | 'Tax Forms' | 'Hiring Packets' | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     
     // --- MODAL & EDITOR STATE ---
@@ -42,6 +42,7 @@ const DocumentCreator: React.FC = () => {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [fileToUpload, setFileToUpload] = useState<File | null>(null);
     const [uploadTitle, setUploadTitle] = useState('');
+    const [uploadType, setUploadType] = useState<string>('Master Upload');
     const [isUploading, setIsUploading] = useState(false);
 
     // --- 1099 TAX FORM STATE ---
@@ -55,8 +56,9 @@ const DocumentCreator: React.FC = () => {
     const [shareTargetId, setShareTargetId] = useState<string>('');
     const [shareMessageText, setShareMessageText] = useState('');
     const [isSharing, setIsSharing] = useState(false);
-
-    const [searchParams] = useSearchParams();
+    
+    // --- PDF DOWNLOAD STATE ---
+    const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
     const contentEditableRef = useRef<HTMLDivElement>(null);
 
@@ -72,13 +74,15 @@ const DocumentCreator: React.FC = () => {
             case 'Policies':
                 return filteredDocuments.filter(d => d.type === 'Policy' || d.type === 'Handbook');
             case 'Repository':
-                return filteredDocuments.filter(d => !['Policy', 'Handbook', 'Master Upload', 'Master Template', '1099-NEC'].includes(d.type));
+                return filteredDocuments.filter(d => !['Policy', 'Handbook', 'Master Upload', 'Master Template', '1099-NEC', 'Hiring Packet'].includes(d.type));
             case 'Master Files':
                 return filteredDocuments.filter(d => d.type === 'Master Upload');
             case 'Templates':
                 return filteredDocuments.filter(d => d.type === 'Master Template' || d.type === 'Waiver Template');
             case 'Tax Forms':
                 return filteredDocuments.filter(d => d.type === '1099-NEC');
+            case 'Hiring Packets':
+                return filteredDocuments.filter(d => d.type === 'Hiring Packet');
             default:
                 return [];
         }
@@ -187,7 +191,7 @@ const DocumentCreator: React.FC = () => {
                 id: `upload_${Date.now()}`,
                 organizationId: state.currentOrganization.id,
                 title: uploadTitle,
-                type: 'Master Upload',
+                type: uploadType as BusinessDocument['type'],
                 content: fileToUpload.type, 
                 context: compressedB64, 
                 createdAt: new Date().toISOString(),
@@ -198,6 +202,7 @@ const DocumentCreator: React.FC = () => {
             setIsUploadModalOpen(false);
             setFileToUpload(null);
             setUploadTitle('');
+            setUploadType('Master Upload');
         } catch (error) {
             console.error("Upload failed:", error);
             showToast.warn("File upload failed.");
@@ -219,16 +224,17 @@ const DocumentCreator: React.FC = () => {
     const aggregatedPayouts = useMemo(() => {
         if (!selected1099User || !selectedRecipient) return [];
         const payouts: { id: string; date: string; description: string; amount: number; type: 'Expense' | 'Job' }[] = [];
+        const recipient = selectedRecipient as { companyName?: string, firstName?: string, lastName?: string, paymentType?: string, paymentPercentage?: number, commissionRate?: number };
         
         (state.expenses || []).forEach(e => {
             const payeeMatches = e.paidById === selected1099User;
-            const vendorMatches = e.vendor === (selectedRecipient as any).companyName || e.vendor === `${(selectedRecipient as any).firstName} ${(selectedRecipient as any).lastName}`;
+            const vendorMatches = e.vendor === recipient.companyName || e.vendor === `${recipient.firstName} ${recipient.lastName}`;
             if (payeeMatches || vendorMatches) {
                 payouts.push({
                     id: e.id,
                     date: e.date || new Date().toISOString().split('T')[0],
                     description: `Logged Expense: ${e.category} - ${e.description}`,
-                    amount: parseFloat(e.amount as any) || 0,
+                    amount: parseFloat(String(e.amount)) || 0,
                     type: 'Expense'
                 });
             }
@@ -237,10 +243,10 @@ const DocumentCreator: React.FC = () => {
         (state.jobs || []).forEach(j => {
             if (j.assignedTechnicianId === selected1099User || j.assignedPartnerId === selected1099User) {
                 let jobAmount = 0;
-                if ((selectedRecipient as any).paymentType === 'percentage') {
-                    jobAmount = (j.invoice?.totalAmount || 0) * (((selectedRecipient as any).paymentPercentage || 0) / 100);
-                } else if ((selectedRecipient as any).commissionRate) {
-                    jobAmount = (j.invoice?.totalAmount || 0) * (((selectedRecipient as any).commissionRate || 0) / 100);
+                if (recipient.paymentType === 'percentage') {
+                    jobAmount = (j.invoice?.totalAmount || 0) * ((recipient.paymentPercentage || 0) / 100);
+                } else if (recipient.commissionRate) {
+                    jobAmount = (j.invoice?.totalAmount || 0) * ((recipient.commissionRate || 0) / 100);
                 }
                 
                 if (jobAmount > 0) {
@@ -258,7 +264,7 @@ const DocumentCreator: React.FC = () => {
         return payouts.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }, [selected1099User, selectedRecipient, state.expenses, state.jobs]);
 
-    const handleTogglePayout = (id: string, amount: number) => {
+    const handleTogglePayout = (id: string, _amount: number) => {
         const isChecked = checkedPayoutIds.includes(id);
         let newChecked = isChecked ? checkedPayoutIds.filter(x => x !== id) : [...checkedPayoutIds, id];
         setCheckedPayoutIds(newChecked);
@@ -276,6 +282,56 @@ const DocumentCreator: React.FC = () => {
         win?.print();
     };
 
+    const handleDownloadPdf = async (doc: BusinessDocument) => {
+        if (!doc.content) {
+            showToast.warn("This document has no content to download.");
+            return;
+        }
+        
+        setDownloadingDocId(doc.id);
+        
+        try {
+            // @ts-ignore
+            const html2pdf = (await import('html2pdf.js')).default;
+            
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = DOMPurify.sanitize(doc.content);
+            wrapper.style.padding = '40px';
+            wrapper.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+            wrapper.style.color = '#000';
+            wrapper.style.lineHeight = '1.6';
+            
+            // Basic styling for prose
+            const style = document.createElement('style');
+            style.textContent = `
+                h1, h2, h3, h4 { margin-top: 24px; margin-bottom: 16px; font-weight: bold; }
+                p { margin-bottom: 16px; }
+                ul { list-style-type: disc; margin-left: 24px; margin-bottom: 16px; }
+                ol { list-style-type: decimal; margin-left: 24px; margin-bottom: 16px; }
+                li { margin-bottom: 8px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+                th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            `;
+            wrapper.appendChild(style);
+
+            const opt: Record<string, unknown> = {
+                margin:       0.5,
+                filename:     `${doc.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true, logging: false },
+                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+
+            await html2pdf().from(wrapper).set(opt).save();
+            showToast.success("PDF downloaded successfully.");
+        } catch (error) {
+            console.error("PDF generation failed:", error);
+            showToast.error("Failed to generate PDF.");
+        } finally {
+            setDownloadingDocId(null);
+        }
+    };
+
     const handleCopyRef = (docId: string) => {
         navigator.clipboard.writeText(`#DOC-${docId}`);
         showToast.warn("Reference Copied! Paste it anywhere to create a smart link.");
@@ -285,7 +341,7 @@ const DocumentCreator: React.FC = () => {
         if (!shareModalDoc || !shareTargetId) return;
         setIsSharing(true);
         try {
-            const msgObj: any = {
+            const msgObj: Record<string, unknown> = {
                 id: `msg-${Date.now()}`,
                 senderId: state.currentUser?.id,
                 senderName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
@@ -296,11 +352,11 @@ const DocumentCreator: React.FC = () => {
                 organizationId: state.currentOrganization?.id,
                 type: 'internal'
             };
-            await db.collection('messages').doc(msgObj.id).set(msgObj);
+            await db.collection('messages').doc(msgObj.id as string).set(msgObj);
             showToast.warn("Document shared successfully!");
             setShareModalDoc(null);
             setShareMessageText('');
-        } catch (e) {
+        } catch {
             showToast.warn("Failed to share.");
         } finally {
             setIsSharing(false);
@@ -310,6 +366,7 @@ const DocumentCreator: React.FC = () => {
     const DOCUMENT_TYPES = [
         { value: 'Policy', label: 'Policy' },
         { value: 'Handbook', label: 'Handbook' },
+        { value: 'Hiring Packet', label: 'Hiring Packet' },
         { value: 'Master Template', label: 'Proposal Template' },
         { value: 'Waiver Template', label: 'Waiver Template' },
         { value: 'Standard Operating Procedure', label: 'SOP' },
@@ -317,26 +374,15 @@ const DocumentCreator: React.FC = () => {
         { value: 'Other', label: 'Other' }
     ];
 
-    // Count statistics
     const stats = useMemo(() => {
         const policies = state.documents.filter(d => d.type === 'Policy' || d.type === 'Handbook').length;
         const templates = state.documents.filter(d => d.type === 'Master Template' || d.type === 'Waiver Template').length;
         const uploadCount = state.documents.filter(d => d.type === 'Master Upload').length;
         const forms1099 = state.documents.filter(d => d.type === '1099-NEC').length;
-        const generalRepo = state.documents.filter(d => !['Policy', 'Handbook', 'Master Upload', 'Master Template', '1099-NEC'].includes(d.type)).length;
-        return { policies, templates, uploadCount, forms1099, generalRepo };
+        const generalRepo = state.documents.filter(d => !['Policy', 'Handbook', 'Master Upload', 'Master Template', '1099-NEC', 'Hiring Packet'].includes(d.type)).length;
+        const hiringPackets = state.documents.filter(d => d.type === 'Hiring Packet').length;
+        return { policies, templates, uploadCount, forms1099, generalRepo, hiringPackets };
     }, [state.documents]);
-
-    const activeLabel = useMemo(() => {
-        switch (activeTab) {
-            case 'Policies': return 'Policies & Handbooks';
-            case 'Repository': return 'General Repository';
-            case 'Master Files': return 'Uploaded Files';
-            case 'Templates': return 'Templates';
-            case 'Tax Forms': return '1099 Tax Forms';
-            default: return '';
-        }
-    }, [activeTab]);
 
     const renderModals = () => (
         <>
@@ -355,7 +401,7 @@ const DocumentCreator: React.FC = () => {
                                 <Select
                                     className="w-48"
                                     value={editingDoc.type}
-                                    onChange={e => setEditingDoc({...editingDoc, type: e.target.value as any})}
+                                    onChange={e => setEditingDoc({...editingDoc, type: e.target.value})}
                                 >
                                     {DOCUMENT_TYPES.map(opt => (
                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -365,6 +411,7 @@ const DocumentCreator: React.FC = () => {
                             <div className="flex flex-wrap gap-2">
                                 <Button variant="outline" onClick={handleOpenAiModal}><Wand2 size={16} className="mr-2" /> AI Generator</Button>
                                 <Button variant="outline" onClick={handlePrint}><Printer size={16}/></Button>
+                                <Button variant="outline" onClick={() => handleDownloadPdf(editingDoc as BusinessDocument)} disabled={downloadingDocId === editingDoc.id}><Download size={16} className="mr-2"/> {downloadingDocId === editingDoc.id ? 'Downloading...' : 'Download'}</Button>
                                 <Button onClick={handleSaveDoc} disabled={isSaving}>
                                     <Save size={16} className="mr-2" />
                                     {isSaving ? 'Saving...' : 'Save'}
@@ -400,12 +447,34 @@ const DocumentCreator: React.FC = () => {
             </Modal>
 
             {/* Upload Modal */}
-            <Modal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} title="Upload Master File">
-                <Input label="File Title" value={uploadTitle} onChange={e => setUploadTitle(e.target.value)} />
-                <Input type="file" onChange={e => setFileToUpload(e.target.files?.[0] || null)} className="mt-4"/>
-                <Button onClick={handleFileUpload} disabled={isUploading || !fileToUpload || !uploadTitle} className="mt-4 w-full">
-                    {isUploading ? 'Uploading...' : 'Upload'}
-                </Button>
+            <Modal isOpen={isUploadModalOpen} onClose={() => setIsUploadModalOpen(false)} title="Upload Document">
+                <div className="space-y-4">
+                    <Input label="File Title" value={uploadTitle} onChange={e => setUploadTitle(e.target.value)} />
+                    <div>
+                        <label htmlFor="upload-doc-type" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Document Type</label>
+                        <select
+                            id="upload-doc-type"
+                            aria-label="Document type"
+                            value={uploadType}
+                            onChange={e => setUploadType(e.target.value)}
+                            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-300 focus:ring focus:ring-primary-200 focus:ring-opacity-50 py-2 px-3 dark:bg-slate-700 dark:border-slate-600 dark:text-white text-sm"
+                        >
+                            <option value="Master Upload">Master File</option>
+                            <option value="Hiring Packet">Hiring Packet</option>
+                            <option value="Policy">Policy</option>
+                            <option value="Handbook">Handbook</option>
+                            <option value="Master Template">Proposal Template</option>
+                            <option value="Waiver Template">Waiver Template</option>
+                            <option value="Standard Operating Procedure">SOP</option>
+                            <option value="Contract">Contract</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <Input type="file" onChange={e => setFileToUpload(e.target.files?.[0] || null)} />
+                    <Button onClick={handleFileUpload} disabled={isUploading || !fileToUpload || !uploadTitle} className="w-full">
+                        {isUploading ? 'Uploading...' : 'Upload'}
+                    </Button>
+                </div>
             </Modal>
 
             {/* 1099-NEC Modal */}
@@ -464,6 +533,7 @@ const DocumentCreator: React.FC = () => {
                                     <label key={p.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded cursor-pointer transition-colors">
                                         <input 
                                             type="checkbox" 
+                                            aria-label={`Toggle payout for ${p.description}`}
                                             checked={checkedPayoutIds.includes(p.id)}
                                             onChange={() => handleTogglePayout(p.id, p.amount)}
                                             className="rounded text-indigo-600 focus:ring-indigo-500"
@@ -517,14 +587,14 @@ const DocumentCreator: React.FC = () => {
                          value={shareTargetId}
                          onChange={e => setShareTargetId(e.target.value)}
                      >
-                         <option value="">Select Recipient...</option>
-                         {state.users.filter((u: any) => 
-                             u.organizationId === state.currentOrganization?.id && 
-                             u.id !== state.currentUser?.id && 
-                             u.role !== 'customer'
-                         ).map((u: any) => (
-                             <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
-                         ))}
+                        <option value="">Select Recipient...</option>
+                        {state.users.filter((u: User) => 
+                            u.organizationId === state.currentOrganization?.id && 
+                            u.id !== state.currentUser?.id && 
+                            u.role !== 'customer'
+                        ).map((u: User) => (
+                            <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
+                        ))}
                      </select>
                      <Textarea 
                          placeholder="Add an optional message..."
@@ -586,7 +656,25 @@ const DocumentCreator: React.FC = () => {
                                     <td className="px-6 py-4 text-sm">{new Date(doc.createdAt).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 flex gap-1.5 flex-wrap">
                                         <Button size="sm" variant="outline" onClick={() => handleEdit(doc)}>View/Edit</Button>
-                                        {doc.context && doc.type === 'Master Upload' && <a href={doc.context} download={doc.title} aria-label="Download Document" title="Download Document"><Button size="sm" variant="ghost"><Download size={14}/></Button></a>}
+                                        
+                                        {/* Download button for uploaded files vs native documents */}
+                                        {doc.context && doc.type === 'Master Upload' ? (
+                                            <a href={doc.context} download={doc.title} aria-label="Download Document" title="Download Document">
+                                                <Button size="sm" variant="ghost"><Download size={14}/></Button>
+                                            </a>
+                                        ) : (
+                                            <Button 
+                                                size="sm" 
+                                                variant="ghost" 
+                                                onClick={() => handleDownloadPdf(doc)} 
+                                                disabled={downloadingDocId === doc.id}
+                                                aria-label="Download PDF" 
+                                                title="Download PDF"
+                                            >
+                                                {downloadingDocId === doc.id ? <Wand2 size={14} className="animate-spin" /> : <Download size={14}/>}
+                                            </Button>
+                                        )}
+                                        
                                         <Button size="sm" variant="ghost" onClick={() => handleCopyRef(doc.id)} aria-label="Copy Reference" title="Copy Reference"><Copy size={16}/></Button>
                                         <Button size="sm" variant="ghost" onClick={() => setShareModalDoc(doc)} aria-label="Share Document" title="Share Document"><Share2 size={16}/></Button>
                                         <Button size="sm" variant="danger" onClick={() => handleDelete(doc.id)} aria-label="Delete Document" title="Delete Document"><Trash2 size={14}/></Button>
@@ -611,11 +699,11 @@ const DocumentCreator: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 
                 {/* Policies & Handbooks */}
-                <div 
+                <button 
                     onClick={() => setActiveTab('Policies')}
-                    className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
+                    className="text-left w-full bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
                 >
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-4 w-full">
                         <div className="p-3 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-xl group-hover:scale-110 transition-transform">
                             <BookOpen size={28} />
                         </div>
@@ -630,14 +718,14 @@ const DocumentCreator: React.FC = () => {
                             {stats.policies} Documents
                         </span>
                     </div>
-                </div>
+                </button>
 
                 {/* General Repository */}
-                <div 
+                <button 
                     onClick={() => setActiveTab('Repository')}
-                    className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
+                    className="text-left w-full bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
                 >
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-4 w-full">
                         <div className="p-3 bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-xl group-hover:scale-110 transition-transform">
                             <Archive size={28} />
                         </div>
@@ -652,14 +740,14 @@ const DocumentCreator: React.FC = () => {
                             {stats.generalRepo} Records
                         </span>
                     </div>
-                </div>
+                </button>
 
                 {/* Uploaded Files */}
-                <div 
+                <button 
                     onClick={() => setActiveTab('Master Files')}
-                    className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
+                    className="text-left w-full bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
                 >
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-4 w-full">
                         <div className="p-3 bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-xl group-hover:scale-110 transition-transform">
                             <Layers size={28} />
                         </div>
@@ -674,14 +762,14 @@ const DocumentCreator: React.FC = () => {
                             {stats.uploadCount} Uploads
                         </span>
                     </div>
-                </div>
+                </button>
 
                 {/* Templates */}
-                <div 
+                <button 
                     onClick={() => setActiveTab('Templates')}
-                    className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
+                    className="text-left w-full bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
                 >
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-4 w-full">
                         <div className="p-3 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 rounded-xl group-hover:scale-110 transition-transform">
                             <Clipboard size={28} />
                         </div>
@@ -696,14 +784,14 @@ const DocumentCreator: React.FC = () => {
                             {stats.templates} Templates
                         </span>
                     </div>
-                </div>
+                </button>
 
                 {/* Tax Forms */}
-                <div 
+                <button 
                     onClick={() => setActiveTab('Tax Forms')}
-                    className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
+                    className="text-left w-full bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
                 >
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-4 w-full">
                         <div className="p-3 bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 rounded-xl group-hover:scale-110 transition-transform">
                             <DollarSign size={28} />
                         </div>
@@ -721,7 +809,29 @@ const DocumentCreator: React.FC = () => {
                             IRS Compliant
                         </span>
                     </div>
-                </div>
+                </button>
+
+                {/* Hiring Packets */}
+                <button 
+                    onClick={() => setActiveTab('Hiring Packets')}
+                    className="text-left w-full bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer p-6 flex flex-col group"
+                >
+                    <div className="flex items-center justify-between mb-4 w-full">
+                        <div className="p-3 bg-cyan-100 dark:bg-cyan-900/40 text-cyan-600 dark:text-cyan-400 rounded-xl group-hover:scale-110 transition-transform">
+                            <Clipboard size={28} />
+                        </div>
+                        <ChevronRight className="text-gray-300 group-hover:text-cyan-500 transition-colors" />
+                    </div>
+                    <h3 className="text-xl font-black text-gray-900 dark:text-white mb-2">Hiring Packets</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 flex-1 mb-4">
+                        Manage custom employee hiring packets and onboarding documents.
+                    </p>
+                    <div className="flex gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded flex items-center gap-1">
+                            {stats.hiringPackets} Packets
+                        </span>
+                    </div>
+                </button>
 
             </div>
             {renderModals()}

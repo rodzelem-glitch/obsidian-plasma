@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
 import { 
-    ClipboardList, CheckSquare, Play, MapPinIcon
+    ClipboardList, CheckSquare, Play, MapPinIcon, CalendarDays
 } from 'lucide-react';
 import type { Job, Project, ProjectTask } from 'types';
 import { formatAddress } from 'lib/utils';
@@ -13,10 +13,10 @@ import WeatherWidget from './briefing/components/WeatherWidget';
 import ProjectTaskWorkflowModal from './briefing/components/ProjectTaskWorkflowModal';
 import JobWorkflowModal from './briefing/components/JobWorkflowModal';
 
-const JobCard: React.FC<{ job: Job; onOpen: () => void }> = ({ job, onOpen }) => {
+const JobCard: React.FC<{ job: Job; users: any[]; onOpen: () => void }> = ({ job, users, onOpen }) => {
     const timeStr = job.appointmentTime ? new Date(job.appointmentTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
     return (
-    <div className="mb-3 overflow-hidden border border-slate-200 dark:border-slate-700/60 shadow-sm cursor-pointer hover:border-primary-400 active:scale-[0.99] transition-all group rounded-xl bg-white dark:bg-slate-800" onClick={onOpen}>
+    <button className="w-full text-left mb-3 overflow-hidden border border-slate-200 dark:border-slate-700/60 shadow-sm cursor-pointer hover:border-primary-400 active:scale-[0.99] transition-all group rounded-xl bg-white dark:bg-slate-800" onClick={onOpen}>
         <div className="p-4 flex gap-3 items-center">
             {timeStr && (
                 <div className="shrink-0 w-16 text-center">
@@ -41,13 +41,21 @@ const JobCard: React.FC<{ job: Job; onOpen: () => void }> = ({ job, onOpen }) =>
                 </p>
                 <div className="flex gap-1.5 mt-2 flex-wrap">
                      {job.tasks.map((t, i) => <span key={i} className="text-[10px] bg-slate-100 dark:bg-slate-700/60 px-2 py-0.5 rounded-md text-slate-600 dark:text-slate-300 font-semibold">{t}</span>)}
+                     {(job.assistants || []).length > 0 && (
+                         <span className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md text-indigo-600 dark:text-indigo-400 font-semibold">
+                            Crew: {(job.assistants || []).map(id => {
+                                const u = users.find(user => user.id === id);
+                                return u ? `${u.firstName} ${u.lastName}` : 'Unknown';
+                            }).join(', ')}
+                         </span>
+                     )}
                 </div>
             </div>
             <div className="h-10 w-10 bg-primary-50 dark:bg-primary-900/20 rounded-xl flex items-center justify-center text-primary-600 dark:text-primary-400 group-hover:bg-primary-600 group-hover:text-white transition-all shrink-0">
                 <Play size={18} className={job.jobStatus === 'In Progress' ? 'animate-pulse' : ''} />
             </div>
         </div>
-    </div>
+    </button>
 );
 };
 
@@ -58,27 +66,72 @@ const DailyBriefing: React.FC = () => {
     const [selectedTaskData, setSelectedTaskData] = useState<{task: ProjectTask, project: Project} | null>(null);
     const [activeJob, setActiveJob] = useState<Job | null>(null);
 
-    const todaysJobs = useMemo(() => {
-        if (!currentUser) return [];
+    const groupedJobs = useMemo(() => {
+        if (!currentUser) return { today: [], tomorrow: [], upcoming: [] };
         
         const combinedJobs = [...(jobs || []), ...(externalJobs || [])];
 
-        return combinedJobs.filter(j => 
-            j.assignedTechnicianId === currentUser.id && j.jobStatus !== 'Completed'
-        ).sort((a,b) => new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime());
+        const now = new Date();
+        const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+        const startOfNextDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).getTime();
+        const startOfNextWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7).getTime();
+
+        const myActiveJobs = combinedJobs.filter(j => {
+            const isAssigned = j.assignedTechnicianId === currentUser.id || 
+                               (j.assignedCrew && j.assignedCrew.includes(currentUser.id)) ||
+                               (j.assistants && j.assistants.includes(currentUser.id));
+            const isNotCompleted = j.jobStatus !== 'Completed' && j.jobStatus !== 'Cancelled';
+            return isAssigned && isNotCompleted;
+        });
+
+        const groups: { today: Job[], tomorrow: Job[], upcoming: Job[] } = {
+            today: [],
+            tomorrow: [],
+            upcoming: []
+        };
+
+        myActiveJobs.forEach(job => {
+            let jobTimeStr = job.appointmentTime;
+            if (jobTimeStr && !jobTimeStr.includes('T')) {
+                // Fix for date-only strings being parsed as UTC midnight
+                jobTimeStr = `${jobTimeStr}T12:00:00`;
+            } else if (jobTimeStr && jobTimeStr.endsWith('T00:00:00.000Z')) {
+                // Fix for ISO strings generated at UTC midnight but intended for local day
+                jobTimeStr = jobTimeStr.replace('T00:00:00.000Z', 'T12:00:00');
+            }
+            const jobTime = new Date(jobTimeStr).getTime();
+            
+            if (isNaN(jobTime)) return;
+
+            if (jobTime < startOfTomorrow) {
+                groups.today.push(job);
+            } else if (jobTime >= startOfTomorrow && jobTime < startOfNextDay) {
+                groups.tomorrow.push(job);
+            } else if (jobTime >= startOfNextDay && jobTime < startOfNextWeek) {
+                groups.upcoming.push(job);
+            }
+        });
+
+        const sortByTime = (a: Job, b: Job) => new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime();
+        groups.today.sort(sortByTime);
+        groups.tomorrow.sort(sortByTime);
+        groups.upcoming.sort(sortByTime);
+
+        return groups;
     }, [jobs, externalJobs, currentUser]);
 
     // This effect handles re-opening the workflow modal after returning from proposal creation
     useEffect(() => {
         if (activeJobIdForWorkflow) {
-            const jobToOpen = todaysJobs.find(j => j.id === activeJobIdForWorkflow);
+            const allMyJobs = [...groupedJobs.today, ...groupedJobs.tomorrow, ...groupedJobs.upcoming];
+            const jobToOpen = allMyJobs.find(j => j.id === activeJobIdForWorkflow);
             if (jobToOpen) {
                 setActiveJob(jobToOpen);
                 // Clear the trigger so it doesn't re-open on every render
                 dispatch({ type: 'SET_ACTIVE_JOB_ID_FOR_WORKFLOW', payload: null });
             }
         }
-    }, [activeJobIdForWorkflow, todaysJobs, dispatch]);
+    }, [activeJobIdForWorkflow, groupedJobs, dispatch]);
 
     const myTasks = useMemo(() => {
         if (!currentUser || !projects) return [];
@@ -97,6 +150,8 @@ const DailyBriefing: React.FC = () => {
 
     const hour = new Date().getHours();
     const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    
+    const totalJobs = groupedJobs.today.length + groupedJobs.tomorrow.length + groupedJobs.upcoming.length;
 
     return (
         <div className="p-4 pb-24 max-w-3xl mx-auto space-y-5 animate-fade-in">
@@ -104,7 +159,7 @@ const DailyBriefing: React.FC = () => {
                 <div>
                     <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">{greeting}, {currentUser?.firstName}</h1>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                        {todaysJobs.length > 0 ? `${todaysJobs.length} job${todaysJobs.length > 1 ? 's' : ''} on your schedule` : 'No jobs scheduled — you\'re clear'}
+                        {totalJobs > 0 ? `${totalJobs} job${totalJobs > 1 ? 's' : ''} on your schedule this week` : 'No jobs scheduled — you\'re clear'}
                     </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -114,6 +169,16 @@ const DailyBriefing: React.FC = () => {
 
             <WeatherWidget />
 
+            <div className="grid grid-cols-2 gap-4 mb-2">
+                <button 
+                  onClick={() => navigate('/briefing/scheduling')}
+                  className="col-span-2 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors text-emerald-700 dark:text-emerald-400 font-bold shadow-sm"
+                >
+                    <CalendarDays className="w-5 h-5 flex-shrink-0" />
+                    View My Full Schedule
+                </button>
+            </div>
+
             {myTasks.length > 0 && (
                 <Card className="mb-6 border-l-4 border-purple-500">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
@@ -121,10 +186,10 @@ const DailyBriefing: React.FC = () => {
                     </h3>
                     <div className="space-y-3">
                         {myTasks.map(({task, project}) => (
-                            <div key={task.id} onClick={() => setSelectedTaskData({task, project})} className="p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-purple-400 transition-colors flex justify-between items-center group">
+                            <button key={task.id} onClick={() => setSelectedTaskData({task, project})} className="w-full text-left p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-purple-400 transition-colors flex justify-between items-center group">
                                 <div><p className="font-bold text-slate-800 dark:text-white">{task.description}</p><p className="text-xs text-slate-500">{project.name}</p></div>
                                 <div className="text-xs font-bold text-purple-600 bg-purple-50 px-3 py-1 rounded-full group-hover:bg-purple-600 group-hover:text-white transition-colors">Update</div>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 </Card>
@@ -147,19 +212,50 @@ const DailyBriefing: React.FC = () => {
                 </button>
             </div>
 
-            <div className="space-y-4">
-                <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2"><CheckSquare size={20}/> Today's Schedule</h2>
-                {todaysJobs.length > 0 ? (
-                    todaysJobs.map(job => (
-                        <JobCard key={job.id} job={job} onOpen={() => setActiveJob(job)} />
-                    ))
-                ) : (
-                    <div className="text-center py-12 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-600">
+            <div className="space-y-6">
+                <div>
+                    <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-4"><CheckSquare size={20} className="text-blue-500" /> Today's Schedule</h2>
+                    {groupedJobs.today.length > 0 ? (
+                        groupedJobs.today.map(job => (
+                            <JobCard key={job.id} job={job} users={state.users} onOpen={() => setActiveJob(job)} />
+                        ))
+                    ) : (
+                        <div className="text-center py-8 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-600">
+                            <p className="text-slate-500 dark:text-slate-400 font-medium">No jobs scheduled for today.</p>
+                        </div>
+                    )}
+                </div>
+
+                {groupedJobs.tomorrow.length > 0 && (
+                    <div>
+                        <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-4"><CalendarDays size={20} className="text-emerald-500"/> Tomorrow</h2>
+                        {groupedJobs.tomorrow.map(job => (
+                            <JobCard key={job.id} job={job} users={state.users} onOpen={() => setActiveJob(job)} />
+                        ))}
+                    </div>
+                )}
+
+                {groupedJobs.upcoming.length > 0 && (
+                    <div>
+                        <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-4"><CalendarDays size={20} className="text-slate-400"/> Later This Week</h2>
+                        {groupedJobs.upcoming.map(job => {
+                            const dayName = new Date(job.appointmentTime).toLocaleDateString(undefined, { weekday: 'long' });
+                            return (
+                                <div key={job.id} className="relative">
+                                    <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 mt-4 ml-1">{dayName}</div>
+                                    <JobCard job={job} users={state.users} onOpen={() => setActiveJob(job)} />
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+                
+                {totalJobs === 0 && (
+                     <div className="text-center py-12 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-600">
                         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
                             <CheckSquare size={28} className="text-slate-400" />
                         </div>
-                        <p className="text-slate-600 dark:text-slate-300 font-semibold">All clear!</p>
-                        <p className="text-sm text-slate-400 mt-1">No active jobs assigned to you right now.</p>
+                        <p className="text-slate-600 dark:text-slate-300 font-semibold">All clear for the week!</p>
                     </div>
                 )}
             </div>

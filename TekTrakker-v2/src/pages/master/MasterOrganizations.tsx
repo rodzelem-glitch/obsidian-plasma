@@ -43,7 +43,13 @@ const MasterOrganizations: React.FC = () => {
         city: '',
         state: '',
         zip: '',
-        adminPassword: ''
+        adminPassword: '',
+        isFreeAccess: false,
+        isVerified: false,
+        isLeadingPro: false,
+        virtualWorkerEnabled: false,
+        customDiscountPct: 0,
+        subscriptionExpiryDate: ''
     });
     const [showOrgAdminPassword, setShowOrgAdminPassword] = useState(false);
 
@@ -111,7 +117,8 @@ const MasterOrganizations: React.FC = () => {
             setCreatingOrg(false);
             setOrgForm({
                 name: '', email: '', phone: '', plan: 'starter', subscriptionStatus: 'active',
-                address: '', city: '', state: '', zip: '', adminPassword: ''
+                address: '', city: '', state: '', zip: '', adminPassword: '',
+                isFreeAccess: false, isVerified: false, isLeadingPro: false, virtualWorkerEnabled: false, customDiscountPct: 0, subscriptionExpiryDate: ''
             });
         } catch (error: any) {
             console.error("Create Org Error:", error);
@@ -134,17 +141,28 @@ const MasterOrganizations: React.FC = () => {
 
     const handleEditOrg = (org: Organization) => {
         setEditingOrg(org);
+        
+        // Handle legacy address formats
+        const legacyAddress = typeof org.address === 'string' ? org.address : '';
+        const addrObj = typeof org.address === 'object' && org.address !== null ? org.address : null;
+
         setOrgForm({
-            name: org.name,
+            name: org.name || '',
             email: org.email || '',
-            phone: org.phone || '',
+            phone: org.phone || (org as any).contactPhone || '',
             plan: (org.plan || 'starter') as string,
             subscriptionStatus: (org.subscriptionStatus || 'active') as string,
-            address: org.address?.street || '',
-            city: org.address?.city || '',
-            state: org.address?.state || '',
-            zip: org.address?.zip || '',
+            address: addrObj?.street || legacyAddress || '',
+            city: addrObj?.city || '',
+            state: addrObj?.state || '',
+            zip: addrObj?.zip || '',
             adminPassword: '',
+            isFreeAccess: !!org.isFreeAccess,
+            isVerified: !!org.isVerified,
+            isLeadingPro: !!org.isLeadingPro,
+            virtualWorkerEnabled: !!org.virtualWorkerEnabled,
+            customDiscountPct: org.customDiscountPct || 0,
+            subscriptionExpiryDate: org.subscriptionExpiryDate || ''
         });
     };
 
@@ -153,8 +171,7 @@ const MasterOrganizations: React.FC = () => {
         if (!editingOrg) return;
         setIsSubmitting(true);
         try {
-            const orgRef = doc(db, 'organizations', editingOrg.id);
-            await updateDoc(orgRef, {
+            await db.collection('organizations').doc(editingOrg.id).update({
                 name: orgForm.name,
                 email: orgForm.email,
                 phone: orgForm.phone,
@@ -166,6 +183,12 @@ const MasterOrganizations: React.FC = () => {
                     state: orgForm.state,
                     zip: orgForm.zip,
                 },
+                isFreeAccess: orgForm.isFreeAccess,
+                isVerified: orgForm.isVerified,
+                isLeadingPro: orgForm.isLeadingPro,
+                virtualWorkerEnabled: orgForm.virtualWorkerEnabled,
+                customDiscountPct: Number(orgForm.customDiscountPct) || 0,
+                subscriptionExpiryDate: orgForm.subscriptionExpiryDate || null
             });
             toast.success('Organization updated successfully!');
             setEditingOrg(null);
@@ -179,7 +202,7 @@ const MasterOrganizations: React.FC = () => {
     const handleDeleteOrg = async (orgId: string) => {
         if (await globalConfirm("Are you sure you want to delete this organization? This action cannot be undone.")) {
             try {
-                await deleteDoc(doc(db, 'organizations', orgId));
+                await db.collection('organizations').doc(orgId).delete();
                 toast.success('Organization deleted successfully!');
             } catch (error: any) {
                 toast.error(`Failed to delete organization: ${error.message}`);
@@ -188,9 +211,8 @@ const MasterOrganizations: React.FC = () => {
     };
 
     const handleToggleVerified = async (org: Organization) => {
-        const orgRef = doc(db, 'organizations', org.id);
         try {
-            await updateDoc(orgRef, { isVerified: !org.isVerified });
+            await db.collection('organizations').doc(org.id).update({ isVerified: !org.isVerified });
             toast.success(`Verification status updated for ${org.name}`);
         } catch (error) {
             toast.error("Failed to update verification status.");
@@ -198,9 +220,8 @@ const MasterOrganizations: React.FC = () => {
     };
 
     const handleToggleLeadingPro = async (org: Organization) => {
-        const orgRef = doc(db, 'organizations', org.id);
         try {
-            await updateDoc(orgRef, { isLeadingPro: !org.isLeadingPro });
+            await db.collection('organizations').doc(org.id).update({ isLeadingPro: !org.isLeadingPro });
             toast.success(`Leading Pro status updated for ${org.name}`);
         } catch (error) {
             toast.error("Failed to update Leading Pro status.");
@@ -208,9 +229,8 @@ const MasterOrganizations: React.FC = () => {
     };
 
     const handleToggleVirtualWorker = async (org: Organization) => {
-        const orgRef = doc(db, 'organizations', org.id);
         try {
-            await updateDoc(orgRef, { virtualWorkerEnabled: !org.virtualWorkerEnabled });
+            await db.collection('organizations').doc(org.id).update({ virtualWorkerEnabled: !org.virtualWorkerEnabled });
             toast.success(`Virtual Worker status updated for ${org.name}`);
         } catch (error) {
             toast.error("Failed to update Virtual Worker status.");
@@ -237,8 +257,8 @@ const MasterOrganizations: React.FC = () => {
                     {sortedOrgs.map(org => (
                         <tr key={org.id}>
                             <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-medium text-gray-900 dark:text-white">{org.name}</div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400">{org.email}</div>
+                                <div className="text-sm font-medium text-gray-900 dark:text-white">{org.name || 'Unnamed Org'}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">{org.email || org.id}</div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="text-sm text-gray-900 dark:text-white uppercase">{org.plan}</div>
@@ -324,6 +344,20 @@ const MasterOrganizations: React.FC = () => {
                     <div className="border-t pt-4 mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Input label="Plan" value={orgForm.plan} onChange={e => setOrgForm({...orgForm, plan: e.target.value})} />
                         <Input label="Subscription Status" value={orgForm.subscriptionStatus} onChange={e => setOrgForm({...orgForm, subscriptionStatus: e.target.value})} />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Input label="Custom Discount %" type="number" value={orgForm.customDiscountPct} onChange={e => setOrgForm({...orgForm, customDiscountPct: Number(e.target.value)})} />
+                        <Input label="Expiry Date" type="date" value={orgForm.subscriptionExpiryDate ? (orgForm.subscriptionExpiryDate.includes('T') ? orgForm.subscriptionExpiryDate.split('T')[0] : orgForm.subscriptionExpiryDate) : ''} onChange={e => setOrgForm({...orgForm, subscriptionExpiryDate: e.target.value})} />
+                        <div className="flex flex-col justify-end pb-2">
+                             <Toggle label="Free Access" enabled={orgForm.isFreeAccess} onChange={() => setOrgForm({...orgForm, isFreeAccess: !orgForm.isFreeAccess})} />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
+                        <Toggle label="Verified" enabled={orgForm.isVerified} onChange={() => setOrgForm({...orgForm, isVerified: !orgForm.isVerified})} />
+                        <Toggle label="Leading Pro" enabled={orgForm.isLeadingPro} onChange={() => setOrgForm({...orgForm, isLeadingPro: !orgForm.isLeadingPro})} />
+                        <Toggle label="Virtual Worker AI" enabled={orgForm.virtualWorkerEnabled} onChange={() => setOrgForm({...orgForm, virtualWorkerEnabled: !orgForm.virtualWorkerEnabled})} />
                     </div>
 
                     <div className="flex justify-end pt-4">

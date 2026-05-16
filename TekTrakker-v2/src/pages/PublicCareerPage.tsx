@@ -112,7 +112,19 @@ const PublicCareerPage: React.FC = () => {
                         Thank you for applying to <strong>{orgName}</strong>.<br/>
                         Our team will review your information and contact you soon.
                     </p>
-                    <Button onClick={() => window.location.reload()} variant="secondary">Back to Form</Button>
+                    <Button 
+                        onClick={() => {
+                            setSuccess(false);
+                            setResumeFile(null);
+                            setFormData({
+                                firstName: '', lastName: '', email: '', phone: '',
+                                position: 'HVAC Technician', experienceYears: ''
+                            });
+                        }} 
+                        variant="secondary"
+                    >
+                        Back to Form
+                    </Button>
                 </Card>
             </div>
         );

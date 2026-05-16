@@ -12,6 +12,7 @@ import type { RefrigerantCylinder, RefrigerantTransaction, ToolMaintenanceLog, B
 import { CheckCircle, AlertTriangle, Wrench, Shield, Users, Printer, Flag, Trash2 } from 'lucide-react';
 import { globalConfirm } from 'lib/globalConfirm';
 import showToast from 'lib/toast';
+import { getBaseUrl } from 'lib/utils';
 
 import ToolsTab from './compliance/components/ToolsTab';
 import CertsTab from './compliance/components/CertsTab';
@@ -23,7 +24,6 @@ import { Bot } from 'lucide-react';
 
 const ComplianceDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const { getBaseUrl } = require('lib/utils');
     const [searchParams] = useSearchParams();
     const industry = state.currentOrganization?.industry || 'HVAC';
     const { currentUser } = state;

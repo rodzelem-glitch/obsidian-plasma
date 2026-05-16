@@ -49,10 +49,24 @@ const BlogManager: React.FC = () => {
 
     const handleSaveSlug = async () => {
         if (!profileSlug.trim()) return toast.error("Profile slug cannot be empty.");
+        if (profileSlug.length < 3) return toast.error("Slug must be at least 3 characters.");
+        
         setIsSavingSlug(true);
         try {
+            // Check for uniqueness
+            const normalizedSlug = profileSlug.toLowerCase().trim();
+            const existing = await db.collection('organizations')
+                .where('profileSlug', '==', normalizedSlug)
+                .limit(1)
+                .get();
+            
+            if (!existing.empty && existing.docs[0].id !== state.currentOrganization?.id) {
+                toast.error("This URL is already taken by another organization.");
+                return;
+            }
+
             await db.collection('organizations').doc(state.currentOrganization?.id).update({
-                profileSlug: profileSlug.toLowerCase()
+                profileSlug: normalizedSlug
             });
             toast.success("Profile URL updated successfully!");
         } catch (err) {
@@ -64,7 +78,8 @@ const BlogManager: React.FC = () => {
     };
 
     const copyWidgetCode = () => {
-        const widgetCode = `<div id="tektrakker-blog-widget" data-org="${state.currentOrganization?.id}"></div>\n<script src="https://app.tektrakker.com/widgets/blog.js" async></script>\n<!-- Powered by TekTrakker.com -->`;
+        const identifier = state.currentOrganization?.profileSlug ? `data-slug="${state.currentOrganization.profileSlug}"` : `data-org="${state.currentOrganization?.id}"`;
+        const widgetCode = `<div id="tektrakker-blog-widget" ${identifier}></div>\n<script src="https://app.tektrakker.com/widgets/blog.js" async></script>\n<!-- Powered by TekTrakker.com -->`;
         navigator.clipboard.writeText(widgetCode);
         setCopiedWidget(true);
         setTimeout(() => setCopiedWidget(false), 2000);
@@ -234,7 +249,18 @@ const BlogManager: React.FC = () => {
                         </div>
                         
                         <div>
-                            <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Profile Slug</label>
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="text-xs font-bold text-slate-500 uppercase">Profile Slug</label>
+                                {state.currentOrganization?.profileSlug ? (
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full uppercase border border-emerald-100">
+                                        <CheckCircle2 size={10} /> Online
+                                    </span>
+                                ) : (
+                                    <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full uppercase border border-amber-100">
+                                        Offline
+                                    </span>
+                                )}
+                            </div>
                             <div className="flex rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700">
                                 <span className="px-3 py-2 bg-slate-100 dark:bg-slate-800 text-slate-500 text-sm border-r border-slate-300 dark:border-slate-700 font-mono">
                                     tektrakker.com/p/
@@ -249,7 +275,18 @@ const BlogManager: React.FC = () => {
                                     onChange={(e) => setProfileSlug(e.target.value.replace(/[^a-zA-Z0-9-]/g, ''))}
                                 />
                             </div>
-                            <div className="mt-3 flex justify-end">
+                            <div className="mt-3 flex items-center justify-between">
+                                {state.currentOrganization?.profileSlug && (
+                                    <a 
+                                        href={`/#/p/${state.currentOrganization.profileSlug}`} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-primary-600 hover:underline flex items-center gap-1"
+                                    >
+                                        <Eye size={12} /> View Live Profile
+                                    </a>
+                                )}
+                                <div className="flex-1" />
                                 <Button size="sm" onClick={handleSaveSlug} disabled={isSavingSlug || !profileSlug}>
                                     {isSavingSlug ? 'Saving...' : 'Save URL'}
                                 </Button>
@@ -268,7 +305,7 @@ const BlogManager: React.FC = () => {
                         
                         <div className="relative group">
                             <pre className="p-4 bg-slate-900 rounded-lg text-xs font-mono text-emerald-400 overflow-x-auto border border-slate-800">
-                                {`<div id="tektrakker-blog-widget" data-org="${state.currentOrganization?.id}"></div>\n<script src="https://app.tektrakker.com/widgets/blog.js" async></script>\n<!-- Powered by TekTrakker.com -->`}
+                                {`<div id="tektrakker-blog-widget" ${state.currentOrganization?.profileSlug ? `data-slug="${state.currentOrganization.profileSlug}"` : `data-org="${state.currentOrganization?.id}"`}></div>\n<script src="https://app.tektrakker.com/widgets/blog.js" async></script>\n<!-- Powered by TekTrakker.com -->`}
                             </pre>
                             <button 
                                 onClick={copyWidgetCode}

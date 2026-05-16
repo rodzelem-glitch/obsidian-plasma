@@ -18,7 +18,7 @@ const PropertyOwnerMarketing: React.FC = () => {
     return (
         <div className="min-h-screen font-sans bg-slate-50 selection:bg-blue-500 selection:text-white">
             <LandingHeader 
-                backButton={{ label: 'Back to Home', href: '/' }}
+                backButton={{ label: 'Back to Home', href: 'https://tektrakker.com' }}
             />
 
             {/* Content */}

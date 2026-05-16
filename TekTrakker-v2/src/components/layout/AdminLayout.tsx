@@ -18,6 +18,18 @@ interface AdminLayoutProps {
 const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) => {
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCollapsedPreference, setIsCollapsedPreference] = useState(() => {
+     if (typeof window !== 'undefined') {
+         return localStorage.getItem('sidebar-collapsed') === 'true';
+     }
+     return false;
+  });
+
+  const handleToggleCollapse = () => {
+      const newVal = !isCollapsedPreference;
+      setIsCollapsedPreference(newVal);
+      localStorage.setItem('sidebar-collapsed', String(newVal));
+  };
 
   return (
     <div className="flex min-h-[100dvh] w-full bg-slate-50 dark:bg-slate-900 text-gray-900 dark:text-gray-200 font-sans transition-colors relative items-start">
@@ -25,8 +37,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
         user={user} 
         onLogout={onLogout} 
         isOpen={isSidebarOpen} 
-        onClose={() => setIsSidebarOpen(false)} 
+        onClose={() => setIsSidebarOpen(false)}
+        isCollapsedOverride={isCollapsedPreference}
+        onToggleCollapse={handleToggleCollapse}
       />
+
+      <div className={`hidden sm:block transition-all duration-300 ease-in-out shrink-0 ${isCollapsedPreference ? 'w-20' : 'w-64'}`} />
       
       <div className="flex-1 flex flex-col relative min-w-0 min-h-[100dvh]">
          <header className="sticky top-0 bg-white dark:bg-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-700/80 z-40 transition-colors pt-safe shrink-0">

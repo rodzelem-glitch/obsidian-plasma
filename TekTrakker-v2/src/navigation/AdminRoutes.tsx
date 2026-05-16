@@ -8,7 +8,7 @@ import AdminLayout from '../components/layout/AdminLayout';
 
 // Admin Components
 import AdminDashboard from '../pages/admin/AdminDashboard';
-import { ActiveTechsView, ActiveJobsView, PartOrdersView, UnpaidInvoicesView, UpcomingMaintenanceView, ActiveWarrantiesView } from '../pages/admin/DashboardDetails';
+import { ActiveTechsView, ActiveJobsView, PartOrdersView, UnpaidInvoicesView, UpcomingMaintenanceView, ActiveWarrantiesView, AlertsCenterView } from '../pages/admin/DashboardDetails';
 import OperationsView from '../pages/admin/OperationsView';
 import CustomerCenterView from '../pages/admin/CustomerCenterView';
 import WorkforceView from '../pages/admin/WorkforceView';
@@ -53,6 +53,7 @@ const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: 
           <Route path="dashboard/unpaid-invoices" element={<UnpaidInvoicesView />} />
           <Route path="dashboard/maintenance" element={<UpcomingMaintenanceView />} />
           <Route path="dashboard/active-warranties" element={<ActiveWarrantiesView />} />
+          <Route path="dashboard/alerts" element={<AlertsCenterView />} />
           <Route path="analytics" element={<AnalyticsMaster />} />
           <Route path="marketing" element={<MarketingROI />} />
           <Route path="marketing-hub" element={<SalesAndMarketingHub />} />

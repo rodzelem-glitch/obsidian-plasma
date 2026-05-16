@@ -23,21 +23,22 @@ const MasterIntegrationRequests: React.FC = () => {
 
   useEffect(() => {
     if (!state.currentUser) return;
-    const q = query(collection(db, 'integration_requests'), orderBy('requestedAt', 'desc'));
     
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as IntegrationRequest[];
-      
-      setRequests(data);
-      setLoading(false);
-    }, (error) => {
-      console.error('Error fetching integration requests:', error);
-      showToast.error('Failed to load integration requests');
-      setLoading(false);
-    });
+    const unsubscribe = db.collection('integration_requests')
+      .orderBy('requestedAt', 'desc')
+      .onSnapshot((snapshot) => {
+        const data = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as IntegrationRequest[];
+        
+        setRequests(data);
+        setLoading(false);
+      }, (error) => {
+        console.error('Error fetching integration requests:', error);
+        showToast.error('Failed to load integration requests: ' + error.message);
+        setLoading(false);
+      });
 
     return () => unsubscribe();
   }, []);

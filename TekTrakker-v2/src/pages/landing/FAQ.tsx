@@ -111,7 +111,7 @@ const FAQ: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 font-sans selection:bg-sky-500/30 selection:text-sky-200">
       <LandingHeader 
-        backButton={{ label: 'Back to Home', href: '/' }}
+        backButton={{ label: 'Back to Home', href: 'https://tektrakker.com' }}
       />
 
       {/* Header */}

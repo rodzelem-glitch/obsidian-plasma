@@ -22,7 +22,7 @@ interface BlogPost {
 }
 
 const OrganizationPublicSite: React.FC = () => {
-    const { orgId } = useParams<{ orgId: string }>();
+    const { orgId, slug } = useParams<{ orgId?: string, slug?: string }>();
     const navigate = useNavigate();
     const [org, setOrg] = useState<Organization | null>(null);
     const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
@@ -30,16 +30,36 @@ const OrganizationPublicSite: React.FC = () => {
 
     useEffect(() => {
         const fetchOrgAndBlog = async () => {
-            if (!orgId) return;
+            if (!orgId && !slug) return;
             try {
-                // Fetch Organization
-                const doc = await db.collection('organizations').doc(orgId).get();
-                if (doc.exists) {
-                    const data = { ...doc.data(), id: doc.id } as Organization;
-                    setOrg(data);
+                let organization: Organization | null = null;
+                let finalOrgId = orgId;
+
+                if (orgId) {
+                    // Fetch Organization by ID
+                    const doc = await db.collection('organizations').doc(orgId).get();
+                    if (doc.exists) {
+                        organization = { ...doc.data(), id: doc.id } as Organization;
+                    }
+                } else if (slug) {
+                    // Fetch Organization by Slug
+                    const slugSnapshot = await db.collection('organizations')
+                        .where('profileSlug', '==', slug.toLowerCase())
+                        .limit(1)
+                        .get();
+                    
+                    if (!slugSnapshot.empty) {
+                        const doc = slugSnapshot.docs[0];
+                        organization = { ...doc.data(), id: doc.id } as Organization;
+                        finalOrgId = doc.id;
+                    }
+                }
+
+                if (organization && finalOrgId) {
+                    setOrg(organization);
                     
                     // Fetch Blog Posts
-                    const postsSnapshot = await db.collection('organizations').doc(orgId).collection('blogPosts')
+                    const postsSnapshot = await db.collection('organizations').doc(finalOrgId).collection('blogPosts')
                         .where('published', '==', true)
                         .get();
                     
@@ -48,6 +68,7 @@ const OrganizationPublicSite: React.FC = () => {
                     postsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
                     setBlogPosts(postsData);
                     
+                    const data = organization;
                     const city = data.address?.city || '';
                     const state = data.address?.state || '';
                     const zip = data.address?.zip || '';
@@ -144,7 +165,7 @@ const OrganizationPublicSite: React.FC = () => {
             const script = document.getElementById('org-schema');
             if (script) script.remove();
         };
-    }, [orgId]);
+    }, [orgId, slug]);
 
     if (loading) return <div className="min-h-screen flex items-center justify-center bg-white"><div className="animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full"></div></div>;
     if (!org) return <div className="min-h-screen flex items-center justify-center bg-white text-gray-500">Organization not found.</div>;

@@ -10,7 +10,7 @@ export const RingCentralWidget: React.FC = () => {
     const [jwtToken, setJwtToken] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!state.currentOrganization) return;
+        if (!state.currentOrganization || state.isDemoMode) return;
 
         const fetchConfig = async () => {
             try {

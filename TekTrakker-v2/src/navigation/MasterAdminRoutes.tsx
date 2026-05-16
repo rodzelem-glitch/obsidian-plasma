@@ -26,6 +26,7 @@ import AiUsageMaster from '../pages/admin/AiUsageMaster';
 import StorageUsageMaster from '../pages/admin/StorageUsageMaster';
 import VirtualWorkerReports from '../pages/admin/VirtualWorkerReports';
 import CampaignManager from '../pages/sales/CampaignManager';
+import Financials from '../pages/admin/Financials';
 
 const MasterAdminRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({ user, handleLogout }) => {
   const { state } = useAppContext();
@@ -63,6 +64,7 @@ const MasterAdminRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({
               <Route path="billing" element={<MasterBilling />} />
               <Route path="analytics" element={<PlatformAnalytics />} /> 
               <Route path="inbox" element={<MasterInbox />} />
+              <Route path="financials" element={<Financials />} />
             </>
           )}
 

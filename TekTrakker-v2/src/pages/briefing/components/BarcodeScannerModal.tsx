@@ -82,7 +82,7 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
                         <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-900">
                             <XCircle className="text-red-500 mb-2" size={48} />
                             <p className="text-white text-sm font-bold mb-4">{error}</p>
-                            <Button onClick={() => window.location.reload()} className="bg-primary-600">Retry Permissions</Button>
+                            <Button onClick={() => window.location.href = window.location.pathname + window.location.search} className="bg-primary-600">Retry Permissions</Button>
                         </div>
                     )}
                 </div>

@@ -95,6 +95,10 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
         onUpdate({ lineItems: updatedItems });
     };
 
+    const handleUpdateFee = (field: 'additionalFeePercent' | 'additionalFeeName', value: any) => {
+        onUpdate({ [field]: value });
+    };
+
     // --- Generate/History Tab Handlers (Secure implementation) ---
     
     // Helper to strip heavy files before sending to cloud function
@@ -110,7 +114,7 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
             });
         }
         
-        delete cleanBid.generatedDocs;
+        // Do not delete generatedDocs because they are required for global and specific edits
         return cleanBid;
     };
 
@@ -388,7 +392,7 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
                 status: 'Planning',
                 startDate: new Date().toISOString(),
                 endDate: bid.dueDate || '',
-                budget: bid.totalValue || bid.lineItems?.reduce((acc, item) => acc + (item.totalPrice || 0), 0) || 0,
+                budget: bid.totalValue || (bid.lineItems?.reduce((acc, item) => acc + (item.totalPrice || 0), 0) || 0) * (1 + (bid.additionalFeePercent || 0) / 100),
                 description: bid.summary || 'Converted from bid package',
                 createdAt: serverTimestamp(),
                 projectTasks: (bid.lineItems || []).map((item, index) => ({
@@ -442,6 +446,9 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
                     onAddFromPricebook={handleAddFromPricebook}
                     onGenerateAIPricing={handleGenerateAIPricing}
                     isGeneratingAIPricing={isGeneratingAIPricing}
+                    additionalFeePercent={bid.additionalFeePercent}
+                    additionalFeeName={bid.additionalFeeName}
+                    onUpdateFee={handleUpdateFee}
                 />
             );
             case 'generate': return (

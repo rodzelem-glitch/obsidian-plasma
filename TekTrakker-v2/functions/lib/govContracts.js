@@ -49,11 +49,12 @@ try {
 catch { /* ignore */ }
 // The Data.gov / SAM.gov API Key
 // Configured via Secret Manager: SAM_GOV_API_KEY
+// eslint-disable-next-line no-undef
 const getSamApiKey = () => process.env.SAM_GOV_API_KEY || "";
 /**
  * Fetch contract opportunities from SAM.gov based on NAICS codes or keywords.
  */
-exports.fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_KEY"] }).https.onCall(async (data, context) => {
+exports.fetchFederalContracts = functions.https.onCall(async (data, context) => {
     // Require authentication
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be signed in.');
@@ -73,7 +74,8 @@ exports.fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_KEY"]
             api_key: getSamApiKey(),
             limit,
             postedFrom: formatDate(fromDate),
-            postedTo: formatDate(toDate)
+            postedTo: formatDate(toDate),
+            ptype: 'p,o,k,s'
         };
         if (data.noticeId) {
             params.noticeid = data.noticeId;
@@ -124,7 +126,7 @@ exports.fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_KEY"]
                                 if (textValues.length > 0)
                                     opp.description = textValues.join('\n\n');
                             }
-                            catch (e) {
+                            catch {
                                 // Ignore json stringify errors
                             }
                         }
@@ -142,7 +144,8 @@ exports.fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_KEY"]
         };
     }
     catch (error) {
-        if (error.response && error.response.status === 404) {
+        const err = error;
+        if (err.response && err.response.status === 404) {
             // SAM.gov returns 404 when there is NO DATA FOUND for the specific filters.
             // We should intercept this and return an empty array gracefully.
             return {
@@ -151,8 +154,9 @@ exports.fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_KEY"]
                 opportunities: []
             };
         }
-        console.error("SAM.gov API Error:", error.response?.data || error.message);
-        throw new functions.https.HttpsError('internal', `Failed to fetch from SAM.gov: ${error.response?.data?.error?.message || error.message}`);
+        const e = error;
+        console.error("SAM.gov API Error:", e.response?.data || e.message);
+        throw new functions.https.HttpsError('internal', `Failed to fetch from SAM.gov: ${e.response?.data?.error?.message || e.message}`);
     }
 });
 //# sourceMappingURL=govContracts.js.map

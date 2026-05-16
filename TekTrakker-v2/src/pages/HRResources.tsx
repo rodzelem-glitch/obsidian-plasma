@@ -13,18 +13,18 @@ import Textarea from 'components/ui/Textarea';
 import DOMPurify from 'dompurify';
 import showToast from 'lib/toast';
 import { uploadFileToStorage } from 'lib/storageService';
-import { Camera, Upload, Trash2, FileText, CheckCircle2, BookOpen, ShieldAlert, Award, ArrowLeft, ChevronRight } from 'lucide-react';
+import { Camera, Upload, Trash2, FileText, CheckCircle2, BookOpen, ShieldAlert, Award, ArrowLeft, ChevronRight, ClipboardList } from 'lucide-react';
 
 const HRResources: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const location = useLocation();
-    const [view, setView] = useState<'menu' | 'handbook' | 'safety' | 'certs'>('menu');
+    const [view, setView] = useState<'menu' | 'handbook' | 'safety' | 'certs' | 'onboarding'>('menu');
     const { currentUser: user } = state;
 
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
-        if (tab === 'handbook' || tab === 'safety' || tab === 'certs') {
+        if (tab === 'handbook' || tab === 'safety' || tab === 'certs' || tab === 'onboarding') {
             setView(tab);
         } else {
             setView('menu');
@@ -172,6 +172,16 @@ const HRResources: React.FC = () => {
                                 Manage Certs <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
                             </div>
                         </button>
+                        <button onClick={() => setView('onboarding')} className="group flex flex-col items-start p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 hover:border-blue-500 transition-all hover:-translate-y-1 text-left">
+                            <div className="w-14 h-14 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                                <ClipboardList size={28} />
+                            </div>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Hiring Packet</h2>
+                            <p className="text-slate-500 text-sm mb-6 flex-1">Complete your new hire onboarding packet, including W-4, direct deposit, and policy signatures.</p>
+                            <div className="flex items-center text-blue-600 font-bold text-sm">
+                                View Packet <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
+                            </div>
+                        </button>
                     </div>
                 </>
             ) : (
@@ -184,6 +194,7 @@ const HRResources: React.FC = () => {
                             {view === 'handbook' && 'Company Handbook & Policies'}
                             {view === 'safety' && 'Safety & Incident Reporting'}
                             {view === 'certs' && 'My Certifications'}
+                            {view === 'onboarding' && 'Hiring & Onboarding Packet'}
                         </h1>
                     </header>
                 </div>
@@ -352,6 +363,63 @@ const HRResources: React.FC = () => {
                         </div>
                     </div>
                 </Card>
+            )}
+
+            {view === 'onboarding' && (
+                <div className="max-w-4xl mx-auto space-y-6">
+                    <Card>
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-900 dark:text-white">New Hire Packet</h3>
+                                <p className="text-gray-500 mt-1">Please complete all required steps to finalize your onboarding.</p>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-3xl font-black text-primary-600">
+                                    {[user?.hiringPacketStatus?.w4Completed, user?.hiringPacketStatus?.i9Completed, user?.hiringPacketStatus?.directDepositCompleted, user?.hiringPacketStatus?.handbookSigned, user?.hiringPacketStatus?.idUploaded].filter(Boolean).length}
+                                </span>
+                                <span className="text-slate-400 font-bold"> / 5</span>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Completed</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            {[
+                                { id: 'w4Completed', title: 'W-4 Tax Withholding', desc: 'Complete your federal tax withholding information.', status: user?.hiringPacketStatus?.w4Completed },
+                                { id: 'i9Completed', title: 'I-9 Employment Eligibility', desc: 'Verify your eligibility to work in the United States.', status: user?.hiringPacketStatus?.i9Completed },
+                                { id: 'directDepositCompleted', title: 'Direct Deposit Setup', desc: 'Provide your banking details for payroll.', status: user?.hiringPacketStatus?.directDepositCompleted },
+                                { id: 'handbookSigned', title: 'Employee Handbook Acknowledgment', desc: 'Read and sign the company policies and handbook.', status: user?.hiringPacketStatus?.handbookSigned },
+                                { id: 'idUploaded', title: 'Government ID Upload', desc: 'Provide a clear copy of your driver\'s license or state ID.', status: user?.hiringPacketStatus?.idUploaded },
+                            ].map(step => (
+                                <div key={step.id} className={`p-5 rounded-2xl border-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${step.status ? 'border-green-200 bg-green-50 dark:border-green-900/30 dark:bg-green-900/10' : 'border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900'}`}>
+                                    <div className="flex gap-4">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${step.status ? 'bg-green-500 text-white' : 'bg-slate-100 text-slate-400 dark:bg-slate-800'}`}>
+                                            {step.status ? <CheckCircle2 size={20} /> : <div className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-600" />}
+                                        </div>
+                                        <div>
+                                            <h4 className={`font-bold text-lg ${step.status ? 'text-green-900 dark:text-green-400' : 'text-slate-900 dark:text-white'}`}>{step.title}</h4>
+                                            <p className={`text-sm ${step.status ? 'text-green-700 dark:text-green-600' : 'text-slate-500'}`}>{step.desc}</p>
+                                        </div>
+                                    </div>
+                                    <div className="w-full sm:w-auto flex-shrink-0">
+                                        <Button variant={step.status ? 'secondary' : 'primary'} className="w-full sm:w-auto">
+                                            {step.status ? 'Review' : 'Start'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                            <Button 
+                                className="w-full py-4 text-lg shadow-lg shadow-primary-500/20"
+                                disabled={!user?.hiringPacketStatus?.w4Completed || !user?.hiringPacketStatus?.i9Completed || !user?.hiringPacketStatus?.directDepositCompleted || !user?.hiringPacketStatus?.handbookSigned || !user?.hiringPacketStatus?.idUploaded}
+                            >
+                                Submit Final Hiring Packet
+                            </Button>
+                            <p className="text-center text-xs text-slate-500 mt-4">You must complete all steps before final submission to HR.</p>
+                        </div>
+                    </Card>
+                </div>
             )}
         </div>
     );

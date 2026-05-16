@@ -9,10 +9,11 @@ import Toggle from '../ui/Toggle';
 import { useAppContext } from 'context/AppContext';
 import { db, auth } from 'lib/firebase';
 import type { User } from 'types';
-import { User as UserIcon, Lock, Mail, Camera, RefreshCw, CheckCircle, Sparkles, Key, Trash2, DollarSign, Settings, Search, Filter, Eye, EyeOff, FileText, Upload, Download } from 'lucide-react';
+import { User as UserIcon, Lock, Mail, Camera, CheckCircle, Key, Trash2, DollarSign, Settings, Search, Filter, Eye, EyeOff, FileText, Upload, Download, ClipboardList } from 'lucide-react';
 import HRHandbookView from '../../pages/admin/compliance/components/HRHandbookView';
+import HiringPacketView from '../../pages/admin/compliance/components/HiringPacketView';
 import { encryptSensitiveData, decryptSensitiveData } from 'lib/encryption';
-import { sendEmail } from 'lib/notificationService';
+import { sendEmail, notifyAdmins } from 'lib/notificationService';
 import { uploadFileToStorage } from 'lib/storageService';
 import showToast from 'lib/toast';
 
@@ -30,7 +31,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
     const isOrgAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin';
     const isSelf = !!isSelfProp;
     const [formData, setFormData] = useState<Partial<User>>(initialData);
-    const [activeTab, setActiveTab] = useState<'details' | 'roles' | 'permissions' | 'payroll' | 'hr_files' | 'security'>('details');
+    const [activeTab, setActiveTab] = useState<'details' | 'info' | 'roles' | 'permissions' | 'payroll' | 'hr_files' | 'security' | 'onboarding'>('details');
     const [showSensitive, setShowSensitive] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isDecrypting, setIsDecrypting] = useState(false);
@@ -96,8 +97,9 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         localStorage.removeItem('virtual-worker-pos');
         localStorage.removeItem('live-support-hidden');
         localStorage.removeItem('live-support-pos');
-        showToast.success("UI bubbles reset. Refreshing...");
-        window.location.reload();
+        showToast.success("UI bubbles reset. They will reappear shortly.");
+        // Dispatch a custom event so bubble components re-evaluate visibility without a full reload
+        window.dispatchEvent(new CustomEvent('ui-overlay-reset'));
     };
 
     const handleDeleteAccount = async () => {
@@ -241,8 +243,31 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         if (!formData.firstName || !formData.lastName) { showToast.warn("First and Last Name are required."); return; }
         if (!isOfflineOnly && !normalizedEmail && !formData.id) { showToast.warn("Email is required for App Access users."); return; }
         if (isOfflineOnly && (!formData.kioskPin || formData.kioskPin.length !== 4)) { showToast.warn("A 4-digit Kiosk PIN is required for Offline employees."); return; }
+
+        if (formData.ssn) {
+            const ssnDigits = formData.ssn.replace(/\D/g, '');
+            if (ssnDigits.length !== 9) {
+                showToast.warn("SSN must be exactly 9 digits.");
+                return;
+            }
+        }
+        
+        if (formData.directDeposit?.preference === 'Direct Deposit') {
+            const rn = formData.directDeposit.routingNumber?.replace(/\D/g, '');
+            if (!rn || rn.length !== 9) {
+                showToast.warn("Routing number must be exactly 9 digits.");
+                return;
+            }
+            const an = formData.directDeposit.accountNumber?.replace(/\D/g, '');
+            if (!an || an.length < 4) {
+                showToast.warn("Please enter a valid account number.");
+                return;
+            }
+        }
+
         setIsSaving(true);
         const orgId = state.currentOrganization.id;
+        const isNewUser = !formData.id;
         const id = formData.id || (isOfflineOnly ? `kiosk-${Date.now()}` : normalizedEmail);
         try {
             let finalPayRate = formData.payRate;
@@ -266,11 +291,25 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
             }
             Object.keys(finalData).forEach(key => finalData[key] === undefined && delete finalData[key]);
             
+            // Do not overwrite fields managed by child components
+            delete finalData.signedPolicies;
+            delete finalData.policySignatures;
+            delete finalData.formSubmissions;
+            
             // Log for debugging
             console.log("Saving user profile:", id, finalData);
             
-            if (formData.id) await db.collection('users').doc(id).update(finalData);
-            else await db.collection('users').doc(id).set(finalData);
+            if (isNewUser) {
+                await db.collection('users').doc(id).set(finalData);
+                // Send reminder for new hires
+                notifyAdmins(orgId, {
+                    title: 'Action Required: New Hire Reporting',
+                    body: `A new employee (${finalData.firstName} ${finalData.lastName}) has been added. Please remember to report new hires to the state registry within 20 days of their hire date.`,
+                    type: 'system_alert'
+                });
+            } else {
+                await db.collection('users').doc(id).update(finalData);
+            }
             dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...initialData, ...finalData } as User });
             onClose();
         } catch (error: any) { 
@@ -292,8 +331,8 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
     ];
 
     const allowedTabs = isSelf 
-        ? ['details', 'hr_files', 'security', ...(isOrgAdmin ? ['roles', 'permissions', 'payroll'] : [])] 
-        : ['details', 'roles', 'permissions', 'payroll', 'hr_files'];
+        ? ['details', 'info', 'hr_files', 'security', 'onboarding', ...(isOrgAdmin ? ['roles', 'permissions', 'payroll'] : [])] 
+        : ['details', 'info', 'roles', 'permissions', 'payroll', 'hr_files', 'onboarding'];
 
     const activeHRCats = state.currentOrganization?.hrFileCategories || ['Drug Test', 'Writeup', 'License', 'Time Off', 'Onboarding', 'Other'];
 
@@ -320,7 +359,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                     <div className="w-full md:w-2/3 flex flex-col">
                         <div className="flex border-b dark:border-gray-700 mb-4 overflow-x-auto">
                             {allowedTabs.map(tab => (
-                                <button key={tab} type="button" onClick={() => setActiveTab(tab as any)} className={`shrink-0 min-w-max whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize ${activeTab === tab ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'}`}>{tab === 'hr_files' ? 'HR Files' : tab}</button>
+                                <button key={tab} type="button" onClick={() => setActiveTab(tab as any)} className={`shrink-0 min-w-max whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize ${activeTab === tab ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'}`}>{tab === 'hr_files' ? 'HR Files' : tab === 'onboarding' ? 'Onboarding Packet' : tab === 'info' ? 'Employee Info' : tab}</button>
                             ))}
                         </div>
                         <form noValidate onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
@@ -345,6 +384,90 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                 <Input label="Kiosk Access PIN (4 Digits)" type="text" maxLength={4} value={formData.kioskPin || ''} onChange={e => setFormData({...formData, kioskPin: e.target.value.replace(/\D/g, '')})} placeholder="1234" />
                                 <Input label="Phone" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></>
                             )}
+
+                            {activeTab === 'info' && (
+                                <div className="space-y-6">
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                                        <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Personal Information</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <Input label="Date of Birth" type="date" value={formData.dob || ''} onChange={e => setFormData({...formData, dob: e.target.value})} />
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="md:col-span-3">
+                                                <Input label="Home Address" value={formData.address?.street || ''} onChange={e => setFormData({...formData, address: {...(formData.address as any), street: e.target.value}})} />
+                                            </div>
+                                            <Input label="City" value={formData.address?.city || ''} onChange={e => setFormData({...formData, address: {...(formData.address as any), city: e.target.value}})} />
+                                            <Input label="State" value={formData.address?.state || ''} onChange={e => setFormData({...formData, address: {...(formData.address as any), state: e.target.value}})} />
+                                            <Input label="ZIP Code" value={formData.address?.zip || ''} onChange={e => setFormData({...formData, address: {...(formData.address as any), zip: e.target.value}})} />
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                                        <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Emergency Contact</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <Input label="Contact Name" value={formData.emergencyContact?.name || ''} onChange={e => setFormData({...formData, emergencyContact: {...(formData.emergencyContact as any), name: e.target.value}})} />
+                                            <Input label="Relationship" value={formData.emergencyContact?.relationship || ''} onChange={e => setFormData({...formData, emergencyContact: {...(formData.emergencyContact as any), relationship: e.target.value}})} />
+                                            <Input label="Phone Number" value={formData.emergencyContact?.phone || ''} onChange={e => setFormData({...formData, emergencyContact: {...(formData.emergencyContact as any), phone: e.target.value}})} />
+                                            <Input label="Alternate Phone" value={formData.emergencyContact?.alternatePhone || ''} onChange={e => setFormData({...formData, emergencyContact: {...(formData.emergencyContact as any), alternatePhone: e.target.value}})} />
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                                        <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Employment Details</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <Input label="Start Date" type="date" value={formData.hireDate || ''} onChange={e => setFormData({...formData, hireDate: e.target.value})} />
+                                            <Select label="Employment Type" value={formData.employmentType || ''} onChange={e => setFormData({...formData, employmentType: e.target.value as any})}>
+                                                <option value="">Select Type...</option>
+                                                <option value="Full-Time">Full-Time</option>
+                                                <option value="Part-Time">Part-Time</option>
+                                                <option value="Temporary">Temporary</option>
+                                            </Select>
+                                            <Input label="Department" value={formData.department || ''} onChange={e => setFormData({...formData, department: e.target.value})} />
+                                            <Input label="Supervisor" value={formData.reportsTo || ''} onChange={e => setFormData({...formData, reportsTo: e.target.value})} />
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                                        <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Driver's License (if driving company vehicles)</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <Input label="License Number" value={formData.driversLicense?.number || ''} onChange={e => setFormData({...formData, driversLicense: {...(formData.driversLicense as any), number: e.target.value}})} />
+                                            <Input label="State" value={formData.driversLicense?.state || ''} onChange={e => setFormData({...formData, driversLicense: {...(formData.driversLicense as any), state: e.target.value}})} />
+                                            <Input label="Expiration Date" type="date" value={formData.driversLicense?.expiryDate || ''} onChange={e => setFormData({...formData, driversLicense: {...(formData.driversLicense as any), expiryDate: e.target.value}})} />
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                                        <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Direct Deposit Authorization</h4>
+                                        <Select label="Preference" value={formData.directDeposit?.preference || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit || {}), preference: e.target.value as any}})}>
+                                            <option value="">Select Preference...</option>
+                                            <option value="Direct Deposit">Yes, I will complete a Direct Deposit Authorization Form</option>
+                                            <option value="Paper Check">No, I prefer paper checks</option>
+                                        </Select>
+                                        
+                                        {formData.directDeposit?.preference === 'Direct Deposit' && (
+                                            <>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <Input label="Bank Name" value={formData.directDeposit?.bankName || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), bankName: e.target.value}})} />
+                                                    <Select label="Account Type" value={formData.directDeposit?.accountType || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), accountType: e.target.value as any}})}>
+                                                        <option value="">Select Type...</option>
+                                                        <option value="Checking">Checking</option>
+                                                        <option value="Savings">Savings</option>
+                                                    </Select>
+                                                    <Input label="Routing Number" value={formData.directDeposit?.routingNumber || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), routingNumber: e.target.value}})} />
+                                                    <Input label="Account Number" value={formData.directDeposit?.accountNumber || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), accountNumber: e.target.value}})} />
+                                                    <Input label="Effective Date" type="date" value={formData.directDeposit?.effectiveDate || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), effectiveDate: e.target.value}})} />
+                                                </div>
+                                                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg mt-4 border border-blue-100 dark:border-blue-800">
+                                                    <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
+                                                        I authorize TekAir Inc. to deposit my wages by electronic funds transfer into the account listed above and to reverse any erroneous credit entries as permitted by law and applicable banking rules. This authorization remains in effect until I submit a written change or cancellation and TekAir Inc. has had a reasonable opportunity to process it.
+                                                    </p>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                </div>
+                            )}
                             
                             {activeTab === 'roles' && (!isSelf || isOrgAdmin) && (
                                 <div className="space-y-6">
@@ -363,7 +486,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                     <p className="text-xs text-slate-500 mb-4">Grant or revoke access to specific platform areas regardless of role.</p>
                                     <div className="space-y-2">
                                         {availablePermissions.map(p => (
-                                            <div key={p.id} className="flex items-center justify-between p-3 bg-white dark:bg-slate-800 border rounded-lg hover:border-primary-500 transition-colors cursor-pointer" onClick={() => handleTogglePermission(p.id)}>
+                                            <div key={p.id} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') handleTogglePermission(p.id) }} className="flex items-center justify-between p-3 bg-white dark:bg-slate-800 border rounded-lg hover:border-primary-500 transition-colors cursor-pointer" onClick={() => handleTogglePermission(p.id)}>
                                                 <div>
                                                     <p className="text-sm font-bold">{p.label}</p>
                                                     <p className="text-[10px] text-slate-500">{p.desc}</p>
@@ -546,6 +669,57 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                             )}
                                         </div>
                                     </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'onboarding' && (
+                                <div className="space-y-4">
+                                    <div className="mb-6">
+                                        <HiringPacketView employee={formData as User} isSelf={isSelf} />
+                                    </div>
+                                    
+                                    {(!isSelf || isOrgAdmin) && (
+                                        <>
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2"><ClipboardList size={16}/> Hiring Packet Tracking</h4>
+                                            <p className="text-xs text-slate-500 mb-4">Track this employee's onboarding progress. Check off items as they are verified by HR.</p>
+                                            
+                                            <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-4">
+                                                <Toggle 
+                                                    label="W-4 Tax Withholding Completed"
+                                                    enabled={formData.hiringPacketStatus?.w4Completed || false} 
+                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), w4Completed: val}})} 
+                                                />
+                                                <Toggle 
+                                                    label="I-9 Employment Eligibility Verified"
+                                                    enabled={formData.hiringPacketStatus?.i9Completed || false} 
+                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), i9Completed: val}})} 
+                                                />
+                                                <Toggle 
+                                                    label="Direct Deposit Setup"
+                                                    enabled={formData.hiringPacketStatus?.directDepositCompleted || false} 
+                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), directDepositCompleted: val}})} 
+                                                />
+                                                <Toggle 
+                                                    label="Handbook Signed & Acknowledged"
+                                                    enabled={formData.hiringPacketStatus?.handbookSigned || false} 
+                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), handbookSigned: val}})} 
+                                                />
+                                                <Toggle 
+                                                    label="Government ID Uploaded"
+                                                    enabled={formData.hiringPacketStatus?.idUploaded || false} 
+                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), idUploaded: val}})} 
+                                                />
+                                            </div>
+                                            <div className="mt-4 p-4 border rounded-lg bg-white dark:bg-slate-900">
+                                                <h5 className="font-bold text-sm mb-2 dark:text-white">Packet Status</h5>
+                                                {formData.hiringPacketStatus?.w4Completed && formData.hiringPacketStatus?.i9Completed && formData.hiringPacketStatus?.directDepositCompleted && formData.hiringPacketStatus?.handbookSigned && formData.hiringPacketStatus?.idUploaded ? (
+                                                    <div className="text-green-600 font-bold flex items-center gap-2"><CheckCircle size={16}/> Fully Complete</div>
+                                                ) : (
+                                                    <div className="text-amber-600 font-bold">Pending Completion</div>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             )}
 

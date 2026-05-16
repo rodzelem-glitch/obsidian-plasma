@@ -1,0 +1,757 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.processAutomatedBilling = exports.submitDisputeEvidence = exports.refundKortPayment = exports.tilledWebhook = exports.createKortSetupIntent = exports.generateKortOnboardingLink = exports.createKortPaymentIntent = void 0;
+/* eslint-disable no-undef, @typescript-eslint/no-explicit-any */
+const functions = __importStar(require("firebase-functions/v1"));
+const admin = __importStar(require("firebase-admin"));
+const params_1 = require("firebase-functions/params");
+const kortSecretKey = (0, params_1.defineSecret)('KORT_SECRET_KEY');
+const kortAccountId = (0, params_1.defineSecret)('KORT_ACCOUNT_ID');
+const kortWebhookSecret = (0, params_1.defineSecret)('KORT_WEBHOOK_SECRET');
+exports.createKortPaymentIntent = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, _context) => {
+    const { amount, currency, organizationId, metadata } = data;
+    if (!amount) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required payment details (amount).');
+    }
+    const secretKey = kortSecretKey.value();
+    const partnerAccountId = kortAccountId.value();
+    if (!secretKey || !partnerAccountId) {
+        throw new functions.https.HttpsError('failed-precondition', 'Kort Payments is not fully configured on the server.');
+    }
+    try {
+        const db = admin.firestore();
+        let accountId = data.accountId; // In case the frontend passed it directly
+        if (!accountId && organizationId) {
+            const orgDoc = await db.collection('organizations').doc(organizationId).get();
+            if (orgDoc.exists) {
+                accountId = orgDoc.data()?.kortAccountId;
+            }
+        }
+        if (!accountId) {
+            throw new functions.https.HttpsError('failed-precondition', 'Organization does not have a connected Kort account.');
+        }
+        const amountCents = Math.round(amount * 100);
+        const payload = {
+            amount: amountCents,
+            currency: currency || 'usd',
+            payment_method_types: data.paymentMethodType ? [data.paymentMethodType] : ['card', 'ach_debit'],
+            metadata: {
+                organizationId: organizationId || 'unknown',
+                jobId: data.jobId || 'unknown',
+                ...metadata
+            }
+        };
+        if (data.platformFeeAmount !== undefined && data.platformFeeAmount > 0) {
+            payload.platform_fee_amount = Math.round(data.platformFeeAmount * 100);
+        }
+        const response = await fetch('https://sandbox-api.tilled.com/v1/payment-intents', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'tilled-api-key': secretKey,
+                'tilled-account': accountId,
+                'Idempotency-Key': data.idempotencyKey || `create-intent-${organizationId}-${Math.random().toString(36).substring(7)}-${Date.now()}`
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(`Kort API Error: ${JSON.stringify(errData)}`);
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const responseData = await response.json();
+        // Return the client_secret so the frontend can confirm the payment
+        return {
+            success: true,
+            client_secret: responseData.client_secret,
+            id: responseData.id
+        };
+    }
+    catch (error) {
+        functions.logger.error("Kort Payment Intent Error:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Payment processing failed.');
+    }
+});
+exports.generateKortOnboardingLink = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, _context) => {
+    const { organizationId, email } = data;
+    if (!organizationId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing organization ID.');
+    }
+    const secretKey = kortSecretKey.value();
+    const partnerAccountId = kortAccountId.value(); // Your partner account
+    if (!secretKey || !partnerAccountId) {
+        throw new functions.https.HttpsError('failed-precondition', 'Kort Payments API is not configured on the server.');
+    }
+    try {
+        const db = admin.firestore();
+        const orgDoc = await db.collection('organizations').doc(organizationId).get();
+        const orgData = orgDoc.data() || {};
+        const merchantEmail = email || orgData.email || 'partner@tektrakker.com';
+        const merchantName = orgData.name || 'TekTrakker Merchant';
+        let newAccountId = orgData.kortAccountId;
+        let tilledUserId = orgData.tilledUserId;
+        let targetRedirectUrl = `https://tektrakker.sandbox-paymentsonline.io/onboarding/?account_id=${newAccountId}`;
+        if (!newAccountId) {
+            // Step 1: Create a connected account (merchant) under your platform
+            const createMerchantRes = await fetch('https://sandbox-api.tilled.com/v1/accounts/connected', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'tilled-api-key': secretKey,
+                    'tilled-account': partnerAccountId
+                },
+                body: JSON.stringify({
+                    name: merchantName,
+                    email: merchantEmail
+                })
+            });
+            if (!createMerchantRes.ok) {
+                const errData = await createMerchantRes.json();
+                throw new Error(`Failed to create merchant account: ${JSON.stringify(errData)}`);
+            }
+            const accountData = await createMerchantRes.json();
+            newAccountId = accountData.id;
+            // Immediate partial save
+            await db.collection('organizations').doc(organizationId).update({ kortAccountId: newAccountId });
+        }
+        if (!tilledUserId) {
+            // Ensure unique email for user to prevent 403 "This email already exists" across Sandbox testing
+            const uniqueUserEmail = `${merchantEmail.split('@')[0]}+${organizationId.substring(0, 6)}@${merchantEmail.split('@')[1] || 'tektrakker.com'}`;
+            // Step 2: Create a user attached to this new merchant account
+            const randomPassword = Math.random().toString(36).slice(-8) + 'A1!'; // meets complexity reqs
+            const createUserRes = await fetch('https://sandbox-api.tilled.com/v1/users', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'tilled-api-key': secretKey,
+                    'tilled-account': newAccountId
+                },
+                body: JSON.stringify({
+                    email: uniqueUserEmail,
+                    name: merchantName,
+                    password: randomPassword,
+                    role: 'merchant_owner'
+                })
+            });
+            if (!createUserRes.ok) {
+                const errData = await createUserRes.json();
+                throw new Error(`Failed to create merchant user: ${JSON.stringify(errData)}`);
+            }
+            const userData = await createUserRes.json();
+            tilledUserId = userData.id;
+            // Save the user ID now that it's created
+            await db.collection('organizations').doc(organizationId).update({ tilledUserId: tilledUserId });
+        }
+        // Fetch account to get exact onboarding url
+        const getAccRes = await fetch(`https://sandbox-api.tilled.com/v1/accounts/connected/${newAccountId}`, {
+            headers: {
+                'tilled-api-key': secretKey,
+                'tilled-account': partnerAccountId
+            }
+        });
+        if (getAccRes.ok) {
+            const acc = await getAccRes.json();
+            if (acc.capabilities && acc.capabilities.length > 0 && acc.capabilities[0].onboarding_application_url) {
+                targetRedirectUrl = acc.capabilities[0].onboarding_application_url;
+            }
+        }
+        // Step 3: Generate an Auth Link for the user, targeting the onboarding page
+        const fallbackRedirect = `/onboarding/?account_id=${newAccountId}`;
+        const finalRedirectUrl = targetRedirectUrl && targetRedirectUrl !== `https://tektrakker.sandbox-paymentsonline.io/onboarding/?account_id=undefined`
+            ? targetRedirectUrl
+            : fallbackRedirect;
+        // Ensure we don't prepend the domain if Tilled already prepends it
+        const cleanRedirectUrl = finalRedirectUrl.startsWith('http') ? new URL(finalRedirectUrl).pathname + new URL(finalRedirectUrl).search : finalRedirectUrl;
+        const appRes = await fetch('https://sandbox-api.tilled.com/v1/auth-links', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'tilled-api-key': secretKey,
+                'tilled-account': newAccountId
+            },
+            body: JSON.stringify({
+                user_id: tilledUserId,
+                expiration: '30d',
+                redirect_url: cleanRedirectUrl
+            })
+        });
+        if (!appRes.ok) {
+            const errData = await appRes.json();
+            throw new Error(`Failed to generate auth link: ${JSON.stringify(errData)}`);
+        }
+        const appData = await appRes.json();
+        return {
+            success: true,
+            accountId: newAccountId,
+            onboardingUrl: appData.url
+        };
+    }
+    catch (error) {
+        functions.logger.error("Kort Onboarding Link Error:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Failed to generate onboarding link.');
+    }
+});
+// Retrieves or creates a Tilled Customer on the Platform Account for Subscriptions/Vaulting
+const getOrCreateKortCustomerHelper = async (organizationId, db, secretKey, partnerAccountId) => {
+    const orgRef = db.collection('organizations').doc(organizationId);
+    const orgDoc = await orgRef.get();
+    if (!orgDoc.exists) {
+        throw new Error("Organization not found.");
+    }
+    const orgData = orgDoc.data() || {};
+    if (orgData.platformCustomerId) {
+        return orgData.platformCustomerId;
+    }
+    // Create Customer in Tilled on the Platform Account
+    const createCustomerRes = await fetch('https://sandbox-api.tilled.com/v1/customers', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'tilled-api-key': secretKey,
+            'tilled-account': partnerAccountId
+        },
+        body: JSON.stringify({
+            email: orgData.email || 'unknown@example.com',
+            name: orgData.name || 'Unknown Organization',
+            metadata: {
+                organizationId: organizationId
+            }
+        })
+    });
+    if (!createCustomerRes.ok) {
+        const errData = await createCustomerRes.json();
+        throw new Error(`Failed to create Tilled customer: ${JSON.stringify(errData)}`);
+    }
+    const customerData = await createCustomerRes.json();
+    const customerId = customerData.id;
+    await orgRef.update({ platformCustomerId: customerId });
+    return customerId;
+};
+exports.createKortSetupIntent = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, _context) => {
+    const { organizationId, paymentMethodType } = data;
+    if (!organizationId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing organizationId.');
+    }
+    const secretKey = kortSecretKey.value();
+    const partnerAccountId = kortAccountId.value();
+    if (!secretKey || !partnerAccountId) {
+        throw new functions.https.HttpsError('failed-precondition', 'Kort Payments is not fully configured on the server.');
+    }
+    try {
+        const db = admin.firestore();
+        const customerId = await getOrCreateKortCustomerHelper(organizationId, db, secretKey, partnerAccountId);
+        const payload = {
+            customer_id: customerId,
+            payment_method_types: paymentMethodType ? [paymentMethodType] : ['card', 'ach_debit'],
+            metadata: {
+                organizationId: organizationId
+            }
+        };
+        const response = await fetch('https://sandbox-api.tilled.com/v1/setup-intents', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'tilled-api-key': secretKey,
+                'tilled-account': partnerAccountId,
+                'Idempotency-Key': `create-setup-${organizationId}-${Math.random().toString(36).substring(7)}-${Date.now()}`
+            },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(`Kort Setup Intent API Error: ${JSON.stringify(errData)}`);
+        }
+        const responseData = await response.json();
+        return {
+            success: true,
+            client_secret: responseData.client_secret,
+            id: responseData.id
+        };
+    }
+    catch (error) {
+        functions.logger.error("Kort Setup Intent Error:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Setup processing failed.');
+    }
+});
+exports.tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhookSecret] }).https.onRequest(async (req, res) => {
+    try {
+        const payload = req.body;
+        functions.logger.info("Received Tilled webhook payload:", JSON.stringify(payload));
+        if (!payload || !payload.type || !payload.account_id) {
+            res.status(400).send('Invalid payload structure');
+            return;
+        }
+        const eventType = payload.type;
+        const accountId = payload.account_id;
+        const eventData = payload.data || {};
+        const eventId = payload.id;
+        const db = admin.firestore();
+        // Idempotency check
+        if (eventId) {
+            const eventRef = db.collection('tilledWebhookEvents').doc(eventId);
+            const eventSnap = await eventRef.get();
+            if (eventSnap.exists) {
+                functions.logger.info(`Webhook event ${eventId} already processed. Skipping.`);
+                res.status(200).send('Already processed');
+                return;
+            }
+            await eventRef.set({ processedAt: new Date().toISOString(), type: eventType });
+        }
+        if (eventType === 'account.updated' || eventType === 'merchant.updated') {
+            // Find the organization with this Kort Account ID
+            const orgsSnapshot = await db.collection('organizations').where('kortAccountId', '==', accountId).limit(1).get();
+            if (orgsSnapshot.empty) {
+                functions.logger.warn(`No organization found with kortAccountId: ${accountId}`);
+                res.status(404).send('Organization not found for this account_id');
+                return;
+            }
+            const orgRef = orgsSnapshot.docs[0].ref;
+            const newStatus = eventData.status || 'active'; // Default to active if status is missing but event is received
+            // Log what we're updating
+            functions.logger.info(`Updating organization ${orgRef.id} status to ${newStatus}`);
+            await orgRef.update({
+                kortAccountStatus: newStatus
+            });
+            res.status(200).send('Webhook processed successfully');
+        }
+        else if (eventType === 'payment_intent.succeeded') {
+            const metadata = eventData.metadata || {};
+            const jobId = metadata.jobId;
+            if (jobId && jobId !== 'unknown') {
+                await db.collection('jobs').doc(jobId).update({
+                    'invoice.status': 'Paid',
+                    'invoice.paidDate': new Date().toISOString(),
+                    'invoice.paymentIntentId': eventData.id
+                });
+                functions.logger.info(`Job ${jobId} marked as Paid via webhook with intent ${eventData.id}.`);
+            }
+            res.status(200).send('Payment succeeded processed');
+        }
+        else if (eventType === 'payment_intent.payment_failed' || eventType === 'charge.failed') {
+            let metadata = eventData.metadata || {};
+            let jobId = metadata.jobId;
+            if (!jobId && eventData.payment_intent_id) {
+                const secretKey = kortSecretKey.value();
+                if (secretKey) {
+                    try {
+                        const piRes = await fetch(`https://sandbox-api.tilled.com/v1/payment-intents/${eventData.payment_intent_id}`, {
+                            headers: {
+                                'tilled-api-key': secretKey,
+                                'tilled-account': accountId
+                            }
+                        });
+                        if (piRes.ok) {
+                            const piData = await piRes.json();
+                            if (piData.metadata && piData.metadata.jobId) {
+                                jobId = piData.metadata.jobId;
+                            }
+                        }
+                    }
+                    catch (e) {
+                        functions.logger.error("Failed to fetch payment intent for failed charge metadata", e);
+                    }
+                }
+            }
+            if (jobId && jobId !== 'unknown') {
+                await db.collection('jobs').doc(jobId).update({
+                    'invoice.status': 'Failed',
+                    'invoice.failedDate': new Date().toISOString()
+                });
+                functions.logger.warn(`Job ${jobId} marked as Failed via webhook with intent ${eventData.id}.`);
+            }
+            else {
+                functions.logger.warn(`Payment failed for account ${accountId}, intent ${eventData.id}`);
+            }
+            res.status(200).send('Payment failed processed');
+        }
+        else if (eventType === 'charge.refunded') {
+            let metadata = eventData.metadata || {};
+            let jobId = metadata.jobId;
+            // If metadata is missing from the charge, fetch it from the payment intent
+            if (!jobId && eventData.payment_intent_id) {
+                const secretKey = kortSecretKey.value();
+                if (secretKey) {
+                    try {
+                        const piRes = await fetch(`https://sandbox-api.tilled.com/v1/payment-intents/${eventData.payment_intent_id}`, {
+                            headers: {
+                                'tilled-api-key': secretKey,
+                                'tilled-account': accountId
+                            }
+                        });
+                        if (piRes.ok) {
+                            const piData = await piRes.json();
+                            if (piData.metadata && piData.metadata.jobId) {
+                                jobId = piData.metadata.jobId;
+                            }
+                        }
+                    }
+                    catch (e) {
+                        functions.logger.error("Failed to fetch payment intent for refund metadata", e);
+                    }
+                }
+            }
+            if (jobId && jobId !== 'unknown') {
+                await db.collection('jobs').doc(jobId).update({
+                    'invoice.status': 'Refunded',
+                    'invoice.refundedDate': new Date().toISOString()
+                });
+                functions.logger.info(`Job ${jobId} marked as Refunded via webhook.`);
+            }
+            else {
+                functions.logger.warn(`Could not determine jobId for refunded charge ${eventData.id}`);
+            }
+            res.status(200).send('Refund processed');
+        }
+        else if (eventType.startsWith('charge.dispute.')) {
+            let metadata = eventData.metadata || {};
+            let jobId = metadata.jobId;
+            // If metadata is missing from the dispute, fetch it from the charge's payment intent
+            if (!jobId && eventData.charge_id) {
+                const secretKey = kortSecretKey.value();
+                if (secretKey) {
+                    try {
+                        const chargeRes = await fetch(`https://sandbox-api.tilled.com/v1/charges/${eventData.charge_id}`, {
+                            headers: {
+                                'tilled-api-key': secretKey,
+                                'tilled-account': accountId
+                            }
+                        });
+                        if (chargeRes.ok) {
+                            const chargeData = await chargeRes.json();
+                            if (chargeData.payment_intent_id) {
+                                const piRes = await fetch(`https://sandbox-api.tilled.com/v1/payment-intents/${chargeData.payment_intent_id}`, {
+                                    headers: {
+                                        'tilled-api-key': secretKey,
+                                        'tilled-account': accountId
+                                    }
+                                });
+                                if (piRes.ok) {
+                                    const piData = await piRes.json();
+                                    if (piData.metadata && piData.metadata.jobId) {
+                                        jobId = piData.metadata.jobId;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (e) {
+                        functions.logger.error("Failed to fetch payment intent for dispute metadata", e);
+                    }
+                }
+            }
+            // Save dispute to organization subcollection
+            const orgsSnapshot = await db.collection('organizations').where('kortAccountId', '==', accountId).limit(1).get();
+            if (!orgsSnapshot.empty) {
+                const orgId = orgsSnapshot.docs[0].id;
+                const disputeRef = db.collection('organizations').doc(orgId).collection('disputes').doc(eventData.id);
+                await disputeRef.set({
+                    id: eventData.id,
+                    chargeId: eventData.charge_id,
+                    amount: eventData.amount,
+                    currency: eventData.currency,
+                    status: eventData.status || 'needs_response',
+                    reason: eventData.reason || 'fraudulent',
+                    created: eventData.created_at || new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    jobId: jobId || 'unknown'
+                }, { merge: true });
+                functions.logger.info(`Dispute ${eventData.id} for org ${orgId} saved.`);
+            }
+            if (jobId && jobId !== 'unknown') {
+                if (eventType === 'charge.dispute.created') {
+                    await db.collection('jobs').doc(jobId).update({
+                        'invoice.status': 'Disputed',
+                        'invoice.disputedDate': new Date().toISOString()
+                    });
+                    functions.logger.info(`Job ${jobId} marked as Disputed via webhook.`);
+                }
+            }
+            else {
+                functions.logger.warn(`Could not determine jobId for disputed charge ${eventData.id}`);
+            }
+            res.status(200).send('Dispute processed');
+        }
+        else if (eventType.startsWith('payout.')) {
+            // Find the organization with this Kort Account ID
+            const orgsSnapshot = await db.collection('organizations').where('kortAccountId', '==', accountId).limit(1).get();
+            if (orgsSnapshot.empty) {
+                functions.logger.warn(`No organization found for payout webhook with accountId: ${accountId}`);
+                res.status(404).send('Organization not found');
+                return;
+            }
+            const orgId = orgsSnapshot.docs[0].id;
+            const payoutRef = db.collection('organizations').doc(orgId).collection('payouts').doc(eventData.id);
+            await payoutRef.set({
+                id: eventData.id,
+                amount: eventData.amount,
+                currency: eventData.currency,
+                status: eventData.status,
+                arrivalDate: eventData.arrival_date,
+                created: eventData.created_at || new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                type: eventType,
+                statementDescriptor: eventData.statement_descriptor || 'Tilled Payout'
+            }, { merge: true });
+            functions.logger.info(`Payout ${eventData.id} for org ${orgId} updated to ${eventData.status}`);
+            res.status(200).send('Payout processed');
+        }
+        else {
+            // Unhandled event type, still return 200 so Tilled doesn't retry endlessly
+            functions.logger.info(`Unhandled webhook event type: ${eventType}`);
+            res.status(200).send(`Unhandled event type: ${eventType}`);
+        }
+    }
+    catch (error) {
+        functions.logger.error("Error processing Tilled webhook:", error);
+        res.status(500).send("Internal Server Error processing webhook");
+    }
+});
+exports.refundKortPayment = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, _context) => {
+    const { paymentIntentId, amount, organizationId } = data;
+    if (!paymentIntentId || !organizationId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing paymentIntentId or organizationId.');
+    }
+    const secretKey = kortSecretKey.value();
+    const partnerAccountId = kortAccountId.value();
+    if (!secretKey || !partnerAccountId) {
+        throw new functions.https.HttpsError('failed-precondition', 'Kort Payments API is not configured.');
+    }
+    try {
+        const db = admin.firestore();
+        const orgDoc = await db.collection('organizations').doc(organizationId).get();
+        if (!orgDoc.exists)
+            throw new Error("Organization not found.");
+        const orgData = orgDoc.data() || {};
+        const accountId = orgData.kortAccountId;
+        if (!accountId)
+            throw new Error("Organization does not have a Kort account.");
+        const refundBody = { payment_intent_id: paymentIntentId };
+        if (amount) {
+            refundBody.amount = Math.round(amount * 100);
+        }
+        const response = await fetch('https://sandbox-api.tilled.com/v1/refunds', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'tilled-api-key': secretKey,
+                'tilled-account': accountId,
+                'Idempotency-Key': data.idempotencyKey || `refund-${paymentIntentId}-${Math.random().toString(36).substring(7)}-${Date.now()}`
+            },
+            body: JSON.stringify(refundBody)
+        });
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(`Refund API Error: ${JSON.stringify(errData)}`);
+        }
+        const responseData = await response.json();
+        return { success: true, refundId: responseData.id };
+    }
+    catch (error) {
+        functions.logger.error("Kort Refund Error:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Refund failed.');
+    }
+});
+exports.submitDisputeEvidence = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, _context) => {
+    const { disputeId, organizationId, evidenceText } = data;
+    if (!disputeId || !organizationId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing disputeId or organizationId.');
+    }
+    const secretKey = kortSecretKey.value();
+    const partnerAccountId = kortAccountId.value();
+    if (!secretKey || !partnerAccountId) {
+        throw new functions.https.HttpsError('failed-precondition', 'Kort Payments API is not configured.');
+    }
+    try {
+        const db = admin.firestore();
+        const orgDoc = await db.collection('organizations').doc(organizationId).get();
+        if (!orgDoc.exists)
+            throw new Error("Organization not found.");
+        const orgData = orgDoc.data() || {};
+        const accountId = orgData.kortAccountId;
+        if (!accountId)
+            throw new Error("Organization does not have a Kort account.");
+        // NOTE: The exact Tilled endpoint might vary. We will attempt to update the dispute 
+        // with evidence text, and then submit it if required.
+        const response = await fetch(`https://sandbox-api.tilled.com/v1/disputes/${disputeId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'tilled-api-key': secretKey,
+                'tilled-account': accountId
+            },
+            body: JSON.stringify({
+                evidence: {
+                    uncategorized_text: evidenceText || "Evidence submitted by merchant."
+                }
+            })
+        });
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(`Evidence API Error: ${JSON.stringify(errData)}`);
+        }
+        const disputeRef = db.collection('organizations').doc(organizationId).collection('disputes').doc(disputeId);
+        await disputeRef.update({
+            evidenceSubmitted: true,
+            evidenceText: evidenceText,
+            status: 'under_review', // Optimistic update
+            updatedAt: new Date().toISOString()
+        });
+        return { success: true };
+    }
+    catch (error) {
+        functions.logger.error("Kort Dispute Evidence Error:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Evidence submission failed.');
+    }
+});
+exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).pubsub.schedule('0 0 * * *').timeZone('America/New_York').onRun(async (context) => {
+    const secretKey = kortSecretKey.value();
+    const partnerAccountId = kortAccountId.value();
+    if (!secretKey || !partnerAccountId) {
+        functions.logger.error('Kort API keys missing. Cannot run automated billing.');
+        return;
+    }
+    const db = admin.firestore();
+    const today = new Date();
+    try {
+        // Fetch platform settings to determine prices
+        const settingsDocs = await db.collection('platformSettings').limit(1).get();
+        const platformSettings = settingsDocs.docs[0]?.data();
+        const monthlyFee = platformSettings?.subscriptionFee || 7.00; // default 7$
+        const aiWorkerFee = platformSettings?.virtualWorkerFee || 10.00; // default 10$
+        // Find orgs that are due for billing and have a vaulted payment method
+        const orgsSnap = await db.collection('organizations')
+            .where('platformVaultedPaymentMethodId', '!=', null)
+            .get();
+        const dueOrgs = orgsSnap.docs.filter(doc => {
+            const data = doc.data();
+            if (data.subscriptionStatus === 'canceled' || data.subscriptionStatus === 'suspended')
+                return false;
+            // Check if nextBillingDate is today or in the past
+            if (!data.nextBillingDate)
+                return true; // Bill immediately if no date set
+            const nextBilling = new Date(data.nextBillingDate);
+            return nextBilling <= today;
+        });
+        functions.logger.info(`Found ${dueOrgs.length} organizations due for billing today.`);
+        for (const doc of dueOrgs) {
+            const orgData = doc.data();
+            // Calculate amount
+            let totalAmount = monthlyFee;
+            if (orgData.virtualWorkerEnabled) {
+                totalAmount += aiWorkerFee;
+            }
+            const totalAmountCents = Math.round(totalAmount * 100);
+            const payload = {
+                amount: totalAmountCents,
+                currency: 'usd',
+                payment_method_id: orgData.platformVaultedPaymentMethodId,
+                customer_id: orgData.platformCustomerId,
+                confirm: true,
+                off_session: true,
+                metadata: {
+                    organizationId: doc.id,
+                    type: 'subscription'
+                }
+            };
+            try {
+                const response = await fetch('https://sandbox-api.tilled.com/v1/payment-intents', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'tilled-api-key': secretKey,
+                        'tilled-account': partnerAccountId,
+                        'Idempotency-Key': `billing-${doc.id}-${today.toISOString().split('T')[0]}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) {
+                    const piData = await response.json();
+                    if (piData.status === 'succeeded' || piData.status === 'processing') {
+                        // Success!
+                        const nextMonth = new Date(today);
+                        nextMonth.setMonth(nextMonth.getMonth() + 1);
+                        await db.collection('organizations').doc(doc.id).update({
+                            nextBillingDate: nextMonth.toISOString(),
+                            subscriptionStatus: 'active',
+                            failedPaymentAttempts: 0,
+                            lastBillingError: admin.firestore.FieldValue.delete()
+                        });
+                        await db.collection('platformInvoices').add({
+                            organizationId: doc.id,
+                            amount: totalAmount,
+                            date: today.toISOString(),
+                            status: 'paid',
+                            paymentIntentId: piData.id,
+                            description: 'TekTrakker Monthly Subscription'
+                        });
+                        functions.logger.info(`Successfully billed ${doc.id} for $${totalAmount}`);
+                    }
+                    else {
+                        throw new Error(`Intent status: ${piData.status}`);
+                    }
+                }
+                else {
+                    const errData = await response.json();
+                    throw new Error(JSON.stringify(errData));
+                }
+            }
+            catch (err) {
+                // Dunning logic
+                functions.logger.error(`Failed to bill ${doc.id}: ${err.message}`);
+                const failedAttempts = (orgData.failedPaymentAttempts || 0) + 1;
+                const updates = {
+                    failedPaymentAttempts: failedAttempts,
+                    lastBillingError: err.message,
+                    subscriptionStatus: failedAttempts >= 3 ? 'suspended' : 'past_due'
+                };
+                // If not suspended, retry tomorrow (nextBillingDate stays in past)
+                await db.collection('organizations').doc(doc.id).update(updates);
+                await db.collection('platformInvoices').add({
+                    organizationId: doc.id,
+                    amount: totalAmount,
+                    date: today.toISOString(),
+                    status: 'failed',
+                    description: 'TekTrakker Monthly Subscription',
+                    error: err.message
+                });
+            }
+        }
+    }
+    catch (e) {
+        functions.logger.error('Fatal error in processAutomatedBilling', e);
+    }
+});
+//# sourceMappingURL=kortPayments.js.map

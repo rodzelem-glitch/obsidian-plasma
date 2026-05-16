@@ -9,7 +9,8 @@ import Textarea from '../../components/ui/Textarea';
 import Modal from '../../components/ui/Modal';
 import { 
     PlusCircle, Trash2, GripVertical, Save, FileText, Wand2, CheckSquare, 
-    AlignLeft, Image, Type, ChevronDown, ChevronUp, Copy, Eye, Settings
+    AlignLeft, Image, Type, ChevronDown, ChevronUp, Copy, Settings,
+    Calendar, PenTool, ToggleLeft, ListChecks, CircleDot
 } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import type { InspectionTemplate, InspectionTemplateItem } from '../../types';
@@ -19,9 +20,14 @@ import { CHECKLISTS } from '../../constants/checklists';
 
 // Define available field types for the form builder
 const FIELD_TYPES: { type: InspectionTemplateItem['type'], icon: React.ElementType, label: string }[] = [
-    { type: 'PassFail', icon: CheckSquare, label: 'Pass/Fail' },
     { type: 'Text', icon: Type, label: 'Text' },
     { type: 'Textarea', icon: AlignLeft, label: 'Paragraph' },
+    { type: 'PassFail', icon: CheckSquare, label: 'Pass/Fail' },
+    { type: 'YesNo', icon: CircleDot, label: 'Yes / No' },
+    { type: 'Checkbox', icon: ToggleLeft, label: 'Checkbox' },
+    { type: 'CheckboxGroup', icon: ListChecks, label: 'Multi-Checkbox' },
+    { type: 'Date', icon: Calendar, label: 'Date' },
+    { type: 'Signature', icon: PenTool, label: 'Signature' },
     { type: 'Photo', icon: Image, label: 'Photo Upload' },
 ];
 
@@ -62,9 +68,10 @@ const FormBuilder: React.FC = () => {
     const addField = (type: InspectionTemplateItem['type']) => {
         const newItem: InspectionTemplateItem = {
             id: `item-${Date.now()}`,
-            label: `New ${type} Item`,
+            label: `New ${FIELD_TYPES.find(f => f.type === type)?.label || type} Item`,
             type,
             required: false,
+            ...(type === 'CheckboxGroup' ? { options: ['Option 1', 'Option 2'] } : {}),
         };
         if (editingTemplate) {
             setEditingTemplate(prev => ({ ...prev, items: [...(prev?.items || []), newItem] }));
@@ -111,7 +118,7 @@ const FormBuilder: React.FC = () => {
                 modelName = "gemini-3.1-pro-preview"; // For vision tasks
             }
 
-            let promptPayload: any = {
+            let promptPayload: Record<string, unknown> = {
                 modelName: modelName,
             };
 
@@ -122,8 +129,9 @@ const FormBuilder: React.FC = () => {
                 
                 Each object in the "items" array must have these properties:
                 - "label" (string): The clear and concise question or check to perform.
-                - "type" (string): Infer the best type. Must be one of: 'PassFail', 'Text', 'Textarea', 'Photo'.
+                - "type" (string): Infer the best type. Must be one of: 'PassFail', 'Text', 'Textarea', 'Photo', 'Checkbox', 'CheckboxGroup', 'Date', 'Signature', 'YesNo'.
                 - "required" (boolean): Infer if the item seems mandatory, default to false.
+                - "options" (string[] | optional): Only include for 'CheckboxGroup' type. Array of option labels.
 
                 Example: { "items": [{ "label": "Check tire pressure", "type": "PassFail", "required": true }] }
             `;
@@ -162,20 +170,22 @@ const FormBuilder: React.FC = () => {
             let parsedData;
             try {
                 parsedData = JSON.parse(jsonString);
-            } catch (e) {
+            } catch (_e) {
                 console.error("Failed to parse AI response as JSON:", data.text);
-                throw new Error("AI response was not valid JSON.");
+                throw new Error("AI response was not valid JSON.", { cause: _e });
             }
 
             if (!parsedData.items || !Array.isArray(parsedData.items)) {
                  throw new Error("AI response missing 'items' array.");
             }
             
-            const aiItems: InspectionTemplateItem[] = parsedData.items.map((item: any, index: number) => ({
+            const validTypes = ['PassFail', 'Text', 'Textarea', 'Photo', 'Checkbox', 'CheckboxGroup', 'Date', 'Signature', 'YesNo'];
+            const aiItems: InspectionTemplateItem[] = parsedData.items.map((item: Record<string, unknown>, index: number) => ({
                 id: `ai-item-${Date.now()}-${index}`,
-                label: item.label || "Untitled Item",
-                type: ['PassFail', 'Text', 'Textarea', 'Photo'].includes(item.type) ? item.type : 'PassFail',
+                label: (item.label as string) || "Untitled Item",
+                type: validTypes.includes(item.type as string) ? item.type as InspectionTemplateItem['type'] : 'PassFail',
                 required: !!item.required,
+                ...(item.type === 'CheckboxGroup' && item.options ? { options: item.options as string[] } : {}),
             }));
 
             if (editingTemplate) {
@@ -241,6 +251,7 @@ const FormBuilder: React.FC = () => {
                 items: editingTemplate.items || [],
                 createdAt: editingTemplate.createdAt || new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
+                isHiringPacket: editingTemplate.isHiringPacket || false,
             };
 
             await db.collection('inspectionTemplates').doc(templateToSave.id).set(templateToSave, { merge: true });
@@ -336,13 +347,27 @@ const FormBuilder: React.FC = () => {
                     {editingTemplate ? (
                         <Card className="h-full flex flex-col">
                             <div className="flex justify-between items-center mb-4 p-4 border-b border-slate-200 dark:border-slate-700">
-                                <Input 
-                                    label="Template Name"
-                                    value={editingTemplate.name || ''} 
-                                    onChange={e => setEditingTemplate(prev => ({...prev, name: e.target.value}))}
-                                    placeholder="e.g. Pre-Trip Vehicle Inspection" 
-                                    className="text-lg font-bold !p-0 !border-0 focus:!ring-0"
-                                />
+                                <div>
+                                    <Input 
+                                        label="Template Name"
+                                        value={editingTemplate.name || ''} 
+                                        onChange={e => setEditingTemplate(prev => ({...prev, name: e.target.value}))}
+                                        placeholder="e.g. Pre-Trip Vehicle Inspection" 
+                                        className="text-lg font-bold !p-0 !border-0 focus:!ring-0 mb-2"
+                                    />
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={editingTemplate.isHiringPacket || false} 
+                                            onChange={e => setEditingTemplate(prev => ({...prev, isHiringPacket: e.target.checked}))} 
+                                            id="is-hiring-packet" 
+                                            className="rounded w-4 h-4 text-primary-500" 
+                                        />
+                                        <label htmlFor="is-hiring-packet" className="text-sm font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                                            Assign to Hiring Packet
+                                        </label>
+                                    </div>
+                                </div>
                                 <Button onClick={handleSaveTemplate} disabled={isSaving}>
                                     <Save size={16} className="mr-2" /> {isSaving ? 'Saving...' : 'Save Template'}
                                 </Button>
@@ -359,19 +384,54 @@ const FormBuilder: React.FC = () => {
                                             </div>
                                             <div className="flex-1 space-y-2">
                                                 <Input value={item.label} onChange={e => updateField(item.id, { label: e.target.value })} placeholder="Field Label" className="font-semibold"/>
-                                                <div className="flex items-center gap-4">
-                                                    <div className="text-xs flex items-center gap-2 text-slate-500">
-                                                        <Settings size={14} /> {FIELD_TYPES.find(f=>f.type === item.type)?.label}
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="text-xs flex items-center gap-2 text-slate-500">
+                                                            <Settings size={14} /> {FIELD_TYPES.find(f=>f.type === item.type)?.label || item.type}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <input type="checkbox" checked={item.required} onChange={e => updateField(item.id, { required: e.target.checked })} id={`req-${item.id}`} className="rounded w-4 h-4" />
+                                                            <label htmlFor={`req-${item.id}`} className="text-xs text-slate-600 dark:text-slate-300">Required</label>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <input type="checkbox" checked={item.required} onChange={e => updateField(item.id, { required: e.target.checked })} id={`req-${item.id}`} className="rounded w-4 h-4" />
-                                                        <label htmlFor={`req-${item.id}`} className="text-xs text-slate-600 dark:text-slate-300">Required</label>
-                                                    </div>
-                                                </div>
+                                                    {item.type === 'CheckboxGroup' && (
+                                                        <div className="mt-2 space-y-2 pl-2 border-l-2 border-primary-200 dark:border-primary-800">
+                                                            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Options</p>
+                                                            {(item.options || []).map((opt, optIdx) => (
+                                                                <div key={optIdx} className="flex items-center gap-2">
+                                                                    <Input 
+                                                                        value={opt} 
+                                                                        onChange={e => {
+                                                                            const newOptions = [...(item.options || [])];
+                                                                            newOptions[optIdx] = e.target.value;
+                                                                            updateField(item.id, { options: newOptions });
+                                                                        }} 
+                                                                        className="text-sm flex-1" 
+                                                                        placeholder={`Option ${optIdx + 1}`}
+                                                                    />
+                                                                    <button 
+                                                                        onClick={() => {
+                                                                            const newOptions = (item.options || []).filter((_, i) => i !== optIdx);
+                                                                            updateField(item.id, { options: newOptions });
+                                                                        }}
+                                                                        className="text-slate-400 hover:text-red-500 p-1"
+                                                                        title="Remove option"
+                                                                    >
+                                                                        <Trash2 size={12} />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                            <button 
+                                                                onClick={() => updateField(item.id, { options: [...(item.options || []), `Option ${(item.options || []).length + 1}`] })}
+                                                                className="text-xs text-primary-600 hover:text-primary-700 font-semibold flex items-center gap-1"
+                                                            >
+                                                                <PlusCircle size={12} /> Add Option
+                                                            </button>
+                                                        </div>
+                                                    )}
                                             </div>
                                             <button title="Remove Field" onClick={() => removeField(item.id)} className="absolute top-2 right-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16} /></button>
                                         </div>
-                                    ))}\
+                                    ))}
                                     {(!editingTemplate.items || editingTemplate.items.length === 0) && (
                                         <div className="text-center py-20 border-2 border-dashed rounded-lg">
                                             <p className="text-slate-500">This template is empty.</p>

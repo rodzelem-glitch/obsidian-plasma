@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { doc, updateDoc } from 'firebase/firestore';
 import { Mail, Send, RefreshCw, X, RefreshCcw, AlertTriangle, PenTool, Bell, Edit } from 'lucide-react';
-import { functions } from '../../lib/firebase';
+import { functions, db } from '../../lib/firebase';
 import Button from '../../components/ui/Button';
 import showToast from '../../lib/toast';
 import { useAppContext } from '../../context/AppContext';
@@ -43,7 +44,15 @@ const MasterInbox: React.FC = () => {
   </tr>
 </table>
 `;
-  const [signatureHtml, setSignatureHtml] = useState<string>(localStorage.getItem('tt_admin_signature') || defaultSignature);
+  const [signatureHtml, setSignatureHtml] = useState<string>(defaultSignature);
+
+  useEffect(() => {
+    if (state.currentUser?.emailSignatureHtml) {
+      setSignatureHtml(state.currentUser.emailSignatureHtml);
+    } else {
+      setSignatureHtml(localStorage.getItem('tt_admin_signature') || defaultSignature);
+    }
+  }, [state.currentUser]);
 
   useEffect(() => {
     if (!state.currentUser) return; // Wait for Firebase Auth to initialize
@@ -228,8 +237,18 @@ const MasterInbox: React.FC = () => {
         const data = await res.json();
         
         // Save the subscription ID to our backend so the webhook knows who it belongs to!
-        // For now, we will store it in localStorage and the user's browser, but ideally we sync it to Firestore
         localStorage.setItem('tt_ms_subscription_id', data.id);
+        if (state.currentUser) {
+            try {
+                await db.collection('office365_subscriptions').doc(data.id).set({
+                    subscriptionId: data.id,
+                    userId: state.currentUser.uid,
+                    createdAt: new Date().toISOString()
+                });
+            } catch (err) {
+                console.error("Error saving subscription to Firestore", err);
+            }
+        }
         showToast.success("Push Notifications Enabled Successfully!");
       } else {
         const errorData = await res.json();
@@ -428,10 +447,20 @@ const MasterInbox: React.FC = () => {
 
             <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setShowSignatureModal(false)}>Cancel</Button>
-              <Button onClick={() => {
-                localStorage.setItem('tt_admin_signature', signatureHtml);
-                showToast.success("Signature saved successfully!");
-                setShowSignatureModal(false);
+              <Button onClick={async () => {
+                try {
+                  if (state.currentUser?.id) {
+                    await updateDoc(doc(db, 'users', state.currentUser.id), {
+                      emailSignatureHtml: signatureHtml
+                    });
+                  }
+                  localStorage.setItem('tt_admin_signature', signatureHtml);
+                  showToast.success("Signature saved successfully!");
+                  setShowSignatureModal(false);
+                } catch (err) {
+                  console.error("Failed to save signature", err);
+                  showToast.error("Failed to save signature");
+                }
               }}>Save Signature</Button>
             </div>
           </div>

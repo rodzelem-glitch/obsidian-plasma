@@ -4,6 +4,9 @@ import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
 import Modal from 'components/ui/Modal';
+import { useAppContext } from 'context/AppContext';
+import { notifyAdmins } from 'lib/notificationService';
+import showToast from 'lib/toast';
 
 interface Applicant {
     id: string;
@@ -15,6 +18,7 @@ interface Applicant {
 }
 
 const HiringView: React.FC = () => {
+    const { state } = useAppContext();
     // Local state for demo purposes as schema update wasn't requested for Applicants
     const [applicants, setApplicants] = useState<Applicant[]>([
         { id: '1', name: 'John Doe', role: 'HVAC Tech', phone: '555-0101', status: 'New', appliedDate: new Date().toISOString() },
@@ -44,6 +48,15 @@ const HiringView: React.FC = () => {
 
     const moveApplicant = (id: string, newStatus: Applicant['status']) => {
         setApplicants(applicants.map(a => a.id === id ? { ...a, status: newStatus } : a));
+        if (newStatus === 'Hired' && state.currentOrganization?.id) {
+            const applicant = applicants.find(a => a.id === id);
+            notifyAdmins(state.currentOrganization.id, {
+                title: 'New Hire Reporting Reminder',
+                body: `Reminder: You have just hired ${applicant?.name}. You are legally required to report all new hires to your state directory within 20 days.`,
+                type: 'system_alert'
+            });
+            showToast.success(`Hired! A 20-day compliance reminder has been sent.`);
+        }
     };
 
     return (

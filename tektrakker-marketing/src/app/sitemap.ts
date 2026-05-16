@@ -21,7 +21,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
         '/eula'
     ].map((route) => ({
         url: `${baseUrl}${route}`,
-        lastModified: new Date(),
+        lastModified: new Date().toISOString().split('T')[0],
         changeFrequency: 'weekly' as const,
         priority: route === '' ? 1 : 0.8,
     }));
@@ -29,7 +29,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // Dynamic Industry routes
     const industryRoutes = Object.keys(industriesData).map((slug) => ({
         url: `${baseUrl}/industries/${slug}`,
-        lastModified: new Date(),
+        lastModified: new Date().toISOString().split('T')[0],
         changeFrequency: 'monthly' as const,
         priority: 0.9,
     }));

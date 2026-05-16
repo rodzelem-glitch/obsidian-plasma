@@ -13,6 +13,7 @@ type InternalProposalItem = {
     type: 'Part' | 'Labor' | 'Service' | 'Fee' | 'Discount';
     tier: 'Good' | 'Better' | 'Best';
     taxable?: boolean;
+    isPercentage?: boolean;
 };
 
 type Tier = 'Good' | 'Better' | 'Best';
@@ -76,13 +77,13 @@ const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier
                             />
                         </div>
                         <div className="flex flex-col w-24">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase">Unit Price</label>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase">{item.isPercentage ? 'Percent (%)' : 'Unit Price'}</label>
                             <input 
                                 type="number" 
                                 className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded text-right font-bold text-sm p-1 text-slate-900 dark:text-white"
                                 value={item.unitPrice}
-                                aria-label="Unit Price"
-                                title="Unit Price"
+                                aria-label={item.isPercentage ? 'Percent (%)' : 'Unit Price'}
+                                title={item.isPercentage ? 'Percent (%)' : 'Unit Price'}
                                 onChange={e => onUpdate(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
                             />
                         </div>

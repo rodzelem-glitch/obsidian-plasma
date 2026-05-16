@@ -8,7 +8,7 @@ const executeWithRetry = async (operation: () => Promise<any>, maxRetries = 3, b
     while (attempt < maxRetries) {
         try {
             return await operation();
-        } catch (error: any) {
+        } catch (error: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             attempt++;
             if (error?.status === 429 || error?.message?.includes("429") || error?.message?.includes("quota") || error?.message?.includes("overloaded")) {
                 if (attempt >= maxRetries) throw error;
@@ -21,7 +21,7 @@ const executeWithRetry = async (operation: () => Promise<any>, maxRetries = 3, b
     }
 };
 
-export const analyzeRFPWithAI = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).https.onCall(async (data: any, context: any) => {
+export const analyzeRFPWithAI = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).https.onCall(async (data: any /* eslint-disable-line @typescript-eslint/no-explicit-any */, context: any) => {
     if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
 
     const { files } = data; // Array of { data: base64, mimeType: string }
@@ -38,13 +38,13 @@ export const analyzeRFPWithAI = functions.runWith({ secrets: ["GEMINI_API_KEY"] 
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview" });
 
-        const parts: any[] = [{
-            text: `You are an expert construction estimator. Analyze the provided RFP document(s). 
+        const parts: any /* eslint-disable-line @typescript-eslint/no-explicit-any */[] = [{
+    text: `You are an expert construction estimator. Analyze the provided RFP document(s). 
 Extract the following information in strict JSON format: 
-{ "title": "A short, descriptive title of the project", "description": "A comprehensive summary of the scope of work and deliverables", "trade": "The primary trade category (HVAC, Plumbing, Electrical, General Contracting, Roofing, Landscaping, or Other)", "location": "The city/state or zip code", "budgetRange": "The stated or implied budget range if available, otherwise empty string", "dueDate": "The deadline for proposal submission in YYYY-MM-DD format, or empty string" }
-If you cannot find a value, use reasonable defaults or empty strings.
+{ "title": "A short, descriptive title of the project", "description": "A comprehensive summary of the scope of work and deliverables", "trade": "The primary trade category (HVAC, Plumbing, Electrical, General Contracting, Roofing, Landscaping, or Other)", "location": "The city/state or zip code", "budgetRange": "The stated or implied budget range if available, otherwise empty string", "dueDate": "The deadline for proposal submission in YYYY-MM-DD format, or empty string", "importantDates": [{"name": "Event Name (e.g. Site Visit, Questions Due)", "date": "YYYY-MM-DD"}] }
+If you cannot find a value, use reasonable defaults or empty strings. For importantDates, extract any critical project milestones or deadlines.
 Only return the raw JSON object, no markdown blocks.`
-        }];
+}];
 
         for (const file of files) {
             const cleanBase64 = file.data.replace(/^data:.*?;base64,/, "");
@@ -63,7 +63,7 @@ Only return the raw JSON object, no markdown blocks.`
 
         const parsed = JSON.parse(responseText);
         return { success: true, data: parsed };
-    } catch (error: any) {
+    } catch (error: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         console.error("RFP OCR Error:", error);
         throw new functions.https.HttpsError('internal', error.message || 'Failed to analyze RFP.');
     }

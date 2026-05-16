@@ -1,6 +1,6 @@
 import showToast from "lib/toast";
 import React, { useState, useRef } from 'react';
-import { Network, ArrowRight, CheckCircle2, ShieldCheck, Mail, Lock, Building, Map, CreditCard, ChevronLeft, Globe, Loader2, Shield, Wrench, Users } from 'lucide-react';
+import { Network, ArrowRight, CheckCircle2, Lock, Building, Map, CreditCard, ChevronLeft, Globe, Loader2 } from 'lucide-react';
 import { db, auth } from '../../lib/firebase';
 import { useNavigate } from 'react-router-dom';
 
@@ -129,14 +129,15 @@ const FranchiseOpportunities: React.FC = () => {
             showToast.warn('Welcome aboard! Your Franchise Portal is being provisioned. Please contact our DNS team to point your domain.');
             navigate('/master/dashboard');
 
-        } catch (e: any) {
+        } catch (e: unknown) {
+            const err = e as { code?: string; message?: string };
             console.error("Signup error:", e);
-            if (e.code === 'auth/email-already-in-use') {
+            if (err.code === 'auth/email-already-in-use') {
                 showToast.warn('That email is already registered. Please use a different email or log in.');
-            } else if (e.code === 'auth/weak-password') {
+            } else if (err.code === 'auth/weak-password') {
                 showToast.warn('The password is too weak. Please use at least 6 characters.');
             } else {
-                showToast.warn('Error processing enrollment transaction: ' + e.message);
+                showToast.warn('Error processing enrollment transaction: ' + (err.message || 'Unknown error'));
             }
         } finally {
             setLoading(false);
@@ -147,7 +148,7 @@ const FranchiseOpportunities: React.FC = () => {
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col">
             <LandingHeader 
                 title="White-Label PAAS" 
-                backButton={{ label: 'Back to Home', href: '/' }}
+                backButton={{ label: 'Back to Home', href: 'https://tektrakker.com' }}
             />
 
             <main className="flex-1 flex items-center justify-center p-4 py-12 mt-24">
@@ -243,15 +244,15 @@ const FranchiseOpportunities: React.FC = () => {
                                     <div className="space-y-5">
                                         <h3 className="font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 pb-2">Franchise Identity</h3>
                                         <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Franchise Name</label>
-                                            <input type="text" value={franchiseName} onChange={e => setFranchiseName(e.target.value)} placeholder="e.g. Apex Field Services" className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3" />
+                                            <label htmlFor="franchise-name" className="text-xs font-bold text-slate-500 uppercase">Franchise Name</label>
+                                            <input id="franchise-name" type="text" value={franchiseName} onChange={e => setFranchiseName(e.target.value)} placeholder="e.g. Apex Field Services" className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3" />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Custom Domain Target</label>
-                                            <input type="text" value={domain} onChange={e => setDomain(e.target.value)} placeholder="portal.apexservices.com" className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3" />
+                                            <label htmlFor="custom-domain" className="text-xs font-bold text-slate-500 uppercase">Custom Domain Target</label>
+                                            <input id="custom-domain" type="text" value={domain} onChange={e => setDomain(e.target.value)} placeholder="portal.apexservices.com" className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3" />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Brand Primary Color</label>
+                                            <label htmlFor="brand-color-hex" className="text-xs font-bold text-slate-500 uppercase">Brand Primary Color</label>
                                             <div className="flex gap-3 mt-1">
                                                 <input type="color" title="Brand Primary Color" aria-label="Brand Primary Color" placeholder="Color Picker" value={brandColor} onChange={e => setBrandColor(e.target.value)} className="w-12 h-12 rounded cursor-pointer" />
                                                 <input type="text" title="Brand Primary Color Hex" aria-label="Brand Primary Color Hex" placeholder="#3B82F6" value={brandColor} onChange={e => setBrandColor(e.target.value)} className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3 uppercase font-mono text-sm" />
@@ -261,12 +262,12 @@ const FranchiseOpportunities: React.FC = () => {
                                     <div className="space-y-5">
                                         <h3 className="font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 pb-2 flex items-center gap-2"><Map size={18} /> Territory Request</h3>
                                         <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Requested US States (Not Guaranteed Exclusive)</label>
-                                            <input type="text" value={territory} onChange={e => setTerritory(e.target.value)} placeholder="FL, GA, SC" className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3" />
+                                            <label htmlFor="territory-states" className="text-xs font-bold text-slate-500 uppercase">Requested US States (Not Guaranteed Exclusive)</label>
+                                            <input id="territory-states" type="text" value={territory} onChange={e => setTerritory(e.target.value)} placeholder="FL, GA, SC" className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3" />
                                         </div>
                                         <div>
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Target Industries</label>
-                                            <input type="text" value={businessTypes} onChange={e => setBusinessTypes(e.target.value)} placeholder="HVAC, Plumbing" className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3" />
+                                            <label htmlFor="target-industries" className="text-xs font-bold text-slate-500 uppercase">Target Industries</label>
+                                            <input id="target-industries" type="text" value={businessTypes} onChange={e => setBusinessTypes(e.target.value)} placeholder="HVAC, Plumbing" className="w-full mt-1 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-4 py-3" />
                                         </div>
                                     </div>
                                 </div>
@@ -307,7 +308,7 @@ const FranchiseOpportunities: React.FC = () => {
                                 </div>
 
                                 <div className="max-w-md mx-auto">
-                                    <label className="text-xs font-bold text-slate-500 uppercase mb-2 block">Digital Signature (Draw below)</label>
+                                    <label htmlFor="signature-canvas" className="text-xs font-bold text-slate-500 uppercase mb-2 block">Digital Signature (Draw below)</label>
                                     <div className="bg-white dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl overflow-hidden relative">
                                         <canvas
                                             ref={signatureRef}
@@ -317,6 +318,7 @@ const FranchiseOpportunities: React.FC = () => {
                                             onMouseDown={startDrawing}
                                             onMouseUp={stopDrawing}
                                             onMouseOut={stopDrawing}
+                                            onBlur={stopDrawing}
                                             onMouseMove={draw}
                                             onTouchStart={startDrawing}
                                             onTouchEnd={stopDrawing}

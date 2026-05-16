@@ -1,12 +1,13 @@
 import showToast from "lib/toast";
+// import { getFunctions, httpsCallable } from "firebase/functions";
+import { db } from "lib/firebase";
 import React, { useState } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { useNavigate } from 'react-router-dom';
-import Card from 'components/ui/Card';
 import Input from 'components/ui/Input';
 import Button from 'components/ui/Button';
 import Toggle from 'components/ui/Toggle';
-import { CreditCard, Mail, Code, Copy, Users, ChevronDown, CheckCircle2, ShieldAlert, MonitorUp, Thermometer, Wrench, Package, Square, Coins, Workflow, MessageSquare, Cpu, Home, Leaf, Truck, DollarSign, Fingerprint, PhoneCall, Database, FileText, CloudSun, CheckCircle, RefreshCw, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
+import { CreditCard, Mail, Code, Copy, ChevronDown, MonitorUp, Thermometer, Wrench, Package, Square, Coins, Workflow, MessageSquare, Cpu, Home, Leaf, Truck, DollarSign, Fingerprint, PhoneCall, Database, FileText, CloudSun, CheckCircle, RefreshCw, ArrowRight, Sparkles, AlertCircle, Shield, ExternalLink } from 'lucide-react';
 
 
 interface IntegrationsTabProps {
@@ -20,8 +21,10 @@ interface IntegrationsTabProps {
     setSquareLocId: (val: string) => void;
     squareToken: string;
     setSquareToken: (val: string) => void;
-    defaultPaymentGateway: 'stripe' | 'square' | 'paypal';
-    setDefaultPaymentGateway: (val: 'stripe' | 'square' | 'paypal') => void;
+    kortAccountId: string;
+    setKortAccountId: (val: string) => void;
+    defaultPaymentGateway: 'stripe' | 'square' | 'paypal' | 'kort';
+    setDefaultPaymentGateway: (val: 'stripe' | 'square' | 'paypal' | 'kort') => void;
     smtpHost: string;
     setSmtpHost: (val: string) => void;
     smtpPort: number;
@@ -102,15 +105,15 @@ interface IntegrationsTabProps {
     isConnectingQuickbooks?: boolean;
     handleConnectRingCentral?: () => void;
     isConnectingRingCentral?: boolean;
-    punchoutConfigs: any[];
-    setPunchoutConfigs: (val: any[]) => void;
+    punchoutConfigs: Record<string, string>[];
+    setPunchoutConfigs: (val: Record<string, string>[]) => void;
     orgId: string;
 }
 
 const IntegrationModule = ({ 
     id, title, category, icon: Icon, iconColor, isConnected, children, expandedId, setExpandedId 
 }: { 
-    id: string, title: string, category: string, icon: any, iconColor?: string, isConnected: boolean, children: React.ReactNode, expandedId: string | null, setExpandedId: (id: string | null) => void 
+    id: string, title: string, category: string, icon: React.ElementType, iconColor?: string, isConnected: boolean, children: React.ReactNode, expandedId: string | null, setExpandedId: (id: string | null) => void 
 }) => {
     const isExpanded = expandedId === id;
     
@@ -170,6 +173,7 @@ const IntegrationModule = ({
 const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
     paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey,
     squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken,
+    kortAccountId, setKortAccountId,
     defaultPaymentGateway, setDefaultPaymentGateway,
     smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest,
     twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber,
@@ -190,9 +194,42 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
     webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId
 }) => {
     const [expandedGridId, setExpandedGridId] = useState<string | null>(null);
+    const [onboardingUrl, setOnboardingUrl] = useState<string | null>(null);
+    // const [generatingOnboardingUrl, setGeneratingOnboardingUrl] = useState(false);
     const navigate = useNavigate();
-    const { state } = useAppContext();
+    const { state, dispatch } = useAppContext();
+    // const isTestOrg = orgId === 'tektestsub' || state.allOrganizations?.find(o => o.id === orgId)?.name?.toLowerCase().includes('tektest');
     const mqWebhookUrl = `https://us-central1-tektrakker.cloudfunctions.net/measureQuickWebhook?orgId=${orgId || 'ERROR_NO_ORG'}`;
+
+    /*
+    const handleGenerateOnboardingLink = async () => {
+        try {
+            setGeneratingOnboardingUrl(true);
+            const functions = getFunctions();
+            const generateKortOnboardingLink = httpsCallable(functions, 'generateKortOnboardingLink');
+            
+            const result = await generateKortOnboardingLink({
+                organizationId: orgId,
+                organizationName: state.allOrganizations?.find(o => o.id === orgId)?.name || 'Unknown',
+                email: state.currentUser?.email || ''
+            });
+            const data = result.data as { success?: boolean; onboardingUrl?: string; accountId?: string };
+            if (data.success && data.onboardingUrl) {
+                setOnboardingUrl(data.onboardingUrl);
+                // We don't save kortAccountId here yet. We wait for them to finish.
+                // Alternatively, we save it immediately but it's pending.
+                if (data.accountId) {
+                    setKortAccountId(data.accountId);
+                }
+            }
+        } catch (error) {
+            console.error('Error generating onboarding link:', error);
+            showToast.error('Failed to generate merchant application link. Make sure the backend is configured.');
+        } finally {
+            setGeneratingOnboardingUrl(false);
+        }
+    };
+    */
 
     return (
         <form onSubmit={e => e.preventDefault()} className="space-y-8">
@@ -215,7 +252,27 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                     <ArrowRight size={20} className="text-primary-400 group-hover:translate-x-1 transition-transform flex-shrink-0" />
                 </div>
             </button>
-            {(!!stripePublicKey || !!squareAppId || !!paypalClientId) && (
+
+            {/* Insurance Banner / Module */}
+            <div>
+                <h3 className="text-lg font-black mb-4 flex items-center gap-2 text-slate-800 dark:text-white"><Shield size={20}/> Business Insurance</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+                    <IntegrationModule 
+                        id="next_insurance" 
+                        title="NEXT Insurance" 
+                        category="Business Protection" 
+                        icon={Shield}
+                        iconColor="text-blue-600"
+                        isConnected={true} // Set to true so it looks active
+                        expandedId={expandedGridId} setExpandedId={setExpandedGridId}
+                    >
+                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Get customized business insurance tailored for contractors and field service professionals. Protect your business with affordable coverage.</p>
+                        <a href="https://nextinsurance.sjv.io/c/7280120/1148969/14516" target="_blank" rel="noopener noreferrer" className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors">
+                            Get a Quote <ExternalLink size={16} />
+                        </a>
+                    </IntegrationModule>
+                </div>
+            </div>
             <div>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-black flex items-center gap-2 text-slate-800 dark:text-white"><CreditCard size={20}/> Payment Gateways</h3>
@@ -225,16 +282,97 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                             aria-label="Default Payment Gateway"
                             title="Default Payment Gateway"
                             value={defaultPaymentGateway} 
-                            onChange={e => setDefaultPaymentGateway(e.target.value as any)}
+                            onChange={async (e) => {
+                                const val = e.target.value as 'stripe' | 'square' | 'paypal' | 'kort';
+                                setDefaultPaymentGateway(val);
+                                if (orgId) {
+                                    try {
+                                        await db.collection('organizations').doc(orgId).update({ defaultPaymentGateway: val });
+                                        if (state.currentOrganization) {
+                                            dispatch({
+                                                type: 'UPDATE_ORGANIZATION',
+                                                payload: { ...state.currentOrganization, defaultPaymentGateway: val }
+                                            });
+                                        }
+                                        showToast.success('Default payment gateway updated.');
+                                    } catch (err) {
+                                        console.error('Failed to update default gateway', err);
+                                        showToast.error('Failed to update default payment gateway.');
+                                    }
+                                }
+                            }}
                             className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary-500"
                         >
                             <option value="stripe">Stripe</option>
                             <option value="square">Square</option>
                             <option value="paypal">PayPal</option>
+                            <option value="kort">TekTrakker Payments (Recommended)</option>
                         </select>
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+                    <IntegrationModule 
+                        id="kort" 
+                        title="TekTrakker Payment Processing" 
+                        category="Credit Cards & ACH" 
+                        icon={CreditCard}
+                        iconColor="text-emerald-500"
+                        isConnected={!!kortAccountId}
+                        expandedId={expandedGridId} setExpandedId={setExpandedGridId}
+                    >
+                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Connect TekTrakker Payments to process credit cards natively within your platform. Enjoy deep integration with no setup fees.</p>
+                        
+                        <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40 rounded-lg">
+                            <h5 className="text-xs font-bold text-emerald-800 dark:text-emerald-400 mb-1">Simple Processing Fees</h5>
+                            <ul className="text-xs text-emerald-700 dark:text-emerald-300 space-y-1">
+                                <li>• <strong>$15</strong> monthly platform fee</li>
+                                <li>• <strong>2.7% + $0.25</strong> per successful transaction</li>
+                            </ul>
+                        </div>
+                        
+                        {!kortAccountId && !onboardingUrl ? (
+                            <div className="space-y-4">
+                                <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-xl text-center">
+                                    <h4 className="font-bold text-sm text-slate-800 dark:text-white mb-2">Embedded Merchant Onboarding</h4>
+                                    <p className="text-xs text-slate-500 mb-4">We are currently finalizing our production payment processing infrastructure. Live onboarding will be available shortly.</p>
+                                    <Button disabled className="w-full text-xs font-bold uppercase tracking-wide opacity-50 cursor-not-allowed">
+                                        Coming Soon
+                                    </Button>
+                                </div>
+                                <div className="relative flex items-center py-2">
+                                    <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+                                    <span className="flex-shrink-0 mx-4 text-[10px] uppercase font-black tracking-widest text-slate-400">Or enter existing ID</span>
+                                    <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+                                </div>
+                                <Input label="Merchant Account ID" value={kortAccountId} onChange={e => setKortAccountId(e.target.value)} placeholder="acct_..." />
+                            </div>
+                        ) : onboardingUrl ? (
+                            <div className="space-y-4">
+                                <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-xl h-[600px] w-full relative overflow-hidden">
+                                    <iframe 
+                                        src={onboardingUrl} 
+                                        className="w-full h-full border-0 rounded-lg"
+                                        title="Secure Merchant Application"
+                                        allow="camera; microphone; geolocation"
+                                    />
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button variant="secondary" onClick={() => setOnboardingUrl(null)} className="w-full">Close Application</Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 p-4 rounded-xl">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <CheckCircle className="text-emerald-600 dark:text-emerald-500" size={18} />
+                                        <h4 className="font-bold text-sm text-emerald-800 dark:text-emerald-400">Account Connected</h4>
+                                    </div>
+                                    <Input label="Merchant Account ID" value={kortAccountId} onChange={e => setKortAccountId(e.target.value)} placeholder="acct_..." />
+                                </div>
+                            </div>
+                        )}
+                    </IntegrationModule>
+
                     {!!stripePublicKey && (
                     <IntegrationModule 
                         id="stripe" 
@@ -288,7 +426,6 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                     )}
                 </div>
             </div>
-            )}
 
             {!!quickbooksConnected && (
             <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
@@ -696,8 +833,8 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                                     
                                     <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Primary Owner</label>
-                                            <select aria-label="Primary Owner" title="Primary Owner" value={mapping.assignedUserId} onChange={e => { const newM = [...rcMappings]; newM[idx].assignedUserId = e.target.value; setRcMappings(newM); }} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
+                                            <label htmlFor={`owner-${idx}`} className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Primary Owner</label>
+                                            <select id={`owner-${idx}`} aria-label="Primary Owner" title="Primary Owner" value={mapping.assignedUserId} onChange={e => { const newM = [...rcMappings]; newM[idx].assignedUserId = e.target.value; setRcMappings(newM); }} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
                                                 <option value="">-- Select Employee --</option>
                                                 {state.users.filter(u => u.organizationId === orgId && u.status === 'active').map(u => (
                                                     <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
@@ -705,8 +842,8 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Forward To (Optional)</label>
-                                            <select aria-label="Forward To User" title="Forward To User" value={mapping.forwardToUserId} onChange={e => { const newM = [...rcMappings]; newM[idx].forwardToUserId = e.target.value; setRcMappings(newM); }} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
+                                            <label htmlFor={`forward-${idx}`} className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Forward To (Optional)</label>
+                                            <select id={`forward-${idx}`} aria-label="Forward To User" title="Forward To User" value={mapping.forwardToUserId} onChange={e => { const newM = [...rcMappings]; newM[idx].forwardToUserId = e.target.value; setRcMappings(newM); }} className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500">
                                                 <option value="">-- None --</option>
                                                 {state.users.filter(u => u.organizationId === orgId && u.status === 'active').map(u => (
                                                     <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
@@ -731,11 +868,9 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
             </div>
             )}
 
-            {true && (
             <div className="border-t border-slate-200 dark:border-slate-800 pt-8 pb-12">
                 <h3 className="text-lg font-black mb-4 flex items-center gap-2 text-slate-800 dark:text-white"><CloudSun size={20}/> Extensibility & Widgets</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
-                    {true && (
                     <IntegrationModule 
                         id="openweather" 
                         title="OpenWeather Map Viewer" 
@@ -756,7 +891,6 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                         
                         <Input label="Custom API Key Override (Optional)" value={openWeatherApiKey} onChange={e => setOpenWeatherApiKey(e.target.value)} placeholder="Only needed if you exceed the global platform limits..." type="password" />
                     </IntegrationModule>
-                    )}
 
                     {!!shovelsApiKey && (
                     <IntegrationModule 
@@ -781,7 +915,6 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                     </IntegrationModule>
                     )}
 
-                    {true && (
                     <IntegrationModule 
                         id="bookingwidget" 
                         title="Service Booking Form" 
@@ -799,9 +932,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                             <Copy size={14} className="mr-2"/> Auto-Copy Script Tag
                         </Button>
                     </IntegrationModule>
-                    )}
 
-                    {true && (
                     <IntegrationModule 
                         id="hiringwidget" 
                         title="Career Application Form" 
@@ -819,10 +950,8 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                             <Copy size={14} className="mr-2"/> Auto-Copy Script Tag
                         </Button>
                     </IntegrationModule>
-                    )}
                 </div>
             </div>
-            )}
 
         </form>
     );

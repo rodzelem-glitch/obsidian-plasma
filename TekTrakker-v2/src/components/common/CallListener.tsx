@@ -11,7 +11,7 @@ export const CallListener: React.FC = () => {
     const navigate = useNavigate();
 
     useEffect(() => {
-        if (!state.currentOrganization || !state.currentUser) return;
+        if (!state.currentOrganization || !state.currentUser || state.isDemoMode) return;
 
         const callsRef = collection(db, 'organizations', state.currentOrganization.id, 'active_calls');
         // Listen for new ringing calls in the last few minutes
@@ -45,10 +45,12 @@ export const CallListener: React.FC = () => {
             } else {
                 setActiveCall(null);
             }
+        }, (error) => {
+            console.debug("CallListener snapshot error (likely unmounting):", error.message);
         });
 
         return () => unsubscribe();
-    }, [state.currentOrganization]);
+    }, [state.currentOrganization, state.isDemoMode, state.currentUser]);
 
     const handleDismiss = async () => {
         if (!activeCall || !state.currentOrganization) return;

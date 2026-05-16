@@ -7,7 +7,7 @@ const EULA: React.FC = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 font-sans flex flex-col">
             <LandingHeader 
-                backButton={{ label: 'Back to Home', href: '/' }}
+                backButton={{ label: 'Back to Home', href: 'https://tektrakker.com' }}
             />
 
             <main className="flex-1 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-32 mt-12">

@@ -77,7 +77,21 @@ const MasterBilling: React.FC = () => {
     // Synchronize with AppContext (Live DB updates)
     useEffect(() => {
         if (state.platformSettings) {
-            setConfig(state.platformSettings);
+            setConfig(prev => {
+                const dbPlans: any = state.platformSettings?.plans || {};
+                return {
+                    ...prev,
+                    ...state.platformSettings,
+                    // Perform a deep merge to ensure partial DB plans do not obliterate existing toggles/fields
+                    plans: {
+                        starter: { ...prev.plans.starter, ...(dbPlans.starter || {}) },
+                        growth: { ...prev.plans.growth, ...(dbPlans.growth || {}) },
+                        enterprise: { ...prev.plans.enterprise, ...(dbPlans.enterprise || {}) }
+                    },
+                    // Ensure PayPal client ID is preserved
+                    platformPaypalClientId: state.platformSettings.platformPaypalClientId || prev.platformPaypalClientId
+                };
+            });
         }
     }, [state.platformSettings]);
 
@@ -131,8 +145,14 @@ const MasterBilling: React.FC = () => {
     const [customDiscountPct, setCustomDiscountPct] = useState(0);
     const [notes, setNotes] = useState('');
 
-    const getBasePrice = (plan: string) => config.plans[plan as keyof typeof config.plans]?.monthly || 99;
-    const getUserFee = () => config.excessUserFee || 25;
+    const getBasePrice = (plan: string) => {
+        if (!config?.plans) return 99;
+        const p = (plan || 'starter').toLowerCase();
+        // @ts-ignore - Dynamic key access with fallback
+        return config.plans[p]?.monthly ?? config.plans?.starter?.monthly ?? 99;
+    };
+    
+    const getUserFee = () => config.excessUserFee ?? 25;
 
     const stats = useMemo(() => {
         // Filter out test/demo organizations from financial metrics
@@ -147,8 +167,11 @@ const MasterBilling: React.FC = () => {
         const mrr = active.reduce((sum, o) => {
             if (o.isFreeAccess) return sum;
             const base = getBasePrice(o.plan || 'starter');
-            const userFee = (o.additionalUserSlots || 0) * getUserFee();
-            return sum + ((base + userFee) * (1 - ((o.customDiscountPct || 0) / 100)));
+            const additionalUsers = o.additionalUserSlots || 0;
+            const userFee = additionalUsers * getUserFee();
+            const totalBeforeDiscount = base + userFee;
+            const discount = (o.customDiscountPct || 0) / 100;
+            return sum + (totalBeforeDiscount * (1 - discount));
         }, 0);
         return { mrr, activeCount: active.length, trialCount: trial.length, expiredCount: expired.length, enterpriseCount: active.filter(o => o.plan === 'enterprise').length, growthCount: active.filter(o => o.plan === 'growth').length, starterCount: active.filter(o => o.plan === 'starter').length };
     }, [orgs, config]);
@@ -178,7 +201,8 @@ const MasterBilling: React.FC = () => {
     const handleSaveConfig = async () => {
         setIsSubmitting(true);
         try {
-            await db.collection('platformSettings').doc('global').set({ ...config, updatedAt: new Date().toISOString() });
+            // Must use merge: true to avoid deleting integrations or other fields in the global document
+            await db.collection('platformSettings').doc('global').set({ ...config, updatedAt: new Date().toISOString() }, { merge: true });
             if (platformOrg) await db.collection('organizations').doc('platform').update(platformOrg);
             showToast.warn("Settings updated successfully and synchronized.");
         } catch (e) { showToast.warn("Failed to update config."); }
@@ -201,6 +225,22 @@ const MasterBilling: React.FC = () => {
         const finalTotal = netBeforeTax + taxAmount;
 
         const jobId = `platform-inv-${Date.now()}`;
+        const items: any[] = [
+            { id: 'item-base', description: `Platform Subscription: ${upgradePlan?.toUpperCase()} Tier`, quantity: 1, unitPrice: basePrice, total: basePrice, type: 'Fee' }
+        ];
+
+        if (userCosts > 0) {
+            items.push({ id: 'item-users', description: `Additional User Slots (${additionalUsers})`, quantity: 1, unitPrice: userCosts, total: userCosts, type: 'Fee' });
+        }
+
+        if (customCharge !== 0) {
+            items.push({ id: 'item-custom', description: `Custom Administrative Charge / Credit`, quantity: 1, unitPrice: customCharge, total: customCharge, type: 'Fee' });
+        }
+
+        if (discountAmount > 0) {
+            items.push({ id: 'item-discount', description: `Special Discount (${customDiscountPct}%)`, quantity: 1, unitPrice: -discountAmount, total: -discountAmount, type: 'Discount' });
+        }
+
         const invoiceData: any = {
             id: jobId,
             organizationId: 'platform',
@@ -208,19 +248,20 @@ const MasterBilling: React.FC = () => {
             customerId: selectedOrg.id,
             customerEmail: selectedOrg.email || '',
             address: selectedOrg.address || null,
-            tasks: ['Platform Subscription Upgrade'],
+            tasks: ['Platform Subscription Update'],
             jobStatus: 'Completed',
             appointmentTime: new Date().toISOString(),
             source: 'PlatformAdmin',
             invoice: {
                 id: `SAAS-${Date.now()}`,
-                status: finalTotal === 0 ? 'Paid' : 'Unpaid',
-                items: [{ id: 'item-1', description: `Upgrade to ${upgradePlan?.toUpperCase()}`, quantity: 1, unitPrice: basePrice, total: basePrice, type: 'Fee' }],
+                status: finalTotal <= 0 ? 'Paid' : 'Unpaid',
+                items: items,
                 subtotal: netBeforeTax,
                 taxRate: taxRate,
                 taxAmount: taxAmount,
                 totalAmount: finalTotal,
-                amount: finalTotal
+                amount: finalTotal,
+                notes: notes
             },
             jobEvents: [],
             createdAt: new Date().toISOString()
@@ -307,11 +348,29 @@ const MasterBilling: React.FC = () => {
 
                     <Card className="shadow-lg mt-6">
                         <Table headers={['Organization', 'Plan', 'Renewal', 'Value', 'Status', 'Actions']}>
-                            {filteredOrgs.map(org => {
+                            {filteredOrgs.length === 0 && (state as any).loading !== false ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                        <div className="flex flex-col items-center justify-center space-y-2">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                                            <p>Fetching Organizations...</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : filteredOrgs.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                        No organizations found.
+                                    </td>
+                                </tr>
+                            ) : filteredOrgs.map(org => {
                                 const val = org.isFreeAccess ? 0 : (getBasePrice(org.plan || 'starter') * (1 - ((org.customDiscountPct || 0) / 100)));
                                 return (
                                     <tr key={org.id} className="hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer" onClick={() => handleOpenManage(org)}>
-                                        <td className="px-6 py-4 font-black">{org.name}</td>
+                                        <td className="px-6 py-4 font-black">
+                                            <div>{org.name || 'Unnamed Org'}</div>
+                                            <div className="text-[10px] text-gray-500 dark:text-gray-400 lowercase">{org.email || org.id}</div>
+                                        </td>
                                         <td className="px-6 py-4 capitalize">{org.plan}</td>
                                         <td className="px-6 py-4 text-xs">{org.subscriptionExpiryDate || 'N/A'}</td>
                                         <td className="px-6 py-4 font-black">{formatCurrency(val)}</td>
@@ -388,14 +447,61 @@ const MasterBilling: React.FC = () => {
                             <h4 className="font-black text-sm uppercase text-purple-600 tracking-widest mb-4 flex items-center gap-2"><Building2 size={18}/> Franchise Operations & Fees</h4>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <Input 
-                                        label="Corporate Royalties (%)" 
-                                        type="number" 
-                                        value={config.franchiseFeePct || 0} 
-                                        onChange={e => setConfig({...config, franchiseFeePct: parseFloat(e.target.value) || 0})} 
-                                    />
-                                    <p className="text-xs text-slate-500 mt-2">Set the baseline percentage fee charged to standard franchise organizations per billing cycle.</p>
+                                <div className="space-y-6">
+                                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800">
+                                        <h5 className="font-bold text-slate-800 dark:text-white mb-4">Contract Prerequisites</h5>
+                                        <div className="space-y-4">
+                                            <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                                                        <FileText className="text-green-600 dark:text-green-400" size={16} />
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-800 dark:text-white">1-Year Master Agreement</p>
+                                                        <a href="#" className="text-xs text-blue-600 dark:text-blue-400 hover:underline">View Master Agreement Terms</a>
+                                                    </div>
+                                                </div>
+                                                <div className="px-3 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-full text-xs font-bold uppercase tracking-wider">
+                                                    Required
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <Input 
+                                                label="Base Monthly Subscription ($/mo)" 
+                                                type="number" 
+                                                value={config.franchiseBaseFee ?? 1000} 
+                                                onChange={e => setConfig({...config, franchiseBaseFee: parseFloat(e.target.value) || 0})} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <Input 
+                                                label="Setup & DNS Fee (1-time via PayPal/Square)" 
+                                                type="number" 
+                                                value={config.franchiseSetupFee ?? 1500} 
+                                                onChange={e => setConfig({...config, franchiseSetupFee: parseFloat(e.target.value) || 0})} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <Input 
+                                                label="TekTrakker Rev-Share: Per User ($)" 
+                                                type="number" 
+                                                value={config.franchiseRevSharePerUser ?? 10} 
+                                                onChange={e => setConfig({...config, franchiseRevSharePerUser: parseFloat(e.target.value) || 0})} 
+                                            />
+                                        </div>
+                                        <div>
+                                            <Input 
+                                                label="TekTrakker Rev-Share: Per Virtual Worker ($)" 
+                                                type="number" 
+                                                value={config.franchiseRevSharePerVirtualWorker ?? 50} 
+                                                onChange={e => setConfig({...config, franchiseRevSharePerVirtualWorker: parseFloat(e.target.value) || 0})} 
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                                 
                                 <div className="space-y-4">

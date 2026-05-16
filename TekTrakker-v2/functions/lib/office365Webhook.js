@@ -100,10 +100,21 @@ exports.office365Webhook = functions.https.onRequest(async (req, res) => {
                             type: 'new_email',
                             resource: resource
                         }
-                    });
+                    }).catch(err => console.error('Error sending push notification:', err));
                     console.log(`Push notification sent to user: ${userId}`);
                 }
             }
+            // Create in-app notification
+            await admin.firestore().collection('notifications').add({
+                userId,
+                title: 'New Office 365 Email',
+                message: 'You received a new email in your Master Inbox.',
+                type: 'new_email',
+                read: false,
+                status: 'pending',
+                createdAt: new Date().toISOString(),
+                link: '/admin/emails'
+            });
         }
         catch (error) {
             console.error('Error processing Microsoft Graph notification:', error);

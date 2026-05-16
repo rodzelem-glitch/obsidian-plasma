@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import showToast from "lib/toast";
 
 import React, { useState } from 'react';
@@ -21,10 +22,11 @@ interface SetupTabProps {
 const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analyzingFileId, setAnalyzingFileId] = useState<string | null>(null);
+    const [failedFiles, setFailedFiles] = useState<Record<string, string>>({});
     const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
 
     const functions = getFunctions();
-    const analyzeRFP = httpsCallable(functions, 'analyzeRFP');
+    const analyzeRFP = httpsCallable(functions, 'analyzeRFP', { timeout: 540000 });
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
@@ -126,7 +128,8 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
             const fileInput = document.getElementById('rfp-file-upload') as HTMLInputElement;
             if (fileInput) fileInput.value = '';
             showToast.success("Files uploaded successfully!");
-        } catch (e: any) {
+        } catch (e) {
+            console.error("Upload error", e);
             showToast.error("Failed to upload files.");
         } finally {
             setIsAnalyzing(false);
@@ -136,10 +139,44 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
     const handleAnalyzeSingle = async (file: StoredFile) => {
         setAnalyzingFileId(file.id);
         setIsAnalyzing(true);
+        setFailedFiles(prev => { const next = {...prev}; delete next[file.id]; return next; });
         try {
+            let base64Data = file.dataUrl;
+            let finalMimeType = file.fileType || 'application/pdf';
+
+            if (file.dataUrl.startsWith('http')) {
+                 // For external URLs, pass the URL directly to the backend
+                 base64Data = file.dataUrl;
+            } else if (file.dataUrl.startsWith('data:')) {
+                 const isDocx = file.fileName.endsWith('.docx');
+                 const isXlsx = file.fileName.endsWith('.xlsx') || file.fileName.endsWith('.xls') || file.fileName.endsWith('.csv');
+
+                 if (isDocx || isXlsx) {
+                     const response = await fetch(file.dataUrl);
+                     const arrayBuffer = await response.arrayBuffer();
+                     if (isDocx) {
+                         const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                         base64Data = btoa(unescape(encodeURIComponent(result.value)));
+                         finalMimeType = 'text/plain';
+                     } else if (isXlsx) {
+                         const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                         let extractedText = "";
+                         for (const sheetName of workbook.SheetNames) {
+                             extractedText += `--- Sheet: ${sheetName} ---\n`;
+                             extractedText += XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+                             extractedText += `\n\n`;
+                         }
+                         base64Data = btoa(unescape(encodeURIComponent(extractedText)));
+                         finalMimeType = 'text/plain';
+                     }
+                 } else {
+                     base64Data = file.dataUrl.split(',')[1];
+                 }
+            }
+
             const filesForAI = [{
-                fileData: file.dataUrl,
-                mimeType: file.fileType || 'application/pdf',
+                fileData: base64Data,
+                mimeType: finalMimeType,
                 fileName: file.fileName
             }];
             const result = await analyzeRFP({ files: filesForAI });
@@ -149,7 +186,9 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
             console.error("Error analyzing file:", error);
             let message = "Failed to analyze document.";
             if (error.message?.includes("exceeds the maximum")) message += " The file is too large for the AI service.";
+            else if (error.message?.includes("deadline-exceeded") || error.message?.includes("timeout")) message = "File transfer timed out. SAM.gov or the file is too slow to download.";
             showToast.warn(`${message} Details: ${error.message}`);
+            setFailedFiles(prev => ({ ...prev, [file.id]: message }));
         } finally {
             setAnalyzingFileId(null);
             setIsAnalyzing(false);
@@ -165,6 +204,7 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
         }
 
         setIsAnalyzing(true);
+        setFailedFiles({});
         try {
             const uploadedFilesData: StoredFile[] = [];
             const filesForAI: { fileData: string, mimeType: string, fileName: string }[] = [];
@@ -233,9 +273,42 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
             }
 
             for (const samFile of samFilesToAnalyze) {
+                let base64Data = samFile.dataUrl;
+                let finalMimeType = samFile.fileType || 'application/pdf';
+
+                if (samFile.dataUrl.startsWith('http')) {
+                    // For external URLs, pass the URL directly to the backend
+                    base64Data = samFile.dataUrl;
+                } else if (samFile.dataUrl.startsWith('data:')) {
+                    const isDocx = samFile.fileName.endsWith('.docx');
+                    const isXlsx = samFile.fileName.endsWith('.xlsx') || samFile.fileName.endsWith('.xls') || samFile.fileName.endsWith('.csv');
+
+                    if (isDocx || isXlsx) {
+                        const response = await fetch(samFile.dataUrl);
+                        const arrayBuffer = await response.arrayBuffer();
+                        if (isDocx) {
+                            const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                            base64Data = btoa(unescape(encodeURIComponent(result.value)));
+                            finalMimeType = 'text/plain';
+                        } else if (isXlsx) {
+                            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                            let extractedText = "";
+                            for (const sheetName of workbook.SheetNames) {
+                                extractedText += `--- Sheet: ${sheetName} ---\n`;
+                                extractedText += XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+                                extractedText += `\n\n`;
+                            }
+                            base64Data = btoa(unescape(encodeURIComponent(extractedText)));
+                            finalMimeType = 'text/plain';
+                        }
+                    } else {
+                        base64Data = samFile.dataUrl.split(',')[1];
+                    }
+                }
+
                 filesForAI.push({
-                    fileData: samFile.dataUrl,
-                    mimeType: samFile.fileType || 'application/pdf',
+                    fileData: base64Data,
+                    mimeType: finalMimeType,
                     fileName: samFile.fileName
                 });
             }
@@ -253,8 +326,13 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
             console.error("Error analyzing RFP:", error);
             let message = "Failed to analyze document.";
             if (error.message?.includes("exceeds the maximum")) message += " The files are too large for the AI service. Try analyzing 1 by 1.";
+            else if (error.message?.includes("deadline-exceeded") || error.message?.includes("timeout")) message = "File transfer timed out. SAM.gov or the file is too slow to download.";
             if (error.code === 'functions/internal') message += " AI service error.";
             showToast.warn(`${message} Details: ${error.message}`);
+            
+            const newFailed: Record<string, string> = {};
+            samFilesToAnalyze.forEach(f => newFailed[f.id] = message);
+            setFailedFiles(prev => ({ ...prev, ...newFailed }));
         } finally {
             setIsAnalyzing(false);
         }
@@ -262,12 +340,32 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Prominent Important Dates Card at the Top */}
+            {bid.importantDates && bid.importantDates.length > 0 && (
+                <div className="md:col-span-3">
+                    <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-700 border-l-4 border-l-blue-500 shadow-md">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Calendar className="text-blue-600 dark:text-blue-400" size={24} />
+                            <h3 className="text-lg font-bold text-blue-900 dark:text-blue-100">Critical Project Dates</h3>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {bid.importantDates.map((d, i) => (
+                                <div key={i} className="bg-white dark:bg-slate-900/50 p-3 rounded-lg shadow-sm border border-slate-100 dark:border-slate-600">
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider mb-1">{d.name}</p>
+                                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200">{d.date}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                </div>
+            )}
+
             <div className="md:col-span-1 space-y-6">
                 <Card>
                     <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><FileText size={20} /> RFP Document & Analysis</h3>
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upload RFP Document(s) (PDF, TXT, DOCX, XLSX)</label>
+                            <label htmlFor="rfp-file-upload" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Upload RFP Document(s) (PDF, TXT, DOCX, XLSX)</label>
                             <input 
                                 id="rfp-file-upload"
                                 title="Upload RFP Documents"
@@ -306,18 +404,27 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                             <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">Uploaded Documents:</h4>
                             <ul className="space-y-2">
                                 {bid.files.map((file: StoredFile) => (
-                                    <li key={file.id} className="flex flex-col gap-1 bg-slate-50 dark:bg-slate-800 p-2 rounded border border-slate-200 dark:border-slate-700">
+                                    <li key={file.id} className={`flex flex-col gap-1 p-2 rounded border ${failedFiles[file.id] ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
                                         <div className="flex items-center gap-2">
-                                            <FileText size={14} className="text-gray-500 flex-shrink-0" /> 
+                                            <FileText size={14} className={failedFiles[file.id] ? "text-red-500 flex-shrink-0" : "text-gray-500 flex-shrink-0"} /> 
                                             <a href={file.dataUrl} target="_blank" rel="noreferrer" className="text-primary-600 hover:underline text-sm truncate">{file.fileName}</a>
                                         </div>
+                                        {failedFiles[file.id] && (
+                                            <div className="text-xs text-red-600 dark:text-red-400 mt-1 mb-2">
+                                                <span className="font-bold">Analysis Failed:</span> {failedFiles[file.id]}
+                                            </div>
+                                        )}
                                         <button 
                                             onClick={() => handleAnalyzeSingle(file)}
                                             disabled={isAnalyzing}
-                                            className="self-end text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 hover:bg-blue-200 px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50"
+                                            className={`self-end text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50 ${
+                                                failedFiles[file.id] 
+                                                ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-800 dark:text-red-100 dark:hover:bg-red-700' 
+                                                : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:hover:bg-blue-800'
+                                            }`}
                                         >
-                                            {analyzingFileId === file.id ? <Spinner size="sm" className="text-blue-700" /> : <Play size={10} />}
-                                            {analyzingFileId === file.id ? 'Analyzing...' : 'Analyze Single'}
+                                            {analyzingFileId === file.id ? <Spinner size="sm" className={failedFiles[file.id] ? "text-red-700 dark:text-red-100" : "text-blue-700 dark:text-blue-200"} /> : <Play size={10} />}
+                                            {analyzingFileId === file.id ? 'Analyzing...' : failedFiles[file.id] ? 'Try Transfer Again' : 'Analyze Single'}
                                         </button>
                                     </li>
                                 ))}
@@ -332,8 +439,9 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                         <Input label="Solicitation #" value={bid.solicitationNumber || ''} onChange={e => onUpdate({ solicitationNumber: e.target.value })} />
                         <Input label="Agency" value={bid.agency || ''} onChange={e => onUpdate({ agency: e.target.value })} />
                         <div className="flex flex-col">
-                            <label className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-300">Status</label>
+                            <label htmlFor="bid-status" className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-300">Status</label>
                             <select 
+                                id="bid-status"
                                 title="Select bid status"
                                 className="px-4 py-2 bg-slate-100 dark:bg-slate-700 border-none rounded-lg focus:ring-2 focus:ring-primary-500"
                                 value={bid.status} 
@@ -349,19 +457,6 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                             </select>
                         </div>
                         <Input type="date" label="Due Date" value={bid.dueDate || ''} onChange={e => onUpdate({ dueDate: e.target.value })} />
-                        {bid.importantDates && bid.importantDates.length > 0 && (
-                            <div className="mt-4 p-3 bg-blue-50 dark:bg-slate-800 rounded-lg">
-                                <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2"><Calendar size={14}/> Important Dates</h4>
-                                <ul className="space-y-1">
-                                    {bid.importantDates.map((d, i) => (
-                                        <li key={i} className="text-xs text-blue-800 dark:text-blue-200 flex justify-between">
-                                            <span>{d.name}</span>
-                                            <span className="font-medium">{d.date}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
                     </div>
                 </Card>
             </div>
@@ -389,6 +484,21 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                             </ul>
                         </div>
                     ) : <p className="text-sm text-slate-500">No deliverables extracted yet.</p>}
+
+                    <hr className="my-4" />
+
+                    {(bid.importantDates && bid.importantDates.length > 0) ? (
+                        <div>
+                             <h4 className="font-bold text-md mb-2">Important Dates</h4>
+                             <ul className="list-disc list-inside space-y-2 text-sm text-slate-700 dark:text-slate-300">
+                                {bid.importantDates.map((dateItem: any, i: number) => (
+                                    <li key={i}>
+                                        <span className="font-semibold">{dateItem.name}:</span> {dateItem.date}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ) : <p className="text-sm text-slate-500">No important dates extracted yet.</p>}
 
                 </Card>
                  <Card>

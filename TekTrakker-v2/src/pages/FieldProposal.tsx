@@ -7,7 +7,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import Select from 'components/ui/Select';
-import { CheckCircle, Eye, Sparkles, Edit2, Mail, Book, Save, Trash2 as TrashIcon } from 'lucide-react';
+import { CheckCircle, Eye, Sparkles, Edit2, Mail, Book, Save } from 'lucide-react';
 import { db } from 'lib/firebase';
 import type { Proposal, ProposalItem, ProposalPreset, Customer } from 'types';
 import SignaturePad, { SignaturePadHandle } from 'components/ui/SignaturePad';
@@ -26,7 +26,7 @@ type Tier = 'Good' | 'Better' | 'Best';
 type AddTool = 'ai' | 'manual' | 'pricebook';
 
 // Change ProposalItem to use unitPrice internally
-type InternalProposalItem = Omit<ProposalItem, 'price'> & { unitPrice: number };
+type InternalProposalItem = Omit<ProposalItem, 'price'> & { unitPrice: number, isPercentage?: boolean };
 
 const FieldProposal: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -40,10 +40,14 @@ const FieldProposal: React.FC = () => {
     const [customerId, setCustomerId] = useState('');
     const [customerSearch, setCustomerSearch] = useState('');
     const [items, setItems] = useState<InternalProposalItem[]>([]);
+    const [recommendations, setRecommendations] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     
     const [activeTier, setActiveTier] = useState<Tier>('Good');
     const [selectedOption, setSelectedOption] = useState<Tier | null>(null);
+    
+    const [additionalFeePercent, setAdditionalFeePercent] = useState<number>(0);
+    const [additionalFeeName, setAdditionalFeeName] = useState<string>('Processing Fee');
     
     const [activeTool, setActiveTool] = useState<AddTool>('ai');
     const [aiSuggestions, setAiSuggestions] = useState<AISuggestionSet | null>(null);
@@ -97,10 +101,13 @@ const FieldProposal: React.FC = () => {
 
                 const mappedItems = (proposal.items || []).map((item: any) => ({
                     ...item,
-                    unitPrice: item.price || 0,
+                    unitPrice: item.isPercentage ? (item.percentageRate || item.price || 0) : (item.price || 0),
                 }));
-                setItems(mappedItems);
+                setItems(mappedItems as InternalProposalItem[]);
                 
+                setAdditionalFeePercent(proposal.additionalFeePercent || 0);
+                setAdditionalFeeName(proposal.additionalFeeName || 'Processing Fee');
+                setRecommendations(proposal.recommendations || '');
                 setSelectedOption((proposal.selectedOption as Tier) || null);
                 if (proposal.selectedOption) setActiveTier(proposal.selectedOption as Tier);
                 setStep(2); 
@@ -110,13 +117,42 @@ const FieldProposal: React.FC = () => {
 
     const calculateTierTotal = (tier: Tier) => {
         const tierItems = items.filter((i: InternalProposalItem) => (i.tier && i.tier.toLowerCase() === tier.toLowerCase()) || (!i.tier && tier === 'Good'));
-        const subtotal = tierItems.reduce((sum: number, item: InternalProposalItem) => sum + (Number(item.unitPrice || 0) * Number(item.quantity || 1)), 0);
-        const taxableAmount = tierItems.filter(i => i.taxable !== false).reduce((sum: number, item: InternalProposalItem) => sum + (Number(item.unitPrice || 0) * Number(item.quantity || 1)), 0);
+        
+        // Calculate base subtotal without percentage-based items
+        const baseSubtotal = tierItems.filter(i => !i.isPercentage).reduce((sum: number, item: InternalProposalItem) => sum + (Number(item.unitPrice || 0) * Number(item.quantity || 1)), 0);
+
+        // Process items to calculate values for percentage-based items dynamically
+        const processedItems = tierItems.map(item => {
+            if (item.isPercentage) {
+                // unitPrice represents the percentage (e.g. 10 for 10%)
+                const calculatedAmount = baseSubtotal * (Number(item.unitPrice || 0) / 100);
+                const finalAmount = item.type === 'Discount' ? -Math.abs(calculatedAmount) : Math.abs(calculatedAmount);
+                return { ...item, total: finalAmount * (item.quantity || 1) };
+            }
+            return item;
+        });
+
+        // Compute subtotal and tax using processed items
+        const subtotal = processedItems.reduce((sum: number, item: InternalProposalItem) => {
+            if (item.isPercentage) return sum + (item.total || 0);
+            return sum + (Number(item.unitPrice || 0) * Number(item.quantity || 1));
+        }, 0);
+
+        const taxableAmount = processedItems.filter(i => i.taxable !== false).reduce((sum: number, item: InternalProposalItem) => {
+            if (item.isPercentage) return sum + (item.total || 0);
+            return sum + (Number(item.unitPrice || 0) * Number(item.quantity || 1));
+        }, 0);
+
         const tax = taxableAmount * ((state.currentOrganization?.taxRate || 8.25) / 100);
-        return { subtotal, tax, total: subtotal + tax, items: tierItems };
+        
+        let total = subtotal + tax;
+        const additionalFeeAmount = additionalFeePercent ? (total * (additionalFeePercent / 100)) : 0;
+        total += additionalFeeAmount;
+
+        return { subtotal, tax, total, additionalFeeAmount, items: processedItems };
     };
 
-    const handleUpdateItem = (id: string, field: keyof InternalProposalItem, value: any) => {
+    const handleUpdateItem = (id: string, field: keyof InternalProposalItem, value: string | number | boolean) => {
         setItems(prevItems => prevItems.map(item => {
             if (item.id === id) {
                 const updated = { ...item, [field]: value };
@@ -133,17 +169,19 @@ const FieldProposal: React.FC = () => {
         setItems(prev => prev.filter(i => i.id !== id));
     };
 
-    const handleAddManualItem = (item: any) => {
+    const handleAddManualItem = (item: { name: string, description: string, quantity: number, price: number, type: string, isPercentage?: boolean, tier: Tier }) => {
         const newItem: InternalProposalItem = {
             id: `pi-man-${Date.now()}`,
             ...item,
+            type: item.type as 'Part' | 'Labor' | 'Fee' | 'Discount' | 'Service',
             unitPrice: item.price,
             partCost: 0, 
             laborHours: 0,
             hourlyRate: 0,
             margin: 0,
-            total: item.price * item.quantity,
-            taxable: item.type === 'Part'
+            total: item.price * item.quantity, // This will be dynamically re-computed if isPercentage is true
+            taxable: item.type === 'Part',
+            isPercentage: item.isPercentage
         };
         setItems([...items, newItem]);
     };
@@ -266,15 +304,15 @@ const FieldProposal: React.FC = () => {
         }
     };
 
-    const handleSaveProposal = async (action: 'saveDraft' | 'send' | 'accept') => {
+    const handleSaveProposal = async (action: 'saveDraft' | 'send' | 'accept' | 'verbalAccept') => {
         if (!customer || isSaving) return;
 
-        let status: Proposal['status'] = 'Draft';
+        let status: Proposal['status'];
         let signatureDataUrl: string | null = null;
         let finalSelectedOption: Tier | null = selectedOption;
 
-        if (action === 'accept') {
-            if (!sigPadRef.current || sigPadRef.current.isEmpty()) {
+        if (action === 'accept' || action === 'verbalAccept') {
+            if (action === 'accept' && (!sigPadRef.current || sigPadRef.current.isEmpty())) {
                 showToast.warn("Please sign the proposal to accept it.");
                 return;
             }
@@ -283,7 +321,7 @@ const FieldProposal: React.FC = () => {
                 return;
             }
             status = 'Accepted';
-            signatureDataUrl = sigPadRef.current.toDataURL();
+            signatureDataUrl = action === 'verbalAccept' ? 'VERBAL_ACCEPTANCE' : (sigPadRef.current ? sigPadRef.current.toDataURL() : null);
         } else if (action === 'send') {
             status = 'Sent';
             finalSelectedOption = null; // Customer will select
@@ -296,13 +334,31 @@ const FieldProposal: React.FC = () => {
         
         const proposalId = editProposalId || `prop-${Date.now()}`;
         
-        const itemsToSave = items.map(item => {
-            const { unitPrice, ...rest } = item;
-            return { ...rest, price: unitPrice || 0 };
-        });
+        const getProcessedItems = () => {
+            const baseSubtotals: Record<string, number> = { good: 0, better: 0, best: 0 };
+            
+            ['Good', 'Better', 'Best'].forEach(t => {
+                const tItems = items.filter(i => (i.tier && i.tier.toLowerCase() === t.toLowerCase()) || (!i.tier && t === 'Good'));
+                baseSubtotals[t.toLowerCase()] = tItems.filter(i => !i.isPercentage).reduce((sum, i) => sum + (Number(i.unitPrice || 0) * Number(i.quantity || 1)), 0);
+            });
+
+            return items.map(item => {
+                const itemTier = (item.tier || 'Good').toLowerCase();
+                const { unitPrice, ...rest } = item;
+                
+                if (item.isPercentage) {
+                    const calculatedAmount = baseSubtotals[itemTier] * (Number(unitPrice || 0) / 100);
+                    const finalAmount = item.type === 'Discount' ? -Math.abs(calculatedAmount) : Math.abs(calculatedAmount);
+                    return { ...rest, percentageRate: unitPrice, price: finalAmount, total: finalAmount * (item.quantity || 1) };
+                }
+                return { ...rest, price: unitPrice || 0 };
+            });
+        };
+
+        const itemsToSave = getProcessedItems();
 
         const tierForTotals = selectedOption || activeTier;
-        const { subtotal, tax, total } = calculateTierTotal(tierForTotals);
+        const { subtotal, tax, total, additionalFeeAmount } = calculateTierTotal(tierForTotals);
 
         const proposal: Proposal = {
             id: proposalId,
@@ -320,6 +376,10 @@ const FieldProposal: React.FC = () => {
             subtotal,
             taxAmount: tax,
             total,
+            additionalFeePercent,
+            additionalFeeName,
+            additionalFeeAmount,
+            recommendations: recommendations || '',
         };
 
         try {
@@ -332,9 +392,10 @@ const FieldProposal: React.FC = () => {
             });
 
             // --- NOTIFY FIELD TECHNICIAN IMMEDIATELY ---
-            if (action === 'accept') {
+            if (action === 'accept' || action === 'verbalAccept') {
                 const recipientId = proposal.technicianId || proposal.createdById;
-                const notificationContent = `🎉 ${proposal.customerName || 'Your customer'} just signed and accepted the "${finalSelectedOption}" option of Proposal ${proposal.id} for $${total.toFixed(2)} in person!`;
+                const modeText = action === 'verbalAccept' ? 'verbally ' : 'in person ';
+                const notificationContent = `🎉 ${proposal.customerName || 'Your customer'} just ${modeText}accepted the "${finalSelectedOption}" option of Proposal ${proposal.id} for $${total.toFixed(2)}!`;
                 
                 try {
                     const { sendNotification, notifyAdmins } = await import('lib/notificationService');
@@ -386,6 +447,7 @@ const FieldProposal: React.FC = () => {
             } else {
                  switch(action) {
                     case 'accept':
+                    case 'verbalAccept':
                         showToast.warn("Proposal Accepted!");
                         navigate('/payments');
                         break;
@@ -409,15 +471,36 @@ const FieldProposal: React.FC = () => {
     };
 
     const generatePreviewData = () => {
-        const { subtotal, tax, total } = calculateTierTotal(selectedOption || activeTier || 'Good');
-        const itemsToPreview = items.map(item => ({...item, price: item.unitPrice}));
+        const { subtotal, tax, total, additionalFeeAmount } = calculateTierTotal(selectedOption || activeTier || 'Good');
+        
+        const baseSubtotals: Record<string, number> = { good: 0, better: 0, best: 0 };
+        ['Good', 'Better', 'Best'].forEach(t => {
+            const tItems = items.filter(i => (i.tier && i.tier.toLowerCase() === t.toLowerCase()) || (!i.tier && t === 'Good'));
+            baseSubtotals[t.toLowerCase()] = tItems.filter(i => !i.isPercentage).reduce((sum, i) => sum + (Number(i.unitPrice || 0) * Number(i.quantity || 1)), 0);
+        });
+
+        const itemsToPreview = items.map(item => {
+            const itemTier = (item.tier || 'Good').toLowerCase();
+            const { unitPrice, ...rest } = item;
+            if (item.isPercentage) {
+                const calculatedAmount = baseSubtotals[itemTier] * (Number(unitPrice || 0) / 100);
+                const finalAmount = item.type === 'Discount' ? -Math.abs(calculatedAmount) : Math.abs(calculatedAmount);
+                return { ...rest, percentageRate: unitPrice, price: finalAmount, total: finalAmount * (item.quantity || 1) };
+            }
+            return { ...rest, price: unitPrice || 0 };
+        });
+
         return {
             subtotal,
             taxAmount: tax,
             total,
+            additionalFeePercent,
+            additionalFeeName,
+            additionalFeeAmount,
             customerName: customer?.name,
             items: itemsToPreview,
-            selectedOption: null // Force null so preview generates multi-tier layout automatically for technician to see
+            selectedOption: null, // Force null so preview generates multi-tier layout automatically for technician to see
+            recommendations: recommendations || '',
         };
     };
 
@@ -480,7 +563,21 @@ const FieldProposal: React.FC = () => {
                 <div className="space-y-8 animate-fade-in">
                     <div className="flex gap-2 bg-slate-200 dark:bg-slate-800 p-1.5 rounded-2xl max-w-xl mx-auto shadow-inner">
                         {(['Good', 'Better', 'Best'] as Tier[]).map(tier => (
-                            <button key={tier} onClick={() => setActiveTier(tier)} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${activeTier === tier ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-xl' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>{tier}</button>
+                            <div 
+                                key={tier}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setActiveTier(tier as Tier)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        setActiveTier(tier as Tier);
+                                    }
+                                }}
+                                className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${activeTier === tier ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-xl' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'} cursor-pointer`}
+                            >
+                                {tier}
+                            </div>
                         ))}
                     </div>
 
@@ -495,7 +592,37 @@ const FieldProposal: React.FC = () => {
                         {activeTool === 'manual' && <ManualEntry activeTier={activeTier} onAdd={handleAddManualItem} />}
                         {aiSuggestions && activeTool === 'ai' && <AISuggestionsList suggestions={aiSuggestions} onAccept={handleAcceptAiSuggestion} />}
                         
-                        <ProposalItemsList items={items} activeTier={activeTier} onUpdate={handleUpdateItem} onDelete={handleDeleteItem} />
+                        <ProposalItemsList items={calculateTierTotal(activeTier).items} activeTier={activeTier} onUpdate={handleUpdateItem} onDelete={handleDeleteItem} />
+
+                        {/* Additional Fees & Discounts */}
+                        <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
+                            <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
+                                🏷️ Global Fees & Discounts
+                            </h4>
+                            <p className="text-[10px] text-slate-500 mb-4 uppercase font-bold tracking-widest">Apply a percentage fee (e.g., Processing Fee = 3) or discount (e.g., Seasonal Discount = -10)</p>
+                            <div className="flex gap-4 items-center">
+                                <div className="flex-1">
+                                    <Input label="Adjustment Name" value={additionalFeeName} onChange={e => setAdditionalFeeName(e.target.value)} placeholder="e.g. Processing Fee or Fall Discount" />
+                                </div>
+                                <div className="flex-1">
+                                    <Input label="Percentage (%)" type="number" value={additionalFeePercent} onChange={e => setAdditionalFeePercent(parseFloat(e.target.value) || 0)} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Technician Recommendations */}
+                        <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
+                            <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                                💡 Technician Recommendations
+                            </h4>
+                            <p className="text-[10px] text-slate-500 mb-3 uppercase font-bold tracking-widest">Provide proactive service advice to the customer</p>
+                            <textarea
+                                className="w-full min-h-[80px] p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-sm focus:ring-2 focus:ring-primary-500 transition-all resize-none text-slate-700 dark:text-slate-200"
+                                value={recommendations}
+                                onChange={e => setRecommendations(e.target.value)}
+                                placeholder="e.g. Recommend replacing the capacitor within the next 6 months..."
+                            />
+                        </div>
 
                         <div className="mt-12 flex justify-between items-end border-t border-slate-200 dark:border-slate-700 pt-8">
                             <div className="text-right flex-1">
@@ -521,19 +648,38 @@ const FieldProposal: React.FC = () => {
                 <div className="space-y-10 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {(['Good', 'Better', 'Best'] as Tier[]).map(tier => {
-                            const { total, items: tierItems } = calculateTierTotal(tier);
+                            const { total, items: tierItems, additionalFeeAmount } = calculateTierTotal(tier);
                             const isSelected = selectedOption === tier;
                             if (tierItems.length === 0) return null;
                             return (
-                                <div key={tier} onClick={() => setSelectedOption(tier)} className={`relative p-4 md:p-10 rounded-[2.5rem] border-4 cursor-pointer transition-all duration-500 ${isSelected ? 'border-primary-600 bg-primary-50 dark:bg-primary-900/20 shadow-2xl scale-105' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'}`}>
+                                <div 
+                                    key={tier} 
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => setSelectedOption(tier)} 
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            setSelectedOption(tier);
+                                        }
+                                    }}
+                                    className={`relative p-4 md:p-10 rounded-[2.5rem] border-4 cursor-pointer transition-all duration-500 ${isSelected ? 'border-primary-600 bg-primary-50 dark:bg-primary-900/20 shadow-2xl scale-105' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'}`}
+                                >
                                     <h3 className={`text-center font-black text-2xl uppercase mb-8 ${isSelected ? 'text-primary-700 dark:text-white' : 'text-slate-900 dark:text-slate-200'}`}>{tier}</h3>
-                                    <div className="text-center mb-10"><div className={`text-6xl font-black tracking-tighter ${isSelected ? 'text-primary-700 dark:text-white' : 'text-slate-900 dark:text-white'}`}>${total.toLocaleString(undefined, {maximumFractionDigits: 0})}</div></div>
+                                    <div className="text-center mb-10">
+                                        <div className={`text-6xl font-black tracking-tighter ${isSelected ? 'text-primary-700 dark:text-white' : 'text-slate-900 dark:text-white'}`}>${total.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
+                                        {!!additionalFeeAmount && (
+                                            <div className={`text-sm font-bold mt-2 ${additionalFeeAmount < 0 ? 'text-emerald-500' : 'text-slate-500'}`}>
+                                                Includes {additionalFeePercent}% {additionalFeeName || 'Adjustment'}
+                                            </div>
+                                        )}
+                                    </div>
                                     <div className="space-y-4 mb-10">
                                         {tierItems.map(i => (
                                             <div key={i.id} className="flex flex-col gap-1">
                                                 <div className="flex items-start gap-3">
                                                     <CheckCircle size={16} className="text-emerald-500 mt-1 shrink-0" />
-                                                    <p className={`text-sm font-bold ${isSelected ? 'text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400'}`}>{i.name || (i as any).title}</p>
+                                                    <p className={`text-sm font-bold ${isSelected ? 'text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400'}`}>{i.name}</p>
                                                 </div>
                                                 {i.description && (
                                                     <p className={`text-xs ml-7 italic leading-snug ${isSelected ? 'text-slate-600 dark:text-slate-400' : 'text-slate-500 dark:text-slate-500'}`}>{i.description}</p>
@@ -553,10 +699,11 @@ const FieldProposal: React.FC = () => {
                             <Button onClick={() => setIsPreviewOpen(true)} variant="secondary" className="w-auto flex items-center gap-2 text-xs font-black"><Eye size={16}/> Preview</Button>
                         </div>
                         <SignaturePad ref={sigPadRef} className="h-44 shadow-inner mb-8 bg-slate-50 dark:bg-slate-800 rounded-xl" />
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <Button variant="secondary" onClick={() => setStep(2)} className="h-16 font-bold">Modify</Button>
-                            <Button onClick={() => handleSaveProposal('send')} disabled={isSaving} className="h-16 font-black bg-indigo-600 hover:bg-indigo-700"><Mail size={18}/> Email</Button>
-                            <Button onClick={() => handleSaveProposal('accept')} disabled={!selectedOption || isSaving} className="h-16 text-xl font-black bg-emerald-600 hover:bg-emerald-700"><CheckCircle size={22}/> Accept</Button>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <Button variant="secondary" onClick={() => setStep(2)} className="h-16 font-bold text-sm md:text-base">Modify</Button>
+                            <Button onClick={() => handleSaveProposal('send')} disabled={isSaving} className="h-16 font-black bg-indigo-600 hover:bg-indigo-700 text-sm md:text-base"><Mail size={18} className="hidden md:block"/> Email</Button>
+                            <Button onClick={() => { if(window.confirm('Are you sure the customer has verbally agreed to this proposal?')) handleSaveProposal('verbalAccept'); }} disabled={!selectedOption || isSaving} className="h-16 font-black bg-amber-500 hover:bg-amber-600 text-white shadow-xl text-sm md:text-base leading-tight">Verbal<br/>Accept</Button>
+                            <Button onClick={() => handleSaveProposal('accept')} disabled={!selectedOption || isSaving} className="h-16 font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl text-sm md:text-base leading-tight flex items-center justify-center gap-1 md:gap-2"><CheckCircle size={18} className="hidden md:block"/> Sign &<br className="md:hidden"/> Accept</Button>
                         </div>
                     </Card>
                 </div>

@@ -10,7 +10,8 @@ import { Printer, CheckCircle, FileText, Lock, ShieldCheck, Building2, User } fr
 import Button from 'components/ui/Button';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import SignaturePad, { SignaturePadHandle } from 'components/ui/SignaturePad';
-
+import SquarePaymentForm from 'components/payment/SquarePaymentForm';
+import { KortPaymentForm } from 'components/payment/KortPaymentForm';
 const CustomerPayment: React.FC = () => {
   const { jobId } = useParams<{ jobId: string }>();
   const [job, setJob] = useState<Job | null>(null);
@@ -21,9 +22,11 @@ const CustomerPayment: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [autoPrint, setAutoPrint] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [paymentRecipient, setPaymentRecipient] = useState<'owner' | 'partner'>('owner');
-  const [paymentMethod, setPaymentMethod] = useState<'paypal' | 'stripe' | 'square'>('paypal');
+  const [paymentMethod, setPaymentMethod] = useState<'paypal' | 'stripe' | 'square' | 'kort'>('paypal');
+  const [finished, setFinished] = useState(false);
   
   // Removed unused stripe state variables to fix build errors if not used
   // const [stripePromise, setStripePromise] = useState<Promise<any> | null>(null);
@@ -66,8 +69,8 @@ const CustomerPayment: React.FC = () => {
             }
 
             setLoading(false);
-        } catch (err: any) {
-            setError(err.message || "System Error");
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "System Error");
             setLoading(false);
         }
     };
@@ -79,38 +82,44 @@ const CustomerPayment: React.FC = () => {
       const activeOrg = paymentRecipient === 'partner' ? partnerOrganization : organization;
       if (!activeOrg || !job) return;
 
-      if (activeOrg.stripePublicKey && job.source !== 'PlatformAdmin') {
-          // Stripe logic commented out to resolve potential unused variable issues if not fully implemented
-          /*
-          const loadStripe = async () => {
-              try {
-                  const stripeJs = await import('@stripe/stripe-js');
-                  const reactStripe = await import('@stripe/react-stripe-js');
-                  setStripeComponents({ Elements: reactStripe.Elements, CardElement: reactStripe.CardElement, useStripe: reactStripe.useStripe, useElements: reactStripe.useElements });
-                  const stripeObj = stripeJs.loadStripe(activeOrg.stripePublicKey!, { stripeAccount: activeOrg.stripeAccountId || undefined }).catch(() => null);
-                  setStripePromise(stripeObj);
-                  setPaymentMethod('stripe');
-              } catch (e) { console.error(e); }
-          };
-          loadStripe();
-          */
-          setPaymentMethod('stripe'); // Placeholder
-      } else if (activeOrg.squareApplicationId && activeOrg.squareLocationId && job.source !== 'PlatformAdmin') {
+      const isTestOrg = activeOrg.name?.trim().toLowerCase() === 'tektestsub';
+
+      // Priority 1: Respect the explicit default payment gateway if set
+      if (activeOrg.defaultPaymentGateway === 'kort' && activeOrg.kortAccountId && isTestOrg) {
+          setPaymentMethod('kort');
+      } else if (isTestOrg) {
+          setPaymentMethod('kort');
+      } else if (activeOrg.defaultPaymentGateway === 'square' && activeOrg.squareApplicationId) {
           setPaymentMethod('square');
-      } else {
+      } else if (activeOrg.defaultPaymentGateway === 'stripe' && activeOrg.stripePublicKey) {
+          setPaymentMethod('stripe');
+      } else if (activeOrg.defaultPaymentGateway === 'paypal' && activeOrg.paypalClientId) {
           setPaymentMethod('paypal');
+      } else {
+          // Priority 2: Fallback logic based on available keys
+          if (activeOrg.stripePublicKey && job.source !== 'PlatformAdmin') {
+              setPaymentMethod('stripe');
+          } else if (activeOrg.squareApplicationId && activeOrg.squareLocationId && job.source !== 'PlatformAdmin') {
+              setPaymentMethod('square');
+          } else {
+              setPaymentMethod('paypal');
+          }
       }
   }, [organization, partnerOrganization, paymentRecipient, job]);
 
-  const markJobPaid = async () => {
+  const markJobPaid = async (paymentIntentId?: string) => {
       if (!job || !jobId) return;
       try {
-          await db.collection('jobs').doc(jobId).update({ 
+          const updateData: any = { 
               'invoice.status': 'Paid', 
               'invoice.paidDate': new Date().toISOString(),
               'invoice.paidTo': paymentRecipient === 'partner' ? partnerOrganization?.id : organization?.id,
               'invoice.paymentRecipientName': paymentRecipient === 'partner' ? partnerOrganization?.name : organization?.name
-          });
+          };
+          if (paymentIntentId) {
+              updateData['invoice.paymentIntentId'] = paymentIntentId;
+          }
+          await db.collection('jobs').doc(jobId).update(updateData);
           if (job.source === 'PlatformAdmin' && job.customerId) await db.collection('organizations').doc(job.customerId).update({ subscriptionStatus: 'active' });
           
           try {
@@ -126,10 +135,24 @@ const CustomerPayment: React.FC = () => {
 
           setJob({ ...job, invoice: { ...job.invoice, status: 'Paid' } });
           setSuccess(true);
+          
+          // Post-payment reminder if not signed
+          if (!job.invoiceSignature) {
+              showToast.info("Payment received! Please don't forget to sign the authorization below.");
+              setTimeout(() => {
+                  document.getElementById('signature-section')?.scrollIntoView({ behavior: 'smooth' });
+              }, 1500);
+          }
       } catch { showToast.warn("Failed to update status."); }
   };
 
-  const handlePayPalApprove = async (data: any, actions: any) => {
+  interface PayPalActions {
+    order?: {
+        capture: () => Promise<{ status?: string }>;
+    };
+  }
+
+  const handlePayPalApprove = async (data: Record<string, unknown>, actions: PayPalActions) => {
     try {
         const details = await actions.order.capture();
         if (details.status === 'COMPLETED') await markJobPaid();
@@ -157,7 +180,28 @@ const CustomerPayment: React.FC = () => {
           } catch(e) { console.error('Failed to send notifications', e); }
 
           setJob({ ...job, invoiceSignature: sig });
+          showToast.success("Signature captured!");
       } catch { showToast.warn("Failed to save."); } finally { setIsSigning(false); }
+  };
+
+  const handleFinish = async () => {
+      const { globalConfirm } = await import('lib/globalConfirm');
+      
+      if (!job?.invoiceSignature && !isPlatformSubscription) {
+          const proceed = await globalConfirm(
+              "You haven't signed the invoice yet. A signature is required for our records. Would you like to sign now?",
+              "Signature Required",
+              "Sign Now",
+              "Finish Anyway"
+          );
+          if (proceed) {
+              document.getElementById('signature-section')?.scrollIntoView({ behavior: 'smooth' });
+              return;
+          }
+      }
+      
+      setFinished(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const isPlatformSubscription = job?.source === 'PlatformAdmin';
@@ -181,12 +225,72 @@ const CustomerPayment: React.FC = () => {
   if (loading) return <div className="p-4 md:p-10 text-center">Loading Invoice...</div>;
   if (error) return <div className="p-4 md:p-10 text-center text-red-500">{error}</div>;
 
+  if (finished) {
+      return (
+          <div className="min-h-screen bg-gray-50 py-12 px-4 flex flex-col items-center justify-center text-center">
+              <Card className="max-w-md w-full p-10 space-y-6 relative overflow-hidden">
+                  {organization?.logoUrl && (
+                      <img 
+                          src={organization.logoUrl} 
+                          alt="" 
+                          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70%] opacity-[0.04] pointer-events-none -rotate-12 z-0" 
+                      />
+                  )}
+                  <div className="relative z-10 space-y-6">
+                      <div className="w-20 h-20 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto shadow-xl shadow-emerald-100 animate-bounce-short">
+                          <CheckCircle size={40}/>
+                      </div>
+                      <div>
+                          <h2 className="text-3xl font-black text-slate-900 tracking-tight">All Set!</h2>
+                          <p className="text-slate-500 font-medium mt-2">Thank you for your business. You may now close this window.</p>
+                      </div>
+                      <div className="pt-4 space-y-3">
+                          <Button onClick={() => { setIsPreviewOpen(true); setAutoPrint(true); }} variant="secondary" className="w-full flex items-center justify-center gap-2 h-12 text-xs font-black uppercase">
+                              <Printer size={18}/> Print Final Receipt
+                          </Button>
+                          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest pt-4">Transaction ID: {job?.id?.substring(0,12)}</p>
+                      </div>
+                  </div>
+              </Card>
+              {isPreviewOpen && job && organization && (
+                  <DocumentPreview 
+                      type="Invoice"
+                      onClose={() => { setIsPreviewOpen(false); setAutoPrint(false); }} 
+                      data={job} 
+                      organization={organization}
+                      autoPrint={autoPrint}
+                  />
+              )}
+          </div>
+      );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-4 md:py-8 px-4 flex flex-col items-center">
-        {isPreviewOpen && <DocumentPreview type="Invoice" data={job} onClose={() => setIsPreviewOpen(false)} isInternal={false} organization={currentActiveOrg || organization} />}
         
-        <Card className="max-w-xl w-full overflow-hidden mb-6">
-            <div className="p-6 border-b bg-white flex justify-between items-center">
+        <Card className="max-w-xl w-full overflow-hidden mb-6 relative">
+            {/* Watermarks - Multi-Pattern for branding consistency */}
+            {(currentActiveOrg?.logoUrl || currentActiveOrg?.letterheadDataUrl) && (
+                <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
+                    <img 
+                        src={currentActiveOrg.logoUrl || currentActiveOrg.letterheadDataUrl || ''} 
+                        alt="" 
+                        className="doc-watermark absolute top-[15%] left-[10%] w-[35%] opacity-[0.05] -rotate-12" 
+                    />
+                    <img 
+                        src={currentActiveOrg.logoUrl || currentActiveOrg.letterheadDataUrl || ''} 
+                        alt="" 
+                        className="doc-watermark absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[85%] opacity-[0.05] -rotate-12" 
+                    />
+                    <img 
+                        src={currentActiveOrg.logoUrl || currentActiveOrg.letterheadDataUrl || ''} 
+                        alt="" 
+                        className="doc-watermark absolute bottom-[15%] right-[10%] w-[35%] opacity-[0.05] -rotate-12" 
+                    />
+                </div>
+            )}
+            <div className="relative z-10">
+                <div className="p-6 border-b bg-white/80 backdrop-blur-sm flex justify-between items-center">
                 <div className="flex items-center gap-4">
                     {currentActiveOrg?.logoUrl && <img src={currentActiveOrg.logoUrl} className="h-12 w-auto object-contain" alt="Logo"/>}
                     <div>
@@ -274,7 +378,7 @@ const CustomerPayment: React.FC = () => {
                             <h3 className="text-xl font-black text-emerald-900">Payment Successful</h3>
                             <p className="text-sm text-emerald-700 font-medium mt-1">A receipt has been sent to your email.</p>
                         </div>
-                        <Button onClick={() => window.print()} variant="secondary" className="w-full flex items-center justify-center gap-2">
+                        <Button onClick={() => setIsPreviewOpen(true)} variant="secondary" className="w-full flex items-center justify-center gap-2">
                             <Printer size={18}/> Print Receipt
                         </Button>
                     </div>
@@ -285,7 +389,7 @@ const CustomerPayment: React.FC = () => {
                                 <div className="p-4 bg-blue-50 text-blue-700 rounded-xl text-sm font-medium">
                                     This invoice has a $0.00 balance and requires confirmation to close.
                                 </div>
-                                <Button onClick={markJobPaid} className="w-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-black h-14 rounded-2xl shadow-lg shadow-blue-100 text-lg">
+                                <Button onClick={() => markJobPaid()} className="w-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-black h-14 rounded-2xl shadow-lg shadow-blue-100 text-lg">
                                     Complete Transaction
                                 </Button>
                             </div>
@@ -293,18 +397,18 @@ const CustomerPayment: React.FC = () => {
                             <>
                                 <div className="space-y-3">
                                     <p className="text-[10px] font-black uppercase text-slate-400 text-center tracking-widest">Pay Securely via {paymentMethod === 'paypal' ? 'PayPal' : 'Credit Card'}</p>
-                                    {showPayPal && (
+                                    {showPayPal && paymentMethod === 'paypal' && (
                                         <div className="relative z-10">
                                             <PayPalScriptProvider options={{ clientId: activePaypalClientId || '', intent: isPlatformSubscription ? 'subscription' : 'capture', vault: isPlatformSubscription }}>
                                                 {isPlatformSubscription && planIdToSubscribe ? (
                                                     <PayPalButtons 
-                                                        style={({ layout: "vertical", label: "subscribe", shape: "rect", height: 50 } as any)} 
+                                                        style={{ layout: "vertical", label: "subscribe", shape: "rect", height: 50 }} 
                                                         createSubscription={(data, actions) => actions.subscription.create({ plan_id: planIdToSubscribe })} 
                                                         onApprove={handleSubscriptionApprove} 
                                                     />
                                                 ) : (
                                                     <PayPalButtons 
-                                                        style={({ layout: "vertical", shape: "rect", height: 50 } as any)} 
+                                                        style={{ layout: "vertical", shape: "rect", height: 50 }} 
                                                         createOrder={(_, actions) => actions.order.create({ intent: "CAPTURE", purchase_units: [{ amount: { currency_code: 'USD', value: safeTotal.toFixed(2) } }] })} 
                                                         onApprove={handlePayPalApprove} 
                                                     />
@@ -312,38 +416,106 @@ const CustomerPayment: React.FC = () => {
                                             </PayPalScriptProvider>
                                         </div>
                                     )}
+
+                                    {paymentMethod === 'square' && currentActiveOrg?.squareApplicationId && currentActiveOrg?.squareLocationId && (
+                                        <div className="relative z-10">
+                                            <SquarePaymentForm 
+                                                applicationId={currentActiveOrg.squareApplicationId}
+                                                locationId={currentActiveOrg.squareLocationId}
+                                                amount={safeTotal}
+                                                organizationId={currentActiveOrg.id}
+                                                jobId={jobId}
+                                                customerEmail={job?.customerEmail || ''}
+                                                onSuccess={async (_paymentId) => {
+                                                    await markJobPaid(_paymentId);
+                                                    showToast.success("Payment Successful via Square");
+                                                }}
+                                                onError={(err) => {
+                                                    setError(err);
+                                                    showToast.error(err);
+                                                }}
+                                            />
+                                        </div>
+                                    )}
                                     
-                                    {!showPayPal && (
+                                    {paymentMethod === 'kort' && (currentActiveOrg?.kortAccountId || currentActiveOrg?.name?.trim().toLowerCase() === 'tektestsub') && (
+                                        <div className="relative z-10 flex justify-center w-full">
+                                            <KortPaymentForm 
+                                                amount={safeTotal}
+                                                jobId={jobId}
+                                                accountId={currentActiveOrg?.kortAccountId}
+                                                organizationId={currentActiveOrg?.id}
+                                                onSuccess={async (_paymentId) => {
+                                                    await markJobPaid(_paymentId);
+                                                    showToast.success("Payment Successful via Kort");
+                                                }}
+                                                onError={(err) => {
+                                                    setError(err);
+                                                    showToast.error(err);
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    {paymentMethod === 'paypal' && !showPayPal && (
                                         <div className="p-4 md:p-8 text-center border-2 border-dashed border-slate-200 rounded-[1.5rem] bg-slate-50">
                                             <Lock size={32} className="mx-auto text-slate-300 mb-2"/>
-                                            <p className="text-sm font-bold text-slate-500 uppercase">Payment configuration pending</p>
+                                            <p className="text-sm font-bold text-slate-500 uppercase">PayPal configuration pending</p>
                                             <p className="text-[10px] text-slate-400 mt-1">Please contact {currentActiveOrg?.name || 'the service provider'} to complete payment.</p>
+                                        </div>
+                                    )}
+
+                                    {paymentMethod === 'stripe' && (
+                                        <div className="p-4 md:p-8 text-center border-2 border-dashed border-slate-200 rounded-[1.5rem] bg-slate-50">
+                                            <Lock size={32} className="mx-auto text-slate-300 mb-2"/>
+                                            <p className="text-sm font-bold text-slate-500 uppercase">Stripe integration coming soon</p>
+                                            <p className="text-[10px] text-slate-400 mt-1">Please use another payment method or contact {currentActiveOrg?.name || 'the service provider'}.</p>
                                         </div>
                                     )}
                                 </div>
                             </>
                         )}
+                    </div>
+                )}
 
-                        {!isPlatformSubscription && !job?.invoiceSignature && (
-                            <div className="pt-6 border-t border-slate-100">
-                                <div className="flex justify-between items-center mb-3">
-                                    <p className="text-xs font-black uppercase text-slate-400 tracking-wider">Customer Authorization</p>
-                                    <button onClick={() => sigPadRef.current?.clear()} className="text-[10px] font-black text-rose-500 uppercase hover:underline">Clear</button>
-                                </div>
-                                <div className="bg-slate-50 rounded-2xl border-2 border-slate-100 overflow-hidden">
-                                    <SignaturePad ref={sigPadRef} className="h-32" />
-                                </div>
-                                <p className="text-[9px] text-slate-400 mt-2 text-center italic">By signing above, I authorize the payment and acknowledge receipt of services.</p>
-                                <Button onClick={handleSignInvoice} disabled={isSigning} variant="secondary" className="w-full mt-4 h-10 text-xs font-black uppercase">
-                                    {isSigning ? 'Saving...' : 'Capture Signature'}
-                                </Button>
-                            </div>
-                        )}
+                {!isPlatformSubscription && !job?.invoiceSignature && (
+                    <div id="signature-section" className="pt-6 border-t border-slate-100 mt-6">
+                        <div className="flex justify-between items-center mb-3">
+                            <p className="text-xs font-black uppercase text-slate-400 tracking-wider">Customer Authorization Required</p>
+                            <button onClick={() => sigPadRef.current?.clear()} className="text-[10px] font-black text-rose-500 uppercase hover:underline">Clear</button>
+                        </div>
+                        <div className="bg-slate-50 rounded-2xl border-2 border-slate-100 overflow-hidden">
+                            <SignaturePad ref={sigPadRef} className="h-32" />
+                        </div>
+                        <p className="text-[9px] text-slate-400 mt-2 text-center italic">By signing above, I authorize the payment and acknowledge receipt of services.</p>
+                        <Button onClick={handleSignInvoice} disabled={isSigning} variant="secondary" className="w-full mt-4 h-10 text-xs font-black uppercase">
+                            {isSigning ? 'Saving...' : 'Capture Signature'}
+                        </Button>
+                    </div>
+                )}
+
+                {job?.invoiceSignature && (
+                    <div className="pt-6 border-t border-slate-100 mt-6 flex flex-col items-center">
+                        <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Signed on {job.invoiceSignedDate ? new Date(job.invoiceSignedDate).toLocaleDateString() : 'Capture'}</p>
+                        <img src={job.invoiceSignature} alt="Signature" className="h-16 opacity-80" />
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 uppercase mt-1">
+                            <ShieldCheck size={12}/> Verified Signature
+                        </div>
+                    </div>
+                )}
+
+                {isPaid && (
+                    <div className="pt-8 border-t border-slate-100 mt-6">
+                        <Button onClick={handleFinish} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black h-14 rounded-2xl shadow-xl shadow-slate-200 text-lg">
+                            COMPLETE & FINISH
+                        </Button>
+                        <p className="text-[10px] text-slate-400 text-center mt-3 font-bold uppercase tracking-widest">Return to Customer Session</p>
                     </div>
                 )}
             </div>
+            </div>
             
-            <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <div className="p-4 bg-slate-900 text-white flex justify-between items-center relative z-10">
                 <div className="flex items-center gap-2">
                     <div className="w-6 h-6 bg-white/10 rounded flex items-center justify-center text-[10px] font-black">TT</div>
                     <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Powered by TekTrakker</span>
@@ -352,7 +524,7 @@ const CustomerPayment: React.FC = () => {
                     <button onClick={() => setIsPreviewOpen(true)} className="text-[10px] font-black uppercase hover:text-blue-400 flex items-center gap-1 transition-colors">
                         <FileText size={12}/> View PDF
                     </button>
-                    <button onClick={() => window.print()} className="text-[10px] font-black uppercase hover:text-blue-400 flex items-center gap-1 transition-colors">
+                    <button onClick={() => setIsPreviewOpen(true)} className="text-[10px] font-black uppercase hover:text-blue-400 flex items-center gap-1 transition-colors">
                         <Printer size={12}/> Print
                     </button>
                 </div>
@@ -368,6 +540,17 @@ const CustomerPayment: React.FC = () => {
                 Secure 256-bit Encrypted Transaction. Your data privacy and security are our top priorities.
             </p>
         </div>
+
+        {/* Receipt Document Preview */}
+        {isPreviewOpen && job && organization && (
+            <DocumentPreview 
+                type="Invoice"
+                onClose={() => { setIsPreviewOpen(false); setAutoPrint(false); }} 
+                data={job} 
+                organization={organization}
+                autoPrint={autoPrint}
+            />
+        )}
     </div>
   );
 };

@@ -56,7 +56,7 @@ export const sendEmail = async (options: EmailOptions) => {
 
         const finalHtml = options.html ? options.html + pFooterHtml : (options.text ? options.text.replace(/\n/g, '<br>') + pFooterHtml : '');
 
-        return db.collection('mail').add({
+        return db.collection('mail_queue').add({
             to: email,
             message: {
                 subject: options.subject,

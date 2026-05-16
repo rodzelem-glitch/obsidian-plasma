@@ -32,7 +32,7 @@ export const LandingHeader: React.FC<LandingHeaderProps> = ({
                         title="Go to Home" 
                         tabIndex={0} 
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') window.location.href = 'https://tektrakker.com'; }} 
-                        className="flex items-center cursor-pointer" 
+                        className="flex items-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 rounded-lg p-1" 
                         onClick={() => window.location.href = 'https://tektrakker.com'}
                     >
                         <Logo className="h-14 w-auto text-primary-600" />

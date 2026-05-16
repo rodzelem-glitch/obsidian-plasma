@@ -57,6 +57,9 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         warrantyNotes, setWarrantyNotes,
         warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed,
         membershipEnrollment, setMembershipEnrollment,
+        recommendations, setRecommendations,
+        additionalFeeName, setAdditionalFeeName,
+        additionalFeePercent, setAdditionalFeePercent
     } = useInvoiceLogic(jobId, isOpen, onClose);
 
     const { state } = useAppContext();
@@ -126,6 +129,21 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     handleAddItem={handleAddItem}
                     setIsDiscountModalOpen={setIsDiscountModalOpen}
                 />
+
+                {/* Additional Fees */}
+                <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
+                    <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                        💳 Additional Fees (e.g., Credit Card Processing)
+                    </h4>
+                    <div className="flex gap-4 items-center">
+                        <div className="flex-1">
+                            <Input label="Fee Name" value={additionalFeeName} onChange={e => setAdditionalFeeName(e.target.value)} placeholder="e.g. Processing Fee" />
+                        </div>
+                        <div className="flex-1">
+                            <Input label="Fee Percentage (%)" type="number" value={additionalFeePercent} onChange={e => setAdditionalFeePercent(parseFloat(e.target.value) || 0)} />
+                        </div>
+                    </div>
+                </div>
 
                 <div className="mt-8 flex justify-end items-center gap-8">
                     <div className="text-right">
@@ -227,6 +245,20 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     ) : (
                         <p className="text-xs text-slate-500 italic">No recurring memberships attached to this invoice.</p>
                     )}
+                </div>
+
+                {/* Technician Recommendations Section */}
+                <div className="mt-6 border-t border-slate-100 dark:border-slate-800 pt-6">
+                    <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                        💡 Technician Recommendations
+                    </h4>
+                    <p className="text-[10px] text-slate-500 mb-3 uppercase font-bold tracking-widest">Provide proactive service advice to the customer</p>
+                    <textarea
+                        className="w-full min-h-[100px] p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm focus:ring-2 focus:ring-primary-500 transition-all resize-none"
+                        value={recommendations}
+                        onChange={e => setRecommendations(e.target.value)}
+                        placeholder="e.g. Recommend replacing the capacitor within the next 6 months to prevent system failure..."
+                    />
                 </div>
             </div>
             

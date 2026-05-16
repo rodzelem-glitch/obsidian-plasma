@@ -25,13 +25,15 @@ interface Integration {
   learnMoreUrl?: string;
   platformLevel?: boolean;
   isStubbed?: boolean;
+  isExternalLink?: boolean;
+  actionText?: string;
 }
 
 const CATEGORIES = [
   'All', 'Accounting', 'Payment Gateways', 'Marketing & CRM', 'Reviews & Reputation',
   'Fleet & GPS', 'HR & Payroll', 'Call Tracking', 'On-The-Job', 'Workflow Automation',
   'Estimations', 'Business Intelligence', 'E-Commerce', 'Financing', 'IoT & Telemetry',
-  'Training', 'Warranty', 'Supply Chain', 'Communications', 'GovTech API', 'Geospatial API', 'Javascript Embed'
+  'Training', 'Warranty', 'Supply Chain', 'Communications', 'GovTech API', 'Geospatial API', 'Javascript Embed', 'Insurance'
 ];
 
 const INTEGRATIONS: Integration[] = [
@@ -40,6 +42,7 @@ const INTEGRATIONS: Integration[] = [
   { id: 'acumatica', name: 'Acumatica', description: 'Enterprise ERP integration for multi-entity accounting, job costing, and AP/AR automation.', category: 'Accounting', icon: FileText, iconColor: 'text-blue-700', fields: [{ key: 'acumaticaUrl', label: 'Instance URL', placeholder: 'https://yourcompany.acumatica.com' }, { key: 'acumaticaUser', label: 'API Username' }, { key: 'acumaticaPassword', label: 'API Password', type: 'password' }], isStubbed: true },
   { id: 'netsuite', name: 'NetSuite (Oracle)', description: 'Sync financials, customers, and work orders with your Oracle NetSuite ERP.', category: 'Accounting', icon: FileText, iconColor: 'text-red-700', fields: [{ key: 'netsuiteAccountId', label: 'Account ID' }, { key: 'netsuiteConsumerKey', label: 'Consumer Key' }, { key: 'netsuiteConsumerSecret', label: 'Consumer Secret', type: 'password' }, { key: 'netsuiteTokenId', label: 'Token ID' }, { key: 'netsuiteTokenSecret', label: 'Token Secret', type: 'password' }], isStubbed: true },
   // Payment Gateways
+  { id: 'kort', name: 'TekTrakker Payment Processing', description: 'Process credit cards natively within your platform. Enjoy lower rates and deep integration.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-emerald-500', fields: [{ key: 'kortAccountId', label: 'Merchant Account ID', placeholder: 'acct_...' }], isStubbed: true },
   { id: 'stripe', name: 'Stripe', description: 'Connect Stripe to process credit card payments natively inside invoices. Accept all major credit cards securely.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-indigo-500', fields: [{ key: 'stripePublicKey', label: 'Publishable Key', placeholder: 'pk_live_...' }] },
   { id: 'square', name: 'Square', description: 'Connect Square to process card payments or sync transactions.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-slate-800 dark:text-slate-200', fields: [{ key: 'squareAppId', label: 'Application ID', placeholder: 'sq0idp-...' }, { key: 'squareLocId', label: 'Location ID', placeholder: 'L...' }, { key: 'squareToken', label: 'Square Personal Access Token', type: 'password', placeholder: 'EAAAE...' }] },
   { id: 'paypal', name: 'PayPal', description: 'Accept payments directly via PayPal.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-blue-500', fields: [{ key: 'paypalClientId', label: 'Client ID', placeholder: 'Enter Live Client ID' }] },
@@ -121,6 +124,8 @@ const INTEGRATIONS: Integration[] = [
   { id: 'sendgrid', name: 'SendGrid (Twilio)', description: 'Transactional email delivery with templates, analytics, and deliverability tools.', category: 'Communications', icon: Headphones, iconColor: 'text-blue-500', fields: [{ key: 'sendGridApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'openweather', name: 'OpenWeather Map Viewer', description: 'Provide technicians with real-time job site temperatures, UV index warnings, and storm reports before they dispatch.', category: 'Geospatial API', icon: CloudSun, iconColor: 'text-sky-500', fields: [{ key: 'openWeatherApiKey', label: 'Custom API Key Override (Optional)', type: 'password' }] },
   { id: 'shovels', name: 'Shovels.ai Permit Tracking', description: 'Automatically track US municipal building permits nationwide for all jobs without calling the town hall.', category: 'GovTech API', icon: CloudSun, iconColor: 'text-amber-500', fields: [{ key: 'shovelsApiKey', label: 'Shovels.ai API Key', type: 'password', placeholder: 'Enter your sandbox API key' }] },
+  // Insurance
+  { id: 'next_insurance', name: 'NEXT Insurance', description: 'Get customized business insurance tailored for contractors and field service professionals. Protect your business with affordable coverage.', category: 'Insurance', icon: Shield, iconColor: 'text-blue-600', fields: [], learnMoreUrl: 'https://nextinsurance.sjv.io/c/7280120/1148969/14516', isExternalLink: true, actionText: 'Get a Quote' },
 ];
 
 const IntegrationsMarketplace: React.FC = () => {
@@ -139,6 +144,36 @@ const IntegrationsMarketplace: React.FC = () => {
   const [bookingWidgetMode, setBookingWidgetMode] = useState<'inline'|'popup'>('inline');
   const [hiringWidgetMode, setHiringWidgetMode] = useState<'inline'|'popup'>('inline');
 
+  // Kort onboarding states
+  const [onboardingUrl, setOnboardingUrl] = useState<string | null>(null);
+  const [generatingOnboardingUrl, setGeneratingOnboardingUrl] = useState(false);
+
+  const handleGenerateOnboardingLink = async () => {
+      try {
+          setGeneratingOnboardingUrl(true);
+          const generateKortOnboardingLink = httpsCallable(functions, 'generateKortOnboardingLink');
+          
+          const result = await generateKortOnboardingLink({
+              organizationId: orgId,
+              organizationName: state.allOrganizations?.find(o => o.id === orgId)?.name || 'Unknown',
+              email: state.currentUser?.email || ''
+          });
+          const data = result.data as { success?: boolean; onboardingUrl?: string; accountId?: string };
+          if (data.success && data.onboardingUrl) {
+              setOnboardingUrl(data.onboardingUrl);
+              window.open(data.onboardingUrl, '_blank');
+              if (data.accountId) {
+                  setFieldValues(prev => ({ ...prev, kortAccountId: data.accountId || '' }));
+              }
+          }
+      } catch (error) {
+          console.error('Error generating onboarding link:', error);
+          showToast.error('Failed to generate merchant application link. Make sure the backend is configured.');
+      } finally {
+          setGeneratingOnboardingUrl(false);
+      }
+  };
+
   // Load enabled integrations
   useEffect(() => {
     if (!orgId) return;
@@ -154,6 +189,8 @@ const IntegrationsMarketplace: React.FC = () => {
   const [showPlatform, setShowPlatform] = useState(true);
 
   const filtered = INTEGRATIONS.filter(i => {
+    const isTestOrg = orgId === 'tektestsub' || state.allOrganizations?.find(o => o.id === orgId)?.name?.toLowerCase().includes('tektest');
+    if (i.id === 'kort' && !isTestOrg) return false;
     const matchCat = category === 'All' || i.category === category;
     const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase()) || i.description.toLowerCase().includes(search.toLowerCase());
     const matchType = showPlatform || !i.platformLevel;
@@ -352,7 +389,11 @@ const IntegrationsMarketplace: React.FC = () => {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2">
-                    {isPlatform ? (
+                    {integration.isExternalLink ? (
+                      <a href={integration.learnMoreUrl} target="_blank" rel="noreferrer" className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors shadow-sm">
+                        {integration.actionText || 'Visit Site'} <ExternalLink size={14} />
+                      </a>
+                    ) : isPlatform ? (
                       <div className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-lg cursor-not-allowed">
                         <Lock size={14} /> Coming Soon — Partnership Required
                       </div>
@@ -370,7 +411,7 @@ const IntegrationsMarketplace: React.FC = () => {
                         <Plus size={14} /> Enable Integration
                       </button>
                     ) : null}
-                    {integration.learnMoreUrl && !isConfigOpen && (
+                    {integration.learnMoreUrl && !isConfigOpen && !integration.isExternalLink && (
                       <a href={integration.learnMoreUrl} target="_blank" rel="noreferrer" className="p-2 text-slate-400 hover:text-primary-600 transition-colors" title="Learn more">
                         <ExternalLink size={14} />
                       </a>
@@ -385,7 +426,7 @@ const IntegrationsMarketplace: React.FC = () => {
                       <Shield size={12} /> API Credentials
                     </h4>
                     
-                    {integration.isStubbed && (
+                    {integration.isStubbed && integration.id !== 'kort' && (
                       <div className="mb-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-400">
                         <div className="flex items-start gap-2">
                           <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
@@ -409,38 +450,100 @@ const IntegrationsMarketplace: React.FC = () => {
                     )}
 
                     <div className="space-y-3">
-                      {integration.fields.map(field => (
-                        <div key={field.key} className={field.type === 'checkbox' ? 'flex items-center gap-3 pt-2' : ''}>
-                          {field.type === 'checkbox' ? (
-                            <>
-                              <input
-                                id={`field-${field.key}`}
-                                type="checkbox"
-                                checked={fieldValues[field.key] === 'true'}
-                                onChange={e => setFieldValues({ ...fieldValues, [field.key]: e.target.checked.toString() })}
-                                className="w-5 h-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                                title={field.label}
-                              />
-                              <label htmlFor={`field-${field.key}`} className="text-sm font-bold text-slate-700 dark:text-slate-300">{field.label}</label>
-                            </>
+                      {integration.id === 'kort' ? (
+                          !fieldValues.kortAccountId && !onboardingUrl ? (
+                              <div className="space-y-4 mb-4">
+                                  <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-xl text-center">
+                                      <h4 className="font-bold text-sm text-slate-800 dark:text-white mb-2">Embedded Merchant Onboarding</h4>
+                                      <p className="text-xs text-slate-500 mb-4">Complete the white-labeled merchant application directly within the app securely.</p>
+                                      <button onClick={handleGenerateOnboardingLink} disabled={generatingOnboardingUrl} className="w-full text-xs font-bold uppercase tracking-wide bg-primary-600 text-white py-2.5 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors">
+                                          {generatingOnboardingUrl ? 'Generating...' : 'Start In-App Application'}
+                                      </button>
+                                  </div>
+                                  <div className="relative flex items-center py-2">
+                                      <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+                                      <span className="flex-shrink-0 mx-4 text-[10px] uppercase font-black tracking-widest text-slate-400">Or enter existing ID</span>
+                                      <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+                                  </div>
+                                  <div className="space-y-3">
+                                      <label htmlFor="field-kortAccountId" className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">Merchant Account ID</label>
+                                      <input
+                                          id="field-kortAccountId"
+                                          type="text"
+                                          value={fieldValues.kortAccountId || ''}
+                                          onChange={e => setFieldValues({ ...fieldValues, kortAccountId: e.target.value })}
+                                          placeholder="acct_..."
+                                          className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary-500"
+                                      />
+                                  </div>
+                              </div>
+                          ) : onboardingUrl ? (
+                              <div className="space-y-4 mb-4">
+                                  <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-xl text-center">
+                                      <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500 mb-3" />
+                                      <h4 className="font-bold text-sm text-slate-800 dark:text-white mb-2">Application Opened in New Tab</h4>
+                                      <p className="text-xs text-slate-500 mb-4">
+                                          For security reasons, the merchant application must be completed in a separate window.<br/><br/>
+                                          Your Account ID has been pre-filled below. <strong>Please click "Save Configuration" once you are done!</strong>
+                                      </p>
+                                      <button onClick={() => window.open(onboardingUrl, '_blank')} className="text-xs font-bold uppercase tracking-wide bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 py-2.5 px-6 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
+                                          Re-open Application
+                                      </button>
+                                  </div>
+                              </div>
                           ) : (
-                            <>
-                              <label htmlFor={`field-${field.key}`} className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">{field.label}</label>
-                              <input
-                                id={`field-${field.key}`}
-                                type={field.type || 'text'}
-                                value={fieldValues[field.key] || ''}
-                                onChange={e => setFieldValues({ ...fieldValues, [field.key]: e.target.value })}
-                                placeholder={field.placeholder || ''}
-                                title={field.label}
-                                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary-500"
-                                autoComplete="new-password"
-                                data-lpignore="true"
-                              />
-                            </>
-                          )}
-                        </div>
-                      ))}
+                              <div className="space-y-4 mb-4">
+                                  <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40 p-4 rounded-xl">
+                                      <div className="flex items-center gap-2 mb-2">
+                                          <CheckCircle2 className="text-emerald-600 dark:text-emerald-500" size={18} />
+                                          <h4 className="font-bold text-sm text-emerald-800 dark:text-emerald-400">Account Connected</h4>
+                                      </div>
+                                      <label htmlFor="field-kortAccountId" className="block text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mb-1">Merchant Account ID</label>
+                                      <input
+                                          id="field-kortAccountId"
+                                          type="text"
+                                          value={fieldValues.kortAccountId || ''}
+                                          onChange={e => setFieldValues({ ...fieldValues, kortAccountId: e.target.value })}
+                                          placeholder="acct_..."
+                                          className="w-full px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-emerald-950 text-sm focus:ring-2 focus:ring-emerald-500"
+                                      />
+                                  </div>
+                              </div>
+                          )
+                      ) : (
+                        integration.fields.map(field => (
+                          <div key={field.key} className={field.type === 'checkbox' ? 'flex items-center gap-3 pt-2' : ''}>
+                            {field.type === 'checkbox' ? (
+                              <>
+                                <input
+                                  id={`field-${field.key}`}
+                                  type="checkbox"
+                                  checked={fieldValues[field.key] === 'true'}
+                                  onChange={e => setFieldValues({ ...fieldValues, [field.key]: e.target.checked.toString() })}
+                                  className="w-5 h-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                                  title={field.label}
+                                />
+                                <label htmlFor={`field-${field.key}`} className="text-sm font-bold text-slate-700 dark:text-slate-300">{field.label}</label>
+                              </>
+                            ) : (
+                              <>
+                                <label htmlFor={`field-${field.key}`} className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">{field.label}</label>
+                                <input
+                                  id={`field-${field.key}`}
+                                  type={field.type || 'text'}
+                                  value={fieldValues[field.key] || ''}
+                                  onChange={e => setFieldValues({ ...fieldValues, [field.key]: e.target.value })}
+                                  placeholder={field.placeholder || ''}
+                                  title={field.label}
+                                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-primary-500"
+                                  autoComplete="new-password"
+                                  data-lpignore="true"
+                                />
+                              </>
+                            )}
+                          </div>
+                        ))
+                      )}
                     </div>
                     <div className="flex gap-2 mt-4">
                       <button onClick={() => handleSave(integration)} disabled={saving} className="flex-1 px-4 py-2.5 text-xs font-bold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors">

@@ -3,7 +3,7 @@ export interface BusinessDocument {
     id: string;
     organizationId: string;
     title: string;
-    type: 'Other' | 'Service Agreement' | 'Contract' | 'Policy' | 'Letter' | 'Membership Terms' | 'Handbook' | 'Master Upload' | 'Waiver Template' | 'Master Template' | 'Tax Form' | '1099-NEC' | 'Project Report';
+    type: 'Other' | 'Service Agreement' | 'Contract' | 'Policy' | 'Letter' | 'Membership Terms' | 'Handbook' | 'Master Upload' | 'Waiver Template' | 'Master Template' | 'Tax Form' | '1099-NEC' | 'Project Report' | 'Hiring Packet';
     content: string; 
     createdAt: string;
     createdBy: string;

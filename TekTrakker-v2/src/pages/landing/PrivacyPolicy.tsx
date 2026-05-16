@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, Lock, Eye, FileText, Scale } from 'lucide-react';
+import { Shield, Lock, Eye, FileText } from 'lucide-react';
 import { LandingHeader } from './components/LandingHeader';
 import { LandingFooter } from './components/LandingFooter';
 
@@ -7,7 +7,7 @@ const PrivacyPolicy: React.FC = () => {
   return (
     <div className="min-h-screen bg-white font-sans selection:bg-blue-500/10 selection:text-blue-600">
       <LandingHeader 
-        backButton={{ label: 'Back to Home', href: '/' }}
+        backButton={{ label: 'Back to Home', href: 'https://tektrakker.com' }}
       />
 
       <header className="pt-40 pb-20 bg-slate-50 border-b border-slate-100">

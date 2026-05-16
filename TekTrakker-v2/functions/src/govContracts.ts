@@ -11,12 +11,13 @@ try {
 
 // The Data.gov / SAM.gov API Key
 // Configured via Secret Manager: SAM_GOV_API_KEY
+// eslint-disable-next-line no-undef
 const getSamApiKey = () => process.env.SAM_GOV_API_KEY || "";
 
 /**
  * Fetch contract opportunities from SAM.gov based on NAICS codes or keywords.
  */
-export const fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_KEY"] }).https.onCall(async (data, context) => {
+export const fetchFederalContracts = functions.https.onCall(async (data, context) => {
     // Require authentication
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be signed in.');
@@ -37,11 +38,12 @@ export const fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_
         const formatDate = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
 
         // Build query parameters
-        const params: any = {
+        const params: Record<string, string | number | undefined> = {
             api_key: getSamApiKey(),
             limit,
             postedFrom: formatDate(fromDate),
-            postedTo: formatDate(toDate)
+            postedTo: formatDate(toDate),
+            ptype: 'p,o,k,s'
         };
 
         if (data.noticeId) {
@@ -87,13 +89,13 @@ export const fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_
                                     return value;
                                 });
                                 if (textValues.length > 0) opp.description = textValues.join('\n\n');
-                            } catch (e) {
+                            } catch {
                                 // Ignore json stringify errors
                             }
                         }
                     }
-                } catch (descError: any) {
-                    console.warn(`Failed to fetch description text for notice ${data.noticeId}:`, descError.message);
+                } catch (descError: unknown) {
+                    console.warn(`Failed to fetch description text for notice ${data.noticeId}:`, (descError as Error).message);
                 }
             }
         }
@@ -103,8 +105,9 @@ export const fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_
             totalRecords: response.data.totalRecords,
             opportunities: opportunitiesData
         };
-    } catch (error: any) {
-        if (error.response && error.response.status === 404) {
+    } catch (error: unknown) {
+        const err = error as { response?: { status: number } };
+        if (err.response && err.response.status === 404) {
             // SAM.gov returns 404 when there is NO DATA FOUND for the specific filters.
             // We should intercept this and return an empty array gracefully.
             return {
@@ -114,10 +117,11 @@ export const fetchFederalContracts = functions.runWith({ secrets: ["SAM_GOV_API_
             };
         }
 
-        console.error("SAM.gov API Error:", error.response?.data || error.message);
+        const e = error as { response?: { data?: { error?: { message?: string } } }; message?: string };
+        console.error("SAM.gov API Error:", e.response?.data || e.message);
         throw new functions.https.HttpsError(
             'internal', 
-            `Failed to fetch from SAM.gov: ${error.response?.data?.error?.message || error.message}`
+            `Failed to fetch from SAM.gov: ${e.response?.data?.error?.message || e.message}`
         );
     }
 });

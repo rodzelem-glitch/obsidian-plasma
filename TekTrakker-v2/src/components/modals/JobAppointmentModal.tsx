@@ -64,6 +64,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isHighPriority, setIsHighPriority] = useState(false);
     const [selectedPropertyId, setSelectedPropertyId] = useState('');
+    const [proposalId, setProposalId] = useState('');
 
     // Requirements
     const [selectedWaivers, setSelectedWaivers] = useState<string[]>([]);
@@ -96,6 +97,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                 setSelectedDiagChecklists(jobToEdit.requiredDiagnosisChecklistIds || []);
                 setSelectedQualChecklists(jobToEdit.requiredQualityChecklistIds || []);
                 setSelectedCustomer(state.customers.find(c => c.id === jobToEdit.customerId) || null);
+                setProposalId(jobToEdit.proposalId || '');
             } else {
                 setDate(new Date().toISOString().split('T')[0]);
                 setTimeSlot('09:00');
@@ -111,6 +113,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                 setSelectedWaivers([]);
                 setSelectedDiagChecklists([]);
                 setSelectedQualChecklists([]);
+                setProposalId('');
             }
         }
     }, [isOpen, jobToEdit, state.customers]);
@@ -134,6 +137,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
     const handleSelectCustomer = (customer: Customer) => {
         setSelectedCustomer(customer);
         setSelectedPropertyId('');
+        setProposalId('');
     };
 
     const toggleAssistant = (id: string) => {
@@ -177,16 +181,16 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
 
         try {
             let dispatchAddress = selectedCustomer.address || 'Address Pending';
-            let locationName = undefined;
-                let poNumber = null;
-                if (selectedPropertyId && selectedPropertyId !== 'default') {
-                    const loc = selectedCustomer.serviceLocations?.find(l => l.id === selectedPropertyId);
-                    if (loc) {
-                        dispatchAddress = loc.address;
-                        locationName = loc.propertyName || loc.name;
-                        poNumber = loc.poNumber || null;
-                    }
+            let locationName: string | null = null;
+            let poNumber: string | null = null;
+            if (selectedPropertyId && selectedPropertyId !== 'default') {
+                const loc = selectedCustomer.serviceLocations?.find(l => l.id === selectedPropertyId);
+                if (loc) {
+                    dispatchAddress = loc.address;
+                    locationName = loc.propertyName || loc.name || null;
+                    poNumber = loc.poNumber || null;
                 }
+            }
 
                 if (jobToEdit) {
                     const updatePayload: Partial<Job> = {
@@ -205,8 +209,9 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         requiredDiagnosisChecklistIds: selectedDiagChecklists,
                         requiredQualityChecklistIds: selectedQualChecklists,
                         locationId: selectedPropertyId && selectedPropertyId !== 'default' ? selectedPropertyId : null,
-                        locationName: locationName,
-                        poNumber: poNumber
+                        locationName: locationName === undefined ? null : (locationName || null),
+                        poNumber: poNumber === undefined ? null : (poNumber || null),
+                        proposalId: proposalId || null
                     };
 
                     if (assignMode === 'partner' && partnerId) {
@@ -240,8 +245,8 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         customerPhone: selectedCustomer.phone || '',
                         customerEmail: selectedCustomer.email || '',
                         address: dispatchAddress,
-                        locationId: selectedPropertyId && selectedPropertyId !== 'default' ? selectedPropertyId : undefined,
-                        locationName: locationName,
+                        locationId: selectedPropertyId && selectedPropertyId !== 'default' ? selectedPropertyId : null,
+                        locationName: locationName || null,
                         poNumber: poNumber,
                         tasks: [finalJobType],
                         customerId: selectedCustomer.id,
@@ -262,7 +267,8 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         createdAt: new Date().toISOString(),
                         requiredWaiverIds: selectedWaivers,
                         requiredDiagnosisChecklistIds: selectedDiagChecklists,
-                        requiredQualityChecklistIds: selectedQualChecklists
+                        requiredQualityChecklistIds: selectedQualChecklists,
+                        proposalId: proposalId || null
                     };
 
                 if (assignMode === 'partner' && partnerId) {
@@ -389,6 +395,23 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         selectedQualChecklists={selectedQualChecklists}
                         setSelectedQualChecklists={setSelectedQualChecklists}
                     />
+
+                    {selectedCustomer && state.proposals && state.proposals.filter(p => p.customerId === selectedCustomer.id).length > 0 && (
+                        <div className="bg-blue-50 dark:bg-blue-900/30 p-4 border border-blue-200 dark:border-blue-800 rounded-lg">
+                            <label htmlFor="proposalSelect" className="block text-sm font-bold text-blue-800 dark:text-blue-300 mb-2">Link to Proposal (Optional)</label>
+                            <select 
+                                id="proposalSelect"
+                                className="w-full rounded-md border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                                value={proposalId}
+                                onChange={(e) => setProposalId(e.target.value)}
+                            >
+                                <option value="">-- No Linked Proposal --</option>
+                                {state.proposals.filter(p => p.customerId === selectedCustomer.id).map(p => (
+                                    <option key={p.id} value={p.id}>Proposal #{p.id.slice(-6).toUpperCase()} - {p.title || (p.items?.[0]?.name) || (p.items?.[0]?.description?.slice(0, 30)) || 'No Title'} (${p.total.toFixed(2)})</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     <div className="flex justify-end gap-3 pt-4">
                         <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>

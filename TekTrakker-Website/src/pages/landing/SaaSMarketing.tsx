@@ -4,7 +4,7 @@ import {
     Zap, Shield, BarChart3, Smartphone,
     CheckCircle, ArrowRight, Cpu, Users, DollarSign,
     Heart, TrendingUp, Layers, MapPin, Star, X,
-    Wrench, Layout,
+    Wrench, Layout, Menu,
     Phone, FileText, Camera
 } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
@@ -723,10 +723,11 @@ const InteractiveFeatures = () => {
 const SaaSMarketing: React.FC = () => {
     const navigate = useNavigate();
     const [showDemoOptions, setShowDemoOptions] = useState(false);
+    const [showMobileMenu, setShowMobileMenu] = useState(false);
     const [activeMockTab, setActiveMockTab] = useState<'layout' | 'users' | 'analytics' | 'wrench'>('layout');
 
     return (
-        <main className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-primary-500 selection:text-white">
+        <main className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-primary-500 selection:text-white overflow-x-hidden">
             <Helmet>
                 <title>TekTrakker | #1 Field Service Management Software</title>
                 <meta name="description" content="TekTrakker is the all-in-one field service management software for modern contractors. Includes scheduling, invoicing, AI estimators, and a native bid network." />
@@ -756,14 +757,27 @@ const SaaSMarketing: React.FC = () => {
 
             {/* Navbar */}
             <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/80">
-                <div className="max-w-7xl mx-auto px-6 h-24 flex justify-between items-center">
-                    <div role="button" aria-label="Go to Home" title="Go to Home" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} className="flex items-center cursor-pointer" onClick={() => navigate('/')}><Logo className="h-14 w-auto text-primary-600" /></div>
-                    <div className="flex gap-4 items-center">
+                <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 md:h-24 flex justify-between items-center">
+                    <div role="button" aria-label="Go to Home" title="Go to Home" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }} className="flex items-center cursor-pointer shrink-0" onClick={() => navigate('/')}><Logo className="h-10 md:h-14 w-auto text-primary-600" /></div>
+                    {/* Desktop nav */}
+                    <div className="hidden md:flex gap-4 items-center">
                         <button onClick={() => window.location.href = 'https://app.tektrakker.com/login'} className="text-sm font-bold text-slate-600 hover:text-slate-900 whitespace-nowrap">Customer Portal / Login</button>
-                        <button onClick={() => setShowDemoOptions(true)} className="bg-slate-900 hover:bg-primary-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer">Free Interactive Demo</button>
-                        <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=register_business'} className="bg-slate-900 hover:bg-orange-700 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</button>
+                        <button onClick={() => setShowDemoOptions(true)} className="bg-slate-900 hover:bg-primary-700 text-white text-sm font-black px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] cursor-pointer">Free Interactive Demo</button>
+                        <button onClick={() => window.location.href = 'https://app.tektrakker.com/login?view=register_business'} className="bg-slate-900 hover:bg-orange-700 text-white text-sm font-black px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</button>
                     </div>
+                    {/* Mobile hamburger */}
+                    <button onClick={() => setShowMobileMenu(!showMobileMenu)} className="md:hidden p-2 text-slate-700" aria-label="Toggle menu">
+                        {showMobileMenu ? <X size={24} /> : <Menu size={24} />}
+                    </button>
                 </div>
+                {/* Mobile dropdown */}
+                {showMobileMenu && (
+                    <div className="md:hidden border-t border-slate-200 bg-white/95 backdrop-blur-md px-4 py-4 flex flex-col gap-3 animate-fade-in">
+                        <button onClick={() => { setShowMobileMenu(false); window.location.href = 'https://app.tektrakker.com/login'; }} className="text-sm font-bold text-slate-600 hover:text-slate-900 py-2">Customer Portal / Login</button>
+                        <button onClick={() => { setShowMobileMenu(false); setShowDemoOptions(true); }} className="bg-slate-900 text-white text-sm font-black px-6 py-3 rounded-full w-full">Free Interactive Demo</button>
+                        <button onClick={() => { setShowMobileMenu(false); window.location.href = 'https://app.tektrakker.com/login?view=register_business'; }} className="bg-primary-600 text-white text-sm font-black px-6 py-3 rounded-full w-full">Start Your Free Trial</button>
+                    </div>
+                )}
             </nav>
 
             {/* DEMO OPTIONS MODAL */}
@@ -795,7 +809,7 @@ const SaaSMarketing: React.FC = () => {
 
 
 
-            <header className="pt-40 pb-20 px-6 relative overflow-hidden">
+            <header className="pt-28 md:pt-40 pb-20 px-6 relative overflow-hidden">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary-600/10 rounded-full blur-[120px] -z-10" />
                 <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                     <div>

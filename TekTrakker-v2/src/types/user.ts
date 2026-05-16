@@ -35,11 +35,24 @@ export interface User {
   ssn?: string | null; 
   taxId?: string;
   experienceYears?: number | null;
-  emergencyContact?: { name: string; phone: string; };
+  emergencyContact?: { name: string; phone: string; relationship?: string; alternatePhone?: string; };
   certifications?: { name: string; number?: string; expiryDate?: string; fileUrl?: string; }[];
   ptoAccrualRate?: number | null; 
   mileageRate?: number | null; 
   hasCompanyVehicle?: boolean | null;
+  dob?: string;
+  driversLicense?: { number: string; state: string; expiryDate: string; };
+  employmentType?: 'Full-Time' | 'Part-Time' | 'Temporary';
+  department?: string;
+  directDeposit?: {
+    preference?: 'Direct Deposit' | 'Paper Check';
+    bankName?: string;
+    accountType?: 'Checking' | 'Savings';
+    routingNumber?: string;
+    accountNumber?: string;
+    effectiveDate?: string;
+  };
+  infoSheetSignature?: { signature: string; date: string; };
   documents?: EmployeeDocument[]; 
   status?: 'active' | 'archived';
   phone?: string | null;
@@ -56,6 +69,8 @@ export interface User {
   permissions?: string[]; 
   marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; gclid?: string; };
   signedPolicies?: Record<string, string>;
+  policySignatures?: Record<string, string>;
+  formSubmissions?: Record<string, any>;
   digitalId?: string;
   salesContractSigned?: boolean;
   salesContractDate?: string;
@@ -63,6 +78,7 @@ export interface User {
   salesContractContent?: string;
   taxW9Content?: string;
   profilePicUrl?: string;
+  emailSignatureHtml?: string;
   aiEstimatorEnabled?: boolean;
   w4Status?: 'Single' | 'Married' | 'Head of Household';
   w4DependentsAmount?: number;
@@ -74,4 +90,12 @@ export interface User {
   hasAppAccess?: boolean;
   kioskPin?: string;
   gclid?: string;
+  hiringPacketStatus?: {
+    w4Completed: boolean;
+    i9Completed: boolean;
+    directDepositCompleted: boolean;
+    handbookSigned: boolean;
+    idUploaded: boolean;
+    completedAt?: string;
+  };
 }

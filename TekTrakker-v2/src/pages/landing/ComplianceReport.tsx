@@ -33,23 +33,54 @@ const ComplianceReport: React.FC = () => {
 
     const fetchSampleData = async () => {
         try {
-            let query: firebase.default.firestore.Query<firebase.default.firestore.DocumentData> = db.collection('customers').where('marketingConsent.sms', '==', true);
             if (orgId) {
-                query = query.where('organizationId', '==', orgId);
+                // To avoid composite index requirements on (organizationId, marketingConsent.sms),
+                // query by organizationId first and filter locally.
+                const custSnap = await db.collection('customers').where('organizationId', '==', orgId).get();
+                const userSnap = await db.collection('users').where('organizationId', '==', orgId).get();
+                const appSnap = await db.collection('applicants').where('organizationId', '==', orgId).get();
+                
+                const allData = [
+                    ...custSnap.docs.map(d => ({ id: d.id, ...d.data() as any })),
+                    ...userSnap.docs.map(d => ({ id: d.id, ...d.data() as any })),
+                    ...appSnap.docs.map(d => ({ id: d.id, ...d.data() as any }))
+                ];
+                const filtered = allData; // Show all registered customers for the org
+                
+                const data = filtered.slice(0, 50).map(dat => {
+                    return {
+                        id: dat.id,
+                        name: dat.name ? dat.name.substring(0, 3) + '***' : 'Unknown',
+                        phone: dat.phone ? '***-***-' + dat.phone.slice(-4) : 'N/A',
+                        rawPhone: dat.phone || '',
+                        source: dat.marketingConsent?.source || 'Unknown',
+                        timestamp: dat.marketingConsent?.agreedAt || new Date().toISOString()
+                    };
+                });
+                setRecentConsents(data);
+            } else {
+                const custSnap = await db.collection('customers').where('marketingConsent.sms', '==', true).limit(20).get();
+                const userSnap = await db.collection('users').where('marketingConsent.sms', '==', true).limit(20).get();
+                const appSnap = await db.collection('applicants').where('marketingConsent.sms', '==', true).limit(20).get();
+                
+                const allData = [
+                    ...custSnap.docs.map(d => ({ id: d.id, ...d.data() as any })),
+                    ...userSnap.docs.map(d => ({ id: d.id, ...d.data() as any })),
+                    ...appSnap.docs.map(d => ({ id: d.id, ...d.data() as any }))
+                ];
+                
+                const data = allData.slice(0, 50).map(dat => {
+                    return {
+                        id: dat.id,
+                        name: dat.name ? dat.name.substring(0, 3) + '***' : 'Unknown',
+                        phone: dat.phone ? '***-***-' + dat.phone.slice(-4) : 'N/A',
+                        rawPhone: dat.phone || '',
+                        source: dat.marketingConsent?.source || 'Unknown',
+                        timestamp: dat.marketingConsent?.agreedAt || new Date().toISOString()
+                    };
+                });
+                setRecentConsents(data);
             }
-            const snap = await query.limit(20).get();
-            const data = snap.docs.map(d => {
-                const dat = d.data();
-                return {
-                    id: d.id,
-                    name: dat.name ? dat.name.substring(0, 3) + '***' : 'Unknown',
-                    phone: dat.phone ? '***-***-' + dat.phone.slice(-4) : 'N/A',
-                    rawPhone: dat.phone || '',
-                    source: dat.marketingConsent?.source || 'Unknown',
-                    timestamp: dat.marketingConsent?.agreedAt || new Date().toISOString()
-                };
-            });
-            setRecentConsents(data);
         } catch (e) {
             console.error("Error fetching proof", e);
         } finally {
@@ -98,7 +129,7 @@ const ComplianceReport: React.FC = () => {
     return (
         <div className="min-h-screen bg-white font-sans text-slate-900 flex flex-col">
             <LandingHeader 
-                backButton={{ label: 'Back to Home', href: '/' }}
+                backButton={{ label: 'Back to Home', href: 'https://tektrakker.com' }}
             />
 
             <main className="flex-1 max-w-4xl mx-auto p-4 md:p-8 md:p-12 py-32 mt-4">

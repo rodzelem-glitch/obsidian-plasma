@@ -8,9 +8,19 @@ import Input from 'components/ui/Input';
 import Table from 'components/ui/Table';
 import { globalConfirm } from "lib/globalConfirm";
 
+interface PromoCode {
+    id: string;
+    code: string;
+    description: string;
+    durationMonths: number;
+    isActive: boolean;
+    createdAt: string;
+    [key: string]: unknown;
+}
+
 const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoMaker = false }) => {
     const [seeding, setSeeding] = useState(false);
-    const [promoCodes, setPromoCodes] = useState<any[]>([]);
+    const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
     const [loadingPromos, setLoadingPromos] = useState(false);
     
     const [newCode, setNewCode] = useState('');
@@ -27,7 +37,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
         setLoadingPromos(true);
         try {
             const snap = await db.collection('promoCodes').get();
-            setPromoCodes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setPromoCodes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PromoCode)));
         } catch (e) {
             console.error("Fetch promos failed", e);
         } finally {
@@ -51,8 +61,8 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
             setNewDesc('');
             setDurationMonths('12');
             fetchPromoCodes();
-        } catch (e: any) {
-            showToast.warn("Error: " + e.message);
+        } catch (e: unknown) {
+            showToast.warn("Error: " + (e instanceof Error ? e.message : 'Unknown error'));
         } finally {
             setSeeding(false);
         }
@@ -150,10 +160,9 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
 
             await batch.commit();
             showToast.warn("Test data seeded successfully! You can now Impersonate these organizations to view their data.");
-            window.location.reload(); 
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error(e);
-            showToast.warn("Error seeding data: " + e.message);
+            showToast.warn("Error seeding data: " + (e instanceof Error ? e.message : 'Unknown error'));
         } finally {
             setSeeding(false);
         }
@@ -172,7 +181,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
                 opCount = 0;
             };
 
-            const safeSet = async (ref: any, data: any) => {
+            const safeSet = async (ref: ReturnType<ReturnType<typeof db.collection>['doc']>, data: Record<string, unknown>) => {
                 currentBatch.set(ref, data);
                 opCount++;
                 if (opCount >= 450) await commitAndReset();
@@ -567,9 +576,9 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
 
             await commitAndReset();
             showToast.warn("High-Revenue Demo Suite Created! 'Apex Service Solutions (Demo)' is ready for presentation.");
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error(e);
-            showToast.warn("Error seeding demo suite: " + e.message);
+            showToast.warn("Error seeding demo suite: " + (e instanceof Error ? e.message : 'Unknown error'));
         } finally {
             setSeeding(false);
         }
@@ -659,6 +668,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
                                 </td>
                                 <td className="px-4 py-4">
                                     <button 
+                                        title="Delete promotion"
                                         onClick={() => handleDeletePromo(promo.id)} 
                                         className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
                                     >

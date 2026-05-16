@@ -74,7 +74,30 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         partsUsed: (job as any).partsUsed || []
     } as any);
     
-    const [assets, setAssets] = useState<EquipmentAsset[]>([]);
+    const assets = useMemo(() => {
+        const customer = state.customers.find(c => c.id === job.customerId);
+        let customerEquipment = customer?.equipment || [];
+        
+        const jobAddressStr = typeof job.address === 'string' ? job.address : '';
+        let currentPropertyId = job.locationId;
+        
+        if (!currentPropertyId && jobAddressStr && customer?.serviceLocations) {
+            const matchingLoc = customer.serviceLocations.find(loc => loc.address === jobAddressStr);
+            if (matchingLoc) currentPropertyId = matchingLoc.id;
+        }
+        
+        if (currentPropertyId) {
+            // Only show assets mapped to this property, or unmapped assets
+            customerEquipment = customerEquipment.filter(e => e.propertyId === currentPropertyId || !e.propertyId);
+        } else if (customer?.serviceLocations && customer.serviceLocations.length > 1) {
+            // If we can't determine the property but there are multiple properties, 
+            // only show unmapped equipment to be safe, rather than everything
+            customerEquipment = customerEquipment.filter(e => !e.propertyId);
+        }
+        
+        return customerEquipment;
+    }, [state.customers, job.customerId, job.locationId, job.address]);
+
     const [isAddAssetOpen, setIsAddAssetOpen] = useState(false);
     const [isOcrScanning, setIsOcrScanning] = useState(false);
     const [newAsset, setNewAsset] = useState<Omit<EquipmentAsset, 'id'> & { id?: string; serialPhotoUrl?: string; unitTagPhotoUrl?: string; conditionPhotoUrl?: string }>({ brand: '', model: '', serial: '', type: 'System' });
@@ -130,7 +153,6 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
     useEffect(() => {
         if (isOpen) {
             const customer = state.customers.find(c => c.id === job.customerId);
-            setAssets(customer?.equipment || []);
 
             setWorkflowState((prevState: any) => ({
                 ...prevState,
@@ -187,12 +209,21 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
     const handleJobUpdate = async (updates: Partial<Job & { notes: any, partsUsed: any[] }>) => {
         setIsSaving(true);
         try {
-            const fullUpdates = { 
+            const fullUpdates: any = { 
                 ...updates,
                 updatedAt: new Date().toISOString(),
                 updatedById: state.currentUser?.id,
                 updatedByName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`
             };
+
+            if (updates.jobStatus && updates.jobStatus !== job.jobStatus) {
+                fullUpdates.jobEvents = [...(job.jobEvents || []), {
+                    type: 'Status Change',
+                    status: updates.jobStatus,
+                    timestamp: new Date().toISOString(),
+                    userId: state.currentUser?.id
+                }];
+            }
 
             if (state.isDemoMode) {
                 console.log("Demo Mode: Skipping Firestore update.", fullUpdates);
@@ -359,7 +390,6 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                  await db.collection('customers').doc(customer.id).update({ equipment: updatedEquipment });
             }
             dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, equipment: updatedEquipment } });
-            setAssets(updatedEquipment);
         }
         setIsAddAssetOpen(false);
         setNewAsset({ brand: '', model: '', serial: '', type: 'System' });
@@ -375,7 +405,6 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                 await db.collection('customers').doc(customer.id).update({ equipment: updatedEquipment });
             }
             dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, equipment: updatedEquipment } });
-            setAssets(updatedEquipment);
             showToast.success("Asset deleted.");
         }
     };

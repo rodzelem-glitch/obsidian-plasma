@@ -2,10 +2,11 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowLeft } from 'lucide-react';
 
 const Logo = ({ className }: { className?: string }) => (
-    <img 
+    <Image 
         src="/tektrakker-logo-web.webp" 
         alt="TekTrakker" 
         width={150}
@@ -13,6 +14,7 @@ const Logo = ({ className }: { className?: string }) => (
         className={`max-w-full max-h-full object-contain ${className || 'h-auto'}`}
     />
 );
+
 
 interface LandingHeaderProps {
     backButton?: {

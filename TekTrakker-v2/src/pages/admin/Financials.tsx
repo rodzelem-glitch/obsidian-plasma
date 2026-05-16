@@ -25,6 +25,9 @@ import SalesPipeline from './SalesPipeline';
 import Payables from '../Payables';
 import DocumentPreview from '../../components/ui/DocumentPreview';
 import WarrantyClaimsDashboard from './WarrantyClaimsDashboard';
+import PayoutsTab from './financials/components/PayoutsTab';
+import DisputesTab from './financials/components/DisputesTab';
+
 const Financials: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const navigate = useNavigate();
@@ -54,8 +57,36 @@ const Financials: React.FC = () => {
     const [isExpensesOpen, setIsExpensesOpen] = useState(false);
     const [isPayablesOpen, setIsPayablesOpen] = useState(false);
     const [isWarrantyOpen, setIsWarrantyOpen] = useState(false);
+    const [isPayoutsOpen, setIsPayoutsOpen] = useState(false);
+    const [isDisputesOpen, setIsDisputesOpen] = useState(false);
+    const [payouts, setPayouts] = useState<any[]>([]);
+    const [disputes, setDisputes] = useState<any[]>([]);
 
     const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
+
+    React.useEffect(() => {
+        if (!state.currentOrganization?.id) return;
+        const unsub = db.collection('organizations').doc(state.currentOrganization.id).collection('payouts')
+            .orderBy('created', 'desc')
+            .limit(50)
+            .onSnapshot(snap => {
+                const results = snap.docs.map(doc => doc.data());
+                setPayouts(results);
+            }, err => console.error("Failed to load payouts", err));
+            
+        const unsubDisputes = db.collection('organizations').doc(state.currentOrganization.id).collection('disputes')
+            .orderBy('created', 'desc')
+            .limit(50)
+            .onSnapshot(snap => {
+                const results = snap.docs.map(doc => doc.data());
+                setDisputes(results);
+            }, err => console.error("Failed to load disputes", err));
+
+        return () => {
+            unsub();
+            unsubDisputes();
+        };
+    }, [state.currentOrganization?.id]);
 
     // Ensure we handle URL params opening specific modals
     React.useEffect(() => {
@@ -531,6 +562,60 @@ const Financials: React.FC = () => {
                         Manage Claims
                     </div>
                 </div>
+
+                {/* Bank Payouts */}
+                <div 
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsPayoutsOpen(true); e.preventDefault(); } }}
+                    onClick={() => setIsPayoutsOpen(true)}
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
+                >
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-lg group-hover:scale-110 transition-transform">
+                            <DollarSign size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Bank Payouts</h3>
+                    </div>
+                    <div className="space-y-3 flex-1 text-sm pt-2">
+                        <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-teal-500 flex justify-between items-center transition-colors">
+                            <span className="text-gray-600 dark:text-gray-400 font-medium">Recent Payouts</span>
+                            <span className="font-bold text-teal-700 dark:text-teal-400 bg-teal-100 dark:bg-teal-900/30 px-2 py-1 rounded text-xs tracking-wide">
+                                {payouts.length}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                        View History
+                    </div>
+                </div>
+                
+                {/* Chargebacks & Disputes */}
+                <div 
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsDisputesOpen(true); e.preventDefault(); } }}
+                    onClick={() => setIsDisputesOpen(true)}
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
+                >
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg group-hover:scale-110 transition-transform">
+                            <Shield size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Disputes</h3>
+                    </div>
+                    <div className="space-y-3 flex-1 text-sm pt-2">
+                        <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-red-500 flex justify-between items-center transition-colors">
+                            <span className="text-gray-600 dark:text-gray-400 font-medium">Active Disputes</span>
+                            <span className="font-bold text-red-700 dark:text-red-400 bg-red-100 dark:bg-red-900/30 px-2 py-1 rounded text-xs tracking-wide">
+                                {disputes.length}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                        Manage Disputes
+                    </div>
+                </div>
             </div>
 
             {/* Dashboard View Modals */}
@@ -551,6 +636,12 @@ const Financials: React.FC = () => {
             </Modal>
             <Modal isOpen={isWarrantyOpen} onClose={() => setIsWarrantyOpen(false)} title="Warranty Claims Tracker" size="full">
                 <WarrantyClaimsDashboard />
+            </Modal>
+            <Modal isOpen={isPayoutsOpen} onClose={() => setIsPayoutsOpen(false)} title="Bank Payouts" size="full">
+                <PayoutsTab payouts={payouts} />
+            </Modal>
+            <Modal isOpen={isDisputesOpen} onClose={() => setIsDisputesOpen(false)} title="Chargebacks & Disputes" size="full">
+                <DisputesTab disputes={disputes} />
             </Modal>
 
             {editingInvoiceId && <InvoiceEditorModal isOpen={true} onClose={() => setEditingInvoiceId(null)} jobId={editingInvoiceId} />}

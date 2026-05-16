@@ -8,6 +8,7 @@ import { LandingFooter } from '../../components/LandingFooter';
 import LandingChatbot from '../../components/LandingChatbot';
 import { CheckCircle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export function generateStaticParams() {
     return Object.keys(platformFeatures).map((slug) => ({
@@ -49,8 +50,7 @@ export default async function FeaturePage({ params }: { params: Promise<{ slug: 
                     </div>
                     <div className="relative rounded-3xl overflow-hidden shadow-2xl border border-slate-200 bg-slate-100 aspect-[4/3] flex items-center justify-center">
                         {featureData.heroImage ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={featureData.heroImage} alt={featureData.title} className="w-full h-full object-cover" />
+                            <Image src={featureData.heroImage} alt={featureData.title} fill className="object-cover" />
                         ) : (
                             <div className="text-slate-400 font-bold">Interactive Demo Preview</div>
                         )}

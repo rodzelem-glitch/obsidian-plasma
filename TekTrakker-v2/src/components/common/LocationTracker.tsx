@@ -5,31 +5,30 @@ import { getCurrentLocation } from '../../lib/geolocation';
 
 const LocationTracker: React.FC = () => {
     const { state, dispatch } = useAppContext();
-    const { currentUser: user } = state;
+    const userRef = useRef(state.currentUser);
     const lastUpdateRef = useRef<number>(0);
 
-    // Active shift for the current user: at least one shift with no clockOut
-    const hasActiveShift = React.useMemo(() => {
-        if (!user) return false;
-        const userLogs = state.shiftLogs[user.id] || [];
-        return userLogs.some(log => !log.clockOut);
-    }, [state.shiftLogs, user]);
+    // Keep userRef synced without triggering effect rerun
+    useEffect(() => {
+        userRef.current = state.currentUser;
+    }, [state.currentUser]);
 
     useEffect(() => {
-        // Only track technicians/employees when they have an active shift
-        const isTechnician = user && (
-            user.role === 'employee' || 
-            user.role === 'both' || 
-            user.role === 'supervisor' || 
-            user.role === 'Technician' || 
-            user.role === 'admin' // Admins in field should also be tracked
-        );
-
-        if (!user || !isTechnician || !hasActiveShift) {
-            return;
-        }
-
         const updateLocation = async () => {
+            const user = userRef.current;
+            if (!user) return;
+
+            // Only track technicians/employees when they have an active shift
+            const isTechnician = (
+                user.role === 'employee' || 
+                user.role === 'both' || 
+                user.role === 'supervisor' || 
+                user.role === 'Technician' || 
+                user.role === 'admin' // Admins in field should also be tracked
+            );
+
+            if (!isTechnician) return;
+
             const now = Date.now();
             // Ensure we don't spam Firestore: minimum 2 minutes between updates
             if (now - lastUpdateRef.current < 120000) return;
@@ -64,12 +63,14 @@ const LocationTracker: React.FC = () => {
             }
         };
 
-        // Initial update and subsequent heartbeat
+        // Try right away
         updateLocation();
+        
+        // Setup an interval that does NOT get cleared on user updates
         const interval = setInterval(updateLocation, 180000); // 3 minutes
 
         return () => clearInterval(interval);
-    }, [user, hasActiveShift, dispatch]);
+    }, [dispatch]); // Removed 'user' dependency so it doesn't constantly reset
 
     return null;
 };

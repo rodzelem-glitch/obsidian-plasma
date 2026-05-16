@@ -6,9 +6,11 @@
     }
 
     const orgId = container.getAttribute('data-org');
-    if (!orgId) {
-        console.error("TekTrakker Blog Widget: Missing data-org attribute on container.");
-        container.innerHTML = '<p style="color:red;">Error: Missing Organization ID for Blog Widget.</p>';
+    const profileSlug = container.getAttribute('data-slug');
+
+    if (!orgId && !profileSlug) {
+        console.error("TekTrakker Blog Widget: Missing data-org or data-slug attribute.");
+        container.innerHTML = '<p style="color:red;">Error: Missing Organization identifier.</p>';
         return;
     }
 
@@ -36,16 +38,50 @@
     container.innerHTML = '<div class="tt-blog-loading">Loading articles...</div>';
 
     const projectId = "tektrakker";
-    const firestoreUrl = \`https://firestore.googleapis.com/v1/projects/\${projectId}/databases/(default)/documents/organizations/\${orgId}/blogPosts\`;
+    
+    async function resolveOrgId() {
+        if (orgId) return orgId;
+        
+        // Resolve slug to orgId using Firestore runQuery
+        const queryUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+        const response = await fetch(queryUrl, {
+            method: 'POST',
+            body: JSON.stringify({
+                structuredQuery: {
+                    from: [{ collectionId: 'organizations' }],
+                    where: {
+                        fieldFilter: {
+                            field: { fieldPath: 'profileSlug' },
+                            op: 'EQUAL',
+                            value: { stringValue: profileSlug.toLowerCase() }
+                        }
+                    },
+                    limit: 1
+                }
+            })
+        });
+        
+        if (!response.ok) throw new Error("Failed to resolve organization slug");
+        
+        const results = await response.json();
+        if (!results || results.length === 0 || !results[0].document) {
+            throw new Error("Organization not found");
+        }
+        
+        const docName = results[0].document.name;
+        return docName.split('/').pop();
+    }
 
-    fetch(firestoreUrl)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error("Failed to load blog posts");
-            }
-            return response.json();
-        })
-        .then(data => {
+    async function loadPosts() {
+        try {
+            const resolvedId = await resolveOrgId();
+            const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/organizations/${resolvedId}/blogPosts`;
+
+            const response = await fetch(firestoreUrl);
+            if (!response.ok) throw new Error("Failed to load blog posts");
+            
+            const data = await response.json();
+            
             if (!data.documents || data.documents.length === 0) {
                 container.innerHTML = '<div class="tt-blog-empty">No articles published yet.</div>';
                 return;
@@ -79,27 +115,29 @@
                 const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
                 const formattedDate = post.createdAt ? new Date(post.createdAt).toLocaleDateString(undefined, dateOptions) : '';
                 
-                html += \`
+                html += `
                     <article class="tt-blog-post">
-                        <h2 class="tt-blog-title">\${post.title}</h2>
-                        <div class="tt-blog-meta">\${formattedDate}</div>
+                        <h2 class="tt-blog-title">${post.title}</h2>
+                        <div class="tt-blog-meta">${formattedDate}</div>
                         <div class="tt-blog-content">
-                            \${post.content}
+                            ${post.content}
                         </div>
                     </article>
-                \`;
+                `;
             });
 
-            html += \`
+            html += `
                 <div class="tt-blog-footer">
                     Powered by <a href="https://tektrakker.com" target="_blank" rel="noopener noreferrer">TekTrakker Blog Manager</a>
                 </div>
-            </div>\`;
+            </div>`;
 
             container.innerHTML = html;
-        })
-        .catch(err => {
+        } catch (err) {
             console.error("TekTrakker Blog Widget Error:", err);
             container.innerHTML = '<div class="tt-blog-empty" style="color:#ef4444;">Unable to load blog posts at this time.</div>';
-        });
+        }
+    }
+
+    loadPosts();
 })();

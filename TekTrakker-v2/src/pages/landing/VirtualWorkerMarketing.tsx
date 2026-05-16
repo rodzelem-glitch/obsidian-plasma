@@ -11,7 +11,7 @@ const VirtualWorkerMarketing: React.FC = () => {
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500 selection:text-white">
             <LandingHeader 
-                backButton={{ label: 'Back to Home', href: '/' }}
+                backButton={{ label: 'Back to Home', href: 'https://tektrakker.com' }}
             />
 
             <header className="pt-48 pb-20 px-6 relative overflow-hidden">

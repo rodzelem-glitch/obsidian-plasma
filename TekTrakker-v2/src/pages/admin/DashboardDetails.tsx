@@ -320,7 +320,7 @@ export const PartOrdersView: React.FC = () => {
                         {shopOrders.map((order) => (
                             <tr key={order.id}>
                                 <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm">
-                                    {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleDateString() : 'Unknown Date'}
+                                    {(order.createdAt as any)?.toDate ? (order.createdAt as any).toDate().toLocaleDateString() : 'Unknown Date'}
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="text-gray-900 dark:text-white font-medium">{order.customer.name}</div>
@@ -627,6 +627,60 @@ export const ActiveWarrantiesView: React.FC = () => {
                     ))}
                     {warrantyRows.length === 0 && (
                         <tr><td colSpan={6} className="p-6 text-center text-gray-500">No active warranties found.</td></tr>
+                    )}
+                </Table>
+            </Card>
+        </div>
+    );
+};
+
+export const AlertsCenterView: React.FC = () => {
+    const { state, dispatch } = useAppContext();
+    const navigate = useNavigate();
+    
+    // Filter alerts to system_alert only, for the current user
+    const alerts = state.notifications.filter((n: any) => n.type === 'system_alert' && n.userId === state.currentUser?.id);
+
+    const markAsRead = async (id: string) => {
+        dispatch({ type: 'MARK_NOTIFICATION_READ', payload: id });
+        await db.collection('notifications').doc(id).update({ read: true }).catch(console.error);
+    };
+
+    const handleAlertClick = (n: any) => {
+        if (!n.read) markAsRead(n.id);
+        if (n.link) navigate(n.link);
+    };
+
+    return (
+        <div>
+            <BackButton />
+            <div className="mb-6">
+                <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white">Compliance Alerts Center</h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Centralized view for your system compliance alerts and notifications.</p>
+            </div>
+            <Card>
+                <Table headers={['Date', 'Title', 'Message', 'Status', 'Actions']}>
+                    {alerts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(alert => (
+                        <tr key={alert.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors" onClick={() => handleAlertClick(alert)}>
+                            <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{new Date(alert.createdAt).toLocaleString()}</td>
+                            <td className="px-6 py-4 text-gray-900 dark:text-white font-semibold">{alert.title}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{alert.message}</td>
+                            <td className="px-6 py-4">
+                                {alert.read ? (
+                                    <span className="px-2 py-1 rounded text-xs font-bold bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">Read</span>
+                                ) : (
+                                    <span className="px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Action Required</span>
+                                )}
+                            </td>
+                            <td className="px-6 py-4">
+                                <Button size="sm" onClick={(e) => { e.stopPropagation(); handleAlertClick(alert); }}>
+                                    View
+                                </Button>
+                            </td>
+                        </tr>
+                    ))}
+                    {alerts.length === 0 && (
+                        <tr><td colSpan={5} className="p-6 text-center text-gray-500">No compliance alerts found.</td></tr>
                     )}
                 </Table>
             </Card>

@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { FinancialIcon, UsersIcon, TimeLogIcon, AlertTriangle } from '../../constants/constants';
 import { useAppContext } from '../../context/AppContext';
 import type { Job, User, Appointment } from '../../types/types';
@@ -7,7 +7,7 @@ import { db } from '../../lib/firebase';
 import MetricCard from './dashboard/components/MetricCard';
 import PendingAppointments from './dashboard/components/PendingAppointments';
 import LiveOperations from './dashboard/components/LiveOperations';
-import { ShoppingCart, Bot, ArrowRight, Wrench, Network, Megaphone, ShieldCheck } from 'lucide-react';
+import { ShoppingCart, Bot, ArrowRight, Wrench, ShieldCheck } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
 
@@ -86,7 +86,7 @@ const AdminDashboard: React.FC = () => {
         };
 
         filteredJobs.forEach(job => {
-            const inv = job.invoice as any;
+            const inv = job.invoice as { warrantyDisclaimerAgreed?: boolean, workmanshipWarrantyMonths?: number, partsWarrantyMonths?: number } | undefined;
             if (!inv || !inv.warrantyDisclaimerAgreed) return;
             const wm = inv.workmanshipWarrantyMonths || 0;
             const pm = inv.partsWarrantyMonths || 0;
@@ -111,7 +111,7 @@ const AdminDashboard: React.FC = () => {
             if(customer.equipment) {
                 customer.equipment.forEach(asset => {
                     if(asset.warranty?.requiresMaintenance && asset.warranty.maintenanceIntervalMonths) {
-                        let nextDate = new Date();
+                        let nextDate: Date;
                         if(asset.warranty.lastMaintenanceDate) {
                             nextDate = new Date(asset.warranty.lastMaintenanceDate);
                         } else if(asset.warranty.manufacturerStartDate) {
@@ -131,7 +131,7 @@ const AdminDashboard: React.FC = () => {
     }, [state.customers]);
 
     const orgName = state.currentOrganization?.name || 'My Business';
-    const openIncidents = (state.incidentReports || []).filter((i: any) => i.status !== 'Resolved');
+    const openIncidents = (state.incidentReports || []).filter((i: { status: string }) => i.status !== 'Resolved');
 
     const pendingAppointments = useMemo(() => {
         return (state.appointments || [])
@@ -162,6 +162,11 @@ const AdminDashboard: React.FC = () => {
             );
             if (existingCust) {
                 customerId = existingCust.id;
+                if (appt.marketingConsent && !existingCust.marketingConsent) {
+                    await db.collection('customers').doc(customerId).update({
+                        marketingConsent: appt.marketingConsent
+                    }).catch(e => console.error("Failed to update consent:", e));
+                }
             }
         }
 
@@ -180,7 +185,8 @@ const AdminDashboard: React.FC = () => {
                 customerType: 'Residential',
                 hvacSystem: { brand: 'Unknown', type: 'Unknown' },
                 serviceHistory: [],
-                createdAt: new Date().toISOString()
+                createdAt: new Date().toISOString(),
+                ...(appt.marketingConsent ? { marketingConsent: appt.marketingConsent } : {})
             });
         }
 
@@ -235,6 +241,10 @@ const AdminDashboard: React.FC = () => {
         }
     };
 
+    const alertsCount = useMemo(() => {
+        return state.notifications.filter((n: any) => n.type === 'system_alert' && n.userId === currentUser?.id && !n.read).length;
+    }, [state.notifications, currentUser]);
+
     return (
         <div className="flex flex-col gap-6">
             <header className="order-1 flex flex-col md:flex-row justify-between items-start md:items-end gap-3">
@@ -262,6 +272,7 @@ const AdminDashboard: React.FC = () => {
                 
                 {currentUser?.role !== 'supervisor' && (
                     <>
+                        <MetricCard title="Alerts" value={alertsCount} path="/admin/dashboard/alerts" icon={AlertTriangle} color="bg-rose-500" />
                         <MetricCard title="Maintenance Due" value={maintenanceDueCount} path="/admin/dashboard/maintenance" icon={Wrench} color="bg-indigo-500" />
                         <MetricCard title="Pending Orders" value={pendingOrders} path="/admin/dashboard/orders" icon={ShoppingCart} color="bg-cyan-500" />
                         <MetricCard title="Active Warranties" value={activeWarrantiesCount} path="/admin/dashboard/active-warranties" icon={ShieldCheck} color="bg-emerald-600" />
@@ -286,9 +297,10 @@ const AdminDashboard: React.FC = () => {
 
             {!state.currentOrganization?.virtualWorkerEnabled && (
                 <div className="order-5 lg:order-4">
-                    <div 
+                    <button 
+                        type="button"
                         onClick={() => window.location.href = '#/admin/ai-worker-upgrade'}
-                        className="relative overflow-hidden bg-gradient-to-r from-slate-900 to-indigo-900 rounded-2xl p-6 cursor-pointer shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-0.5 transition-all duration-300 group mt-2 mb-4"
+                        className="w-full text-left relative overflow-hidden bg-gradient-to-r from-slate-900 to-indigo-900 rounded-2xl p-6 cursor-pointer shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-0.5 transition-all duration-300 group mt-2 mb-4"
                     >
                         <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-500 pointer-events-none">
                             <Bot size={80} className="text-white" />
@@ -306,7 +318,7 @@ const AdminDashboard: React.FC = () => {
                                 View Pricing & Details <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
                             </div>
                         </div>
-                    </div>
+                    </button>
                 </div>
             )}
 

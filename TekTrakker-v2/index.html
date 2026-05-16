@@ -36,7 +36,6 @@
         padding: 0;
       }
       body {
-        overflow-x: hidden;
         font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
       }
       input, select, textarea, button {
@@ -123,12 +122,31 @@
 
         setTimeout(function() {
           var rootElem = document.getElementById('root');
-          if (rootElem && rootElem.innerHTML.trim() === '' && window.appHasErrors !== true) {
-             document.body.innerHTML = '<div style="padding:40px; background:yellow; color:black; font-family:sans-serif; height:100vh; z-index:99999; position:relative;">' +
-               '<h1 style="font-size:30px">JAVASCRIPT FAILED TO EXECUTE</h1>' +
-               '<p>The WKWebView loaded the HTML but silently refused to execute the bundled chunk.</p></div>';
+          if (!window.appLoaded && window.appHasErrors !== true) {
+             const storageKey = 'version_reload_timestamp';
+             const lastReload = sessionStorage.getItem(storageKey);
+             const now = Date.now();
+             if (!lastReload || now - parseInt(lastReload) > 10000) {
+                 sessionStorage.setItem(storageKey, now.toString());
+                 if ('serviceWorker' in navigator) {
+                     navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                         for (let registration of registrations) {
+                             registration.unregister();
+                         }
+                         window.location.reload(true);
+                     }).catch(function() {
+                         window.location.reload(true);
+                     });
+                 } else {
+                     window.location.reload(true);
+                 }
+             } else {
+                 document.body.innerHTML = '<div style="padding:40px; background:yellow; color:black; font-family:sans-serif; height:100vh; z-index:99999; position:relative;">' +
+                   '<h1 style="font-size:30px">App Update Failed</h1>' +
+                   '<p>A new version of the app is available, but the browser cache prevents it from loading. Please clear your cache.</p></div>';
+             }
           }
-        }, 7000);
+        }, 8000);
       });
     </script>
     <script>
@@ -138,16 +156,10 @@
           document.documentElement.classList.remove('dark')
       }
     </script>
+    <script src="https://js.paymentsonline.io/v2" defer></script>
   </head>
   <body class="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-50">
     <div id="root" class="bg-slate-50 dark:bg-slate-900 min-h-[100dvh] flex flex-col">
-      <div class="sr-only" aria-hidden="true">
-        <h1>TekTrakker: The All-In-One Operating System for High-Performance Trade Businesses</h1>
-        <p>Welcome to TekTrakker, the premier field service management platform.</p>
-        <ul>
-          <li><a href="https://tekairinc.com" rel="follow">TekAir Inc</a></li>
-        </ul>
-      </div>
     </div>
     <script type="module" src="/src/index.tsx"></script>
   </body>

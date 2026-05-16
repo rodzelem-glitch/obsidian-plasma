@@ -137,9 +137,9 @@ const InteractiveFeatureShowcase = () => {
                         </div>
                         <div className="flex-1">
                             <div className="flex items-center gap-2">
-                                <h3 className={`font-bold transition-colors ${activeIndex === idx ? 'text-slate-900' : 'text-slate-500'}`}>
+                                <div className={`font-bold transition-colors ${activeIndex === idx ? 'text-slate-900' : 'text-slate-500'}`}>
                                     {feature.title}
-                                </h3>
+                                </div>
                                 {feature.isNew && (
                                     <span className="text-[10px] font-black uppercase px-2 py-0.5 bg-blue-600 text-white rounded-full">New</span>
                                 )}
@@ -389,8 +389,7 @@ const PartnerTestimonial = () => {
                         &quot;TekTrakker completely transformed how we run our operations. Our techs love the field app, and the automated billing has recovered thousands of dollars in lost revenue. It&apos;s the only operating system we trust.&quot;
                     </p>
                     <div className="flex items-center justify-center gap-6">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/tekair-logo.webp" alt="TekAir Inc Logo" width={128} height={56} className="h-10 md:h-14 w-auto object-contain drop-shadow-sm" />
+                        <Image src="/tekair-logo.webp" alt="TekAir Inc Logo" width={128} height={56} className="h-10 md:h-14 w-auto object-contain drop-shadow-sm" />
                         <div className="hidden md:block h-10 w-px bg-slate-200"></div>
                         <div className="text-left flex flex-col justify-center">
                             <span className="font-bold text-slate-900 border-b border-transparent group-hover:border-slate-400 transition-colors">Featured Partner</span>
@@ -608,7 +607,7 @@ export default function Home() {
                         <Logo className="h-16 md:h-16 w-auto mb-8 animate-fade-in" />
                         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-50 border border-blue-200 mb-8 animate-fade-in"><span className="flex h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span><span className="text-xs font-bold text-blue-700 uppercase tracking-widest">Reclaim Your Evenings</span></div>
                         <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-8 leading-tight text-slate-900">The #1 Field Service Management Software for <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600">Modern Contractors.</span></h1>
-                        <p className="text-xl text-slate-600 max-w-xl mb-10 leading-relaxed font-medium">You didn&apos;t start a business to work 16 hours a day. TekTrakker eliminates the chaos of scheduling, chasing payments, and managing techs so you can finally breathe.</p>
+                        <p className="text-xl text-slate-600 max-w-xl mb-10 leading-relaxed font-medium">You didn&apos;t start a business to work 16 hours a day. As the leading field service management software for modern contractors, TekTrakker eliminates the chaos of scheduling, chasing payments, and managing techs so you can finally breathe.</p>
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-primary-700 text-white font-black text-lg hover:bg-primary-800 transition-all shadow-lg shadow-primary-700/20 hover:scale-[1.02] flex items-center justify-center gap-2">Start Exploring Now <ArrowRight size={20} /></button>
                         </div>
@@ -708,8 +707,25 @@ export default function Home() {
                         <p className="text-lg text-slate-600 mb-0">Don&apos;t manage your property with a shoebox of receipts. Access your free dedicated consumer portal to track warranties, view service history, pay bills, and instantly book verified professionals in your area.</p>
                     </div>
                     <div className="relative z-10 w-full md:w-auto shrink-0">
-                        <Link href="https://app.tektrakker.com/#/homeowners" className="w-full md:w-auto px-8 py-4 bg-blue-600 text-white font-black text-lg rounded-xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
+                        <Link href="/homeowners" className="w-full md:w-auto px-8 py-4 bg-blue-600 text-white font-black text-lg rounded-xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
                             Explore Property Owner Hub <ArrowRight size={20} />
+                        </Link>
+                    </div>
+                </div>
+                </AnimatedCard>
+
+                {/* Payment Processing Pitch */}
+                <AnimatedCard direction="right" delay={0}>
+                <div className="max-w-5xl mx-auto bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-3xl p-8 md:p-12 text-left flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group hover:border-orange-300 transition-colors shadow-lg shadow-orange-500/5 mb-8">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-orange-500/20 transition-all duration-700 pointer-events-none"></div>
+                    <div className="flex-1 relative z-10">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-bold uppercase tracking-widest mb-4">Flat Rate Processing</div>
+                        <h3 className="text-3xl font-black text-slate-900 mb-4">Just Need Payment Processing?</h3>
+                        <p className="text-lg text-slate-600 mb-0">Don&apos;t need the full field service management system? Get started with our standalone invoicing and payment processing platform. Create beautiful invoices and get paid instantly.</p>
+                    </div>
+                    <div className="relative z-10 w-full md:w-auto shrink-0">
+                        <Link href="/payment-processing-signup" className="w-full md:w-auto px-8 py-4 bg-orange-600 text-white font-black text-lg rounded-xl hover:bg-orange-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
+                            Start Processing <ArrowRight size={20} />
                         </Link>
                     </div>
                 </div>
@@ -720,10 +736,9 @@ export default function Home() {
                 <div className="max-w-5xl mx-auto bg-slate-900 border border-slate-700 rounded-3xl p-8 md:p-12 text-left flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group hover:border-indigo-500/50 transition-colors shadow-lg shadow-indigo-500/10 mb-8">
                     <div className="absolute top-0 left-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 group-hover:bg-indigo-500/30 transition-all duration-700 pointer-events-none"></div>
                     <div className="relative z-10 w-36 h-36 md:w-48 md:h-48 shrink-0 hidden md:flex items-center justify-center">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/mascot.webp" alt="AI Mascot" className="w-full h-full object-contain filter drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] group-hover:scale-110 transition-transform duration-500 origin-bottom" />
+                        <Image src="/mascot.webp" alt="AI Mascot" width={192} height={192} className="w-full h-full object-contain filter drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] group-hover:scale-110 transition-transform duration-500 origin-bottom" />
                     </div>
-                    <Link href="https://app.tektrakker.com/#/ai-worker" className="flex-1 relative z-10 text-white cursor-pointer block">
+                    <Link href="/ai-worker" className="flex-1 relative z-10 text-white cursor-pointer block">
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold uppercase tracking-widest mb-4">
                             AI Powered Agent
                         </div>
@@ -740,7 +755,7 @@ export default function Home() {
                             height={64}
                             className="w-16 h-16 object-contain filter drop-shadow-[0_0_10px_rgba(99,102,241,0.5)] md:hidden mb-4" 
                         />
-                        <Link href="https://app.tektrakker.com/#/ai-worker" className="w-full md:w-auto px-8 py-4 bg-indigo-600 text-white font-black text-lg rounded-xl hover:bg-indigo-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
+                        <Link href="/ai-worker" className="w-full md:w-auto px-8 py-4 bg-indigo-600 text-white font-black text-lg rounded-xl hover:bg-indigo-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
                             Meet Your AI Worker <ArrowRight size={20} />
                         </Link>
                     </div>

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Textarea from 'components/ui/Textarea';
 import Button from 'components/ui/Button';
 import { BidQuestion } from 'types';
@@ -14,14 +14,26 @@ interface InputsTabProps {
 const InputsTab: React.FC<InputsTabProps> = ({ questions, answers, onSave }) => {
     // 1. Create a local state to hold the answers while the user is typing
     const [localAnswers, setLocalAnswers] = useState<Record<string, string>>({});
+    const dirtyFields = useRef<Set<string>>(new Set());
 
-    // 2. Sync the local state with the props when the component mounts or when external answers change
+    // 2. Sync the local state with the props ONLY for fields the user hasn't edited
     useEffect(() => {
-        setLocalAnswers(answers);
+        setLocalAnswers(prev => {
+            const next = { ...prev };
+            let changed = false;
+            for (const key in answers) {
+                if (!dirtyFields.current.has(key) && next[key] !== answers[key]) {
+                    next[key] = answers[key];
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
     }, [answers]);
 
-    // 3. Handle typing by updating the local state ONLY. This is instant and prevents lag.
+    // 3. Handle typing by updating the local state ONLY. Mark field as dirty.
     const handleLocalChange = (id: string, value: string) => {
+        dirtyFields.current.add(id);
         setLocalAnswers(prev => ({
             ...prev,
             [id]: value

@@ -36,9 +36,11 @@ if ('serviceWorker' in navigator) {
         const updateSW = registerSW({
             immediate: true,
             onNeedRefresh() {
-                // Automatically activate the new service worker and reload the page
-                // This ensures the user NEVER gets stuck on an old cached version
-                updateSW(true);
+                // Do NOT auto-activate + reload here — it destroys SPA state (especially demo sessions).
+                // Instead, notify the app so it can show a non-intrusive toast.
+                // The user can choose when to reload via the toast's click handler.
+                console.info('[VitePWA] New service worker available. Notifying user via toast.');
+                window.dispatchEvent(new CustomEvent('app-update-available'));
             },
             onRegisteredSW(swUrl, r) {
                 // Periodically check for updates (every hour)
@@ -81,9 +83,23 @@ const handleChunkError = (event: ErrorEvent | PromiseRejectionEvent) => {
         const now = Date.now();
 
         if (!lastReload || now - parseInt(lastReload) > 10000) {
-            console.warn('Chunk load error detected. Reloading for new version...');
+            console.warn('Chunk load error detected. Force clearing service workers and reloading...');
             sessionStorage.setItem(storageKey, now.toString());
-            window.location.reload();
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    for (let registration of registrations) {
+                        registration.unregister();
+                    }
+                    window.location.reload();
+                }).catch(() => {
+                    window.location.reload();
+                });
+            } else {
+                window.location.reload();
+            }
+        } else {
+            document.body.innerHTML = '<div style="padding:40px; background:yellow; color:black; font-family:sans-serif; height:100vh; z-index:99999; position:relative;"><h1 style="font-size:30px">App Update Failed</h1><p>A new version of the app is available, but the browser cache prevents it from loading. Please clear your browser cache manually.</p></div>';
         }
     }
 };
@@ -121,6 +137,7 @@ class GlobalErrorBoundary extends React.Component<{children: React.ReactNode}, {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("Global React Crash:", error, errorInfo);
+    (window as any).appHasErrors = true;
   }
 
   render() {

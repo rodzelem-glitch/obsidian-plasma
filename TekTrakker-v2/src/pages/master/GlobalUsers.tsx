@@ -48,6 +48,15 @@ const GlobalUsers: React.FC = () => {
             return matchesSearch && matchesRole;
         }).sort((a, b) => (a.lastName || '').localeCompare(b.lastName || ''));
         
+        // Hide 'invited' duplicate records if an 'active' user already exists with the same email
+        const activeEmails = new Set(result.filter(u => u.status === 'active' && u.email).map(u => u.email.toLowerCase().trim()));
+        result = result.filter(u => {
+            if ((u.status as string) === 'invited' && u.email && activeEmails.has(u.email.toLowerCase().trim())) {
+                return false;
+            }
+            return true;
+        });
+        
         if (showDuplicatesOnly) {
            const emailCounts = result.reduce((acc, u) => {
               const e = (u.email || '').toLowerCase().trim();

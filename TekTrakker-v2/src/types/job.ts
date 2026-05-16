@@ -21,11 +21,13 @@ export interface Job {
   poNumber?: string | null;
   customerPhone?: string | null;
   customerEmail?: string | null;
-  jobStatus: 'Scheduled' | 'In Progress' | 'Completed';
+  jobStatus: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled';
+  proposalId?: string | null;
   appointmentTime: string; 
   specialInstructions: string;
   assignedTechnicianId?: string | null;
   assignedTechnicianName?: string | null;
+  assignedCrew?: string[];
   assistants?: string[];
   invoice: InvoiceDetails;
   invoiceSignature?: string | null;

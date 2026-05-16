@@ -1,5 +1,6 @@
 import React from 'react';
 import { Navigation, CheckCircle, User, MapPin, PlusCircle, Sparkles, Camera, ImageIcon, X } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import Card from '../../../../components/ui/Card';
 import Button from '../../../../components/ui/Button';
 import Input from '../../../../components/ui/Input';
@@ -61,10 +62,22 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
 }) => {
     if (hidden) return null;
     const arrivalFiles = files.filter(f => (f.metadata?.label || (f as any).label) === 'Pre-Work');
+    const handleNavigate = () => {
+        const encodedAddress = encodeURIComponent(formatAddress(job.address));
+        const platform = Capacitor.getPlatform();
+        if (platform === 'ios') {
+            window.open(`maps://?daddr=${encodedAddress}`, '_system');
+        } else if (platform === 'android') {
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`, '_system');
+        } else {
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`, '_blank');
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Button onClick={() => window.open(`https://maps.google.com/?q=${formatAddress(job.address)}`, '_blank')} className="h-12 bg-blue-600">
+                <Button onClick={handleNavigate} className="h-12 bg-blue-600">
                     <Navigation size={18} className="mr-2"/> Navigate
                 </Button>
                 <Button variant="secondary" className="h-12" onClick={saveCustomerInfo}>
@@ -187,7 +200,13 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                     {!isAddAssetOpen && (
                         <button 
                             onClick={() => {
-                                setNewAsset({ brand: '', model: '', serial: '', type: 'System', location: '', condition: '', propertyId: '' });
+                                let defaultPropertyId = job.locationId || '';
+                                if (!defaultPropertyId && job.address && customer?.serviceLocations) {
+                                    const jobAddressStr = typeof job.address === 'string' ? job.address : '';
+                                    const matchingLoc = customer.serviceLocations.find(loc => loc.address === jobAddressStr);
+                                    if (matchingLoc) defaultPropertyId = matchingLoc.id;
+                                }
+                                setNewAsset({ brand: '', model: '', serial: '', type: 'System', location: '', condition: '', propertyId: defaultPropertyId });
                                 setIsAddAssetOpen(true);
                             }} 
                             className="text-sm text-primary-600 font-bold bg-primary-50 px-3 py-1.5 rounded-md border border-primary-200 hover:bg-primary-100 transition-colors"

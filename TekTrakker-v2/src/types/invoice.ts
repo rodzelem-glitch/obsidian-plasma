@@ -11,6 +11,9 @@ export interface InvoiceLineItem {
 }
 
 export interface InvoiceDetails {
+    additionalFeePercent?: number;
+    additionalFeeName?: string;
+    additionalFeeAmount?: number;
     id: string;
     items: InvoiceLineItem[];
     subtotal: number;
@@ -31,4 +34,5 @@ export interface InvoiceDetails {
     paymentMethod?: string;
     paymentProofUrl?: string | null; // Added for proof of payment
     paymentProofDate?: string | null;
+    recommendations?: string;
 }

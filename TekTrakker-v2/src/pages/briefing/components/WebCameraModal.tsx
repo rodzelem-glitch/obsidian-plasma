@@ -95,7 +95,7 @@ const WebCameraModal: React.FC<WebCameraModalProps> = ({ isOpen, onClose, onCapt
                         <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-slate-900/90 backdrop-blur-md">
                             <XCircle className="text-red-500 mb-4 animate-pulse" size={56} />
                             <p className="text-white font-bold mb-6 text-lg">{error}</p>
-                            <Button onClick={() => window.location.reload()} className="bg-primary-600 px-8 py-3 rounded-full shadow-lg hover:shadow-primary-500/50 transition-all">Retry Permissions</Button>
+                            <Button onClick={() => window.location.href = window.location.pathname + window.location.search} className="bg-primary-600 px-8 py-3 rounded-full shadow-lg hover:shadow-primary-500/50 transition-all">Retry Permissions</Button>
                         </div>
                     )}
                 </div>

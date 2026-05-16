@@ -176,7 +176,19 @@ const PublicBookingPage: React.FC = () => {
                         Thank you, {formData.name}. We have received your request for {formData.serviceType}.<br/>
                         We will contact you shortly to confirm the appointment.
                     </p>
-                    <Button onClick={() => window.location.reload()} variant="secondary">Book Another</Button>
+                    <Button 
+                        onClick={() => {
+                            setSuccess(false);
+                            setFormData({
+                                name: '', phone: '', email: '', address: '',
+                                serviceType: 'Repair', businessType: 'HVAC', notes: '',
+                                isOwner: 'Yes', ownerName: '', ownerPhone: '', preferredDate: ''
+                            });
+                        }} 
+                        variant="secondary"
+                    >
+                        Book Another
+                    </Button>
                 </Card>
             </div>
         );

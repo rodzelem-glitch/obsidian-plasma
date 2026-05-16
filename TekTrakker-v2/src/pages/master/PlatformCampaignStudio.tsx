@@ -89,30 +89,37 @@ const PlatformCampaignStudio: React.FC = () => {
     // Compute audience rows based on source
     const audienceRows = useMemo(() => {
         if (audienceSource === 'organizations') {
-            return orgs.filter(o => {
-                const matchSearch = o.name.toLowerCase().includes(searchTerm.toLowerCase()) || o.email?.toLowerCase().includes(searchTerm.toLowerCase());
+            return (orgs || []).filter(o => {
+                if (!o) return false;
+                const name = o.name || '';
+                const email = o.email || '';
+                const s = (searchTerm || '').toLowerCase();
+                const matchSearch = name.toLowerCase().includes(s) || email.toLowerCase().includes(s);
                 const matchIndustry = filterIndustry === 'All' || o.industry === filterIndustry;
-                return matchSearch && matchIndustry && o.email;
-            }).map(o => ({ email: o.email, label: o.name, sub: o.industry || o.plan || '', id: o.id }));
+                return matchSearch && matchIndustry && email;
+            }).map(o => ({ email: o.email, label: o.name || 'Unnamed Org', sub: o.industry || o.plan || '', id: o.id }));
         }
         if (audienceSource === 'org_customers') {
-            return customers.filter(c => {
-                const matchSearch = c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || c.email?.toLowerCase().includes(searchTerm.toLowerCase());
+            const s = (searchTerm || '').toLowerCase();
+            return (customers || []).filter(c => {
+                if (!c) return false;
+                const matchSearch = (c.name || '').toLowerCase().includes(s) || (c.email || '').toLowerCase().includes(s);
                 const matchState = filterState === 'All' || c.state === filterState;
                 return matchSearch && matchState && c.email;
-            }).map(c => ({ email: c.email, label: c.name, sub: [c.city, c.state].filter(Boolean).join(', '), id: c.id }));
+            }).map(c => ({ email: c.email, label: c.name || 'Unnamed Customer', sub: [c.city, c.state].filter(Boolean).join(', '), id: c.id }));
         }
         if (audienceSource === 'mailing_lists' && selectedMailingListId) {
-            const list = mailingLists.find(l => l.id === selectedMailingListId);
+            const s = (searchTerm || '').toLowerCase();
+            const list = (mailingLists || []).find(l => l.id === selectedMailingListId);
             return (list?.contacts || []).filter(c =>
-                c.email.includes(searchTerm.toLowerCase()) || (c.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+                c.email.toLowerCase().includes(s) || (c.name || '').toLowerCase().includes(s)
             ).map(c => ({ email: c.email, label: c.name || c.email, sub: c.company || '', id: c.email }));
         }
         return [];
     }, [audienceSource, orgs, customers, mailingLists, searchTerm, filterState, filterIndustry, selectedMailingListId]);
 
-    const uniqueIndustries = useMemo(() => ['All', ...new Set(orgs.map(o => o.industry).filter(Boolean) as string[])], [orgs]);
-    const uniqueStates = useMemo(() => ['All', ...new Set(customers.map(c => c.state).filter(Boolean) as string[])], [customers]);
+    const uniqueIndustries = useMemo(() => ['All', ...new Set((orgs || []).map(o => o?.industry).filter(Boolean) as string[])], [orgs]);
+    const uniqueStates = useMemo(() => ['All', ...new Set((customers || []).map(c => c?.state).filter(Boolean) as string[])], [customers]);
 
     const toggleEmail = (email: string) => {
         const s = new Set(selectedEmails);

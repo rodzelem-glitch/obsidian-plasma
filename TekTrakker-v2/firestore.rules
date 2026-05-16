@@ -53,11 +53,11 @@ service cloud.firestore {
       );
     }
 
-    // Checks if user is a Master Admin (superuser)
     function isMaster() {
-      return isSignedIn() && (
-        (request.auth.token.role != null && request.auth.token.role == 'master_admin') || 
-        (getUserData() != null && getUserData().role == 'master_admin')
+      return request.auth != null && (
+        request.auth.token.role == 'master_admin' || 
+        request.auth.token.role == 'both' ||
+        (getUserData() != null && (getUserData().role == 'master_admin' || getUserData().role == 'both'))
       );
     }
     
@@ -113,7 +113,7 @@ service cloud.firestore {
                  
       allow list: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || (resource != null && isOrgMember(resource.data.organizationId)) || (isSignedIn() && resource != null && resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email); 
       
-      allow write: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isUser(userId) || (isOrgAdmin() && resource != null && isOrgMember(resource.data.organizationId));
+      allow write: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isUser(userId) || (isOrgAdmin() && resource != null && isOrgMember(resource.data.organizationId)) || (isSignedIn() && request.auth.token.email != null && request.auth.token.email == userId);
       allow create: if isSignedIn();
     }
 
@@ -125,6 +125,14 @@ service cloud.firestore {
       
       match /secrets/{secretId} {
          allow read, write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      }
+
+      match /payouts/{payoutId} {
+         allow read, write: if isMaster() || isOrgMember(orgId);
+      }
+
+      match /disputes/{disputeId} {
+         allow read, write: if isMaster() || isOrgMember(orgId);
       }
 
       match /marketingTemplates/{templateId} {
@@ -609,6 +617,10 @@ service cloud.firestore {
     // Platform Campaign Studio: saved email templates (master admin + platform sales)
     match /platform_campaign_templates/{templateId} {
       allow read, write: if isMaster() || isPlatformSales();
+    }
+
+    match /integration_requests/{requestId} {
+      allow read, write: if isMaster();
     }
   }
 }

@@ -20,6 +20,20 @@ export const setupFCMToken = async (userId: string) => {
                 return;
             }
 
+            if (Capacitor.getPlatform() === 'android') {
+                try {
+                    await PushNotifications.createChannel({
+                        id: 'default',
+                        name: 'Default Notifications',
+                        description: 'General app notifications',
+                        importance: 5,
+                        visibility: 1,
+                    });
+                } catch (channelErr) {
+                    console.warn('[FCM-Capacitor] Could not create notification channel', channelErr);
+                }
+            }
+
             // IMPORTANT: Listeners MUST be attached BEFORE calling register()!
             // Otherwise the native layer emits the event before JavaScript is listening.
             await PushNotifications.addListener('registration', async (token) => {
@@ -31,12 +45,12 @@ export const setupFCMToken = async (userId: string) => {
                         fcmTokens: firebase.firestore.FieldValue.arrayUnion(fcmToken)
                     }, { merge: true });
                     console.log('[FCM-Capacitor] Native token synced to Firestore');
-                } catch (dbErr: any) {
+                } catch (dbErr: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
                     console.warn('[FCM-Capacitor] Could not sync token (likely Demo Mode):', dbErr.message);
                 }
             });
 
-            await PushNotifications.addListener('registrationError', (error: any) => {
+            await PushNotifications.addListener('registrationError', (error: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => {
                 console.error('[FCM-Capacitor] Error on registration: ' + JSON.stringify(error));
             });
 
@@ -100,7 +114,7 @@ export const setupFCMToken = async (userId: string) => {
                         fcmTokens: firebase.firestore.FieldValue.arrayUnion(token)
                     }, { merge: true });
                     console.log('[FCM] Successfully synced token to Firestore!');
-                } catch (dbErr: any) {
+                } catch (dbErr: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
                     console.warn('[FCM] Could not sync token (likely Demo Mode):', dbErr.message);
                 }
                 
@@ -131,7 +145,7 @@ export const setupFCMToken = async (userId: string) => {
         } else {
             console.warn('[FCM] Push notification permission denied by user.');
         }
-    } catch (error: any) {
+    } catch (error: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
         if (error?.name === 'AbortError' || error?.message?.includes('Service Worker') || error?.message?.includes('Failed to execute \'subscribe\' on \'PushManager\'')) {
             console.log('[FCM] Skipped Web Push Notification setup (No valid Service Worker, typical for local development environments).');
         } else {

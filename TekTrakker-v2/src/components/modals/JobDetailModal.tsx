@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { Job, Proposal, DiagnosticReport } from '../../types';
 import Button from '../ui/Button';
-import { db } from '../../lib/firebase';
+import { db, functions } from '../../lib/firebase';
 import firebase from 'firebase/compat/app';
 import DocumentPreview from '../ui/DocumentPreview';
 import { useAppContext } from '../../context/AppContext';
@@ -47,7 +47,41 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
     const [previewDoc, setPreviewDoc] = useState<Record<string, unknown> | null>(null);
     const [diagnostics, setDiagnostics] = useState<DiagnosticReport[]>([]);
     const [deletedFiles, setDeletedFiles] = useState<Set<string>>(new Set());
+    const [isRefunding, setIsRefunding] = useState(false);
     const { state } = useAppContext();
+
+    const handleRefund = async () => {
+        if (!job.invoice?.paymentIntentId) return;
+        
+        const amountStr = window.prompt(
+            "Enter the amount to refund (leave blank or enter full amount for a complete refund):",
+            job.invoice.amount ? job.invoice.amount.toString() : ""
+        );
+        
+        if (amountStr === null) return; // User cancelled
+        
+        const amount = parseFloat(amountStr);
+        if (isNaN(amount) || amount <= 0) {
+            alert("Invalid amount.");
+            return;
+        }
+        
+        setIsRefunding(true);
+        try {
+            const refundCallable = functions.httpsCallable('refundKortPayment');
+            await refundCallable({
+                paymentIntentId: job.invoice.paymentIntentId,
+                organizationId: job.organizationId,
+                amount: amount
+            });
+            alert("Refund initiated successfully.");
+        } catch (error: any) {
+            console.error("Refund error:", error);
+            alert(`Refund failed: ${error.message}`);
+        } finally {
+            setIsRefunding(false);
+        }
+    };
 
     const handleDeletePhoto = async (file: ExtendedFile) => {
         if (!window.confirm("Delete this photo permanently?")) return;
@@ -730,15 +764,29 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                         )}
 
                         {/* Payment Details / Receipt */}
-                        {job.invoice?.status === 'Paid' && (
+                        {['Paid', 'Refunded', 'Disputed'].includes(job.invoice?.status || '') && (
                             <section className="p-4 bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-3xl shadow-sm print:hidden">
                                 <h4 className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                                    <DollarSign size={14}/> Payment Confirmation
+                                    <DollarSign size={14}/> Payment Confirmation {job.invoice?.status === 'Refunded' ? '(REFUNDED)' : job.invoice?.status === 'Disputed' ? '(DISPUTED)' : ''}
                                 </h4>
                                 <div className="space-y-1">
                                     <p className="text-[10px] text-slate-500 font-bold uppercase">Method: {job.invoice.paymentMethod || 'Credit Card'}</p>
                                     <p className="text-[10px] text-slate-500 font-bold uppercase">Transaction: {job.id.slice(-8).toUpperCase()}</p>
                                     <button className="text-[10px] text-primary-600 hover:underline font-black uppercase mt-2">Download Official Receipt</button>
+                                    
+                                    {isAdmin && job.invoice?.status === 'Paid' && job.invoice?.paymentIntentId && (
+                                        <div className="mt-4 pt-4 border-t border-emerald-200/50 dark:border-emerald-900/30">
+                                            <Button 
+                                                variant="danger" 
+                                                size="sm"
+                                                onClick={handleRefund}
+                                                disabled={isRefunding}
+                                                className="w-full sm:w-auto text-[10px] uppercase tracking-widest font-black"
+                                            >
+                                                {isRefunding ? 'Processing...' : 'Issue Refund'}
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
                             </section>
                         )}

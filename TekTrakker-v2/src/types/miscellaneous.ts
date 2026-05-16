@@ -1,6 +1,7 @@
 
 import type { StoredFile } from './file';
 
+
 export interface InventoryItem {
     id: string;
     organizationId: string;
@@ -217,6 +218,7 @@ export interface Proposal {
     selectedOption?: string | null;
     signature?: string | null;
     signatureDataUrl?: string | null;
+    title?: string | null;
 }
 
 export interface Expense {
@@ -245,8 +247,9 @@ export interface Expense {
 export interface InspectionTemplateItem {
     id: string;
     label: string;
-    type: 'PassFail' | 'Text' | 'Textarea' | 'Photo';
+    type: 'PassFail' | 'Text' | 'Textarea' | 'Photo' | 'Checkbox' | 'CheckboxGroup' | 'Date' | 'Signature' | 'YesNo';
     required: boolean;
+    options?: string[];
 }
 
 export interface InspectionTemplate {
@@ -256,6 +259,7 @@ export interface InspectionTemplate {
     items: InspectionTemplateItem[];
     createdAt: string;
     updatedAt: string;
+    isHiringPacket?: boolean;
 }
 
 export interface Vehicle {
@@ -300,6 +304,7 @@ export interface Notification {
     message: string;
     read: boolean;
     link?: string;
+    type?: string;
     createdAt: string;
 }
 
@@ -349,7 +354,7 @@ export interface ShopOrder {
     items: { name: string; quantity: number; }[];
     total: number;
     status: string;
-    createdAt?: any;
+    createdAt?: string;
 }
 
 export interface PlatformLead {
@@ -404,6 +409,10 @@ export interface PlatformSettings {
     updatedAt: string;
     platformPaypalClientId?: string;
     franchiseFeePct?: number;
+    franchiseBaseFee?: number;
+    franchiseSetupFee?: number;
+    franchiseRevSharePerUser?: number;
+    franchiseRevSharePerVirtualWorker?: number;
     franchiseDiscountCodes?: { code: string; discountPct: number; active: boolean }[];
 }
 
@@ -674,6 +683,9 @@ export interface Bid {
     submittedDate?: string;
     projectId?: string;
     noticeId?: string;
+    additionalFeePercent?: number;
+    additionalFeeName?: string;
+    additionalFeeAmount?: number;
     createdAt: string;
 }
 
@@ -694,4 +706,4 @@ export interface Appointment {
     marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; };
 }
 
-export type SignedWaiver = any;
+

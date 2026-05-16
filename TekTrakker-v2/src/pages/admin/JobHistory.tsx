@@ -96,10 +96,22 @@ const JobHistory: React.FC = () => {
             }
         };
 
+        let newEvents = updatedJob.jobEvents || [];
+        if (editStatus === 'Cancelled' && viewJob.jobStatus !== 'Cancelled') {
+            newEvents = [...newEvents, {
+                type: 'Status Change',
+                status: 'Cancelled',
+                timestamp: new Date().toISOString(),
+                userId: state.currentUser?.id
+            }];
+            updatedJob.jobEvents = newEvents;
+        }
+
         try {
             await db.collection('jobs').doc(viewJob.id).update({
                 jobStatus: editStatus,
-                'notes.internalNotes': editNotes
+                'notes.internalNotes': editNotes,
+                jobEvents: newEvents
             });
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
             setViewJob(updatedJob);
@@ -301,6 +313,7 @@ const JobHistory: React.FC = () => {
                             <option value="Scheduled">Scheduled</option>
                             <option value="In Progress">In Progress</option>
                             <option value="Completed">Completed</option>
+                            <option value="Cancelled">Cancelled</option>
                         </Select>
                         <Textarea label="Internal Office Notes" value={editNotes} onChange={e => setEditNotes(e.target.value)} />
                         <div className="flex justify-end gap-2">

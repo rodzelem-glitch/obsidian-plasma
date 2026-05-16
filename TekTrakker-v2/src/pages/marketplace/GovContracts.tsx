@@ -52,10 +52,23 @@ const GovContracts: React.FC = () => {
             const functions = getFunctions();
             const fetchFederalContracts = httpsCallable(functions, 'fetchFederalContracts');
             
+            const toDate = new Date();
+            const fromDate = new Date();
+            fromDate.setDate(toDate.getDate() - 30);
+            
+            const formatDateForApi = (date: Date) => {
+                const yyyy = date.getFullYear();
+                const mm = String(date.getMonth() + 1).padStart(2, '0');
+                const dd = String(date.getDate()).padStart(2, '0');
+                return `${mm}/${dd}/${yyyy}`;
+            };
+            
             const result = await fetchFederalContracts({
                 naicsCode: naicsCode.trim(),
                 keyword: keyword.trim(),
                 state: targetState.trim(),
+                postedFrom: formatDateForApi(fromDate),
+                postedTo: formatDateForApi(toDate),
                 limit: 50
             });
             

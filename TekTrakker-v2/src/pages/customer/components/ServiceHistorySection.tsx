@@ -141,17 +141,20 @@ const ServiceHistorySection: React.FC<ServiceHistorySectionProps> = ({ jobs, onV
                             })()}
 
                             <div className="flex flex-wrap gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
-                                {otherFiles.map((file) => (
-                                    <button 
-                                        type="button"
-                                        onClick={() => handleViewDocument(file.fileName || file.metadata?.label || 'Document', file.dataUrl || (file as any).url)}
-                                        key={file.id} 
-                                        className="bg-slate-50 dark:bg-slate-800/50 px-3 py-2 rounded-xl text-[10px] font-black uppercase text-slate-600 dark:text-slate-400 flex items-center gap-2 hover:bg-primary-50 hover:text-primary-600 transition-all border border-transparent hover:border-primary-100 cursor-pointer"
-                                    >
-                                        <FileText size={12} />
-                                        {file.fileName || file.metadata?.label || 'Document'}
-                                    </button>
-                                ))}
+                                {otherFiles.map((file) => {
+                                    const label = (file.metadata as any)?.label as string;
+                                    return (
+                                        <button 
+                                            type="button"
+                                            onClick={() => handleViewDocument(file.fileName || label || 'Document', file.dataUrl || (file as any).url)}
+                                            key={file.id} 
+                                            className="bg-slate-50 dark:bg-slate-800/50 px-3 py-2 rounded-xl text-[10px] font-black uppercase text-slate-600 dark:text-slate-400 flex items-center gap-2 hover:bg-primary-50 hover:text-primary-600 transition-all border border-transparent hover:border-primary-100 cursor-pointer"
+                                        >
+                                            <FileText size={12} />
+                                            {file.fileName || label || 'Document'}
+                                        </button>
+                                    );
+                                })}
                                 {jobDocs.map((doc, index) => (
                                     <button 
                                         type="button"

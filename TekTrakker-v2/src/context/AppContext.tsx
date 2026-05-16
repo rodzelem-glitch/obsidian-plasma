@@ -1,6 +1,8 @@
 
 import React, { createContext, useReducer, useContext, useEffect, ReactNode, useRef, useMemo, useCallback } from 'react';
 import { auth, db } from 'lib/firebase';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import type { 
     User, Organization, PlatformSettings, Job, Customer, MembershipPlan, Project, Proposal, ServiceAgreement, Expense, EquipmentRental, Subcontractor, Applicant, BusinessDocument, Vehicle, Review, Message
 } from 'types';
@@ -57,6 +59,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, initialState);
     const dataSubscriptions = useRef<(() => void)[]>([]);
     const demoInitRequested = useRef(false);
+    const demoModeRef = useRef(false);
+    const navigate = useNavigate();
+
+    // Keep the ref in sync with state so the auth callback can read it synchronously
+    demoModeRef.current = state.isDemoMode || demoInitRequested.current;
     
     const unsubscribeData = useCallback(() => {
         dataSubscriptions.current.forEach(unsub => unsub());
@@ -81,9 +88,12 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         return path;
     }, []);
 
+
     const startDemo = useCallback((role: 'admin' | 'employee' | 'customer' | 'sales') => {
         // Set synchronous flag BEFORE dispatch to guard against auth race condition
         demoInitRequested.current = true;
+        sessionStorage.setItem('activeDemoRole', role);
+
         if (!sessionStorage.getItem('preDemoPath')) {
             sessionStorage.setItem('preDemoPath', window.location.pathname + window.location.search + window.location.hash);
         }
@@ -91,6 +101,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         if (!sessionStorage.getItem('preDemoReferrer') && document.referrer) {
             sessionStorage.setItem('preDemoReferrer', document.referrer);
         }
+        
+        // Guard against any pending onAuthStateChanged callbacks from firing
+        // during the React render cycle where we transition into demo mode.
+        demoInitRequested.current = true;
+        
         unsubscribeData();
         
         let mockUser: User | undefined;
@@ -140,8 +155,18 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         startDemo(role);
     }, [startDemo]);
 
+    // Clear any stale demo role from sessionStorage on fresh page loads.
+    // Demo mode is ephemeral — if the page reloads, the user returns to the ApexDemo chooser.
+    useEffect(() => {
+        sessionStorage.removeItem('activeDemoRole');
+    }, []);
+
     const exitDemo = useCallback(() => {
-        demoInitRequested.current = false;
+        // CRITICAL: Keep demoInitRequested TRUE during the exit transition.
+        // This prevents the onAuthStateChanged callback from dispatching LOGOUT 
+        // when the auth effect re-evaluates after isDemoMode flips to false.
+        // We'll clear it after a safe delay once React has settled.
+        demoInitRequested.current = true;
         
         const preDemoPath = sessionStorage.getItem('preDemoPath');
         const preDemoReferrer = sessionStorage.getItem('preDemoReferrer');
@@ -149,40 +174,56 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         // Clean up demo session storage
         sessionStorage.removeItem('preDemoPath');
         sessionStorage.removeItem('preDemoReferrer');
+        sessionStorage.removeItem('activeDemoRole');
 
         // If they came from the marketing site, send them back there (cross-origin = full reload)
         if (preDemoReferrer && (preDemoReferrer.includes('tektrakker.com') && !preDemoReferrer.includes('app.tektrakker.com'))) {
+            // Full navigation out of SPA — safe to drop the guard
+            demoInitRequested.current = false;
             window.location.replace(preDemoReferrer);
             return;
         }
 
-        // CRITICAL: In a HashRouter app, changing only the hash does NOT reload the page.
-        // React Router intercepts the hashchange event and re-renders in-place,
-        // which causes the demo user to be redirected right back to the dashboard.
-        // The only way to force a true document teardown is to change the pathname.
-        // Adding a cache-busting query param ensures the browser treats this as a
-        // brand new navigation. Firebase rewrites serve index.html for all paths.
+        // Navigate cleanly before dispatching EXIT_DEMO to prevent race conditions with ProtectedRoute
+        const targetPath = preDemoPath || '/pro/apex';
         
-        // Use the pre-demo path if available, otherwise default to home
-        const targetPath = preDemoPath || '/#/';
+        if (targetPath.startsWith('http')) {
+            demoInitRequested.current = false;
+            window.location.href = targetPath;
+        } else {
+            // Use React Router to navigate, stripping the /#/ since navigate handles the hash automatically
+            const cleanPath = targetPath.replace(/^(\/#\/|\/|#\/)/, '/');
+            navigate(cleanPath, { replace: true });
+        }
         
-        // Construct the reload URL. We use a query param 'exited' to force the reload.
-        // If the targetPath already has query params, we append with &, otherwise ?.
-        const separator = targetPath.includes('?') ? '&' : '?';
-        const reloadUrl = window.location.origin + targetPath + separator + 'exited=' + Date.now();
-        
-        window.location.href = reloadUrl;
-    }, []);
+        // Dispatch EXIT_DEMO (not LOGOUT) to reset state without triggering auth-related side effects.
+        // EXIT_DEMO clears user/org data but the reducer already handles it identically to LOGOUT.
+        dispatch({ type: 'EXIT_DEMO' });
+
+        // Release the guard after a safe delay so React's render cycle and any pending
+        // onAuthStateChanged callbacks have time to settle before we allow auth processing.
+        setTimeout(() => {
+            // Only release if we haven't already started a new demo (rapid switching)
+            if (!sessionStorage.getItem('activeDemoRole')) {
+                demoInitRequested.current = false;
+            }
+        }, 1500);
+    }, [dispatch, navigate]);
 
     useEffect(() => {
-        if (state.isDemoMode) {
+        // Use the ref (not state) to decide whether to skip auth processing.
+        // This prevents the effect from re-subscribing every time isDemoMode toggles,
+        // which was the root cause of the "exit demo → re-enter demo → kicked to login" bug.
+        if (demoModeRef.current) {
             return;
         }
+
+        let isEffectActive = true;
 
         // Failsafe timeout: If Firebase auth completely hangs and never fires onAuthStateChanged
         // (common on fresh Android installs due to IndexedDB init), force loading to false so the user isn't stuck.
         const fallbackTimer = setTimeout(() => {
-            if (state.loading) {
+            if (state.loading && isEffectActive && !demoInitRequested.current) {
                 console.warn("[AppFailsafe] Firebase onAuthStateChanged timed out. Forcing UI to load.");
                 dispatch({ type: 'SET_LOADING', payload: false });
             }
@@ -190,8 +231,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
         const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
             clearTimeout(fallbackTimer);
-            // Guard: if demo mode is being initialized, skip auth processing entirely
-            if (demoInitRequested.current) return;
+            // Guard: if demo mode is active or being initialized, skip auth processing entirely.
+            // Check both the ref and the synchronous flag to catch all race conditions.
+            if (demoInitRequested.current || demoModeRef.current || !isEffectActive) return;
             unsubscribeData();
             if (user) {
                 dispatch({ type: 'SET_LOADING', payload: true });
@@ -243,8 +285,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                                 orgData = PLATFORM_ORGANIZATION;
                             }
 
+                            if (!isEffectActive || demoInitRequested.current) return;
                             dispatch({ type: 'LOGIN_SUCCESS', payload: { user: userData, organization: orgData, isMasterAdmin } });
                         } else {
+                            if (!isEffectActive || demoInitRequested.current) return;
                             // User exists in Auth but not in Firestore - likely a brand new registration
                             // We don't log out yet, wait for Login.tsx to handle the redirect part
                             dispatch({ type: 'SET_LOADING', payload: false });
@@ -256,6 +300,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     try {
                         await Promise.race([fetchProfile(), timeoutPromise]);
                     } catch (raceErr) {
+                        if (!isEffectActive || demoInitRequested.current) return;
                         console.error("Auth initialization timed out or failed:", raceErr);
                         dispatch({ type: 'SET_LOADING', payload: false });
                         // If it's a real account (not just registered), log out to clear the hang
@@ -264,17 +309,22 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                         }
                     }
                 } catch (error) {
+                    if (!isEffectActive || demoInitRequested.current) return;
                     console.error("Error fetching user data:", error);
                     dispatch({ type: 'SET_LOADING', payload: false });
                     dispatch({ type: 'LOGOUT' });
                 }
             } else {
+                if (!isEffectActive || demoInitRequested.current) return;
                 dispatch({ type: 'SET_LOADING', payload: false });
                 dispatch({ type: 'LOGOUT' });
             }
         });
-        return () => unsubscribeAuth();
-    }, [unsubscribeData, state.isDemoMode, dispatch]);
+        return () => {
+            isEffectActive = false;
+            unsubscribeAuth();
+        };
+    }, [unsubscribeData, dispatch]);
 
     useEffect(() => {
         const currentUser = state.currentUser;
@@ -290,50 +340,59 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         
         const newSubscriptions: (() => void)[] = [];
 
-        newSubscriptions.push(db.collection('platformSettings').onSnapshot(s => {
-            if (!s.empty) dispatch({ type: 'SET_PLATFORM_SETTINGS', payload: {id: s.docs[0].id, ...s.docs[0].data()} as PlatformSettings });
-        }));
+        newSubscriptions.push(db.collection('platformSettings').doc('global').onSnapshot(s => {
+            if (s.exists) dispatch({ type: 'SET_PLATFORM_SETTINGS', payload: {id: s.id, ...s.data()} as PlatformSettings });
+        }, e => console.warn(e)));
 
         if (isMasterAdmin) {
-            newSubscriptions.push(db.collection('franchises').onSnapshot(s => dispatch({ type: 'SET_FRANCHISES', payload: s.docs.map(d => ({ id: d.id, ...d.data() })) })));
+            newSubscriptions.push(db.collection('franchises').onSnapshot(s => dispatch({ type: 'SET_FRANCHISES', payload: s.docs.map(d => ({ id: d.id, ...d.data() })) }), e => {
+                console.error("Franchises subscription failed:", e);
+                toast.error("Permission denied for Franchises");
+            }));
         }
 
         const isFranchiseAdmin = currentUser.role === 'franchise_admin';
 
         // Fetch all organizations for any admin-type user to see linked partner details.
         if (isMasterAdmin) {
-            newSubscriptions.push(db.collection('organizations').onSnapshot(s => dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as Organization)) })));
+            newSubscriptions.push(db.collection('organizations').onSnapshot(s => dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as Organization)) }), e => {
+                console.error("Organizations subscription failed:", e);
+                toast.error("Access Denied: You do not have permission to view all organizations.");
+            }));
         } else if (!isCustomer) {
             if (currentUser.franchiseId) {
-                newSubscriptions.push(db.collection('organizations').where('franchiseId', '==', currentUser.franchiseId).onSnapshot(s => dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as Organization)) })));
+                newSubscriptions.push(db.collection('organizations').where('franchiseId', '==', currentUser.franchiseId).onSnapshot(s => dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as Organization)) }), e => console.warn(e)));
             } else {
                 // If the user belongs to the core tektrakker instance, filter out remote franchise orgs
                 newSubscriptions.push(db.collection('organizations').onSnapshot(s => {
                     const allOrgs = s.docs.map(d => ({ id: d.id, ...d.data() } as Organization));
                     dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: allOrgs.filter(o => !o.franchiseId || o.franchiseId === 'tektrakker_core') });
-                }));
+                }, e => console.warn(e)));
             }
         }
 
         if (isMasterAdmin) {
             // Master admins get all users
-            newSubscriptions.push(db.collection('users').onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) })));
+            newSubscriptions.push(db.collection('users').onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) }), e => {
+                console.error("Users subscription failed:", e);
+                toast.error("Permission denied for Users list");
+            }));
         } else if (isFranchiseAdmin && currentUser.franchiseId) {
             // Franchise admins get all users within their franchise silhouette
-            newSubscriptions.push(db.collection('users').where('franchiseId', '==', currentUser.franchiseId).onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) })));
+            newSubscriptions.push(db.collection('users').where('franchiseId', '==', currentUser.franchiseId).onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) }), e => console.warn(e)));
         } else if (!isCustomer) {
             // Other org members get users from their own org
             const targetOrgId = isSales 
                 ? (currentOrganization?.id || currentUser.organizationId)
                 : currentUser.organizationId;
             if (targetOrgId) {
-                newSubscriptions.push(db.collection('users').where('organizationId', '==', targetOrgId).onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) })));
+                newSubscriptions.push(db.collection('users').where('organizationId', '==', targetOrgId).onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) }), e => console.warn(e)));
             }
         }
 
-        const orgIdForCollections = (currentOrganization?.id && currentOrganization.id !== 'platform')
+        const orgIdForCollections = (currentOrganization?.id && currentOrganization.id !== 'unaffiliated')
             ? currentOrganization.id
-            : (currentUser.organizationId && currentUser.organizationId !== 'platform' && currentUser.organizationId !== 'unaffiliated' ? currentUser.organizationId : undefined);
+            : (currentUser.organizationId && currentUser.organizationId !== 'unaffiliated' ? currentUser.organizationId : undefined);
 
         // Platform-Level Admins & Sales Representatives must securely pipe cross-tenant messages dynamically
         if (currentOrganization?.id === 'platform' && currentUser.id && (isMasterAdmin || isSales)) {

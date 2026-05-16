@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket, DollarSign } from 'lucide-react';
 import type { User } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 
@@ -38,6 +38,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
       items: [
         { path: '/master/organizations', label: 'Organizations', icon: Building2 },
         { path: '/master/franchises', label: 'Franchises & White-Label', icon: Network },
+        { path: '/master/financials', label: 'Financials & Accounting', icon: DollarSign },
         { path: '/master/billing', label: 'Platform Billing', icon: CreditCard },
         { path: '/master/franchise-billing', label: 'Franchise Billing', icon: CreditCard },
         { path: '/master/members', label: 'Global Members', icon: ShieldCheck },
@@ -91,7 +92,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
         <button type="button" className="fixed inset-0 z-20 bg-black bg-opacity-50 sm:hidden transition-opacity w-full h-full cursor-default" onClick={onClose} aria-label="Close sidebar" />
       )}
 
-      <aside className={`fixed sm:sticky top-0 inset-y-0 left-0 z-30 w-64 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'} flex flex-col h-[100dvh] max-h-[100dvh] shrink-0`}>
+      <aside className={`fixed sm:sticky sm:top-0 sm:self-start inset-y-0 left-0 z-30 w-64 bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'} flex flex-col h-[100dvh] sm:max-h-[100dvh] shrink-0`}>
         <div className="flex items-center justify-center h-16 border-b border-slate-200 dark:border-slate-700 px-4 pt-safe">
             <span className="text-xl font-bold text-primary-600 dark:text-primary-400 truncate w-full text-center">Master Admin</span>
         </div>

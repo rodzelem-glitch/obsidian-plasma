@@ -519,7 +519,7 @@ const CustomerDashboard: React.FC = () => {
                         This can happen if your email address doesn't perfectly match their records.
                     </p>
                     <div className="flex gap-3">
-                        <Button variant="secondary" onClick={() => window.location.reload()}>Retry Connection</Button>
+                        <Button variant="secondary" onClick={() => window.location.href = window.location.pathname + window.location.search}>Retry Connection</Button>
                         <Button onClick={() => navigate('/login')}>Return to Login</Button>
                     </div>
                 </div>

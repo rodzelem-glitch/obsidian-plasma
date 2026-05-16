@@ -33,7 +33,7 @@ const AssetLookup: React.FC = () => {
             <div className="p-4 md:p-8 text-center">
                 <h2 className="text-xl font-bold text-red-600">Asset Not Found</h2>
                 <p className="text-gray-500">The scanned code does not match a known customer record.</p>
-                <Button onClick={() => window.location.href = 'https://tektrakker.com'} className="mt-4 w-auto">Go Home</Button>
+                <Button onClick={() => window.location.href = '/'} className="mt-4 w-auto">Go Home</Button>
             </div>
         );
     }

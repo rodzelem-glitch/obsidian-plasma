@@ -125,6 +125,15 @@ const JobScheduling: React.FC = () => {
             }
         }
 
+        if (field === 'jobStatus' && value !== jobToUpdate.jobStatus) {
+            updatedJob.jobEvents = [...(updatedJob.jobEvents || []), {
+                type: 'Status Change',
+                status: value,
+                timestamp: new Date().toISOString(),
+                userId: state.currentUser?.id
+            }];
+        }
+
         try {
             await db.collection('jobs').doc(jobId).set(updatedJob, { merge: true });
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
@@ -481,6 +490,11 @@ const JobScheduling: React.FC = () => {
                             <div className="flex justify-between items-start mb-3">
                             <div>
                                 <h3 className="font-bold text-gray-900 dark:text-white">{job.customerName}</h3>
+                                {job.proposalId && (
+                                    <div className="flex items-center gap-1 text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tighter">
+                                        <FileText size={10} /> Linked Proposal
+                                    </div>
+                                )}
                                 <p className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5"><MapPin size={10}/> {formatAddress(job.address)}</p>
                             </div>
                             <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
@@ -523,6 +537,7 @@ const JobScheduling: React.FC = () => {
                                     <option value="Scheduled">Scheduled</option>
                                     <option value="In Progress">In Progress</option>
                                     <option value="Completed">Completed</option>
+                                    <option value="Cancelled">Cancelled</option>
                                 </select>
                                 <button onClick={() => handleDeleteJob(job.id)} aria-label="Delete Job" title="Delete Job" className="text-red-500 p-1 ml-1"><Trash2 size={18}/></button>
                             </div>
@@ -564,7 +579,14 @@ const JobScheduling: React.FC = () => {
                         {(allJobs as Job[]).map((job: Job) => (
                             <tr id={`job-card-${job.id}`} key={job.id} className={`${job.assignedPartnerId === state.currentOrganization?.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                                 <td className="px-6 py-4 whitespace-nowrap font-bold text-sm">
-                                    {job.customerName}
+                                    <div className="flex flex-col">
+                                        <span>{job.customerName}</span>
+                                        {job.proposalId && (
+                                            <div className="flex items-center gap-1 text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tighter mt-0.5">
+                                                <FileText size={10} /> Linked Proposal
+                                            </div>
+                                        )}
+                                    </div>
                                     {job.assignedPartnerId === state.currentOrganization?.id && <span className="ml-2 text-[10px] text-blue-600 border border-blue-200 px-1 rounded bg-white">Assigned to You</span>}
                                     <div className="text-[10px] text-gray-400 font-normal">{formatAddress(job.address)}</div>
                                 </td>
@@ -578,6 +600,7 @@ const JobScheduling: React.FC = () => {
                                         <option value="Scheduled">Scheduled</option>
                                         <option value="In Progress">In Progress</option>
                                         <option value="Completed">Completed</option>
+                                        <option value="Cancelled">Cancelled</option>
                                     </select>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">

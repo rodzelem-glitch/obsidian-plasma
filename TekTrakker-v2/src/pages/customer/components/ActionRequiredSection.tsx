@@ -22,7 +22,8 @@ const ActionRequiredSection: React.FC<ActionRequiredSectionProps> = ({
     const pendingJobFiles = jobs.flatMap(job => 
         (job.files || [])
             .filter(f => {
-                const isWaiver = f.metadata?.label?.toLowerCase().includes('waiver') || f.metadata?.isActionRequired;
+                const label = (f.metadata as any)?.label as string;
+                const isWaiver = label?.toLowerCase().includes('waiver') || f.metadata?.isActionRequired;
                 const isUnsigned = f.metadata?.status !== 'Signed' && !f.metadata?.signature && !f.metadata?.signedAt;
                 return isWaiver && isUnsigned;
             })

@@ -11,6 +11,38 @@ export interface Address {
     zip: string;
 }
 
+export interface SignedWaiver {
+    id: string;
+    customerName: string;
+    address?: string | Address;
+    signatureImage?: string;
+    signatureDataUrl?: string;
+    signature?: string;
+    htmlContent?: string;
+    title?: string;
+    timestamp: string;
+    createdAt?: string;
+    fileName?: string;
+    url?: string;
+    dataUrl?: string;
+    content?: string;
+    body?: string;
+}
+
+export interface OrganizationSettings {
+    publicProfile?: boolean;
+    publicLogoUrl?: string;
+    publicDescription?: string;
+    publicCredentials?: string[];
+    publicServices?: string[];
+    hiring?: boolean;
+    serviceArea?: string[];
+    openWeatherApiKey?: string;
+    shovelsApiKey?: string;
+    shovelsUsageCount?: number;
+    [key: string]: unknown;
+}
+
 export interface Organization {
     franchiseId?: string;
     gustoOnboardingUrl?: string;
@@ -57,6 +89,11 @@ export interface Organization {
     stripeAccountId?: string | null;
     squareApplicationId?: string | null;
     squareLocationId?: string | null;
+    kortAccountId?: string | null;
+    kortAccountStatus?: string | null;
+    defaultPaymentGateway?: 'paypal' | 'stripe' | 'square' | 'kort';
+    platformVaultedPaymentMethodId?: string | null;
+    platformVaultedPaymentType?: string | null;
     enabledPanels?: {
         inventory?: boolean;
         marketing?: boolean;
@@ -112,7 +149,7 @@ export interface Organization {
     aiPricebookEnabled?: boolean;
     virtualWorkerEnabled?: boolean;
     salesRepId?: string;
-    settings?: any; 
+    settings?: OrganizationSettings; 
     isVerified?: boolean; 
     publicProfile?: boolean; 
     publicDescription?: string; 
@@ -127,8 +164,8 @@ export interface Organization {
     contactEmail?: string; 
     contactPhone?: string;
     bio?: string; // Added
-    features?: any; // Added
-    branding?: any; // Added
+    features?: Record<string, boolean>; // Added
+    branding?: Record<string, unknown>; // Added
     serviceableRegions?: string[]; // Added
     avgRating?: number; // Added
     reviewCount?: number; // Added
@@ -185,11 +222,24 @@ export interface User {
   ssn?: string | null; 
   taxId?: string;
   experienceYears?: number | null;
-  emergencyContact?: { name: string; phone: string; };
+  emergencyContact?: { name: string; phone: string; relationship?: string; alternatePhone?: string; };
   certifications?: { name: string; number?: string; expiryDate?: string; fileUrl?: string; }[];
   ptoAccrualRate?: number | null; 
   mileageRate?: number | null; 
   hasCompanyVehicle?: boolean | null;
+  dob?: string;
+  driversLicense?: { number: string; state: string; expiryDate: string; };
+  employmentType?: 'Full-Time' | 'Part-Time' | 'Temporary';
+  department?: string;
+  directDeposit?: {
+    preference?: 'Direct Deposit' | 'Paper Check';
+    bankName?: string;
+    accountType?: 'Checking' | 'Savings';
+    routingNumber?: string;
+    accountNumber?: string;
+    effectiveDate?: string;
+  };
+  infoSheetSignature?: { signature: string; date: string; };
   documents?: EmployeeDocument[]; 
   status?: 'active' | 'archived';
   phone?: string | null;
@@ -202,16 +252,24 @@ export interface User {
   location?: { lat: number; lng: number; timestamp: string; };
   lastLocationUpdate?: string | null;
   lastLoginAt?: string | null; 
-  preferences?: any;
+  preferences?: {
+      sidebarOrder?: string[];
+      customLabels?: Record<string, string>;
+      hiddenSidebarPaths?: string[];
+      [key: string]: unknown;
+  };
   permissions?: string[]; 
   marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; gclid?: string; };
   signedPolicies?: Record<string, string>;
+  policySignatures?: Record<string, string>;
+  formSubmissions?: Record<string, { timestamp?: string; responses?: Record<string, string>; fileUrl?: string; fileName?: string; [key: string]: unknown }>;
   digitalId?: string;
   salesContractSigned?: boolean;
   salesContractDate?: string;
   salesContractSignature?: string;
   salesContractContent?: string;
   profilePicUrl?: string;
+  emailSignatureHtml?: string;
   aiEstimatorEnabled?: boolean;
   w4Status?: 'Single' | 'Married' | 'Head of Household';
   w4DependentsAmount?: number;
@@ -223,6 +281,14 @@ export interface User {
   hasAppAccess?: boolean;
   kioskPin?: string;
   gclid?: string;
+  hiringPacketStatus?: {
+    w4Completed: boolean;
+    i9Completed: boolean;
+    directDepositCompleted: boolean;
+    handbookSigned: boolean;
+    idUploaded: boolean;
+    completedAt?: string;
+  };
 }
 
 // --- Customer & Assets ---
@@ -307,7 +373,7 @@ export interface Customer {
   zip?: string | null;
   hvacSystem: { brand: string; type: string; installDate?: string | null; };
   equipment?: EquipmentAsset[];
-  serviceHistory: any[];
+  serviceHistory: Record<string, unknown>[];
   notes?: string | null;
   files?: StoredFile[]; 
   marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; gclid?: string; };
@@ -322,7 +388,7 @@ export interface Customer {
   technicianNotes?: string;
   savedProviders?: string[]; 
   serviceLocations?: ServiceLocation[];
-  contacts?: any[];
+  contacts?: Record<string, unknown>[];
 }
 
 // --- Job & Scheduling ---
@@ -342,16 +408,17 @@ export interface Job {
   poNumber?: string | null;
   customerPhone?: string | null;
   customerEmail?: string | null;
-  jobStatus: 'Scheduled' | 'In Progress' | 'Completed';
+  jobStatus: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled';
   appointmentTime: string; 
   specialInstructions: string;
   assignedTechnicianId?: string | null;
   assignedTechnicianName?: string | null;
+    assignedCrew?: string[];
   assistants?: string[];
   invoice: InvoiceDetails;
   invoiceSignature?: string | null;
   invoiceSignedDate?: string | null;
-  jobEvents: any[];
+  jobEvents: Record<string, unknown>[];
   notes?: {
       preRepair?: string;
       workNotes?: string;
@@ -371,6 +438,7 @@ export interface Job {
   hvacType?: string | null;
   hvacBrand?: string | null;
   projectId?: string | null;
+  proposalId?: string | null;
   createdAt?: string;
   createdById?: string;
   createdByName?: string;
@@ -379,7 +447,7 @@ export interface Job {
   updatedByName?: string;
   toolReadings?: ToolReading[];
   files?: StoredFile[];
-  refrigerantLog?: any[]; 
+  refrigerantLog?: Record<string, unknown>[]; 
   salesRepId?: string;
   total?: number; 
   requiredWaiverIds?: string[];
@@ -457,6 +525,10 @@ export interface InvoiceDetails {
     accountingSyncDate?: string;
     paymentRecipientName?: string;
     paymentMethod?: string;
+    recommendations?: string;
+    additionalFeePercent?: number;
+    additionalFeeName?: string;
+    additionalFeeAmount?: number;
 }
 
 // --- Proposals ---
@@ -490,6 +562,9 @@ export interface Proposal {
     taxAmount: number;
     status: string;
     createdAt: string;
+    additionalFeePercent?: number;
+    additionalFeeName?: string;
+    additionalFeeAmount?: number;
     createdById?: string;
     createdByName?: string;
     technicianId: string;
@@ -498,6 +573,8 @@ export interface Proposal {
     selectedOption?: string | null;
     signature?: string | null;
     signatureDataUrl?: string | null;
+    recommendations?: string;
+    title?: string | null;
 }
 
 export interface ProposalPreset {
@@ -672,8 +749,8 @@ export interface ToolReading {
     toolType: string;
     date: string;
     technicianId: string;
-    data: any;
-    results: any;
+    data: Record<string, unknown>;
+    results: Record<string, unknown>;
     summary: string;
     reportUrl?: string;
     type?: string; 
@@ -844,6 +921,10 @@ export interface PlatformSettings {
     updatedAt: string;
     platformPaypalClientId?: string;
     franchiseFeePct?: number;
+    franchiseBaseFee?: number;
+    franchiseSetupFee?: number;
+    franchiseRevSharePerUser?: number;
+    franchiseRevSharePerVirtualWorker?: number;
     franchiseDiscountCodes?: { code: string; discountPct: number; active: boolean }[];
 }
 
@@ -899,7 +980,7 @@ export interface StoredFile {
     dataUrl: string;
     createdAt: string;
     uploadedBy: string;
-    metadata?: any;
+    metadata?: Record<string, unknown>;
     label?: string; // High-res label for quicker filtering
 }
 
@@ -934,7 +1015,7 @@ export interface BusinessDocument {
     id: string;
     organizationId: string;
     title: string;
-    type: 'Other' | 'Service Agreement' | 'Contract' | 'Policy' | 'Letter' | 'Membership Terms' | 'Handbook' | 'Master Upload' | 'Waiver Template' | 'Master Template' | 'Tax Form' | '1099-NEC';
+    type: 'Other' | 'Service Agreement' | 'Contract' | 'Policy' | 'Letter' | 'Membership Terms' | 'Handbook' | 'Master Upload' | 'Waiver Template' | 'Master Template' | 'Tax Form' | '1099-NEC' | 'Hiring Packet';
     content: string; 
     createdAt: string;
     createdBy: string;
@@ -963,13 +1044,22 @@ export interface Applicant {
     marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; };
 }
 
+export interface InspectionTemplateItem {
+    id: string;
+    label: string;
+    type: 'PassFail' | 'Text' | 'Textarea' | 'Photo' | 'Checkbox' | 'CheckboxGroup' | 'Date' | 'Signature' | 'YesNo';
+    required: boolean;
+    options?: string[];
+}
+
 export interface InspectionTemplate {
     id: string;
     organizationId: string;
     name: string;
-    items: any[];
+    items: InspectionTemplateItem[];
     createdAt: string;
     updatedAt: string;
+    isHiringPacket?: boolean;
 }
 
 export interface ServiceAgreement {
@@ -1094,7 +1184,7 @@ export interface ShopOrder {
     items: { name: string; quantity: number; }[];
     total: number;
     status: string;
-    createdAt?: any;
+    createdAt?: string | number | { toDate: () => Date };
 }
 
 export interface Bid {
@@ -1113,15 +1203,18 @@ export interface Bid {
     submissionEmail?: string;
     submissionLink?: string;
     files: StoredFile[];
-    lineItems?: any[];
-    questions?: any[];
-    generatedDocs?: any[];
+    lineItems?: BidLineItem[];
+    questions?: BidQuestion[];
+    generatedDocs?: BidDoc[];
     paymentStatus: 'Pending' | 'Paid';
     totalValue?: number;
     submittedDate?: string;
     projectId?: string;
     noticeId?: string;
     createdAt: string;
+    additionalFeePercent?: number;
+    additionalFeeName?: string;
+    additionalFeeAmount?: number;
 }
 
 export interface BidDoc {
