@@ -727,9 +727,9 @@ export default function Home() {
                         <p className="text-lg text-slate-600 mb-0">Don&apos;t need the full field service management system? Get started with our standalone invoicing and payment processing platform. Create beautiful invoices and get paid instantly.</p>
                     </div>
                     <div className="relative z-10 w-full md:w-auto shrink-0">
-                        <button disabled className="w-full md:w-auto px-8 py-4 bg-orange-600/60 text-white font-black text-lg rounded-xl flex items-center justify-center gap-2 cursor-not-allowed shadow-none">
-                            Coming Soon
-                        </button>
+                        <Link href="/payment-processing" className="w-full md:w-auto px-8 py-4 bg-orange-600 text-white font-black text-lg rounded-xl hover:bg-orange-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
+                            Learn More <ArrowRight size={20} />
+                        </Link>
                     </div>
                 </div>
                 </AnimatedCard>

@@ -68,7 +68,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                         <li><Link href="/features/estimating-proposals/" className="hover:text-primary-400 transition-colors">Estimating & Proposals</Link></li>
                         <li><Link href="/features/service-agreements/" className="hover:text-primary-400 transition-colors">Service Agreements</Link></li>
                         <li><Link href="/features/ai-virtual-worker/" className="hover:text-primary-400 transition-colors">AI Virtual Worker</Link></li>
-                        <li><Link href="/payment-processing/" className="hover:text-primary-400 transition-colors">Payment Processing</Link></li>
+                        <li><Link href="/payment-processing-signup/" className="hover:text-primary-400 transition-colors">Payment Processing</Link></li>
                     </ul>
                 </div>
 
