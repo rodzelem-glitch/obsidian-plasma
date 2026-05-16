@@ -716,17 +716,20 @@ export default function Home() {
 
                 {/* Payment Processing Pitch */}
                 <AnimatedCard direction="right" delay={0}>
-                <div className="max-w-5xl mx-auto bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-3xl p-8 md:p-12 text-left flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group hover:border-orange-300 transition-colors shadow-lg shadow-orange-500/5 mb-8">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-orange-500/20 transition-all duration-700 pointer-events-none"></div>
+                <div className="max-w-5xl mx-auto bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-3xl p-8 md:p-12 text-left flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden group shadow-lg shadow-orange-500/5 mb-8 opacity-90">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
                     <div className="flex-1 relative z-10">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-bold uppercase tracking-widest mb-4">Flat Rate Processing</div>
+                        <div className="flex flex-wrap items-center gap-2 mb-4">
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 text-orange-700 text-xs font-bold uppercase tracking-widest">Flat Rate Processing</div>
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 text-white text-xs font-bold uppercase tracking-widest animate-pulse">Coming Soon</div>
+                        </div>
                         <h3 className="text-3xl font-black text-slate-900 mb-4">Just Need Payment Processing?</h3>
                         <p className="text-lg text-slate-600 mb-0">Don&apos;t need the full field service management system? Get started with our standalone invoicing and payment processing platform. Create beautiful invoices and get paid instantly.</p>
                     </div>
                     <div className="relative z-10 w-full md:w-auto shrink-0">
-                        <Link href="/payment-processing-signup" className="w-full md:w-auto px-8 py-4 bg-orange-600 text-white font-black text-lg rounded-xl hover:bg-orange-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
-                            Start Processing <ArrowRight size={20} />
-                        </Link>
+                        <button disabled className="w-full md:w-auto px-8 py-4 bg-orange-600/60 text-white font-black text-lg rounded-xl flex items-center justify-center gap-2 cursor-not-allowed shadow-none">
+                            Coming Soon
+                        </button>
                     </div>
                 </div>
                 </AnimatedCard>
