@@ -106,6 +106,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                         <li><Link href="/faq/" className="hover:text-primary-400 transition-colors">Help Center / FAQ</Link></li>
                         <li><Link href="/roi-calculator/" className="hover:text-primary-400 transition-colors">ROI Calculator</Link></li>
                         <li><Link href="/integrations/" className="hover:text-primary-400 transition-colors">Integration Directory</Link></li>
+                        <li><a href="https://nextinsurance.sjv.io/c/7280120/1148969/14516" target="_blank" rel="noopener noreferrer" className="hover:text-primary-400 transition-colors">Insurance/Bonds</a></li>
                         <li><a href="https://app.tektrakker.com/#/homeowners" className="hover:text-primary-400 transition-colors">Homeowner Portal</a></li>
                         <li><a href="https://app.tektrakker.com/#/login" className="hover:text-primary-400 transition-colors">Customer Login</a></li>
                     </ul>
