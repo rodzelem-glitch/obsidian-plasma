@@ -158,7 +158,6 @@ export interface MembershipPlan {
     visitsPerYear: number;
     color: string;
     benefits?: string[];
-    paypalPlanId?: string;
     pricePerAdditionalSystem?: number;
 }
 
@@ -401,13 +400,14 @@ export interface CommissionSettings {
 export interface PlatformSettings {
     id: string;
     plans: {
-        starter: { monthly: number; annual: number; maxUsers: number; paypalMonthlyId?: string; paypalAnnualId?: string };
-        growth: { monthly: number; annual: number; maxUsers: number; paypalMonthlyId?: string; paypalAnnualId?: string };
-        enterprise: { monthly: number; annual: number; maxUsers: number; paypalMonthlyId?: string; paypalAnnualId?: string };
+        starter: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
+        growth: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
+        enterprise: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
+        payments_only: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
+        [key: string]: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
     };
     excessUserFee: number;
     updatedAt: string;
-    platformPaypalClientId?: string;
     franchiseFeePct?: number;
     franchiseBaseFee?: number;
     franchiseSetupFee?: number;

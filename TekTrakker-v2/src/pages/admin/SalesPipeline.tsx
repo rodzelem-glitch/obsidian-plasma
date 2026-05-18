@@ -9,7 +9,7 @@ import { db } from 'lib/firebase';
 import type { Proposal, Job, Notification } from 'types';
 import { 
     DollarSign, Briefcase, CheckCircle, 
-    FileText, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy, Bell, UserPlus
+    FileText, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy, Bell, UserPlus, Search, Clock, XCircle
 } from 'lucide-react';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -24,6 +24,7 @@ const SalesPipeline: React.FC = () => {
     const [searchParams] = useSearchParams();
     const [viewProposal, setViewProposal] = useState<Proposal | null>(null);
     const [filterStatus, setFilterStatus] = useState<string>('All');
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Share Proposal State
     const [shareModalProp, setShareModalProp] = useState<Proposal | null>(null);
@@ -64,6 +65,16 @@ const SalesPipeline: React.FC = () => {
     const filteredProposals = useMemo(() => {
         return (proposals as Proposal[])
             .filter(p => filterStatus === 'All' || p.status === filterStatus)
+            .filter(p => {
+                if (!searchTerm) return true;
+                const q = searchTerm.toLowerCase();
+                return (
+                    (p.customerName || '').toLowerCase().includes(q) ||
+                    (p.id || '').toLowerCase().includes(q) ||
+                    (p.selectedOption || '').toLowerCase().includes(q) ||
+                    (p.total?.toString() || '').includes(q)
+                );
+            })
             .sort((a, b) => {
                 switch (sortBy) {
                     case 'date_asc':
@@ -81,7 +92,7 @@ const SalesPipeline: React.FC = () => {
                         return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
                 }
             });
-    }, [proposals, filterStatus, sortBy]);
+    }, [proposals, filterStatus, sortBy, searchTerm]);
 
     // --- ACTIONS ---
     const handleStatusChange = async (proposal: Proposal, newStatus: Proposal['status']) => {
@@ -369,9 +380,20 @@ const SalesPipeline: React.FC = () => {
 
             {/* MAIN LIST */}
             <Card className="shadow-lg">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
+                <div className="flex flex-col gap-4 mb-4">
+                    <div className="relative w-full sm:max-w-md">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search proposals by customer, ID, or option..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900/50 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                        />
+                    </div>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div className="flex space-x-2 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto custom-scrollbar flex-1 whitespace-nowrap">
-                        {['All', 'Pending Approval', 'Draft', 'Sent', 'Accepted', 'Rejected'].map(status => (
+                        {['All', 'Pending Approval', 'Draft', 'Sent', 'Accepted', 'Rejected', 'Denied', 'Expired'].map(status => (
                             <button
                                 key={status}
                                 onClick={() => setFilterStatus(status)}
@@ -403,6 +425,7 @@ const SalesPipeline: React.FC = () => {
                         </label>
                     </div>
                 </div>
+                </div>
 
                 <Table headers={['Date', 'Customer', 'Option Selected', 'Value', 'Status', 'Actions']}>
                     {filteredProposals.map(p => {
@@ -426,9 +449,10 @@ const SalesPipeline: React.FC = () => {
                                 <td className="px-6 py-4">
                                     <span className={`px-2 py-1 rounded text-xs font-bold uppercase border ${
                                         p.status === 'Accepted' ? 'bg-green-100 text-green-800 border-green-200' :
-                                        p.status === 'Rejected' ? 'bg-red-100 text-red-800 border-red-200' :
+                                        (p.status === 'Rejected' || p.status === 'Denied') ? 'bg-red-100 text-red-800 border-red-200' :
                                         p.status === 'Sent' ? 'bg-blue-100 text-blue-800 border-blue-200' :
                                         p.status === 'Pending Approval' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                                        p.status === 'Expired' ? 'bg-slate-200 text-slate-800 border-slate-300' :
                                         'bg-gray-100 text-gray-800 border-gray-200'
                                     }`}>
                                         {p.status}
@@ -443,6 +467,12 @@ const SalesPipeline: React.FC = () => {
                                             <>
                                                 <button onClick={() => handleStatusChange(p, 'Draft')} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded" title="Approve"><ShieldCheck size={16}/></button>
                                                 <button onClick={() => handleStatusChange(p, 'Rejected')} className="p-2 text-rose-600 hover:bg-rose-50 rounded" title="Reject"><Ban size={16}/></button>
+                                            </>
+                                        )}
+                                        {p.status === 'Sent' && (
+                                            <>
+                                                <button onClick={() => handleStatusChange(p, 'Denied')} className="p-2 text-rose-600 hover:bg-rose-50 rounded" title="Mark Denied"><XCircle size={16}/></button>
+                                                <button onClick={() => handleStatusChange(p, 'Expired')} className="p-2 text-slate-600 hover:bg-slate-50 rounded" title="Mark Expired"><Clock size={16}/></button>
                                             </>
                                         )}
                                         <button onClick={() => setViewProposal(p)} className="p-2 text-blue-600 hover:bg-blue-50 rounded" title="View"><Eye size={16}/></button>

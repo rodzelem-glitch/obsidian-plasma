@@ -6,12 +6,12 @@ import { Capacitor } from '@capacitor/core';
 import { triggerHapticFeedback } from '../../lib/haptics';
 
 const navItems = [
-  { path: '/briefing/', label: 'Briefing', icon: BriefingIcon },
-  { path: '/briefing/timelog', label: 'Time', icon: TimeLogIcon },
-  { path: '/briefing/proposal', label: 'Estimator', icon: WrenchScrewdriverIcon },
-  { path: '/briefing/payments', label: 'Payments', icon: PaymentsIcon },
-  { path: '/briefing/tools', label: 'Tools', icon: CalculatorIcon },
-  { path: '/briefing/messages', label: 'Chat', icon: ChatBubbleLeftRightIcon },
+  { path: '/briefing/', label: 'Briefing', icon: BriefingIcon, tourKey: 'briefing' },
+  { path: '/briefing/timelog', label: 'Time', icon: TimeLogIcon, tourKey: 'timelog' },
+  { path: '/briefing/proposal', label: 'Estimator', icon: WrenchScrewdriverIcon, tourKey: 'proposal' },
+  { path: '/briefing/payments', label: 'Payments', icon: PaymentsIcon, tourKey: 'payments' },
+  { path: '/briefing/tools', label: 'Tools', icon: CalculatorIcon, tourKey: 'tools' },
+  { path: '/briefing/messages', label: 'Chat', icon: ChatBubbleLeftRightIcon, tourKey: 'messages' },
 ];
 
 const BottomNav: React.FC = () => {
@@ -28,6 +28,7 @@ const BottomNav: React.FC = () => {
               <Link
                 key={item.path}
                 to={item.path}
+                data-tour={`nav-${item.tourKey}`}
                 onClick={() => triggerHapticFeedback()}
                 className={`flex flex-col items-center justify-center text-[11px] font-semibold transition-all duration-200 relative ${
                   isActive ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400 dark:text-slate-500 hover:text-primary-500'

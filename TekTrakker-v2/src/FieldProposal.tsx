@@ -184,7 +184,9 @@ const FieldProposal: React.FC = () => {
         const pdfHeight = (imgHeight * pdfWidth) / imgWidth;
 
         pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        pdf.save("service_proposal.pdf");
+        const pdfDataUri = pdf.output('datauristring');
+        const { downloadFile } = await import('lib/downloadHelper');
+        await downloadFile(pdfDataUri, "service_proposal.pdf");
         setIsSubmitting(false);
     };
 

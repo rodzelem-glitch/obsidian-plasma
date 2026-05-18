@@ -370,18 +370,7 @@ const Memberships: React.FC = () => {
                             </Select>
                         </div>
                         
-                        {/* PayPal Plan ID Input */}
-                        <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded border border-blue-200 dark:border-blue-800">
-                            <Input 
-                                label="PayPal Plan ID (For Subscriptions)" 
-                                value={editingPlan.paypalPlanId || ''} 
-                                onChange={e => setEditingPlan({...editingPlan, paypalPlanId: e.target.value})} 
-                                placeholder="P-1234567890..." 
-                            />
-                            <p className="text-[10px] text-gray-500 mt-1">
-                                Create a subscription product in your PayPal dashboard and paste the Plan ID here to enable automatic recurring billing.
-                            </p>
-                        </div>
+
 
                         <Textarea label="Benefits (One per line)" rows={5} value={benefitsText} onChange={e => setBenefitsText(e.target.value)} />
                         <div className="flex justify-end gap-2 pt-4">

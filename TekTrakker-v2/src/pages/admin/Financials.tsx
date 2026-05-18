@@ -27,6 +27,7 @@ import DocumentPreview from '../../components/ui/DocumentPreview';
 import WarrantyClaimsDashboard from './WarrantyClaimsDashboard';
 import PayoutsTab from './financials/components/PayoutsTab';
 import DisputesTab from './financials/components/DisputesTab';
+import AgingReportTab from './financials/components/AgingReportTab';
 
 const Financials: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -59,6 +60,7 @@ const Financials: React.FC = () => {
     const [isWarrantyOpen, setIsWarrantyOpen] = useState(false);
     const [isPayoutsOpen, setIsPayoutsOpen] = useState(false);
     const [isDisputesOpen, setIsDisputesOpen] = useState(false);
+    const [isAgingOpen, setIsAgingOpen] = useState(false);
     const [payouts, setPayouts] = useState<any[]>([]);
     const [disputes, setDisputes] = useState<any[]>([]);
 
@@ -475,6 +477,32 @@ const Financials: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Aging Report */}
+                <div 
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsAgingOpen(true); e.preventDefault(); } }}
+                    onClick={() => setIsAgingOpen(true)}
+                    className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
+                >
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform">
+                            <TrendingUp size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">A/R Aging Report</h3>
+                    </div>
+                    <div className="flex-1 flex flex-col justify-center items-center py-4 relative bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-gray-800">
+                         <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] dark:opacity-[0.02]">
+                             <TrendingUp size={100} />
+                         </div>
+                         <span className="text-3xl font-black text-amber-600 mb-1 relative z-10 drop-shadow-sm">{fmt(financialData.receivables)}</span>
+                         <span className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold tracking-widest relative z-10">Total Overdue</span>
+                    </div>
+                    <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                        View Aging Summary
+                    </div>
+                </div>
+
                 {/* Expenses */}
                 <div 
                     role="button"
@@ -642,6 +670,9 @@ const Financials: React.FC = () => {
             </Modal>
             <Modal isOpen={isDisputesOpen} onClose={() => setIsDisputesOpen(false)} title="Chargebacks & Disputes" size="full">
                 <DisputesTab disputes={disputes} />
+            </Modal>
+            <Modal isOpen={isAgingOpen} onClose={() => setIsAgingOpen(false)} title="A/R Aging Report" size="full">
+                <AgingReportTab jobs={state.jobs} />
             </Modal>
 
             {editingInvoiceId && <InvoiceEditorModal isOpen={true} onClose={() => setEditingInvoiceId(null)} jobId={editingInvoiceId} />}

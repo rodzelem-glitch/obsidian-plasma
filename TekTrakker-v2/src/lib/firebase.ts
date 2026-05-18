@@ -24,7 +24,13 @@ const db = firebase.firestore();
 
 // IMPORTANT: Force long polling specifically on Mobile (Capacitor) to prevent socket freezing/listener delays.
 // On desktop web, we want standard highly-optimized WebSocket connection logic.
-const isNative = !!(window as any).Capacitor?.isNativePlatform?.();
+interface CapacitorWindow extends Window {
+    Capacitor?: {
+        isNativePlatform?: () => boolean;
+    };
+}
+
+const isNative = !!(window as unknown as CapacitorWindow).Capacitor?.isNativePlatform?.();
 
 if (isNative) {
     db.settings({
@@ -48,10 +54,11 @@ if (isNative) {
         localStorage.setItem('__tektrakker_fb_project', currentProjectId || '');
         
         await db.enablePersistence();
-    } catch (err: any) {
-        if (err.code === 'failed-precondition') {
+    } catch (err: unknown) {
+        const error = err as { code?: string };
+        if (error.code === 'failed-precondition') {
             console.warn('Persistence failed: Multiple identical tabs open.');
-        } else if (err.code === 'unimplemented') {
+        } else if (error.code === 'unimplemented') {
             console.warn('Persistence failed: Browser does not support IndexDB.');
         } else {
             console.warn('Firestore Persistence Error:', err);
@@ -71,6 +78,29 @@ try {
   }
 } catch (e) {
   console.warn('Firebase Messaging not supported:', e);
+}
+
+// Mobile Network Reconnection Fix
+if (isNative) {
+    import('@capacitor/app').then(({ App }) => {
+        App.addListener('appStateChange', async ({ isActive }) => {
+            if (isActive) {
+                console.log("App foregrounded: reconnecting Firestore network to sync stale data.");
+                try {
+                    await db.enableNetwork();
+                } catch (e) {
+                    console.warn("Could not enable network:", e);
+                }
+            } else {
+                console.log("App backgrounded: disabling Firestore network to preserve battery and prevent broken sockets.");
+                try {
+                    await db.disableNetwork();
+                } catch (e) {
+                    console.warn("Could not disable network:", e);
+                }
+            }
+        });
+    }).catch(err => console.warn("Failed to load @capacitor/app", err));
 }
 
 export { db, auth, functions, storage, app, messaging, firebase };

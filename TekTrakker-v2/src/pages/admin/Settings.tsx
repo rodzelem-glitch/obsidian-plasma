@@ -1,6 +1,7 @@
 import { getBaseUrl } from "lib/utils";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Button from 'components/ui/Button';
 import { db, functions } from 'lib/firebase';
@@ -37,6 +38,16 @@ const DEFAULT_GOOGLE_CLIENT_ID = "655867451194-3p9dkm7tjb15a2njggqa2jcc64i4vibh.
 const Settings: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const [activeTab, setActiveTab] = useState<'profile' | 'social' | 'operations' | 'legal' | 'integrations' | 'branding' | 'subscription' | 'data' | 'capabilities'>('profile');
+    const location = useLocation();
+
+    // Support deep-linking via ?tab= query parameter
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const tab = params.get('tab');
+        if (tab && ['profile', 'social', 'operations', 'legal', 'integrations', 'branding', 'subscription', 'data', 'capabilities'].includes(tab)) {
+            setActiveTab(tab as typeof activeTab);
+        }
+    }, [location.search]);
 
     // Core Identity
     const [orgName, setOrgName] = useState('');
@@ -85,12 +96,11 @@ const Settings: React.FC = () => {
     const [defaultPartsMonths, setDefaultPartsMonths] = useState(12);
 
     // Integrations
-    const [paypalClientId, setPaypalClientId] = useState('');
     const [stripePublicKey, setStripePublicKey] = useState('');
     const [squareAppId, setSquareAppId] = useState('');
     const [squareLocId, setSquareLocId] = useState('');
     const [squareToken, setSquareToken] = useState('');
-    const [defaultPaymentGateway, setDefaultPaymentGateway] = useState<'stripe' | 'square' | 'paypal' | 'kort'>('stripe');
+    const [defaultPaymentGateway, setDefaultPaymentGateway] = useState<'stripe' | 'square' | 'kort'>('stripe');
     const [smtpHost, setSmtpHost] = useState('');
     const [smtpPort, setSmtpPort] = useState(587);
     const [smtpUser, setSmtpUser] = useState('');
@@ -253,7 +263,6 @@ const Settings: React.FC = () => {
             setWarrantyDisclaimer((org as any).warrantyDisclaimer || '');
             setDefaultWorkmanshipMonths((org as any).defaultWorkmanshipMonths ?? 12);
             setDefaultPartsMonths((org as any).defaultPartsMonths ?? 12);
-            setPaypalClientId(org.paypalClientId || '');
             setStripePublicKey(org.stripePublicKey || '');
             setSquareAppId(org.squareApplicationId || '');
             setSquareLocId(org.squareLocationId || '');
@@ -353,7 +362,7 @@ const Settings: React.FC = () => {
         const activeUsers = state.users.filter(u => u.organizationId === org.id && u.status !== 'archived' && u.hasAppAccess !== false).length;
         
         // Sync fallbacks with MasterBilling values (99, 249, 499)
-        const baseMonthlyCost = planConfig?.monthly || (currentPlan === 'enterprise' ? 499 : currentPlan === 'growth' ? 249 : 99);
+        const baseMonthlyCost = planConfig?.monthly || (currentPlan === 'enterprise' ? 499 : currentPlan === 'growth' ? 249 : currentPlan === 'payments_only' ? 20 : 99);
         const userFee = state.platformSettings?.excessUserFee ?? 25;
         const additionalSlotsCost = (org.additionalUserSlots || 0) * userFee;
         
@@ -399,7 +408,7 @@ const Settings: React.FC = () => {
             licenseNumber, ueid, cageCode, primaryNaics, customPositions, requiredCertifications: requiredCerts,
             termsAndConditions, proposalDisclaimer, invoiceTerms, membershipTerms, complianceFooter,
             warrantyDisclaimer, defaultWorkmanshipMonths, defaultPartsMonths,
-            paypalClientId, stripePublicKey, squareApplicationId: squareAppId, squareLocationId: squareLocId,
+            stripePublicKey, squareApplicationId: squareAppId, squareLocationId: squareLocId,
             kortAccountId,
             defaultPaymentGateway,
             marketMultiplier: parseFloat(marketMultiplier) || 1.0,
@@ -786,20 +795,151 @@ const Settings: React.FC = () => {
                 {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled }} />}
                 {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
                 {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths }} />}
-                {activeTab === 'integrations' && <IntegrationsTab {...{ paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, kortAccountId, setKortAccountId, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
+                {activeTab === 'integrations' && <IntegrationsTab {...{ stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, kortAccountId, setKortAccountId, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
                 {activeTab === 'branding' && <BrandingTab {...{ brandingColor, setBrandingColor, financingLink, setFinancingLink, logoUrl, setLogoUrl, publicLogoUrl, setPublicLogoUrl, letterheadUrl, setLetterheadUrl, footerImageUrl, setFooterImageUrl, bannerUrl, setBannerUrl, handleFileUpload, publicProfileEnabled, setPublicProfileEnabled, publicDescription, setPublicDescription, publicCredentials, setPublicCredentials, publicServices, setPublicServices, acceptsSubcontracting, setAcceptsSubcontracting }} />}
                 {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling, handleReactivate }} />}
                 {activeTab === 'data' && <DataTab {...{ handleExportData, handleDetectDuplicates, handleCleanupRecords, handleFlushCache, handleResetOverlays, handleImportFile: (e) => { e.target.value = ''; showToast.info('Bulk import is currently disabled. Contact support to migrate data.'); }, handleDownloadTemplate }} />}
             </div>
 
-            <Modal isOpen={isBillingHelpOpen} onClose={() => setIsBillingHelpOpen(false)} title="Manage Subscription">
-                <div className="space-y-4">
-                    <p className="text-sm text-gray-600 dark:text-gray-300">Contact support to upgrade your plan or add user seats.</p>
-                    <div className="flex justify-end gap-2 pt-4">
-                        <Button variant="secondary" onClick={() => setIsBillingHelpOpen(false)}>Close</Button>
-                        <Button onClick={() => { showToast.success('Request sent to billing support.'); setIsBillingHelpOpen(false); }}>Request Update Link</Button>
-                    </div>
-                </div>
+            <Modal isOpen={isBillingHelpOpen} onClose={() => setIsBillingHelpOpen(false)} title="Upgrade Your Plan">
+                {(() => {
+                    const org = state.currentOrganization;
+                    const currentPlan = org?.plan || 'starter';
+                    const ps = state.platformSettings?.plans;
+                    const featureLabels: Record<string, string> = {
+                        publicBooking: 'Online Booking', proposals: 'Proposals', paymentProcessing: 'Payment Processing',
+                        timeTracking: 'Time Tracking', inventory: 'Inventory', salesCrm: 'Sales CRM',
+                        hrDocuments: 'HR & Docs', careerPage: 'Recruiting', ai: 'AI Features',
+                        quickbooks: 'QuickBooks', subcontractors: 'Subcontractors', '1099': '1099 Tax',
+                        api: 'API Access', branding: 'Custom Branding'
+                    };
+                    const planOptions: { key: 'payments_only' | 'starter' | 'growth' | 'enterprise'; label: string; price: number; annual: number; users: number; features: string[]; ribbon: string }[] = [
+                        { key: 'payments_only', label: 'Payments Only', price: ps?.payments_only?.monthly ?? 20, annual: ps?.payments_only?.annual ?? 199, users: ps?.payments_only?.unlimitedUsers ? 999999 : (ps?.payments_only?.maxUsers ?? 1), features: ps?.payments_only?.features || [], ribbon: ps?.payments_only?.ribbonText || '' },
+                        { key: 'starter', label: 'Starter', price: ps?.starter?.monthly ?? 99, annual: ps?.starter?.annual ?? 999, users: ps?.starter?.maxUsers ?? 3, features: ps?.starter?.features || [], ribbon: ps?.starter?.ribbonText || '' },
+                        { key: 'growth', label: 'Growth', price: ps?.growth?.monthly ?? 249, annual: ps?.growth?.annual ?? 2499, users: ps?.growth?.maxUsers ?? 10, features: ps?.growth?.features || [], ribbon: ps?.growth?.ribbonText || '' },
+                        { key: 'enterprise', label: 'Enterprise', price: ps?.enterprise?.monthly ?? 499, annual: ps?.enterprise?.annual ?? 4999, users: ps?.enterprise?.maxUsers ?? 50, features: ps?.enterprise?.features || [], ribbon: ps?.enterprise?.ribbonText || '' },
+                    ];
+                    const currentPrice = planOptions.find(p => p.key === currentPlan)?.price || 99;
+                    const userFee = state.platformSettings?.excessUserFee ?? 25;
+
+                    // Proration: calculate remaining days in billing cycle
+                    const expiryDate = org?.subscriptionExpiryDate ? new Date(org.subscriptionExpiryDate) : null;
+                    const today = new Date();
+                    const daysRemaining = expiryDate ? Math.max(0, Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))) : 0;
+                    const cycleDays = 30; // Standard monthly cycle
+                    const prorationFraction = daysRemaining > 0 ? Math.min(daysRemaining / cycleDays, 1) : 0;
+
+                    return (
+                        <div className="space-y-4">
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                You are currently on the <strong className="text-slate-800 dark:text-white capitalize">{currentPlan.replace('_', ' ')}</strong> plan at <strong>${currentPrice}/mo</strong>.
+                                {daysRemaining > 0 && <> You have <strong>{daysRemaining} days</strong> remaining in your current billing cycle.</>}
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {planOptions.map(plan => {
+                                    const isCurrent = plan.key === currentPlan;
+                                    const isUpgrade = plan.price > currentPrice;
+                                    const isDowngrade = plan.price < currentPrice;
+                                    const priceDiff = plan.price - currentPrice;
+                                    const proratedCharge = isUpgrade ? Math.max(0, priceDiff * prorationFraction) : 0;
+                                    const proratedCredit = isDowngrade ? Math.abs(priceDiff * prorationFraction) : 0;
+
+                                    return (
+                                        <button
+                                            key={plan.key}
+                                            type="button"
+                                            disabled={isCurrent}
+                                            onClick={async () => {
+                                                if (!org) return;
+                                                const action = isUpgrade ? 'upgrade' : 'switch';
+                                                const chargeMsg = isUpgrade && proratedCharge > 0
+                                                    ? `\n\nProrated charge for remaining ${daysRemaining} days: $${proratedCharge.toFixed(2)}`
+                                                    : isDowngrade && proratedCredit > 0
+                                                    ? `\n\nProrated credit for remaining ${daysRemaining} days: $${proratedCredit.toFixed(2)} (applied to next cycle)`
+                                                    : '';
+                                                const confirmed = window.confirm(
+                                                    `${action === 'upgrade' ? 'Upgrade' : 'Switch'} to ${plan.label} plan at $${plan.price}/mo?${chargeMsg}\n\nYour new rate will apply starting now.`
+                                                );
+                                                if (!confirmed) return;
+                                                try {
+                                                    const newExpiry = new Date();
+                                                    newExpiry.setDate(newExpiry.getDate() + 30);
+                                                    await db.collection('organizations').doc(org.id).update({
+                                                        plan: plan.key,
+                                                        subscriptionStatus: 'active',
+                                                        subscriptionExpiryDate: newExpiry.toISOString().split('T')[0],
+                                                        lastPlanChange: new Date().toISOString(),
+                                                        previousPlan: currentPlan,
+                                                        proratedChargeApplied: isUpgrade ? proratedCharge : 0,
+                                                        proratedCreditApplied: isDowngrade ? proratedCredit : 0,
+                                                    });
+                                                    dispatch({
+                                                        type: 'UPDATE_ORGANIZATION',
+                                                        payload: {
+                                                            ...org,
+                                                            plan: plan.key,
+                                                            subscriptionStatus: 'active',
+                                                            subscriptionExpiryDate: newExpiry.toISOString().split('T')[0],
+                                                        }
+                                                    });
+                                                    showToast.success(`Successfully ${action === 'upgrade' ? 'upgraded' : 'switched'} to ${plan.label}!`);
+                                                    setIsBillingHelpOpen(false);
+                                                } catch (err) {
+                                                    console.error('Plan change failed:', err);
+                                                    showToast.error('Failed to update plan. Please try again.');
+                                                }
+                                            }}
+                                            className={`relative p-4 rounded-xl border-2 text-left transition-all duration-200
+                                                ${isCurrent 
+                                                    ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-600 cursor-default opacity-80' 
+                                                    : isUpgrade 
+                                                        ? 'border-blue-200 dark:border-blue-800 hover:border-blue-500 hover:shadow-lg hover:shadow-blue-500/10 bg-white dark:bg-slate-800 cursor-pointer' 
+                                                        : 'border-slate-200 dark:border-slate-700 hover:border-slate-400 bg-white dark:bg-slate-800 cursor-pointer'
+                                                }`}
+                                        >
+                                            {plan.ribbon && (
+                                                <span className="absolute -top-2 left-3 text-[8px] font-black uppercase tracking-widest bg-gradient-to-r from-amber-500 to-orange-500 text-white px-2 py-0.5 rounded-full shadow">{plan.ribbon}</span>
+                                            )}
+                                            {isCurrent && (
+                                                <span className="absolute top-2 right-2 text-[9px] font-black uppercase tracking-widest bg-emerald-500 text-white px-2 py-0.5 rounded">Current</span>
+                                            )}
+                                            {isUpgrade && !isCurrent && (
+                                                <span className="absolute top-2 right-2 text-[9px] font-black uppercase tracking-widest bg-blue-500 text-white px-2 py-0.5 rounded">Upgrade</span>
+                                            )}
+                                            <h4 className="font-black text-sm text-slate-800 dark:text-white">{plan.label}</h4>
+                                            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">${plan.price}<span className="text-xs font-medium text-slate-400">/mo</span></p>
+                                            <p className="text-[10px] text-slate-400 mt-0.5">{plan.annual > 0 && <>${plan.annual}/yr · </>}{plan.users >= 999999 ? 'Unlimited' : `Up to ${plan.users}`} users</p>
+                                            {plan.features.length > 0 && (
+                                                <div className="mt-2 flex flex-wrap gap-1">
+                                                    {plan.features.slice(0, 5).map(f => (
+                                                        <span key={f} className="text-[8px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded font-medium">{featureLabels[f] || f}</span>
+                                                    ))}
+                                                    {plan.features.length > 5 && <span className="text-[8px] text-slate-400">+{plan.features.length - 5} more</span>}
+                                                </div>
+                                            )}
+                                            {userFee > 0 && plan.key !== 'payments_only' && (
+                                                <p className="text-[9px] text-slate-400 mt-1">+${userFee}/mo per extra user</p>
+                                            )}
+                                            {isUpgrade && !isCurrent && proratedCharge > 0 && (
+                                                <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 mt-2 border-t border-slate-100 dark:border-slate-700 pt-2">
+                                                    Prorated today: +${proratedCharge.toFixed(2)}
+                                                </p>
+                                            )}
+                                            {isDowngrade && !isCurrent && proratedCredit > 0 && (
+                                                <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-2 border-t border-slate-100 dark:border-slate-700 pt-2">
+                                                    Credit applied: -${proratedCredit.toFixed(2)}
+                                                </p>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-[10px] text-slate-400 text-center pt-2">
+                                Plan changes take effect immediately. Upgrades are prorated for the remaining billing cycle. Downgrades credit the difference to your next invoice.
+                            </p>
+                        </div>
+                    );
+                })()}
             </Modal>
 
             <Modal isOpen={isDuplicatesModalOpen} onClose={() => setIsDuplicatesModalOpen(false)} title="Duplicate Resolution">

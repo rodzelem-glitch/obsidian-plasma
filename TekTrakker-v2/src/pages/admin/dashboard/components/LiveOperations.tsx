@@ -6,7 +6,7 @@ import { Clock, MapPin, User, ArrowRight } from 'lucide-react';
 import Card from '../../../../components/ui/Card';
 import { formatAddress } from '../../../../lib/utils';
 
-const LiveOperations: React.FC<{ liveOps: Job[] }> = ({ liveOps }) => {
+const LiveOperations: React.FC<{ liveOps: Job[], hideLink?: boolean }> = ({ liveOps, hideLink }) => {
     const navigate = useNavigate();
 
     const getStatusColor = (status: string) => {
@@ -24,12 +24,14 @@ const LiveOperations: React.FC<{ liveOps: Job[] }> = ({ liveOps }) => {
         <Card className="p-4 sm:p-6 bg-white dark:bg-gray-800 shadow-lg rounded-xl border border-gray-200 dark:border-gray-700">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg sm:text-xl font-black text-gray-900 dark:text-white tracking-tight">Live Operations</h3>
-                <button 
-                    onClick={() => navigate('/admin/operations')}
-                    className="flex items-center gap-2 text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
-                >
-                    Go to Dispatch <ArrowRight size={14} />
-                </button>
+                {!hideLink && (
+                    <button 
+                        onClick={() => navigate('/admin/operations')}
+                        className="flex items-center gap-2 text-xs font-bold text-primary-600 dark:text-primary-400 hover:underline"
+                    >
+                        Go to Dispatch <ArrowRight size={14} />
+                    </button>
+                )}
             </div>
             <div className="space-y-4">
                 {liveOps.length > 0 ? liveOps.map(job => (

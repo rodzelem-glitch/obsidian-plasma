@@ -56,6 +56,9 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
     const [viewerDoc, setViewerDoc] = useState<any | null>(null);
 
     useEffect(() => {
+        if (!isOpen) return;
+        setFormData(initialData);
+        
         const decryptFields = async () => {
             if (!initialData.id || !state.currentOrganization?.id) return;
             setIsDecrypting(true);
@@ -71,8 +74,8 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                 setFormData(prev => ({ ...prev, ssn: decryptedSsn, payRate: decryptedPay }));
             } catch (e) { console.error(e); } finally { setIsDecrypting(false); }
         };
-        if (isOpen && !isSelf) decryptFields(); 
-        if (isOpen && isSelf) setFormData(initialData); 
+        
+        decryptFields(); 
     }, [isOpen, initialData.id, state.currentOrganization?.id, isSelf]);
 
     const handleResetPassword = async () => {
@@ -100,6 +103,13 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         showToast.success("UI bubbles reset. They will reappear shortly.");
         // Dispatch a custom event so bubble components re-evaluate visibility without a full reload
         window.dispatchEvent(new CustomEvent('ui-overlay-reset'));
+    };
+
+    const handleRestartTour = () => {
+        if (!formData.id) return;
+        localStorage.removeItem(`onboarding_complete_${formData.id}`);
+        showToast.success("Onboarding tour reset. It will start the next time you view your dashboard.");
+        onClose();
     };
 
     const handleDeleteAccount = async () => {
@@ -244,7 +254,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         if (!isOfflineOnly && !normalizedEmail && !formData.id) { showToast.warn("Email is required for App Access users."); return; }
         if (isOfflineOnly && (!formData.kioskPin || formData.kioskPin.length !== 4)) { showToast.warn("A 4-digit Kiosk PIN is required for Offline employees."); return; }
 
-        if (formData.ssn) {
+        if (formData.ssn && formData.ssn.length < 20) {
             const ssnDigits = formData.ssn.replace(/\D/g, '');
             if (ssnDigits.length !== 9) {
                 showToast.warn("SSN must be exactly 9 digits.");
@@ -272,22 +282,29 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         try {
             let finalPayRate = formData.payRate;
             let finalSsn = formData.ssn;
-            if (!isSelf) {
-                 finalSsn = formData.ssn ? await encryptSensitiveData(formData.ssn, orgId) : null;
+            
+            if (formData.ssn && formData.ssn.length < 20) {
+                 finalSsn = await encryptSensitiveData(formData.ssn, orgId);
+            }
+            if (typeof formData.payRate === 'number' || (typeof formData.payRate === 'string' && formData.payRate.length < 20)) {
                  finalPayRate = await encryptSensitiveData(formData.payRate || 0, orgId);
             }
+
             const finalData: any = {
                 ...formData, 
                 id, organizationId: orgId, email: isOfflineOnly ? null : normalizedEmail,
                 username: formData.username || (isOfflineOnly ? formData.firstName : normalizedEmail.split('@')[0]),
                 firstName: formData.firstName || '', lastName: formData.lastName || '', 
-                status: formData.status || 'active'
+                status: formData.status || 'active',
+                payRate: finalPayRate,
+                ssn: finalSsn
             };
+            
             if (!isSelf) {
                 finalData.role = formData.role || 'employee';
-                finalData.payRate = finalPayRate;
-                finalData.ssn = finalSsn;
                 finalData.squareTeamMemberId = (formData as any).squareTeamMemberId || null;
+            } else {
+                delete finalData.role;
             }
             Object.keys(finalData).forEach(key => finalData[key] === undefined && delete finalData[key]);
             
@@ -331,7 +348,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
     ];
 
     const allowedTabs = isSelf 
-        ? ['details', 'info', 'hr_files', 'security', 'onboarding', ...(isOrgAdmin ? ['roles', 'permissions', 'payroll'] : [])] 
+        ? ['details', 'info', 'payroll', 'hr_files', 'security', 'onboarding', ...(isOrgAdmin ? ['roles', 'permissions'] : [])] 
         : ['details', 'info', 'roles', 'permissions', 'payroll', 'hr_files', 'onboarding'];
 
     const activeHRCats = state.currentOrganization?.hrFileCategories || ['Drug Test', 'Writeup', 'License', 'Time Off', 'Onboarding', 'Other'];
@@ -339,8 +356,8 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
     return (
         <>
             <Modal isOpen={isOpen} onClose={onClose} title={formData.id ? (isSelfProp ? "My Profile" : "Edit Employee") : "New Employee"} size="xl">
-                <div className="flex flex-col md:flex-row gap-6 h-full max-h-[75vh]">
-                    <div className="w-full md:w-1/3 flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                <div className="flex flex-col md:flex-row gap-6 h-full md:max-h-[75vh]">
+                    <div className="w-full md:w-1/3 flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg shrink-0 md:h-fit">
                         <div className="relative group">
                             <div className="w-32 h-32 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center text-5xl text-gray-500 mb-4 overflow-hidden border-4 border-white dark:border-gray-800 shadow-md">
                                 {formData.profilePicUrl ? <img src={formData.profilePicUrl} className="w-full h-full object-cover" alt="Profile" /> : <UserIcon size={48} />}
@@ -356,13 +373,13 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                         </div>
                     </div>
 
-                    <div className="w-full md:w-2/3 flex flex-col">
-                        <div className="flex border-b dark:border-gray-700 mb-4 overflow-x-auto">
+                    <div className="w-full md:w-2/3 flex flex-col min-h-0">
+                        <div className="flex border-b dark:border-gray-700 mb-4 overflow-x-auto shrink-0 custom-scrollbar pb-1">
                             {allowedTabs.map(tab => (
                                 <button key={tab} type="button" onClick={() => setActiveTab(tab as any)} className={`shrink-0 min-w-max whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 transition-colors capitalize ${activeTab === tab ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'}`}>{tab === 'hr_files' ? 'HR Files' : tab === 'onboarding' ? 'Onboarding Packet' : tab === 'info' ? 'Employee Info' : tab}</button>
                             ))}
                         </div>
-                        <form noValidate onSubmit={handleSave} className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
+                        <form noValidate onSubmit={handleSave} className="flex-1 md:overflow-y-auto custom-scrollbar pr-2 space-y-4 min-h-0">
                             {activeTab === 'details' && (
                                 <><div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <Input label="First Name" value={formData.firstName || ''} onChange={e => setFormData({...formData, firstName: e.target.value})} />
@@ -500,29 +517,52 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                 </div>
                             )}
                             
-                            {activeTab === 'payroll' && (!isSelf || isOrgAdmin) && (
+                            {activeTab === 'payroll' && (
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center"><h4 className="font-bold flex items-center gap-2 dark:text-white"><Lock size={14}/> Encrypted Data</h4><button type="button" onClick={() => setShowSensitive(!showSensitive)} className="text-xs text-gray-500">{showSensitive ? 'Hide' : 'Reveal'}</button></div>
                                     <div className={!showSensitive ? 'blur-sm select-none' : ''}>
-                                        <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border space-y-4 mb-4">
-                                            <div className="flex gap-4">
-                                                <div className="flex-1">
-                                                    <Select label="Pay Type" value={formData.payType || 'hourly'} onChange={e => setFormData({...formData, payType: e.target.value as any})}>
-                                                        <option value="hourly">Hourly Rate</option>
-                                                        <option value="salary">Annual Salary</option>
-                                                    </Select>
-                                                </div>
-                                                <div className="flex-1">
-                                                    <Input 
-                                                        label={formData.payType === 'salary' ? "Salary Amount ($)" : "Pay Rate ($/hr)"} 
-                                                        type="number" 
-                                                        step="0.01" 
-                                                        value={isNaN(formData.payRate as number) ? '' : formData.payRate} 
-                                                        onChange={e => setFormData({...formData, payRate: e.target.value === '' ? 0 : parseFloat(e.target.value)})} 
-                                                    />
+                                        {(!isSelf || isOrgAdmin) && (
+                                            <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border space-y-4 mb-4">
+                                                <div className="flex gap-4">
+                                                    <div className="flex-1">
+                                                        <Select label="Pay Type" value={formData.payType || 'hourly'} onChange={e => setFormData({...formData, payType: e.target.value as any})}>
+                                                            <option value="hourly">Hourly Rate</option>
+                                                            <option value="salary">Annual Salary</option>
+                                                        </Select>
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <Input 
+                                                            label={formData.payType === 'salary' ? "Salary Amount ($)" : "Pay Rate ($/hr)"} 
+                                                            type="number" 
+                                                            step="0.01" 
+                                                            value={isNaN(formData.payRate as number) ? '' : formData.payRate} 
+                                                            onChange={e => setFormData({...formData, payRate: e.target.value === '' ? 0 : parseFloat(e.target.value)})} 
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <Input label="SSN" value={formData.ssn || ''} onChange={e => setFormData({...formData, ssn: e.target.value})} placeholder="XXX-XX-XXXX" />
+                                        )}
+                                        <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border space-y-4 mb-4">
+                                            <Input 
+                                                label="SSN" 
+                                                type="text"
+                                                inputMode="numeric"
+                                                pattern="[0-9]*"
+                                                value={formData.ssn || ''} 
+                                                onChange={e => {
+                                                    let val = e.target.value.replace(/\D/g, '');
+                                                    if (val.length > 9) val = val.slice(0, 9);
+                                                    let formatted = val;
+                                                    if (val.length > 5) {
+                                                        formatted = `${val.slice(0,3)}-${val.slice(3,5)}-${val.slice(5)}`;
+                                                    } else if (val.length > 3) {
+                                                        formatted = `${val.slice(0,3)}-${val.slice(3)}`;
+                                                    }
+                                                    setFormData({...formData, ssn: formatted});
+                                                }} 
+                                                placeholder="XXX-XX-XXXX" 
+                                                maxLength={11} 
+                                            />
                                         </div>
                                         <h5 className="font-bold text-sm text-slate-600 dark:text-slate-400 mb-2 flex items-center gap-2"><DollarSign size={14}/> W-4 Withholding</h5>
                                         <div className="p-4 bg-slate-50 dark:bg-slate-800 border rounded-lg space-y-3">
@@ -533,7 +573,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                             </Select>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                 <Input 
-                                                    label="Dependents ($)" 
+                                                    label="Number of Dependents" 
                                                     type="number" 
                                                     value={isNaN(formData.w4DependentsAmount!) ? '' : formData.w4DependentsAmount} 
                                                     onChange={e => setFormData({...formData, w4DependentsAmount: e.target.value === '' ? 0 : parseFloat(e.target.value)})} 
@@ -744,10 +784,17 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                     <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-4">
                                         <div>
                                             <h5 className="font-bold text-sm mb-2 text-slate-700 dark:text-slate-300">User Interface Controls</h5>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Restore hidden bubbles or reset widget positions to their defaults.</p>
-                                            <Button type="button" variant="secondary" onClick={handleResetOverlays} className="w-auto">
-                                                Reset UI Customizations
-                                            </Button>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Restore hidden bubbles, reset widget positions to their defaults, or restart the platform onboarding tour.</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                <Button type="button" variant="secondary" onClick={handleResetOverlays} className="w-auto">
+                                                    Reset UI Customizations
+                                                </Button>
+                                                {isSelf && (
+                                                    <Button type="button" variant="secondary" onClick={handleRestartTour} className="w-auto">
+                                                        Restart Onboarding Tour
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     

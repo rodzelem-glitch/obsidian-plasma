@@ -31,7 +31,13 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
         setIsProfileModalOpen(false);
     }, [location.pathname]);
 
-    const myNotifications = state.notifications.filter(n => n.userId === user.id);
+    const myNotifications = state.notifications.filter(n => 
+        n.userId === user.id || 
+        n.userId === user.email || 
+        n.userId === 'all' || 
+        (user.role === 'master_admin' && n.userId === 'rodzelem@gmail.com') ||
+        (n.userId === 'all_admins' && (user.role === 'admin' || user.role === 'master_admin' || user.role === 'both'))
+    );
     const unreadCount = myNotifications.filter(n => !n.read).length;
 
     const toggleTheme = () => {

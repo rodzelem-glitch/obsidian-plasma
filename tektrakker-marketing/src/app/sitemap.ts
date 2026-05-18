@@ -14,6 +14,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
         '/pricing',
         '/integrations',
         '/roi-calculator',
+        '/payment-processing',
+        '/payment-processing-signup',
         '/franchise',
         '/faq',
         '/terms',

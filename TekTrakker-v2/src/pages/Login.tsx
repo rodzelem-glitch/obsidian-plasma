@@ -55,7 +55,7 @@ const LoginPage: React.FC = () => {
   const [userServiceNeed, setUserServiceNeed] = useState('Community');
 
   // Org Signup Plan State
-  const [selectedPlan, setSelectedPlan] = useState<'starter' | 'growth' | 'enterprise'>('starter');
+  const [selectedPlan, setSelectedPlan] = useState<'starter' | 'growth' | 'enterprise' | 'payments_only'>('starter');
   
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -122,6 +122,14 @@ const LoginPage: React.FC = () => {
       if (paramEmail) setEmail(paramEmail);
       if (paramName) setUserName(paramName);
       if (paramUserType === 'customer' || paramUserType === 'staff') setUserType(paramUserType as 'customer' | 'staff');
+
+      // Check for pre-selected plan param (from marketing landing pages)
+      const planParam = searchParams.get('plan');
+      if (planParam && ['starter', 'growth', 'enterprise', 'payments_only'].includes(planParam)) {
+          setSelectedPlan(planParam as 'starter' | 'growth' | 'enterprise' | 'payments_only');
+          // Auto-open business registration if plan is specified
+          if (!viewParam) setView('register_business');
+      }
 
       // 2. Fetch platform settings for public pages
       if (!state.platformSettings) {

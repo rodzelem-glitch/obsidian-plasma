@@ -74,7 +74,7 @@ export interface Organization {
     footerImage?: string | null;
     subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled' | 'paused';
     subscriptionExpiryDate?: string | null;
-    plan?: 'starter' | 'growth' | 'enterprise';
+    plan?: 'starter' | 'growth' | 'enterprise' | 'payments_only';
     cancellationReason?: string;
     cancellationFeedback?: string;
     canceledAt?: string;
@@ -84,14 +84,13 @@ export interface Organization {
     notificationEmails?: string[];
     supportedTrades?: IndustryVertical[];
     reviewLink?: string;
-    paypalClientId?: string | null;
     stripePublicKey?: string | null;
     stripeAccountId?: string | null;
     squareApplicationId?: string | null;
     squareLocationId?: string | null;
     kortAccountId?: string | null;
     kortAccountStatus?: string | null;
-    defaultPaymentGateway?: 'paypal' | 'stripe' | 'square' | 'kort';
+    defaultPaymentGateway?: 'stripe' | 'square' | 'kort';
     platformVaultedPaymentMethodId?: string | null;
     platformVaultedPaymentType?: string | null;
     enabledPanels?: {
@@ -902,8 +901,6 @@ export interface PlatformSettingsPlan {
     annual: number;
     maxUsers: number;
     unlimitedUsers?: boolean;
-    paypalMonthlyId?: string;
-    paypalAnnualId?: string;
     ribbonText?: string;
     features?: string[];
     aiTokensPerMonth?: number;
@@ -915,11 +912,11 @@ export interface PlatformSettings {
         starter: PlatformSettingsPlan;
         growth: PlatformSettingsPlan;
         enterprise: PlatformSettingsPlan;
+        payments_only: PlatformSettingsPlan;
         [key: string]: PlatformSettingsPlan;
     };
     excessUserFee: number;
     updatedAt: string;
-    platformPaypalClientId?: string;
     franchiseFeePct?: number;
     franchiseBaseFee?: number;
     franchiseSetupFee?: number;
@@ -1095,7 +1092,6 @@ export interface MembershipPlan {
     visitsPerYear: number;
     color: string;
     benefits?: string[];
-    paypalPlanId?: string;
     pricePerAdditionalSystem?: number;
 }
 

@@ -224,7 +224,13 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                             {viewDoc.context ? (
                                 <div className="text-center">
                                     <p className="mb-4">This document is a file upload.</p>
-                                    <a href={viewDoc.context} download={viewDoc.title} className="text-blue-600 hover:underline font-bold" target="_blank" rel="noreferrer">Open/Download to Read</a>
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => { e.preventDefault(); import('lib/downloadHelper').then(m => m.downloadFile(viewDoc.context!, viewDoc.title)); }} 
+                                        className="text-blue-600 hover:underline font-bold"
+                                    >
+                                        Open/Download to Read
+                                    </button>
                                 </div>
                             ) : (
                                 <div className="prose dark:prose-invert max-w-none text-sm" dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(viewDoc.content)}} />
@@ -475,8 +481,8 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                         const isUploaded = !!submission;
                         return (
                             <div key={form.id} className={`p-4 rounded-lg ${isUploaded ? 'bg-green-50 border border-green-200 dark:bg-green-900/10 dark:border-green-800/30' : 'bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
-                                <div className="flex justify-between items-start gap-3">
-                                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                    <div className="flex items-start gap-3 flex-1 min-w-0 w-full">
                                         <ShieldCheck className={isUploaded ? 'text-green-500 mt-0.5 shrink-0' : 'text-blue-500 mt-0.5 shrink-0'} size={20} />
                                         <div className="min-w-0">
                                             <h4 className="font-bold text-sm text-slate-900 dark:text-white">{form.name}</h4>
@@ -491,15 +497,14 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                             )}
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        <a
-                                            href={form.url}
-                                            target="_blank"
-                                            rel="noreferrer"
+                                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.preventDefault(); import('lib/downloadHelper').then(m => m.downloadFile(form.url, form.name + '.pdf')); }}
                                             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 transition-colors"
                                         >
                                             <Download size={13} /> Download
-                                        </a>
+                                        </button>
                                         {isSelf && (
                                             <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors cursor-pointer ${
                                                 uploadingFederalId === form.id
@@ -549,15 +554,15 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                     {packets.map(doc => {
                         const isSigned = !!employee?.signedPolicies?.[doc.id];
                         return (
-                            <div key={doc.id} className={`p-4 rounded-lg flex justify-between items-center ${isSigned ? 'bg-green-50 border border-green-200 dark:bg-green-900/10 dark:border-green-800/30' : 'bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
-                                <div className="flex items-center gap-3">
-                                    <FileText className={isSigned ? "text-green-500" : "text-slate-400"} size={20} />
+                            <div key={doc.id} className={`p-4 rounded-lg flex flex-col sm:flex-row gap-3 sm:gap-0 justify-between sm:items-center ${isSigned ? 'bg-green-50 border border-green-200 dark:bg-green-900/10 dark:border-green-800/30' : 'bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
+                                <div className="flex items-center gap-3 w-full">
+                                    <FileText className={isSigned ? "text-green-500 shrink-0" : "text-slate-400 shrink-0"} size={20} />
                                     <div>
                                         <h4 className="font-bold text-sm text-slate-900 dark:text-white">{doc.title}</h4>
                                         <p className="text-[10px] text-slate-500">Updated: {new Date(doc.createdAt).toLocaleDateString()}</p>
                                     </div>
                                 </div>
-                                <Button type="button" onClick={() => setViewDoc(doc)} variant="secondary" className="text-xs" size="sm">
+                                <Button type="button" onClick={() => setViewDoc(doc)} variant="secondary" className="text-xs w-full sm:w-auto shrink-0" size="sm">
                                     {isSigned ? 'View' : (isSelf ? 'Read & Sign' : 'View Document')}
                                 </Button>
                             </div>
@@ -574,9 +579,9 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                         {hiringForms.map(form => {
                             const isSubmitted = !!employee?.formSubmissions?.[form.id];
                             return (
-                                <div key={form.id} className={`p-4 rounded-lg flex justify-between items-center ${isSubmitted ? 'bg-green-50 border border-green-200 dark:bg-green-900/10 dark:border-green-800/30' : 'bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <CheckSquare className={isSubmitted ? "text-green-500" : "text-slate-400"} size={20} />
+                                <div key={form.id} className={`p-4 rounded-lg flex flex-col sm:flex-row gap-3 sm:gap-0 justify-between sm:items-center ${isSubmitted ? 'bg-green-50 border border-green-200 dark:bg-green-900/10 dark:border-green-800/30' : 'bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}>
+                                    <div className="flex items-center gap-3 w-full">
+                                        <CheckSquare className={isSubmitted ? "text-green-500 shrink-0" : "text-slate-400 shrink-0"} size={20} />
                                         <div>
                                             <h4 className="font-bold text-sm text-slate-900 dark:text-white">{form.name}</h4>
                                             <p className="text-[10px] text-slate-500">Items: {form.items?.length || 0}</p>
@@ -589,7 +594,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                             setFormResponses({});
                                         }
                                         setViewForm(form);
-                                    }} variant="secondary" className="text-xs" size="sm">
+                                    }} variant="secondary" className="text-xs w-full sm:w-auto shrink-0" size="sm">
                                         {isSubmitted ? 'View Submission' : (isSelf ? 'Fill Out Form' : 'View Form')}
                                     </Button>
                                 </div>

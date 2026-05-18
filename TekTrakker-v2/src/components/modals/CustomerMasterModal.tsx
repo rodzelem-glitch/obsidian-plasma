@@ -48,6 +48,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
     // Membership Manual Enrollment State
     const [isEnrolling, setIsEnrolling] = useState(false);
     const [enrollSystemCount, setEnrollSystemCount] = useState(1);
+    const [priceOverride, setPriceOverride] = useState<number | ''>('');
     const [isProcessingEnrollment, setIsProcessingEnrollment] = useState(false);
 
     // Modal States
@@ -287,7 +288,11 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         // Calculate Price based on System Count
         const basePrice = plan.monthlyPrice;
         const extraCost = plan.pricePerAdditionalSystem || 0;
-        const finalPrice = basePrice + ((Math.max(1, enrollSystemCount) - 1) * extraCost);
+        let finalPrice = basePrice + ((Math.max(1, enrollSystemCount) - 1) * extraCost);
+
+        if (typeof priceOverride === 'number') {
+            finalPrice = priceOverride;
+        }
 
         const newAgreement: ServiceAgreement = {
             id: agreementId,
@@ -347,6 +352,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             ]);
             setIsEnrolling(false);
             setEnrollSystemCount(1);
+            setPriceOverride('');
             showToast.success(`Enrolled in ${plan.name} for ${enrollSystemCount} systems.`);
         } catch (e) {
             console.error(e);
@@ -980,7 +986,29 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
 
                             {isEnrolling && (
                                 <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded border border-purple-200 dark:border-purple-800 animate-fade-in">
-                                    <p className="text-xs font-bold text-purple-700 mb-3 uppercase">Choose Plan for Staff Enrollment</p>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <p className="text-xs font-bold text-purple-700 uppercase">Choose Plan for Staff Enrollment</p>
+                                    </div>
+                                    <div className="flex gap-4 mb-4">
+                                        <div className="flex-1">
+                                            <Input 
+                                                type="number" 
+                                                label="Number of Systems" 
+                                                min="1" 
+                                                value={enrollSystemCount.toString()} 
+                                                onChange={(e) => setEnrollSystemCount(Math.max(1, parseInt(e.target.value) || 1))} 
+                                            />
+                                        </div>
+                                        <div className="flex-1">
+                                            <Input 
+                                                type="number" 
+                                                label="Price Override ($)" 
+                                                placeholder="Optional custom price" 
+                                                value={priceOverride.toString()} 
+                                                onChange={(e) => setPriceOverride(e.target.value ? parseFloat(e.target.value) : '')} 
+                                            />
+                                        </div>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 sm:grid-cols-3 gap-3">
                                         {state.membershipPlans.map(plan => (
                                             <button 
@@ -989,7 +1017,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                                 className="p-3 bg-white dark:bg-gray-800 border-2 border-purple-100 dark:purple-800 rounded-lg hover:border-purple-500 text-left transition-all"
                                             >
                                                 <p className="font-bold text-sm text-gray-900 dark:text-white">{plan.name}</p>
-                                                <p className="text-xs text-primary-600 font-bold">${plan.monthlyPrice}/mo</p>
+                                                <p className="text-xs text-primary-600 font-bold">${plan.monthlyPrice}/mo base</p>
                                                 <p className="text-[10px] text-gray-400 mt-1">{plan.visitsPerYear} Visits • {plan.discountPercentage}% Off</p>
                                             </button>
                                         ))}

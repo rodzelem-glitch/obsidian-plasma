@@ -329,7 +329,9 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                 jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
             };
             
-            await html2pdf().from(clone).set(opt).save();
+            const pdfDataUri = await html2pdf().from(clone).set(opt).output('datauristring');
+            const { downloadFile } = await import('lib/downloadHelper');
+            await downloadFile(pdfDataUri, fileName);
             document.body.removeChild(wrapper);
         } catch (e) {
             console.error('Download failed', e);

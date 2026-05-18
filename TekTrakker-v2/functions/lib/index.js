@@ -55,6 +55,7 @@ const buffer_1 = require("buffer");
 __exportStar(require("./payments"), exports);
 __exportStar(require("./kortPayments"), exports);
 __exportStar(require("./notifications"), exports);
+__exportStar(require("./dataCascade"), exports);
 try {
     if (admin.apps.length === 0) {
         admin.initializeApp();

@@ -2,7 +2,6 @@ import showToast from "lib/toast";
 
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { db, auth } from 'lib/firebase';
 import type { Job, Organization, PlatformSettings } from 'types';
 import Card from 'components/ui/Card';
@@ -25,7 +24,7 @@ const CustomerPayment: React.FC = () => {
   const [autoPrint, setAutoPrint] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [paymentRecipient, setPaymentRecipient] = useState<'owner' | 'partner'>('owner');
-  const [paymentMethod, setPaymentMethod] = useState<'paypal' | 'stripe' | 'square' | 'kort'>('paypal');
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'square' | 'kort'>('stripe');
   const [finished, setFinished] = useState(false);
   
   // Removed unused stripe state variables to fix build errors if not used
@@ -82,27 +81,22 @@ const CustomerPayment: React.FC = () => {
       const activeOrg = paymentRecipient === 'partner' ? partnerOrganization : organization;
       if (!activeOrg || !job) return;
 
-      const isTestOrg = activeOrg.name?.trim().toLowerCase() === 'tektestsub';
-
-      // Priority 1: Respect the explicit default payment gateway if set
-      if (activeOrg.defaultPaymentGateway === 'kort' && activeOrg.kortAccountId && isTestOrg) {
-          setPaymentMethod('kort');
-      } else if (isTestOrg) {
+      if (activeOrg.defaultPaymentGateway === 'kort' && activeOrg.kortAccountId) {
           setPaymentMethod('kort');
       } else if (activeOrg.defaultPaymentGateway === 'square' && activeOrg.squareApplicationId) {
           setPaymentMethod('square');
       } else if (activeOrg.defaultPaymentGateway === 'stripe' && activeOrg.stripePublicKey) {
           setPaymentMethod('stripe');
-      } else if (activeOrg.defaultPaymentGateway === 'paypal' && activeOrg.paypalClientId) {
-          setPaymentMethod('paypal');
       } else {
           // Priority 2: Fallback logic based on available keys
-          if (activeOrg.stripePublicKey && job.source !== 'PlatformAdmin') {
+          if (activeOrg.kortAccountId) {
+              setPaymentMethod('kort');
+          } else if (activeOrg.stripePublicKey && job.source !== 'PlatformAdmin') {
               setPaymentMethod('stripe');
           } else if (activeOrg.squareApplicationId && activeOrg.squareLocationId && job.source !== 'PlatformAdmin') {
               setPaymentMethod('square');
           } else {
-              setPaymentMethod('paypal');
+              setPaymentMethod('kort');
           }
       }
   }, [organization, partnerOrganization, paymentRecipient, job]);
@@ -146,19 +140,6 @@ const CustomerPayment: React.FC = () => {
       } catch { showToast.warn("Failed to update status."); }
   };
 
-  interface PayPalActions {
-    order?: {
-        capture: () => Promise<{ status?: string }>;
-    };
-  }
-
-  const handlePayPalApprove = async (data: Record<string, unknown>, actions: PayPalActions) => {
-    try {
-        const details = await actions.order.capture();
-        if (details.status === 'COMPLETED') await markJobPaid();
-    } catch { showToast.warn("Transaction failed."); }
-  };
-  
   const handleSubscriptionApprove = async () => { await markJobPaid(); showToast.warn("Subscription Active!"); };
 
   const handleSignInvoice = async () => {
@@ -207,20 +188,8 @@ const CustomerPayment: React.FC = () => {
   const isPlatformSubscription = job?.source === 'PlatformAdmin';
   const currentActiveOrg = paymentRecipient === 'partner' ? partnerOrganization : organization;
   
-  let activePaypalClientId = isPlatformSubscription ? platformSettings?.platformPaypalClientId : currentActiveOrg?.paypalClientId;
-  let planIdToSubscribe = null;
-
-  if (isPlatformSubscription && platformSettings && job) {
-      const subtotal = job.invoice.subtotal || 0;
-      const plans = platformSettings.plans;
-      if (subtotal >= 499) planIdToSubscribe = plans.enterprise?.paypalMonthlyId;
-      else if (subtotal >= 249) planIdToSubscribe = plans.growth?.paypalMonthlyId;
-      else planIdToSubscribe = plans.starter?.paypalMonthlyId;
-  }
-  
   const safeTotal = job ? (typeof job.invoice.totalAmount === 'number' ? job.invoice.totalAmount : (job.invoice.amount || 0)) : 0;
   const isPaid = job?.invoice.status === 'Paid' || success;
-  const showPayPal = !!activePaypalClientId && safeTotal > 0;
 
   if (loading) return <div className="p-4 md:p-10 text-center">Loading Invoice...</div>;
   if (error) return <div className="p-4 md:p-10 text-center text-red-500">{error}</div>;
@@ -396,26 +365,7 @@ const CustomerPayment: React.FC = () => {
                         ) : (
                             <>
                                 <div className="space-y-3">
-                                    <p className="text-[10px] font-black uppercase text-slate-400 text-center tracking-widest">Pay Securely via {paymentMethod === 'paypal' ? 'PayPal' : 'Credit Card'}</p>
-                                    {showPayPal && paymentMethod === 'paypal' && (
-                                        <div className="relative z-10">
-                                            <PayPalScriptProvider options={{ clientId: activePaypalClientId || '', intent: isPlatformSubscription ? 'subscription' : 'capture', vault: isPlatformSubscription }}>
-                                                {isPlatformSubscription && planIdToSubscribe ? (
-                                                    <PayPalButtons 
-                                                        style={{ layout: "vertical", label: "subscribe", shape: "rect", height: 50 }} 
-                                                        createSubscription={(data, actions) => actions.subscription.create({ plan_id: planIdToSubscribe })} 
-                                                        onApprove={handleSubscriptionApprove} 
-                                                    />
-                                                ) : (
-                                                    <PayPalButtons 
-                                                        style={{ layout: "vertical", shape: "rect", height: 50 }} 
-                                                        createOrder={(_, actions) => actions.order.create({ intent: "CAPTURE", purchase_units: [{ amount: { currency_code: 'USD', value: safeTotal.toFixed(2) } }] })} 
-                                                        onApprove={handlePayPalApprove} 
-                                                    />
-                                                )}
-                                            </PayPalScriptProvider>
-                                        </div>
-                                    )}
+                                    <p className="text-[10px] font-black uppercase text-slate-400 text-center tracking-widest">Pay Securely via Credit Card</p>
 
                                     {paymentMethod === 'square' && currentActiveOrg?.squareApplicationId && currentActiveOrg?.squareLocationId && (
                                         <div className="relative z-10">
@@ -457,13 +407,7 @@ const CustomerPayment: React.FC = () => {
                                         </div>
                                     )}
                                     
-                                    {paymentMethod === 'paypal' && !showPayPal && (
-                                        <div className="p-4 md:p-8 text-center border-2 border-dashed border-slate-200 rounded-[1.5rem] bg-slate-50">
-                                            <Lock size={32} className="mx-auto text-slate-300 mb-2"/>
-                                            <p className="text-sm font-bold text-slate-500 uppercase">PayPal configuration pending</p>
-                                            <p className="text-[10px] text-slate-400 mt-1">Please contact {currentActiveOrg?.name || 'the service provider'} to complete payment.</p>
-                                        </div>
-                                    )}
+
 
                                     {paymentMethod === 'stripe' && (
                                         <div className="p-4 md:p-8 text-center border-2 border-dashed border-slate-200 rounded-[1.5rem] bg-slate-50">

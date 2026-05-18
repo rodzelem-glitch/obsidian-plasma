@@ -22,9 +22,11 @@ interface LandingHeaderProps {
         href: string;
     };
     onShowDemoOptions?: () => void;
+    ctaUrl?: string;
+    ctaLabel?: string;
 }
 
-export const LandingHeader: React.FC<LandingHeaderProps> = ({ backButton, onShowDemoOptions }) => {
+export const LandingHeader: React.FC<LandingHeaderProps> = ({ backButton, onShowDemoOptions, ctaUrl, ctaLabel }) => {
     return (
         <nav className={`border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/80 ${backButton ? 'h-16' : 'h-24'}`}>
             <div className="max-w-7xl mx-auto px-6 h-full flex justify-between items-center">
@@ -45,7 +47,7 @@ export const LandingHeader: React.FC<LandingHeaderProps> = ({ backButton, onShow
                         {onShowDemoOptions && (
                             <button onClick={onShowDemoOptions} className="bg-primary-700 hover:bg-primary-800 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Free Interactive Demo</button>
                         )}
-                        <Link href="https://app.tektrakker.com/#/login?view=register_business" className="bg-orange-700 hover:bg-orange-800 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">Start Your Free Trial</Link>
+                        <Link href={ctaUrl || "https://app.tektrakker.com/#/login?view=register_business"} className="bg-orange-700 hover:bg-orange-800 text-white text-sm font-black px-4 md:px-8 py-3 rounded-full transition-all shadow-lg hover:shadow-xl hover:scale-[1.02]">{ctaLabel || 'Start Your Free Trial'}</Link>
                     </div>
                 )}
 

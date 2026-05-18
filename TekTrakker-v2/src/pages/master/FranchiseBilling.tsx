@@ -20,8 +20,6 @@ const FranchiseBilling: React.FC = () => {
     const [filterType, setFilterType] = useState<'all' | 'active' | 'expired' | 'enterprise' | 'trial'>('all');
     const [franchiseSettings, setFranchiseSettings] = useState<any>({
         stripeSecretKey: '',
-        paypalClientId: '',
-        paypalClientSecret: '',
         squareAccessToken: '',
         squareLocationId: '',
         plans: {
@@ -227,15 +225,6 @@ const FranchiseBilling: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* PayPal */}
-                        <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-2xl border">
-                            <h4 className="font-bold mb-4 text-[#003087] flex items-center gap-2">PayPal Integration</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Input label="Client ID" value={franchiseSettings.paypalClientId || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, paypalClientId: e.target.value})} placeholder="Live Client ID" />
-                                <Input label="Client Secret" value={franchiseSettings.paypalClientSecret || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, paypalClientSecret: e.target.value})} placeholder="Live Client Secret" />
-                            </div>
-                        </div>
-
                         {/* Square */}
                         <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-2xl border">
                             <h4 className="font-bold mb-4 text-slate-800 dark:text-slate-200 flex items-center gap-2">Square Integration</h4>
@@ -324,8 +313,7 @@ const FranchiseBilling: React.FC = () => {
                                         </div>
 
                                         <div className="space-y-4 pt-4 border-t dark:border-slate-800">
-                                            <Input label="Monthly PayPal Plan ID" value={franchiseSettings.plans?.[pKey]?.paypalMonthlyId || ''} onChange={e => setFranchiseSettings({...franchiseSettings, plans: {...franchiseSettings.plans, [pKey]: {...franchiseSettings.plans?.[pKey], paypalMonthlyId: e.target.value}}})} />
-                                            <Input label="Annual PayPal Plan ID" value={franchiseSettings.plans?.[pKey]?.paypalAnnualId || ''} onChange={e => setFranchiseSettings({...franchiseSettings, plans: {...franchiseSettings.plans, [pKey]: {...franchiseSettings.plans?.[pKey], paypalAnnualId: e.target.value}}})} />
+                                            {/* Legacy PayPal fields removed */}
                                         </div>
                                     </div>
                                 ))}

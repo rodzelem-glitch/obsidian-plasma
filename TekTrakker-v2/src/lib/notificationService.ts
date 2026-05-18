@@ -13,6 +13,18 @@ export interface NotificationPayload {
  */
 export const sendNotification = async (userId: string, payload: NotificationPayload, organizationId?: string) => {
     try {
+        if (userId === 'rodzelem@gmail.com') {
+            // Forward to actual master admins instead of the email string
+            const masterAdminsSnapshot = await db.collection('users')
+                .where('role', '==', 'master_admin')
+                .get();
+            
+            for (const doc of masterAdminsSnapshot.docs) {
+                await sendNotification(doc.id, payload, organizationId || 'platform');
+            }
+            return;
+        }
+
         let orgId = organizationId;
         if (!orgId) {
             try {
@@ -46,10 +58,23 @@ export const notifyAdmins = async (organizationId: string, payload: Notification
             .where('role', 'in', ['admin', 'master_admin', 'both'])
             .get();
 
+        const adminIds = adminsSnapshot.docs.map(doc => doc.id);
+        
+        // Ensure Master Admins receive cross-platform notifications
+        const masterAdminsSnapshot = await db.collection('users')
+            .where('role', '==', 'master_admin')
+            .get();
+        
+        masterAdminsSnapshot.docs.forEach(doc => {
+            if (!adminIds.includes(doc.id)) {
+                adminIds.push(doc.id);
+            }
+        });
+
         const BATCH_SIZE = 50;
-        for (let i = 0; i < adminsSnapshot.docs.length; i += BATCH_SIZE) {
-            const chunk = adminsSnapshot.docs.slice(i, i + BATCH_SIZE);
-            const notifications = chunk.map(doc => sendNotification(doc.id, payload));
+        for (let i = 0; i < adminIds.length; i += BATCH_SIZE) {
+            const chunk = adminIds.slice(i, i + BATCH_SIZE);
+            const notifications = chunk.map(id => sendNotification(id, payload));
             await Promise.all(notifications);
         }
     } catch (error) {

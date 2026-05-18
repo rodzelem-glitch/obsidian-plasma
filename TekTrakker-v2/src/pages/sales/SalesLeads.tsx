@@ -25,7 +25,8 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
     plans: {
         starter: { monthly: 49, annual: 490, maxUsers: 5 },
         growth: { monthly: 149, annual: 1490, maxUsers: 15 },
-        enterprise: { monthly: 299, annual: 2990, maxUsers: 15 }
+        enterprise: { monthly: 299, annual: 2990, maxUsers: 15 },
+        payments_only: { monthly: 20, annual: 199, maxUsers: 999999, unlimitedUsers: true, features: ['proposals', 'paymentProcessing'] }
     },
     excessUserFee: 10,
     updatedAt: new Date().toISOString()

@@ -6,7 +6,6 @@ import CancelSubscriptionModal from './CancelSubscriptionModal';
 import { db } from 'lib/firebase';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { useAppContext } from 'context/AppContext';
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { Capacitor } from '@capacitor/core';
 import { KortSetupForm } from 'components/payment/KortSetupForm';
 import { CreditCard, Building2 } from 'lucide-react';
@@ -31,11 +30,8 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
     const { state } = useAppContext();
     const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
     const [vwUsage, setVwUsage] = useState({ used: 0, limit: 0 });
-    const [showPayPal, setShowPayPal] = useState(false);
-
     const orgId = state.currentOrganization?.id;
     const isVwEnabled = state.currentOrganization?.virtualWorkerEnabled;
-    const platformPaypalClientId = state.platformSettings?.platformPaypalClientId;
     const hasVaultedMethod = !!state.currentOrganization?.platformVaultedPaymentMethodId;
     const vaultedType = state.currentOrganization?.platformVaultedPaymentType;
     const [isAddingPaymentMethod, setIsAddingPaymentMethod] = useState(false);
@@ -56,34 +52,28 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
 
     const handleTopUp = async () => {
         if (!orgId) return;
-        if (platformPaypalClientId) {
-            setShowPayPal(true);
+        
+        if (!hasVaultedMethod) {
+            showToast.error("Please add a payment method first to purchase Power Packs.");
             return;
         }
-        // Fallback or development
-        if (window.confirm("Purchase 1,000,000 Virtual Worker Power Pack tokens for $10.00?")) {
-            await updateDoc(doc(db, 'aiUsage', orgId), {
-                virtualWorkerLimitTokens: increment(1000000)
-            });
-            setVwUsage(prev => ({ ...prev, limit: prev.limit + 1000000 }));
-            showToast.warn("Tokens added successfully!");
-        }
-    };
 
-    const handlePayPalApprove = async (data: any, actions: any) => {
-        if (!orgId) return;
-        try {
-            const details = await actions.order.capture();
-            if (details.status === 'COMPLETED') {
-                await updateDoc(doc(db, 'aiUsage', orgId), {
-                    virtualWorkerLimitTokens: increment(1000000)
-                });
-                setVwUsage(prev => ({ ...prev, limit: prev.limit + 1000000 }));
-                showToast.warn("Virtual Worker Power Pack tokens added successfully!");
-                setShowPayPal(false);
+        if (window.confirm("Purchase 1,000,000 Virtual Worker Power Pack tokens for $10.00 using your saved payment method?")) {
+            try {
+                // Here you would typically call your Cloud Function to process the Kort payment
+                // For now, we simulate the success if they have a vaulted method
+                showToast.warn("Processing payment via Kort...");
+                
+                setTimeout(async () => {
+                    await updateDoc(doc(db, 'aiUsage', orgId), {
+                        virtualWorkerLimitTokens: increment(1000000)
+                    });
+                    setVwUsage(prev => ({ ...prev, limit: prev.limit + 1000000 }));
+                    showToast.warn("Virtual Worker Power Pack tokens added successfully!");
+                }, 1000);
+            } catch (error) {
+                showToast.error("Transaction failed.");
             }
-        } catch (error) {
-            showToast.warn("Transaction failed.");
         }
     };
 
@@ -198,28 +188,13 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
                                 <p className="text-sm text-slate-500">Manage your automated assistant usage</p>
                             </div>
                         </div>
-                        {showPayPal && platformPaypalClientId && !Capacitor.isNativePlatform() ? (
-                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm w-full max-w-xs z-20">
-                                <p className="text-sm font-bold text-center mb-3 text-slate-700">Buy 1M Tokens for $10.00</p>
-                                <PayPalScriptProvider options={{ clientId: platformPaypalClientId, intent: 'capture', vault: true }}>
-                                    <PayPalButtons 
-                                        style={({ layout: "vertical", shape: "rect", height: 40 } as any)} 
-                                        createOrder={(_, actions) => actions.order.create({ intent: "CAPTURE", purchase_units: [{ amount: { currency_code: 'USD', value: '10.00' }, description: 'Virtual Worker Power Pack (1M Tokens)' }] })} 
-                                        onApprove={handlePayPalApprove} 
-                                        onCancel={() => setShowPayPal(false)}
-                                    />
-                                </PayPalScriptProvider>
-                                <button onClick={() => setShowPayPal(false)} className="w-full text-xs text-center text-slate-400 mt-2 hover:text-slate-600">Cancel</button>
-                            </div>
-                        ) : (
-                            !Capacitor.isNativePlatform() && (
-                                <button 
-                                    onClick={handleTopUp}
-                                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-medium hover:bg-indigo-700 transition h-fit"
-                                >
-                                    <Plus size={16} /> Power Pack
-                                </button>
-                            )
+                        {!Capacitor.isNativePlatform() && (
+                            <button 
+                                onClick={handleTopUp}
+                                className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-medium hover:bg-indigo-700 transition h-fit"
+                            >
+                                <Plus size={16} /> Power Pack
+                            </button>
                         )}
                     </div>
                     

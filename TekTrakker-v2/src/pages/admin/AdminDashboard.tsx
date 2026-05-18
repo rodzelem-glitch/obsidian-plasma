@@ -7,13 +7,17 @@ import { db } from '../../lib/firebase';
 import MetricCard from './dashboard/components/MetricCard';
 import PendingAppointments from './dashboard/components/PendingAppointments';
 import LiveOperations from './dashboard/components/LiveOperations';
-import { ShoppingCart, Bot, ArrowRight, Wrench, ShieldCheck } from 'lucide-react';
+import { ShoppingCart, Bot, ArrowRight, Wrench, ShieldCheck, CreditCard } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
+import OnboardingTour, { useOnboardingTour } from '../../components/ui/OnboardingTour';
 
 const AdminDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const currentUser = state.currentUser;
+    const isPaymentsOnly = state.currentOrganization?.plan === 'payments_only';
+    const hasCompletedMerchantSetup = !!state.currentOrganization?.kortAccountId;
+    const { showTour, completeTour } = useOnboardingTour(currentUser?.id);
     
     const employees = useMemo(() => {
         return (state.users as User[]).filter((u: User) => 
@@ -242,11 +246,25 @@ const AdminDashboard: React.FC = () => {
     };
 
     const alertsCount = useMemo(() => {
-        return state.notifications.filter((n: any) => n.type === 'system_alert' && n.userId === currentUser?.id && !n.read).length;
+        return state.notifications.filter((n: { type?: string; userId?: string; read?: boolean }) => {
+            if (n.type !== 'system_alert' || n.read) return false;
+            return n.userId === currentUser?.id || 
+                   n.userId === currentUser?.email ||
+                   n.userId === 'all' ||
+                   (currentUser?.role === 'master_admin' && n.userId === 'rodzelem@gmail.com') ||
+                   (n.userId === 'all_admins' && (currentUser?.role === 'admin' || currentUser?.role === 'master_admin' || currentUser?.role === 'both'));
+        }).length;
     }, [state.notifications, currentUser]);
 
     return (
         <div className="flex flex-col gap-6">
+            {showTour && (
+                <OnboardingTour
+                    isPaymentsOnly={isPaymentsOnly}
+                    userId={currentUser?.id || ''}
+                    onComplete={completeTour}
+                />
+            )}
             <header className="order-1 flex flex-col md:flex-row justify-between items-start md:items-end gap-3">
                 <div>
                     <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
@@ -262,30 +280,58 @@ const AdminDashboard: React.FC = () => {
                 </div>
             </header>
 
+            {/* Payment Onboarding Banner for payments_only users */}
+            {isPaymentsOnly && !hasCompletedMerchantSetup && (
+                <div data-tour="payment-setup-banner" className="order-1 mt-2">
+                    <button
+                        type="button"
+                        onClick={() => window.location.href = '#/admin/settings?tab=integrations'}
+                        className="w-full text-left relative overflow-hidden bg-gradient-to-r from-emerald-900 via-emerald-800 to-cyan-900 rounded-2xl p-6 cursor-pointer shadow-xl hover:shadow-emerald-500/20 hover:-translate-y-0.5 transition-all duration-300 group border border-emerald-700/50"
+                    >
+                        <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-500 pointer-events-none">
+                            <CreditCard size={80} className="text-white" />
+                        </div>
+
+                        <div className="relative z-10">
+                            <div className="flex items-center gap-3 mb-3">
+                                <span className="bg-amber-500 text-slate-900 text-xs font-black px-3 py-1 uppercase tracking-widest rounded-full animate-pulse">Action Required</span>
+                                <h3 className="text-xl font-extrabold text-white">Complete Your Payment Setup</h3>
+                            </div>
+                            <p className="text-emerald-200 mt-2 mb-4 max-w-xl text-sm">
+                                You&apos;re almost ready to accept payments! Complete the merchant onboarding to start processing credit cards, debit cards, and ACH transfers through your account.
+                            </p>
+                            <div className="inline-flex items-center text-white font-bold bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl transition-colors">
+                                Set Up Payments Now <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
+                            </div>
+                        </div>
+                    </button>
+                </div>
+            )}
+
             <div className="order-2 lg:order-5">
-                <LiveOperations liveOps={liveOps} />
+                <LiveOperations liveOps={liveOps} hideLink={isPaymentsOnly} />
             </div>
 
-            <div className="order-3 lg:order-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
-                <MetricCard title="Jobs Active" value={jobsInProgress} path="/admin/operations?tab=jobs" icon={TimeLogIcon} color="bg-blue-500" />
-                <MetricCard title="Team Online" value={activeTechnicians} path="/admin/workforce" icon={UsersIcon} color="bg-purple-500" />
+            <div data-tour="dashboard-metrics" className="order-3 lg:order-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+                <MetricCard title="Jobs Active" value={jobsInProgress} path={isPaymentsOnly ? undefined : "/admin/operations?tab=jobs"} icon={TimeLogIcon} color="bg-blue-500" />
+                <MetricCard title="Team Online" value={activeTechnicians} path={isPaymentsOnly ? undefined : "/admin/workforce"} icon={UsersIcon} color="bg-purple-500" />
                 
                 {currentUser?.role !== 'supervisor' && (
                     <>
-                        <MetricCard title="Alerts" value={alertsCount} path="/admin/dashboard/alerts" icon={AlertTriangle} color="bg-rose-500" />
-                        <MetricCard title="Maintenance Due" value={maintenanceDueCount} path="/admin/dashboard/maintenance" icon={Wrench} color="bg-indigo-500" />
-                        <MetricCard title="Pending Orders" value={pendingOrders} path="/admin/dashboard/orders" icon={ShoppingCart} color="bg-cyan-500" />
-                        <MetricCard title="Active Warranties" value={activeWarrantiesCount} path="/admin/dashboard/active-warranties" icon={ShieldCheck} color="bg-emerald-600" />
+                        <MetricCard title="Alerts" value={alertsCount} path={isPaymentsOnly ? undefined : "/admin/dashboard/alerts"} icon={AlertTriangle} color="bg-rose-500" />
+                        <MetricCard title="Maintenance Due" value={maintenanceDueCount} path={isPaymentsOnly ? undefined : "/admin/dashboard/maintenance"} icon={Wrench} color="bg-indigo-500" />
+                        <MetricCard title="Pending Orders" value={pendingOrders} path={isPaymentsOnly ? undefined : "/admin/dashboard/orders"} icon={ShoppingCart} color="bg-cyan-500" />
+                        <MetricCard title="Active Warranties" value={activeWarrantiesCount} path={isPaymentsOnly ? undefined : "/admin/dashboard/active-warranties"} icon={ShieldCheck} color="bg-emerald-600" />
                         <MetricCard title="Unpaid Inv" value={unpaidInvoices} path="/admin/financials" icon={FinancialIcon} color="bg-orange-500" />
-                        <MetricCard title="Monthly Rev" value={`$${Math.round(mrr).toLocaleString()}`} path="/admin/customers?tab=memberships" icon={FinancialIcon} color="bg-emerald-500" />
+                        <MetricCard title="Monthly Rev" value={`$${Math.round(mrr).toLocaleString()}`} path={isPaymentsOnly ? undefined : "/admin/customers?tab=memberships"} icon={FinancialIcon} color="bg-emerald-500" />
                         <MetricCard title="Receivables" value={`$${Math.round(totalReceivables).toLocaleString()}`} path="/admin/financials" icon={FinancialIcon} color="bg-yellow-500" />
                     </>
                 )}
                 
-                <MetricCard title="Hazards" value={openIncidents.length} path="/admin/compliance?tab=incidents" icon={AlertTriangle} color="bg-red-500" />
+                <MetricCard title="Hazards" value={openIncidents.length} path={isPaymentsOnly ? undefined : "/admin/compliance?tab=incidents"} icon={AlertTriangle} color="bg-red-500" />
             </div>
 
-            {currentUser?.role !== 'supervisor' && (
+            {currentUser?.role !== 'supervisor' && !isPaymentsOnly && (
                 <div className="order-4 lg:order-3">
                     <PendingAppointments 
                         appointments={pendingAppointments} 
@@ -295,7 +341,7 @@ const AdminDashboard: React.FC = () => {
                 </div>
             )}
 
-            {!state.currentOrganization?.virtualWorkerEnabled && (
+            {!state.currentOrganization?.virtualWorkerEnabled && !isPaymentsOnly && (
                 <div className="order-5 lg:order-4">
                     <button 
                         type="button"

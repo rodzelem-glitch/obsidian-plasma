@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import Button from 'components/ui/Button';
-import { Edit, Trash2, Paperclip, Camera as CameraIcon, Image as ImageIcon, Share2, Copy, Calculator, Download, FileText } from 'lucide-react';
+import { Edit, Trash2, Paperclip, Camera as CameraIcon, Image as ImageIcon, Share2, Copy, Calculator, Download, FileText, Search } from 'lucide-react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
 import { useAppContext } from 'context/AppContext';
@@ -120,6 +120,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
     }, [allExpenses, reconcileMode]);
 
     const [sortBy, setSortBy] = useState('date_desc');
+    const [searchTerm, setSearchTerm] = useState('');
     const [taxMode, setTaxMode] = useState(false);
     const [taxYear, setTaxYear] = useState(new Date().getFullYear().toString());
 
@@ -159,7 +160,20 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
     };
 
     const sortedExpenses = React.useMemo(() => {
-        return [...allExpenses].sort((a, b) => {
+        return [...allExpenses]
+            .filter(exp => {
+                if (!searchTerm) return true;
+                const q = searchTerm.toLowerCase();
+                const amt = (Number(exp.amount) || 0).toFixed(2);
+                return (
+                    (exp.vendor || '').toLowerCase().includes(q) ||
+                    (exp.category || '').toLowerCase().includes(q) ||
+                    (exp.description || '').toLowerCase().includes(q) ||
+                    (exp.date || '').includes(q) ||
+                    amt.includes(q)
+                );
+            })
+            .sort((a, b) => {
             switch(sortBy) {
                 case 'date_asc':
                     return new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime();
@@ -176,7 +190,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                     return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
             }
         });
-    }, [allExpenses, sortBy]);
+    }, [allExpenses, sortBy, searchTerm]);
 
     return (
         <Card>
@@ -212,7 +226,18 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                      </div>
                  </div>
              </Modal>
-            <div className="flex justify-between items-center mb-4 flex-wrap gap-4">
+            <div className="flex flex-col gap-4 mb-4">
+                <div className="relative w-full sm:max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input
+                        type="text"
+                        placeholder="Search expenses by vendor, category, or amount..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900/50 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                    />
+                </div>
+                <div className="flex justify-between items-center flex-wrap gap-4">
                 <h3 className="font-bold text-gray-800 dark:text-white">Accounts Payable & Expenses</h3>
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2 text-sm">
@@ -241,6 +266,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                             setIsExpenseModalOpen(true); 
                         }} className="w-auto text-xs">+ Add Expense</Button>
                     </div>
+                </div>
                 </div>
             </div>
             {reconcileMode && duplicateGroups.length === 0 && (

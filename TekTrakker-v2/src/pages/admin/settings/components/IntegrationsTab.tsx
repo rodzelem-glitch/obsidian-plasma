@@ -11,8 +11,7 @@ import { CreditCard, Mail, Code, Copy, ChevronDown, MonitorUp, Thermometer, Wren
 
 
 interface IntegrationsTabProps {
-    paypalClientId: string;
-    setPaypalClientId: (val: string) => void;
+
     stripePublicKey: string;
     setStripePublicKey: (val: string) => void;
     squareAppId: string;
@@ -23,8 +22,8 @@ interface IntegrationsTabProps {
     setSquareToken: (val: string) => void;
     kortAccountId: string;
     setKortAccountId: (val: string) => void;
-    defaultPaymentGateway: 'stripe' | 'square' | 'paypal' | 'kort';
-    setDefaultPaymentGateway: (val: 'stripe' | 'square' | 'paypal' | 'kort') => void;
+    defaultPaymentGateway: 'stripe' | 'square' | 'kort';
+    setDefaultPaymentGateway: (val: 'stripe' | 'square' | 'kort') => void;
     smtpHost: string;
     setSmtpHost: (val: string) => void;
     smtpPort: number;
@@ -111,14 +110,14 @@ interface IntegrationsTabProps {
 }
 
 const IntegrationModule = ({ 
-    id, title, category, icon: Icon, iconColor, isConnected, children, expandedId, setExpandedId 
+    id, title, category, icon: Icon, iconColor, isConnected, highlight, children, expandedId, setExpandedId 
 }: { 
-    id: string, title: string, category: string, icon: React.ElementType, iconColor?: string, isConnected: boolean, children: React.ReactNode, expandedId: string | null, setExpandedId: (id: string | null) => void 
+    id: string, title: string, category: string, icon: React.ElementType, iconColor?: string, isConnected: boolean, highlight?: boolean, children: React.ReactNode, expandedId: string | null, setExpandedId: (id: string | null) => void 
 }) => {
     const isExpanded = expandedId === id;
     
     return (
-        <div className={`transition-all duration-300 border-2 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 ${isExpanded ? 'border-primary-500 shadow-md ring-2 ring-primary-500/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm'}`}>
+        <div className={`transition-all duration-300 border-2 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 ${highlight && !isExpanded ? 'border-emerald-400 dark:border-emerald-500 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400/30 animate-[glow_2s_ease-in-out_infinite]' : isExpanded ? 'border-primary-500 shadow-md ring-2 ring-primary-500/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-sm'}`}>
             <div 
                 role="button"
                 tabIndex={0}
@@ -171,7 +170,7 @@ const IntegrationModule = ({
 };
 
 const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
-    paypalClientId, setPaypalClientId, stripePublicKey, setStripePublicKey,
+    stripePublicKey, setStripePublicKey,
     squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken,
     kortAccountId, setKortAccountId,
     defaultPaymentGateway, setDefaultPaymentGateway,
@@ -283,7 +282,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                             title="Default Payment Gateway"
                             value={defaultPaymentGateway} 
                             onChange={async (e) => {
-                                const val = e.target.value as 'stripe' | 'square' | 'paypal' | 'kort';
+                                const val = e.target.value as 'stripe' | 'square' | 'kort';
                                 setDefaultPaymentGateway(val);
                                 if (orgId) {
                                     try {
@@ -305,7 +304,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                         >
                             <option value="stripe">Stripe</option>
                             <option value="square">Square</option>
-                            <option value="paypal">PayPal</option>
+
                             <option value="kort">TekTrakker Payments (Recommended)</option>
                         </select>
                     </div>
@@ -318,6 +317,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                         icon={CreditCard}
                         iconColor="text-emerald-500"
                         isConnected={!!kortAccountId}
+                        highlight={!kortAccountId}
                         expandedId={expandedGridId} setExpandedId={setExpandedGridId}
                     >
                         <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Connect TekTrakker Payments to process credit cards natively within your platform. Enjoy deep integration with no setup fees.</p>
@@ -410,20 +410,6 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                     </IntegrationModule>
                     )}
 
-                    {!!paypalClientId && (
-                    <IntegrationModule 
-                        id="paypal" 
-                        title="PayPal" 
-                        category="Digital Wallets" 
-                        icon={Coins}
-                        iconColor="text-blue-500"
-                        isConnected={!!paypalClientId}
-                        expandedId={expandedGridId} setExpandedId={setExpandedGridId}
-                    >
-                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Accept payments directly via PayPal.</p>
-                        <Input label="Client ID" value={paypalClientId} onChange={e => setPaypalClientId(e.target.value)} placeholder="Enter Live Client ID" />
-                    </IntegrationModule>
-                    )}
                 </div>
             </div>
 

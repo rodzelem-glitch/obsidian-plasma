@@ -40,7 +40,6 @@ export interface Organization {
     notificationEmails?: string[];
     supportedTrades?: IndustryVertical[];
     reviewLink?: string;
-    paypalClientId?: string | null;
     gustoCompanyId?: string | null;
     gustoOnboardingUrl?: string | null;
     hasPayrollEnabled?: boolean;
@@ -132,13 +131,12 @@ export interface Organization {
 export interface PlatformSettings {
     id: string;
     plans: {
-        starter: { monthly: number; annual: number; maxUsers: number; paypalMonthlyId?: string; paypalAnnualId?: string };
-        growth: { monthly: number; annual: number; maxUsers: number; paypalMonthlyId?: string; paypalAnnualId?: string };
-        enterprise: { monthly: number; annual: number; maxUsers: number; paypalMonthlyId?: string; paypalAnnualId?: string };
+        starter: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
+        growth: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
+        enterprise: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
     };
     excessUserFee: number;
     updatedAt: string;
-    platformPaypalClientId?: string;
 }
 
 export interface CommissionSettings {

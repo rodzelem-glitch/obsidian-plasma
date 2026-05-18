@@ -86,6 +86,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({ onShowSupport }) =
                         <li><a href="/#/login?view=register_business" className="hover:text-primary-400 transition-colors">Integration Directory</a></li>
                         <li><a href="/#/homeowners" className="hover:text-primary-400 transition-colors">Homeowner Portal</a></li>
                         <li><a href="/#/login" className="hover:text-primary-400 transition-colors">Customer Login</a></li>
+                        <li><a href="https://nextinsurance.sjv.io/c/7280120/1148969/14516" target="_blank" rel="noopener noreferrer" className="hover:text-primary-400 transition-colors">Insurance/Bonds</a></li>
                     </ul>
                 </FooterSection>
 

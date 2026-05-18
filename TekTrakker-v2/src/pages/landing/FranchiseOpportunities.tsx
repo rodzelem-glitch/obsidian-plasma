@@ -383,11 +383,11 @@ const FranchiseOpportunities: React.FC = () => {
                                 <button
                                     onClick={handleSubmit}
                                     disabled={loading}
-                                    className="w-full max-w-md mx-auto bg-[#0070BA] hover:bg-[#005ea6] text-white font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-all shadow-lg shadow-blue-500/30"
+                                    className="w-full max-w-md mx-auto bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 rounded-xl flex justify-center items-center gap-2 transition-all shadow-lg shadow-primary-500/30"
                                 >
-                                    {loading ? <Loader2 className="animate-spin" /> : 'Pay $2,500 with PayPal & Launch'}
+                                    {loading ? <Loader2 className="animate-spin" /> : 'Pay $2,500 & Launch'}
                                 </button>
-                                <p className="text-xs text-slate-400 mt-4 max-w-md mx-auto">This simulates the Stripe/PayPal redirect. Clicking immediately charges $2,500 and launches the provisioning architecture.</p>
+                                <p className="text-xs text-slate-400 mt-4 max-w-md mx-auto">This simulates the payment redirect. Clicking immediately charges $2,500 and launches the provisioning architecture.</p>
                             </div>
                         )}
 

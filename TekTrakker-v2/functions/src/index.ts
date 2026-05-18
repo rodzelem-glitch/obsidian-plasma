@@ -14,6 +14,7 @@ import { Buffer } from 'buffer';
 export * from './payments';
 export * from './kortPayments';
 export * from './notifications';
+export * from './dataCascade';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 declare var process: any;

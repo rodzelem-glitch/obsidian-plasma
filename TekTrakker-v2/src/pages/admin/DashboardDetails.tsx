@@ -639,7 +639,14 @@ export const AlertsCenterView: React.FC = () => {
     const navigate = useNavigate();
     
     // Filter alerts to system_alert only, for the current user
-    const alerts = state.notifications.filter((n: any) => n.type === 'system_alert' && n.userId === state.currentUser?.id);
+    const alerts = state.notifications.filter((n: any) => {
+        if (n.type !== 'system_alert') return false;
+        return n.userId === state.currentUser?.id ||
+               n.userId === state.currentUser?.email ||
+               n.userId === 'all' ||
+               (state.currentUser?.role === 'master_admin' && n.userId === 'rodzelem@gmail.com') ||
+               (n.userId === 'all_admins' && (state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both'));
+    });
 
     const markAsRead = async (id: string) => {
         dispatch({ type: 'MARK_NOTIFICATION_READ', payload: id });

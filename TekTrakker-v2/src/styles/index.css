@@ -151,6 +151,11 @@ button, a, input, select, textarea {
   animation: shake 0.4s ease-in-out;
 }
 
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(52, 211, 153, 0.2), 0 4px 12px rgba(52, 211, 153, 0.1); }
+  50% { box-shadow: 0 0 20px rgba(52, 211, 153, 0.35), 0 4px 24px rgba(52, 211, 153, 0.2); }
+}
+
 /* Dispatch Board Background Grid (half-hour increments across 16 hours = 32 segments) */
 .bg-grid-pattern {
     background-size: calc(100% / 32) 100%;

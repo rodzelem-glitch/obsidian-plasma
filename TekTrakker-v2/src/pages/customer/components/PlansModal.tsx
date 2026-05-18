@@ -1,9 +1,7 @@
 
 import React, { useState } from 'react';
 import Modal from 'components/ui/Modal';
-import Button from 'components/ui/Button';
 import { Tag, CheckCircle, Minus, Plus, AlertCircle } from 'lucide-react';
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import type { MembershipPlan, Organization } from 'types';
 
 interface PlansModalProps {
@@ -11,10 +9,10 @@ interface PlansModalProps {
     onClose: () => void;
     plans: MembershipPlan[];
     organization: Organization | null;
-    onApprove: (data: any, plan: MembershipPlan, systemCount: number) => Promise<void>;
+    onApprove: (data: unknown, plan: MembershipPlan, systemCount: number) => Promise<void>;
 }
 
-const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organization, onApprove }) => {
+const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organization: _organization, onApprove: _onApprove }) => {
     const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
     const [systemCount, setSystemCount] = useState(1);
 
@@ -34,6 +32,7 @@ const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organiz
                 ) : (
                     <div className="grid grid-cols-1 gap-4">
                         {sortedPlans.map(plan => (
+                            // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
                             <div 
                                 key={plan.id} 
                                 onClick={() => { setSelectedPlan(plan); setSystemCount(1); }} 
@@ -79,12 +78,13 @@ const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organiz
                                 {selectedPlan?.id === plan.id && (
                                     <div className="pt-4 border-t border-primary-200 dark:border-primary-800 animate-fade-in space-y-4">
                                         <div className="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Number of Systems</label>
+                                            <div className="block text-xs font-bold text-slate-500 uppercase mb-2">Number of Systems</div>
                                             <div className="flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); setSystemCount(Math.max(1, systemCount - 1)); }} 
                                                         className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 border hover:bg-slate-200"
+                                                        title="Decrease Systems"
                                                     >
                                                         <Minus size={16} />
                                                     </button>
@@ -92,6 +92,7 @@ const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organiz
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); setSystemCount(systemCount + 1); }} 
                                                         className="p-2 rounded-lg bg-gray-100 dark:bg-slate-700 border hover:bg-slate-200"
+                                                        title="Increase Systems"
                                                     >
                                                         <Plus size={16} />
                                                     </button>
@@ -105,22 +106,9 @@ const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organiz
                                             </div>
                                         </div>
 
-                                        {organization?.paypalClientId ? (
-                                            <PayPalScriptProvider options={{ clientId: organization.paypalClientId, intent: "subscription", vault: true }}>
-                                                <PayPalButtons 
-                                                    style={{ layout: "vertical", shape: "pill", color: "blue", label: "subscribe" }} 
-                                                    createSubscription={(_data, actions) => actions.subscription.create({ 
-                                                        plan_id: plan.paypalPlanId || '', 
-                                                        quantity: systemCount.toString() 
-                                                    })} 
-                                                    onApprove={(data) => onApprove(data, plan, systemCount)} 
-                                                />
-                                            </PayPalScriptProvider>
-                                        ) : (
-                                            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-xs font-bold text-center rounded-xl border border-amber-100 dark:border-amber-800">
-                                                Online enrollment currently disabled for this provider.
-                                            </div>
-                                        )}
+                                        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-xs font-bold text-center rounded-xl border border-amber-100 dark:border-amber-800">
+                                            Online enrollment is temporarily disabled as we migrate to our new payment processor. Please contact the office to enroll.
+                                        </div>
                                     </div>
                                 )}
                             </div>

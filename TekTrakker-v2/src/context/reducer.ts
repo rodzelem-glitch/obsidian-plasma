@@ -116,6 +116,8 @@ export type Action =
     | { type: 'SYNC_DATA'; payload: any }
     | { type: 'SET_MESSAGES'; payload: Message[] }
     | { type: 'MERGE_MESSAGES'; payload: Message[] }
+    | { type: 'SET_NOTIFICATIONS'; payload: Notification[] }
+    | { type: 'MERGE_NOTIFICATIONS'; payload: Notification[] }
     | { type: 'UPDATE_SHIFT_LOG'; payload: { userId: string, log: ShiftLog } }
     | { type: 'ADD_SHIFT_LOG'; payload: { userId: string, log: ShiftLog } }
     | { type: 'SET_SHIFT_LOGS'; payload: { userId: string, logs: ShiftLog[] } }
@@ -180,7 +182,7 @@ export const appReducer = (state: AppState, action: Action): AppState => {
                 loading: false,
             };
         case 'SET_CURRENT_USER': return { ...state, currentUser: action.payload };
-        case 'SET_CURRENT_ORGANIZATION': return { ...state, currentOrganization: action.payload };
+        case 'SET_CURRENT_ORGANIZATION': return { ...state, currentOrganization: action.payload, messages: [], notifications: [] };
         case 'SET_THEME': return { ...state, theme: action.payload };
         case 'TOGGLE_THEME': return { ...state, theme: state.theme === 'light' ? 'dark' : 'light' };
         case 'SET_LOADING': return { ...state, loading: action.payload };
@@ -203,8 +205,23 @@ export const appReducer = (state: AppState, action: Action): AppState => {
             return { ...state, customers: [...state.customers, action.payload] };
         case 'UPDATE_CUSTOMER': return { ...state, customers: state.customers.map(c => c.id === action.payload.id ? { ...c, ...action.payload } : c) };
         case 'DELETE_CUSTOMER': return { ...state, customers: state.customers.filter(c => c.id !== action.payload) };
+        case 'SET_MESSAGES': return { ...state, messages: action.payload };
+        case 'MERGE_MESSAGES': {
+            const newMsgs = [...state.messages];
+            action.payload.forEach(msg => {
+                if (!newMsgs.some(m => m.id === msg.id)) newMsgs.push(msg);
+            });
+            return { ...state, messages: newMsgs.sort((a, b) => new Date(b.createdAt || b.timestamp).getTime() - new Date(a.createdAt || a.timestamp).getTime()) };
+        }
+        case 'SET_NOTIFICATIONS': return { ...state, notifications: action.payload };
+        case 'MERGE_NOTIFICATIONS': {
+            const newNotifs = [...state.notifications];
+            action.payload.forEach(notif => {
+                if (!newNotifs.some(n => n.id === notif.id)) newNotifs.push(notif);
+            });
+            return { ...state, notifications: newNotifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) };
+        }
         case 'SET_JOBS': return { ...state, jobs: action.payload };
-
         case 'SET_EXTERNAL_JOBS': return { ...state, externalJobs: action.payload };
         case 'ADD_JOB': 
             if (state.jobs.some(j => j.id === action.payload.id)) return state;
@@ -344,17 +361,7 @@ export const appReducer = (state: AppState, action: Action): AppState => {
             return { ...state, partOrders: [...state.partOrders, action.payload] };
         case 'UPDATE_PART_ORDER': return { ...state, partOrders: state.partOrders.map(o => o.id === action.payload.id ? { ...o, ...action.payload } : o) };
         case 'DELETE_PART_ORDER': return { ...state, partOrders: state.partOrders.filter(o => o.id !== action.payload) };
-        case 'SET_MESSAGES': return { ...state, messages: action.payload };
-        case 'MERGE_MESSAGES': {
-            const currentMsgs = [...state.messages];
-            action.payload.forEach((msg: Message) => {
-                const idx = currentMsgs.findIndex(m => m.id === msg.id);
-                if (idx > -1) currentMsgs[idx] = msg;
-                else currentMsgs.push(msg);
-            });
-            return { ...state, messages: currentMsgs.sort((a,b) => (b.createdAt || b.timestamp || '').localeCompare(a.createdAt || a.timestamp || '')) };
-        }
-        case 'SET_NOTIFICATIONS': return { ...state, notifications: action.payload };
+
         case 'SET_APPLICANTS': return { ...state, applicants: action.payload };
         case 'UPDATE_APPLICANT': return { ...state, applicants: state.applicants.map(a => a.id === action.payload.id ? { ...a, ...action.payload } : a) };
         

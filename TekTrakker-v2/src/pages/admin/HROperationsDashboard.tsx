@@ -342,7 +342,7 @@ const HROperationsDashboard: React.FC = () => {
                                                         {user.w4Status ? (
                                                             <div className="flex flex-col">
                                                                 <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">{user.w4Status}</span>
-                                                                {(user.w4DependentsAmount || 0) > 0 && <span className="text-xs text-gray-500">Dependents: ${user.w4DependentsAmount}</span>}
+                                                                {(user.w4DependentsAmount || 0) > 0 && <span className="text-xs text-gray-500">Dependents: {user.w4DependentsAmount}</span>}
                                                             </div>
                                                         ) : (
                                                             <span className="bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400 px-3 py-1 rounded text-xs font-bold uppercase border border-red-200 dark:border-red-800/50">

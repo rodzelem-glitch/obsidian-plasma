@@ -51,7 +51,7 @@ export const platformFeatures = {
             content: "Cash flow is the lifeblood of a service business. Relying on technicians to handwrite invoices, bring them back to the office, and waiting for an administrator to mail them out is a recipe for disaster. It introduces human error, delays payment by weeks, and severely damages cash flow. TekTrakker completely eliminates this archaic process by bringing enterprise-grade billing directly to the job site. \n\nWhen a job is completed, the technician simply hands their tablet or smartphone to the customer. The customer sees a crystal-clear breakdown of the services rendered, signs with their finger to authorize the work, and can immediately pay via credit card, ACH, or consumer financing. The payment is instantly securely processed, and the invoice is marked as paid in your dashboard. Furthermore, TekTrakker seamlessly integrates with QuickBooks Online, meaning every payment, line item, and tax calculation is automatically synced to your accounting software without any double data entry."
         },
         faq: [
-            { q: "What are your processing fees?", a: "We offer highly competitive flat-rate processing fees with no hidden gateway charges or monthly minimums. Contact sales for a custom rate analysis." },
+            { q: "What are your processing fees?", a: "We offer highly competitive flat-rate processing fees at 2.79% + $0.25 per transaction with no hidden gateway charges or monthly minimums." },
             { q: "Can I take partial payments or deposits?", a: "Yes, you can easily collect a percentage deposit upfront before starting a large installation, and bill the remainder upon completion." }
         ]
     },

@@ -4,7 +4,7 @@ import { getBaseUrl } from "lib/utils";
 import React, { useState } from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
-import { Trash2, Share2, Copy, Bell, Calculator, Download, UserPlus } from 'lucide-react';
+import { Trash2, Share2, Copy, Bell, Calculator, Download, UserPlus, Search } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import Select from 'components/ui/Select';
 import Modal from 'components/ui/Modal';
@@ -31,6 +31,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
     const [newInvoiceCustomerId, setNewInvoiceCustomerId] = useState('');
 
     const [sortBy, setSortBy] = useState('date_desc');
+    const [searchTerm, setSearchTerm] = useState('');
 
     const handleCopyRef = (jobId: string) => {
         navigator.clipboard.writeText(`#INV-${jobId}`);
@@ -143,7 +144,19 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
         }
     };
 
-    const sortedInvoices = [...jobs.filter((j: any) => j.invoice)].sort((a: any, b: any) => {
+    const sortedInvoices = [...jobs.filter((j: any) => j.invoice)]
+        .filter((j: any) => {
+            if (!searchTerm) return true;
+            const q = searchTerm.toLowerCase();
+            const amt = (Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0).toFixed(2);
+            return (
+                (j.invoice.id || '').toLowerCase().includes(q) ||
+                (j.customerName || '').toLowerCase().includes(q) ||
+                amt.includes(q) ||
+                (j.invoice.status || '').toLowerCase().includes(q)
+            );
+        })
+        .sort((a: any, b: any) => {
         const amtA = Number(a.invoice.totalAmount) || Number(a.invoice.amount) || 0;
         const amtB = Number(b.invoice.totalAmount) || Number(b.invoice.amount) || 0;
         
@@ -269,7 +282,18 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 </div>
             </Modal>
             
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-4">
+            <div className="flex flex-col gap-4 mb-4">
+                <div className="relative w-full sm:max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input
+                        type="text"
+                        placeholder="Search invoices by #, customer, or amount..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900/50 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
+                    />
+                </div>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <h3 className="font-bold text-gray-800 dark:text-white">Accounts Receivable</h3>
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2 text-sm">
@@ -294,6 +318,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                             <Calculator size={14} /> {taxMode ? 'Exit Tax Prep' : 'Tax Prep Mode'}
                         </Button>
                     </div>
+                </div>
                 </div>
             </div>
 

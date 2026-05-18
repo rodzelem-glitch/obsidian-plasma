@@ -340,7 +340,7 @@ const CustomerDashboard: React.FC = () => {
                 visitsTotal: plan.visitsPerYear,
                 visitsRemaining: plan.visitsPerYear,
                 autoBillingId: data.subscriptionID,
-                autoBillingProcessor: 'paypal'
+                autoBillingProcessor: 'stripe'
             };
             await db.collection('serviceAgreements').doc(newAgreement.id).set(newAgreement);
             setIsPlanSelectionModalOpen(false);

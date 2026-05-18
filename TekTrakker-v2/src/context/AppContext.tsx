@@ -1,10 +1,9 @@
-
-import React, { createContext, useReducer, useContext, useEffect, ReactNode, useRef, useMemo, useCallback } from 'react';
+import React, { createContext, useReducer, useContext, useEffect, ReactNode, useRef, useMemo, useCallback, useState } from 'react';
 import { auth, db } from 'lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import type { 
-    User, Organization, PlatformSettings, Job, Customer, MembershipPlan, Project, Proposal, ServiceAgreement, Expense, EquipmentRental, Subcontractor, Applicant, BusinessDocument, Vehicle, Review, Message
+    User, Organization, PlatformSettings, Job, Customer, MembershipPlan, Project, Proposal, ServiceAgreement, Expense, EquipmentRental, Subcontractor, Applicant, BusinessDocument, Vehicle, Review, Message, Notification
 } from 'types';
 import { appReducer, Action } from './reducer';
 import { AppState, initialState } from './state';
@@ -58,6 +57,7 @@ const PLATFORM_ORGANIZATION: Organization = {
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, initialState);
     const dataSubscriptions = useRef<(() => void)[]>([]);
+    const [syncTrigger, setSyncTrigger] = useState(0);
     const demoInitRequested = useRef(false);
     const demoModeRef = useRef(false);
     const navigate = useNavigate();
@@ -395,7 +395,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             : (currentUser.organizationId && currentUser.organizationId !== 'unaffiliated' ? currentUser.organizationId : undefined);
 
         // Platform-Level Admins & Sales Representatives must securely pipe cross-tenant messages dynamically
-        if (currentOrganization?.id === 'platform' && currentUser.id && (isMasterAdmin || isSales)) {
+        if (currentUser.id && (isMasterAdmin || isSales)) {
             const maskedIdentity = currentUser.role === 'master_admin' ? 'rodzelem@gmail.com' : undefined;
             const receiverIds = Array.from(new Set([currentUser.id, currentUser.email, maskedIdentity, 'all', 'all_sales', 'all_admins'].filter(Boolean)));
             newSubscriptions.push(db.collection('messages').where('receiverId', 'in', receiverIds)
@@ -404,11 +404,19 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             const senderIds = Array.from(new Set([currentUser.id, currentUser.email, maskedIdentity, 'all'].filter(Boolean)));
             newSubscriptions.push(db.collection('messages').where('senderId', 'in', senderIds)
                 .onSnapshot(s => dispatch({ type: 'MERGE_MESSAGES', payload: s.docs.map(d => ({ ...d.data(), id: d.id })) as Message[] }), e => console.warn(e)));
+                
+            if (isMasterAdmin) {
+                // Also get direct notifications addressed to the Master Admin
+                const notifUserIds = Array.from(new Set([currentUser.id, currentUser.email, 'rodzelem@gmail.com'].filter(Boolean)));
+                newSubscriptions.push(db.collection('notifications').where('userId', 'in', notifUserIds)
+                    .orderBy('createdAt', 'desc').limit(100)
+                    .onSnapshot(s => dispatch({ type: 'MERGE_NOTIFICATIONS', payload: s.docs.map(d => ({ ...d.data(), id: d.id })) as Notification[] }), e => console.warn(e)));
+            }
         }
         
         if (orgIdForCollections || isCustomer) {
             const collections: Record<string, string> = {
-                'notifications': 'SET_NOTIFICATIONS', 'messages': 'SET_MESSAGES', 'customers': 'SET_CUSTOMERS', 'proposals': 'SET_PROPOSALS', 'jobs': 'SET_JOBS', 
+                'notifications': 'MERGE_NOTIFICATIONS', 'messages': 'MERGE_MESSAGES', 'customers': 'SET_CUSTOMERS', 'proposals': 'SET_PROPOSALS', 'jobs': 'SET_JOBS', 
                 'inventory': 'SET_INVENTORY', 'refrigerantCylinders': 'SET_CYLINDERS', 'refrigerantTransactions': 'SET_REF_TRANSACTIONS', 'toolMaintenanceLogs': 'SET_TOOL_LOGS',
                 'incidentReports': 'SET_INCIDENTS', 'proposalPresets': 'SET_PROPOSAL_PRESETS', 'projects': 'SET_PROJECTS', 'documents': 'SET_DOCUMENTS', 'reviews': 'SET_REVIEWS',
                 'workSchedules': 'SET_SCHEDULES', 'membershipPlans': 'SET_MEMBERSHIP_PLANS', 'serviceAgreements': 'SET_AGREEMENTS', 'partOrders': 'SET_PART_ORDERS',
@@ -458,6 +466,30 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
                 // Fallback by name is disabled for customers because it violates Firestore security rules (isCustomerOwner does not allow reading by customerName)
             });
+
+            // NEW: Global Subscriptions for Master Admins
+            // Since messages/notifications are siloed by organizationId, 
+            // Master Admins need a direct listener for things specifically addressed to them or global aliases.
+            if (isMasterAdmin) {
+                const globalMessageTargets = ['rodzelem@gmail.com', 'all', 'all_admins'];
+                newSubscriptions.push(db.collection('messages')
+                    .where('receiverId', 'in', globalMessageTargets)
+                    .orderBy('createdAt', 'desc').limit(100)
+                    .onSnapshot(s => {
+                        const payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
+                        dispatch({ type: 'MERGE_MESSAGES', payload } as unknown as Action);
+                    }, e => console.error("Global messages subscription failed:", e))
+                );
+                
+                newSubscriptions.push(db.collection('notifications')
+                    .where('userId', 'in', globalMessageTargets)
+                    .orderBy('createdAt', 'desc').limit(100)
+                    .onSnapshot(s => {
+                        const payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
+                        dispatch({ type: 'MERGE_NOTIFICATIONS', payload } as unknown as Action);
+                    }, e => console.error("Global notifications subscription failed:", e))
+                );
+            }
 
             // NEW: Fetch warranty claims as a subcollection
             if (orgIdForCollections && !isCustomer) {
@@ -510,12 +542,40 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
     }, [
         state.currentUser?.id, 
+        state.currentUser?.role, 
+        state.currentUser?.email, 
+        state.currentUser?.organizationId,
+        state.currentUser?.franchiseId,
         state.isMasterAdmin, 
-        state.currentOrganization?.id, 
-        state.isDemoMode, 
+        state.currentOrganization?.id,
+        state.isDemoMode,
         unsubscribeData,
-        dispatch
+        dispatch,
+        syncTrigger
     ]);
+
+    // NEW: Capacitor AppState Listener for background sync recovery
+    useEffect(() => {
+        let isMounted = true;
+        const initCapacitor = async () => {
+            try {
+                const { App: CapacitorApp } = await import('@capacitor/app');
+                if (!isMounted) return;
+                CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+                    if (isActive) {
+                        console.log('App resumed, refreshing data subscriptions...');
+                        setSyncTrigger(prev => prev + 1);
+                    }
+                });
+            } catch (e) {
+                // Not running in Capacitor, ignore safely
+            }
+        };
+        initCapacitor();
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const impersonateOrganization = useCallback(async (org: string | Organization | null) => {
         if (state.isDemoMode) return;

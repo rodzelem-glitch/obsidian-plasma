@@ -423,7 +423,7 @@ const FranchiseManager: React.FC = () => {
                                         </label>
                                         <label className="flex items-center gap-3 cursor-pointer">
                                             <input type="checkbox" checked={formSetupFeePaid} onChange={e => setFormSetupFeePaid(e.target.checked)} className="w-5 h-5 rounded text-primary-600 focus:ring-primary-500" />
-                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">$1,500 Setup & DNS Fee Paid via PayPal/Square (1 time)</span>
+                                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">$1,500 Setup & DNS Fee Paid via Square (1 time)</span>
                                         </label>
                                         <div className="grid grid-cols-2 gap-4 mt-2">
                                             <div>

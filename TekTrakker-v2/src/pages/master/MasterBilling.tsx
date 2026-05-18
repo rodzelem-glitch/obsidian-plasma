@@ -47,28 +47,29 @@ const MasterBilling: React.FC = () => {
             starter: { 
                 monthly: 99, 
                 annual: 999, 
-                maxUsers: 1, 
-                paypalMonthlyId: 'P-36181239RW6804649NFSIE3Q',
-                paypalAnnualId: 'P-892978607P5661743NF2NQ3Q'
+                maxUsers: 1
             },
             growth: { 
                 monthly: 249, 
                 annual: 2499, 
-                maxUsers: 5, 
-                paypalMonthlyId: 'P-28654892HJ758760TNFSINHI',
-                paypalAnnualId: 'P-8J157027AL934662ANF2NRRQ'
+                maxUsers: 5
             },
             enterprise: { 
                 monthly: 499, 
                 annual: 4999, 
-                maxUsers: 15, 
-                paypalMonthlyId: 'P-0BT11107TW308654VNFSIPKQ',
-                paypalAnnualId: 'P-8XG25679MV633610PNF2NSHQ'
+                maxUsers: 15
+            },
+            payments_only: {
+                monthly: 20,
+                annual: 199,
+                maxUsers: 999999,
+                unlimitedUsers: true,
+                features: ['proposals', 'paymentProcessing'],
+                ribbonText: ''
             }
         },
         excessUserFee: 25,
-        updatedAt: new Date().toISOString(),
-        platformPaypalClientId: 'AVrcsgHKXDm2LBYBYgDhSppJADPQ_aqdLFm9PX1j2vwYFiWRiZu_oxzMrTNJchmSVih7S49B_HLkNFcB'
+        updatedAt: new Date().toISOString()
     });
     
     const [platformOrg, setPlatformOrg] = useState<Organization | null>(null);
@@ -86,10 +87,9 @@ const MasterBilling: React.FC = () => {
                     plans: {
                         starter: { ...prev.plans.starter, ...(dbPlans.starter || {}) },
                         growth: { ...prev.plans.growth, ...(dbPlans.growth || {}) },
-                        enterprise: { ...prev.plans.enterprise, ...(dbPlans.enterprise || {}) }
-                    },
-                    // Ensure PayPal client ID is preserved
-                    platformPaypalClientId: state.platformSettings.platformPaypalClientId || prev.platformPaypalClientId
+                        enterprise: { ...prev.plans.enterprise, ...(dbPlans.enterprise || {}) },
+                        payments_only: { ...prev.plans.payments_only, ...(dbPlans.payments_only || {}) }
+                    }
                 };
             });
         }
@@ -173,7 +173,7 @@ const MasterBilling: React.FC = () => {
             const discount = (o.customDiscountPct || 0) / 100;
             return sum + (totalBeforeDiscount * (1 - discount));
         }, 0);
-        return { mrr, activeCount: active.length, trialCount: trial.length, expiredCount: expired.length, enterpriseCount: active.filter(o => o.plan === 'enterprise').length, growthCount: active.filter(o => o.plan === 'growth').length, starterCount: active.filter(o => o.plan === 'starter').length };
+        return { mrr, activeCount: active.length, trialCount: trial.length, expiredCount: expired.length, enterpriseCount: active.filter(o => o.plan === 'enterprise').length, growthCount: active.filter(o => o.plan === 'growth').length, starterCount: active.filter(o => o.plan === 'starter').length, paymentsOnlyCount: active.filter(o => o.plan === 'payments_only').length };
     }, [orgs, config]);
 
     const filteredOrgs = orgs.filter(o => {
@@ -437,8 +437,7 @@ const MasterBilling: React.FC = () => {
                         </div>
 
                         <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-3xl border border-blue-100 dark:border-blue-800">
-                            <h4 className="font-black text-sm uppercase text-blue-600 tracking-widest mb-4 flex items-center gap-2"><CreditCard size={18}/> PayPal Master Configuration</h4>
-                            <Input label="Platform PayPal Client ID" value={config.platformPaypalClientId || ''} onChange={e => setConfig({...config, platformPaypalClientId: e.target.value})} />
+                            <h4 className="font-black text-sm uppercase text-blue-600 tracking-widest mb-4 flex items-center gap-2"><CreditCard size={18}/> Platform Fees Configuration</h4>
                             <div className="mt-4 max-w-xs">
                                 <Input label="Excess User Fee ($/mo)" type="number" value={config.excessUserFee} onChange={e => setConfig({...config, excessUserFee: parseFloat(e.target.value)})} />
                             </div>
@@ -479,7 +478,7 @@ const MasterBilling: React.FC = () => {
                                         </div>
                                         <div>
                                             <Input 
-                                                label="Setup & DNS Fee (1-time via PayPal/Square)" 
+                                                label="Setup & DNS Fee (1-time via Square)" 
                                                 type="number" 
                                                 value={config.franchiseSetupFee ?? 1500} 
                                                 onChange={e => setConfig({...config, franchiseSetupFee: parseFloat(e.target.value) || 0})} 
@@ -546,7 +545,7 @@ const MasterBilling: React.FC = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            {(['starter', 'growth', 'enterprise'] as const).map(pKey => (
+                            {(['starter', 'growth', 'enterprise', 'payments_only'] as const).map(pKey => (
                                 <div key={pKey} className="p-6 bg-slate-50 dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 space-y-6">
                                     <div className="flex justify-between items-center">
                                         <h4 className="font-black text-sm uppercase text-sky-600 tracking-widest">{pKey} Tier</h4>
@@ -580,6 +579,7 @@ const MasterBilling: React.FC = () => {
                                             <div className="grid grid-cols-2 gap-3 mb-4">
                                                 {[
                                                     { id: 'publicBooking', name: 'Online Booking' }, { id: 'proposals', name: 'Interactive Proposals' },
+                                                    { id: 'paymentProcessing', name: 'Payment Processing' },
                                                     { id: 'timeTracking', name: 'Time & Mileage Tracking' }, { id: 'inventory', name: 'Fleet & Inventory' },
                                                     { id: 'salesCrm', name: 'Sales Pipeline (CRM)' }, { id: 'hrDocuments', name: 'HR & Documents' },
                                                     { id: 'careerPage', name: 'Recruiting Portal' }, { id: 'ai', name: 'AI Features' },
@@ -621,10 +621,7 @@ const MasterBilling: React.FC = () => {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-4 pt-4 border-t dark:border-slate-800">
-                                        <Input label="Monthly PayPal Plan ID" value={config.plans[pKey].paypalMonthlyId || ''} onChange={e => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], paypalMonthlyId: e.target.value}}})} />
-                                        <Input label="Annual PayPal Plan ID" value={config.plans[pKey].paypalAnnualId || ''} onChange={e => setConfig({...config, plans: {...config.plans, [pKey]: {...config.plans[pKey], paypalAnnualId: e.target.value}}})} />
-                                    </div>
+
                                 </div>
                             ))}
                         </div>
@@ -654,6 +651,7 @@ const MasterBilling: React.FC = () => {
                                 <option value="starter">Starter</option>
                                 <option value="growth">Growth</option>
                                 <option value="enterprise">Enterprise</option>
+                                <option value="payments_only">Payments Only ($20/mo)</option>
                             </Select>
                             <Input label="Additional User Slots" type="number" value={additionalUsers} onChange={e => setAdditionalUsers(parseInt(e.target.value) || 0)} />
                         </div>

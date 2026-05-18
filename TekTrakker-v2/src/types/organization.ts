@@ -35,7 +35,7 @@ export interface Organization {
     footerImage?: string | null;
     subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled' | 'paused';
     subscriptionExpiryDate?: string | null;
-    plan?: 'starter' | 'growth' | 'enterprise';
+    plan?: 'starter' | 'growth' | 'enterprise' | 'payments_only';
     cancellationReason?: string;
     cancellationFeedback?: string;
     canceledAt?: string;
@@ -45,7 +45,6 @@ export interface Organization {
     notificationEmails?: string[];
     supportedTrades?: IndustryVertical[];
     reviewLink?: string;
-    paypalClientId?: string | null;
     stripePublicKey?: string | null;
     stripeAccountId?: string | null;
     squareApplicationId?: string | null;
@@ -53,7 +52,7 @@ export interface Organization {
     squareToken?: string | null;
     kortAccountId?: string | null;
     kortAccountStatus?: string | null;
-    defaultPaymentGateway?: 'paypal' | 'stripe' | 'square' | 'kort';
+    defaultPaymentGateway?: 'stripe' | 'square' | 'kort';
     platformVaultedPaymentMethodId?: string | null;
     platformVaultedPaymentType?: string | null;
     enabledPanels?: {
