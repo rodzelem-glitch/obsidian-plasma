@@ -1,5 +1,5 @@
 import { MetadataRoute } from 'next';
-import { industriesData } from './data/content';
+import { industriesData, platformFeatures } from './data/content';
 
 export const dynamic = 'force-static';
 
@@ -10,7 +10,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     const routes = [
         '',
         '/about',
-        '/features',
         '/pricing',
         '/integrations',
         '/roi-calculator',
@@ -20,12 +19,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
         '/faq',
         '/terms',
         '/privacy',
-        '/eula'
+        '/eula',
+        '/homeowners',
+        '/ai-worker',
+        '/ai-worker-commands'
     ].map((route) => ({
         url: `${baseUrl}${route}`,
         lastModified: new Date().toISOString().split('T')[0],
         changeFrequency: 'weekly' as const,
-        priority: route === '' ? 1 : 0.8,
+        priority: route === '' ? 1.0 : 0.8,
     }));
 
     // Dynamic Industry routes
@@ -36,5 +38,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
         priority: 0.9,
     }));
 
-    return [...routes, ...industryRoutes];
+    // Dynamic Feature routes
+    const featureRoutes = Object.keys(platformFeatures).map((slug) => ({
+        url: `${baseUrl}/features/${slug}`,
+        lastModified: new Date().toISOString().split('T')[0],
+        changeFrequency: 'monthly' as const,
+        priority: 0.9,
+    }));
+
+    return [...routes, ...industryRoutes, ...featureRoutes];
 }
