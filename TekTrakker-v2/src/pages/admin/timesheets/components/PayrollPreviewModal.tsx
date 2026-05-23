@@ -1,6 +1,6 @@
 import showToast from "lib/toast";
 import React, { useMemo } from 'react';
-import { X, PlayCircle, Loader2 } from 'lucide-react';
+import { X, PlayCircle, Loader2, Download } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
@@ -101,6 +101,78 @@ const PayrollPreviewModal: React.FC<PayrollPreviewModalProps> = ({ isOpen, onClo
         }
     };
 
+    const handleDownloadCSV = () => {
+        const headers = [
+            'last_name',
+            'first_name',
+            'title',
+            'gusto_employee_id',
+            'regular_hours',
+            'overtime_hours',
+            'double_overtime_hours',
+            'missed_break_hours',
+            'bonus',
+            'commission',
+            'paycheck_tips',
+            'cash_tips',
+            'correction',
+            'reimbursement',
+            'personal_note'
+        ];
+
+        const allRecords = [...compensationTable.valid, ...compensationTable.unsynced];
+        
+        const rows = allRecords.map(row => {
+            const user: any = (state.users || []).find((u: any) => u.id === row.userId);
+            const lastName = user?.lastName || '';
+            const firstName = user?.firstName || user?.name || '';
+            const title = user?.title || (user?.role ? user.role.replace('_', ' ') : 'Technician');
+            const gustoId = user?.gustoEmployeeId || '';
+            
+            const regularHours = row.regularHours > 0 ? (Math.round(row.regularHours * 1000000) / 1000000).toString() : '';
+            const overtimeHours = row.overtime > 0 ? (Math.round(row.overtime * 1000000) / 1000000).toString() : '';
+            const commission = row.commission > 0 ? row.commission.toFixed(2) : '';
+
+            return [
+                lastName,
+                firstName,
+                title,
+                gustoId,
+                regularHours,
+                overtimeHours,
+                '', // double_overtime_hours
+                '', // missed_break_hours
+                '', // bonus
+                commission,
+                '', // paycheck_tips
+                '', // cash_tips
+                '', // correction
+                '', // reimbursement
+                ''  // personal_note
+            ];
+        });
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(val => {
+                const str = String(val);
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    return `"${str.replace(/"/g, '""')}"`;
+                }
+                return str;
+            }).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `payroll_${startDate}_to_${endDate}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -186,9 +258,16 @@ const PayrollPreviewModal: React.FC<PayrollPreviewModalProps> = ({ isOpen, onClo
                         Cancel
                     </button>
                     <button 
+                        onClick={handleDownloadCSV}
+                        disabled={compensationTable.valid.length === 0 && compensationTable.unsynced.length === 0}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none text-white rounded-lg font-bold flex items-center gap-2 transition-colors active:scale-95 shadow animate-fade-in"
+                    >
+                        <Download size={18} /> Download CSV
+                    </button>
+                    <button 
                         onClick={handleStage}
                         disabled={compensationTable.valid.length === 0 || isStaging}
-                        className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-2 transition-colors active:scale-95 disabled:opacity-50 disabled:active:scale-100"
+                        className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-2 transition-colors active:scale-95 disabled:opacity-50 disabled:active:scale-100 shadow"
                     >
                         {isStaging ? <><Loader2 className="animate-spin" size={18} /> Syncing with Gusto...</> : <><PlayCircle size={18} /> Confirm & Stage in Gusto Sandbox</>}
                     </button>

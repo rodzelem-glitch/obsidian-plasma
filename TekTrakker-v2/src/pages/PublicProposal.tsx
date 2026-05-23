@@ -1,5 +1,6 @@
 import showToast from "lib/toast";
 import React, { useEffect, useState, useRef } from 'react';
+import { Shield } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { db, auth } from 'lib/firebase';
 import type { Proposal, Organization } from 'types';
@@ -18,6 +19,7 @@ const PublicProposal: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const sigPadRef = useRef<SignaturePadHandle>(null);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
+    const [hasDeclinedTerms, setHasDeclinedTerms] = useState(false);
 
     useEffect(() => {
         const fetchProposal = async () => {
@@ -133,6 +135,95 @@ const PublicProposal: React.FC = () => {
 
     const previewProposal = { ...proposal, selectedOption: selectedOption || proposal.selectedOption };
     const needsTierSelection = proposal?.status !== 'Accepted' && !selectedOption && availableTiers.length > 1;
+
+    const showProposalTermsOverlay = organization?.proposalTerms && !proposal.proposalTermsAgreed;
+
+    const handleAgreeProposalTerms = async () => {
+        try {
+            const now = new Date().toISOString();
+            try {
+                await db.collection('proposals').doc(proposal.id).update({
+                    proposalTermsAgreed: true,
+                    proposalTermsAgreedAt: now
+                });
+            } catch (dbError: any) {
+                console.warn("Firestore proposal terms update failed, falling back to local-only updates:", dbError);
+            }
+            setProposal({
+                ...proposal,
+                proposalTermsAgreed: true,
+                proposalTermsAgreedAt: now
+            });
+            showToast.success("Terms accepted. You can now view the proposal.");
+        } catch (e: any) {
+            showToast.warn("Failed to accept terms: " + e.message);
+        }
+    };
+
+    if (hasDeclinedTerms) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 md:p-8 max-w-md w-full border border-slate-100 dark:border-slate-700 text-center animate-fade-in">
+                    <div className="flex justify-center text-rose-500 dark:text-rose-400 mb-4">
+                        <Shield className="w-16 h-16 animate-pulse" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Access Declined</h2>
+                    <p className="text-slate-600 dark:text-slate-300 text-sm mb-6 leading-relaxed">
+                        You have declined the Terms of Agreement. In order to view this proposal details, authorize package options, or accept this estimate, you must review and agree to the terms from <strong>{organization?.name || 'Service Provider'}</strong>.
+                    </p>
+                    <div className="flex flex-col gap-3">
+                        <Button 
+                            onClick={() => setHasDeclinedTerms(false)}
+                            className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold h-12 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none w-full"
+                        >
+                            Review Terms Again
+                        </Button>
+                        <Button 
+                            variant="secondary"
+                            onClick={() => window.close()}
+                            className="h-12 rounded-xl w-full border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold"
+                        >
+                            Close Tab
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (showProposalTermsOverlay) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 md:p-8 max-w-2xl w-full border border-slate-100 dark:border-slate-700 animate-fade-in text-left">
+                    <div className="flex items-center gap-3 mb-6 text-indigo-600 dark:text-indigo-400">
+                        <Shield size={32} />
+                        <h2 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-white">Proposal Terms of Agreement</h2>
+                    </div>
+                    <p className="text-slate-600 dark:text-slate-300 text-sm mb-4">
+                        Please review and accept the following terms of agreement before proceeding to view the proposal details from <strong>{organization?.name || 'Service Provider'}</strong>.
+                    </p>
+                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 md:p-6 border border-slate-200 dark:border-slate-700 overflow-y-auto max-h-60 mb-6 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap font-sans">
+                        {organization?.proposalTerms}
+                    </div>
+                    <div className="flex gap-3 justify-end pt-4 border-t border-slate-100 dark:border-slate-700">
+                        <Button 
+                            variant="secondary"
+                            onClick={() => setHasDeclinedTerms(true)}
+                            className="h-12 px-6 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold"
+                        >
+                            Decline
+                        </Button>
+                        <Button 
+                            onClick={handleAgreeProposalTerms}
+                            className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none"
+                        >
+                            Accept & View Proposal
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-slate-100 flex flex-col">

@@ -11,14 +11,17 @@ interface QuickAddCustomerProps {
 }
 
 const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }) => {
-    const { state } = useAppContext(); // Removed dispatch
+    const { state, dispatch } = useAppContext();
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
     const handleAddCustomer = async () => {
-        if (!state.currentOrganization) return;
+        if (!state.currentOrganization) {
+            console.warn("No current organization in state!");
+            return;
+        }
         if (!name) {
             showToast.warn("Name is required.");
             return;
@@ -39,24 +42,32 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
                 createdAt: new Date().toISOString()
             };
 
-            // Save to Firestore. The real-time listener in AppContext/CustomerManagement
-            // will pick this up and update the UI automatically.
-            await db.collection('customers').doc(newCustomer.id).set(newCustomer);
+            if (!state.isDemoMode) {
+                // Save to Firestore. The real-time listener in AppContext/CustomerManagement
+                // will pick this up and update the UI automatically.
+                await db.collection('customers').doc(newCustomer.id).set(newCustomer);
+            }
+            
+            // Dispatch locally to immediately update state (important for demo mode and E2E tests)
+            dispatch({ type: 'ADD_CUSTOMER', payload: newCustomer });
 
             // Notify Admins of the new customer
-            const { notifyAdmins } = await import('../../../../lib/notificationService');
-            await notifyAdmins(state.currentOrganization.id, {
-                title: "New Customer Added",
-                body: `${name} has been added to the database.`,
-                type: 'new_customer',
-                data: { customerId: newCustomer.id }
-            });
+            if (!state.isDemoMode) {
+                const { notifyAdmins } = await import('../../../../lib/notificationService');
+                await notifyAdmins(state.currentOrganization.id, {
+                    title: "New Customer Added",
+                    body: `${name} has been added to the database.`,
+                    type: 'new_customer',
+                    data: { customerId: newCustomer.id }
+                });
+            }
 
             onCustomerCreated(newCustomer.id);
             
             setName('');
             setPhone('');
             setEmail('');
+            console.log("Customer creation successful!");
         } catch (error) {
             console.error("Error creating customer:", error);
             showToast.warn("Failed to create customer. Please check your connection.");

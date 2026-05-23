@@ -4,10 +4,11 @@ import { FinancialIcon, UsersIcon, TimeLogIcon, AlertTriangle } from '../../cons
 import { useAppContext } from '../../context/AppContext';
 import type { Job, User, Appointment } from '../../types/types';
 import { db } from '../../lib/firebase';
+import { getNextInvoiceNumber } from 'lib/numbering';
 import MetricCard from './dashboard/components/MetricCard';
 import PendingAppointments from './dashboard/components/PendingAppointments';
 import LiveOperations from './dashboard/components/LiveOperations';
-import { ShoppingCart, Bot, ArrowRight, Wrench, ShieldCheck, CreditCard } from 'lucide-react';
+import { ShoppingCart, Bot, ArrowRight, Wrench, ShieldCheck, CreditCard, Presentation, Sparkles } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
 import OnboardingTour, { useOnboardingTour } from '../../components/ui/OnboardingTour';
@@ -16,6 +17,23 @@ const AdminDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const currentUser = state.currentUser;
     const isPaymentsOnly = state.currentOrganization?.plan === 'payments_only';
+    
+    const [whiteboardStats, setWhiteboardStats] = React.useState({ tasks: 0, stickies: 0, photos: 0 });
+    React.useEffect(() => {
+        if (!state.currentOrganization?.id) return;
+        const unsub = db.collection('whiteboards').doc(state.currentOrganization.id)
+            .onSnapshot((doc) => {
+                if (doc.exists) {
+                    const data = doc.data();
+                    const els = (data?.elements || []) as any[];
+                    const tasks = els.filter(e => e.type === 'task').length;
+                    const stickies = els.filter(e => e.type === 'sticky').length;
+                    const photos = els.filter(e => e.type === 'photo').length;
+                    setWhiteboardStats({ tasks, stickies, photos });
+                }
+            });
+        return () => unsub();
+    }, [state.currentOrganization?.id]);
     const hasCompletedMerchantSetup = !!state.currentOrganization?.kortAccountId;
     const { showTour, completeTour } = useOnboardingTour(currentUser?.id);
     
@@ -194,6 +212,7 @@ const AdminDashboard: React.FC = () => {
             });
         }
 
+        const nextInvId = await getNextInvoiceNumber(appt.organizationId);
         const newJob: Job = {
             id: `job-${Date.now()}`,
             organizationId: appt.organizationId,
@@ -208,7 +227,7 @@ const AdminDashboard: React.FC = () => {
             specialInstructions: appt.specialInstructions || '',
             source: appt.source || 'WebWidget',
             invoice: {
-                id: `INV-${Date.now()}`,
+                id: nextInvId,
                 status: 'Unpaid',
                 items: [],
                 subtotal: 0,
@@ -368,7 +387,50 @@ const AdminDashboard: React.FC = () => {
                 </div>
             )}
 
+            {!isPaymentsOnly && (
+                <div className="order-6 mt-2">
+                    <button
+                        type="button"
+                        onClick={() => window.location.href = '#/admin/whiteboard'}
+                        className="w-full text-left relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-800 to-violet-950 rounded-2xl p-6 cursor-pointer shadow-xl hover:shadow-violet-500/20 hover:-translate-y-0.5 transition-all duration-300 group border border-slate-700/50"
+                    >
+                        <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-500 pointer-events-none">
+                            <Presentation size={100} className="text-white" />
+                        </div>
 
+                        <div className="relative z-10">
+                            <div className="flex items-center gap-3 mb-3">
+                                <span className="bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-xs font-black px-3 py-1 uppercase tracking-widest rounded-full flex items-center gap-1">
+                                    <Sparkles size={12} className="animate-spin" /> Interactive
+                                </span>
+                                <h3 className="text-xl font-extrabold text-white">Admins Collaboration Board</h3>
+                            </div>
+                            <p className="text-slate-300 mt-2 mb-4 max-w-xl text-sm leading-relaxed">
+                                Share thoughts, tasks, photos, and drawings in real time. Work together on an infinite canvas designed for organization owners and supervisors.
+                            </p>
+                            
+                            <div className="flex flex-wrap gap-4 mb-5 text-xs font-semibold text-slate-300">
+                                <div className="bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm flex items-center gap-2 border border-white/5">
+                                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                                    <span>{whiteboardStats.stickies} Sticky Notes</span>
+                                </div>
+                                <div className="bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm flex items-center gap-2 border border-white/5">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                    <span>{whiteboardStats.tasks} Checklist Tasks</span>
+                                </div>
+                                <div className="bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm flex items-center gap-2 border border-white/5">
+                                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                                    <span>{whiteboardStats.photos} Shared Photos</span>
+                                </div>
+                            </div>
+                            
+                            <div className="inline-flex items-center text-white font-bold bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl transition-colors border border-white/10">
+                                Open Immersive Whiteboard <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform" />
+                            </div>
+                        </div>
+                    </button>
+                </div>
+            )}
 
         </div>
     );

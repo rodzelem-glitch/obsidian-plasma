@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigation, CheckCircle, User, MapPin, PlusCircle, Sparkles, Camera, ImageIcon, X } from 'lucide-react';
+import { Navigation, CheckCircle, User, MapPin, Sparkles, Camera, ImageIcon, X } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import Card from '../../../../components/ui/Card';
 import Button from '../../../../components/ui/Button';
@@ -7,7 +7,7 @@ import Input from '../../../../components/ui/Input';
 import Select from '../../../../components/ui/Select';
 import Textarea from '../../../../components/ui/Textarea';
 import { VoiceInput } from '../../../../components/ui/VoiceInput';
-import { Job, EquipmentAsset, Customer } from '../../../../types';
+import { Job, EquipmentAsset, Customer, ServiceLocation } from '../../../../types';
 import { StoredFile } from '../../../../types/file';
 import { formatAddress } from '../../../../lib/utils';
 
@@ -20,8 +20,8 @@ interface ArrivalStepProps {
     assets: EquipmentAsset[];
     isAddAssetOpen: boolean;
     setIsAddAssetOpen: (open: boolean) => void;
-    newAsset: any;
-    setNewAsset: (asset: any) => void;
+    newAsset: Partial<EquipmentAsset>;
+    setNewAsset: (asset: Partial<EquipmentAsset>) => void;
     handleAddAsset: () => void;
     handleDeleteAsset?: (id: string) => void;
     isOcrScanning: boolean;
@@ -31,6 +31,7 @@ interface ArrivalStepProps {
     files?: StoredFile[];
     handlePhotoUpload?: (e: React.ChangeEvent<HTMLInputElement>, label: string) => void;
     takeNativePhoto?: () => void;
+    takeNativeAssetPhoto?: (photoType: 'serialPhotoUrl' | 'unitTagPhotoUrl' | 'conditionPhotoUrl') => void;
     onDeletePhoto?: (file: StoredFile) => void;
     onViewPhoto?: (file: StoredFile) => void;
     hidden?: boolean;
@@ -56,12 +57,13 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
     files = [],
     handlePhotoUpload,
     takeNativePhoto,
+    takeNativeAssetPhoto,
     onDeletePhoto,
     onViewPhoto,
     hidden
 }) => {
     if (hidden) return null;
-    const arrivalFiles = files.filter(f => (f.metadata?.label || (f as any).label) === 'Pre-Work');
+    const arrivalFiles = files.filter(f => (f.metadata?.label || f.label) === 'Pre-Work');
     const handleNavigate = () => {
         const encodedAddress = encodeURIComponent(formatAddress(job.address));
         const platform = Capacitor.getPlatform();
@@ -179,7 +181,7 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                                     onClick={() => onViewPhoto?.(file)}
                                     className="w-full h-full p-0 border-none outline-none block"
                                 >
-                                    <img src={file.dataUrl || (file as any).url} alt="Arrival" className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform" />
+                                    <img src={file.dataUrl || file.url} alt="Arrival" className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform" />
                                 </button>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onDeletePhoto?.(file); }}
@@ -246,7 +248,7 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                         <h5 className="font-bold text-slate-800 dark:text-slate-100">{newAsset.id ? 'Edit Asset' : 'Add New Asset'}</h5>
                         <div className="flex flex-col gap-1">
                             <Input label="Name (e.g. Roof Unit 1)" value={newAsset.name || ''} onChange={e => setNewAsset({...newAsset, name: e.target.value})} placeholder="Optional: System Name"/>
-                            <Select label="Type" value={newAsset.type || 'System'} onChange={e => setNewAsset({...newAsset, type: e.target.value as any})}>
+                            <Select label="Type" value={newAsset.type || 'System'} onChange={e => setNewAsset({...newAsset, type: e.target.value})}>
                                 <option>System</option>
                                 <option>Unit</option>
                                 <option>Part</option>
@@ -266,14 +268,14 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                         <div className="flex flex-col gap-1">
                             <Select label="Property Mapping" value={newAsset.propertyId || ''} onChange={e => setNewAsset({...newAsset, propertyId: e.target.value})}>
                                 <option value="">Default Address</option>
-                                {customer?.serviceLocations?.map((loc: any) => (
+                                {customer?.serviceLocations?.map((loc: ServiceLocation) => (
                                     <option key={loc.id} value={loc.id}>{loc.name} - {loc.address}</option>
                                 ))}
                             </Select>
                             <Input label="Sub-Location (e.g. Attic)" value={newAsset.location || ''} onChange={e => setNewAsset({...newAsset, location: e.target.value})} placeholder="e.g. Roof, Basement"/>
                             
                             <Input label="Install Date" type="date" value={newAsset.installDate || ''} onChange={e => setNewAsset({...newAsset, installDate: e.target.value})} />
-                            <Select label="Condition" value={newAsset.condition || ''} onChange={e => setNewAsset({...newAsset, condition: e.target.value as any})}>
+                            <Select label="Condition" value={newAsset.condition || ''} onChange={e => setNewAsset({...newAsset, condition: e.target.value as EquipmentAsset['condition']})}>
                                 <option value="">Select Condition</option>
                                 <option value="Excellent">Excellent</option>
                                 <option value="Good">Good</option>
@@ -288,39 +290,75 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                         </div>
                         
                         <div className="flex gap-4 overflow-x-auto custom-scrollbar pb-2 pt-2">
-                            <label className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl cursor-pointer bg-white dark:bg-slate-900 text-xs text-center w-32 h-32 relative transition-colors shadow-sm overflow-hidden">
+                            <div className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl bg-white dark:bg-slate-900 text-xs text-center w-36 h-32 relative transition-colors shadow-sm overflow-hidden group">
                                 {newAsset.serialPhotoUrl ? (
                                     <>
                                         <img src={newAsset.serialPhotoUrl} alt="Serial" className="absolute inset-0 w-full h-full object-cover rounded-xl" />
-                                        <button type="button" onClick={(e) => { e.preventDefault(); setNewAsset({...newAsset, serialPhotoUrl: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
+                                        <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNewAsset({...newAsset, serialPhotoUrl: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
                                             <X size={12}/>
                                         </button>
                                     </>
-                                ) : <><PlusCircle size={24} className="mb-2 text-primary-500" /><span className="font-medium text-slate-600 dark:text-slate-300">OCR Serial<br/>Photo</span></>}
-                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleAssetPhotoUpload(e, 'serialPhotoUrl')} />
-                            </label>
-                            <label className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl cursor-pointer bg-white dark:bg-slate-900 text-xs text-center w-32 h-32 relative transition-colors shadow-sm overflow-hidden">
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center w-full h-full">
+                                        <span className="font-medium text-slate-600 dark:text-slate-300 mb-2">OCR Serial<br/>Photo</span>
+                                        <div className="flex gap-2">
+                                            <label className="flex flex-col items-center justify-center cursor-pointer p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full transition-colors" title="Upload from Gallery">
+                                                <ImageIcon size={16} className="text-primary-500" />
+                                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleAssetPhotoUpload(e, 'serialPhotoUrl')} title="Upload OCR Serial Photo" />
+                                            </label>
+                                            <button type="button" onClick={() => takeNativeAssetPhoto?.('serialPhotoUrl')} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full transition-colors" title="Take Photo">
+                                                <Camera size={16} className="text-primary-500" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl bg-white dark:bg-slate-900 text-xs text-center w-36 h-32 relative transition-colors shadow-sm overflow-hidden group">
                                 {newAsset.unitTagPhotoUrl ? (
                                     <>
                                         <img src={newAsset.unitTagPhotoUrl} alt="Tag" className="absolute inset-0 w-full h-full object-cover rounded-xl" />
-                                        <button type="button" onClick={(e) => { e.preventDefault(); setNewAsset({...newAsset, unitTagPhotoUrl: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
+                                        <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNewAsset({...newAsset, unitTagPhotoUrl: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
                                             <X size={12}/>
                                         </button>
                                     </>
-                                ) : <><PlusCircle size={24} className="mb-2 text-primary-500" /><span className="font-medium text-slate-600 dark:text-slate-300">OCR Unit<br/>Data Plate</span></>}
-                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleAssetPhotoUpload(e, 'unitTagPhotoUrl')} />
-                            </label>
-                            <label className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl cursor-pointer bg-white dark:bg-slate-900 text-xs text-center w-32 h-32 relative transition-colors shadow-sm overflow-hidden">
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center w-full h-full">
+                                        <span className="font-medium text-slate-600 dark:text-slate-300 mb-2">OCR Unit<br/>Data Plate</span>
+                                        <div className="flex gap-2">
+                                            <label className="flex flex-col items-center justify-center cursor-pointer p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full transition-colors" title="Upload from Gallery">
+                                                <ImageIcon size={16} className="text-primary-500" />
+                                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleAssetPhotoUpload(e, 'unitTagPhotoUrl')} title="Upload OCR Unit Data Plate Photo" />
+                                            </label>
+                                            <button type="button" onClick={() => takeNativeAssetPhoto?.('unitTagPhotoUrl')} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full transition-colors" title="Take Photo">
+                                                <Camera size={16} className="text-primary-500" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="shrink-0 flex flex-col items-center justify-center p-3 border-2 border-dashed border-primary-300 dark:border-slate-600 hover:border-primary-500 rounded-xl bg-white dark:bg-slate-900 text-xs text-center w-36 h-32 relative transition-colors shadow-sm overflow-hidden group">
                                 {newAsset.conditionPhotoUrl ? (
                                     <>
                                         <img src={newAsset.conditionPhotoUrl} alt="Condition" className="absolute inset-0 w-full h-full object-cover rounded-xl" />
-                                        <button type="button" onClick={(e) => { e.preventDefault(); setNewAsset({...newAsset, conditionPhotoUrl: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
+                                        <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNewAsset({...newAsset, conditionPhotoUrl: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
                                             <X size={12}/>
                                         </button>
                                     </>
-                                ) : <><PlusCircle size={24} className="mb-2 text-primary-500" /><span className="font-medium text-slate-600 dark:text-slate-300">Condition<br/>Photo</span></>}
-                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleAssetPhotoUpload(e, 'conditionPhotoUrl')} />
-                            </label>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center w-full h-full">
+                                        <span className="font-medium text-slate-600 dark:text-slate-300 mb-2">Condition<br/>Photo</span>
+                                        <div className="flex gap-2">
+                                            <label className="flex flex-col items-center justify-center cursor-pointer p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full transition-colors" title="Upload from Gallery">
+                                                <ImageIcon size={16} className="text-primary-500" />
+                                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleAssetPhotoUpload(e, 'conditionPhotoUrl')} title="Upload Condition Photo" />
+                                            </label>
+                                            <button type="button" onClick={() => takeNativeAssetPhoto?.('conditionPhotoUrl')} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-full transition-colors" title="Take Photo">
+                                                <Camera size={16} className="text-primary-500" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                         
                         <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700 mt-2">

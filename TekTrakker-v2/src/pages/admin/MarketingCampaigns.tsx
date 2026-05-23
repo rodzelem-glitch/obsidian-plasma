@@ -346,20 +346,7 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                         {viewMode === 'analytics' ? 'Campaign Analytics' : 'Campaign Studio'}
                     </h2>
                 </div>
-                <div className="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
-                    <button 
-                        onClick={() => navigate('/admin/campaigns')}
-                        className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-md transition-colors ${viewMode === 'editor' ? 'bg-white dark:bg-slate-900 text-primary-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <Code size={16}/> Studio
-                    </button>
-                    <button 
-                        onClick={() => navigate('/admin/campaigns?tab=analytics')}
-                        className={`px-4 py-2 text-sm font-bold flex items-center gap-2 rounded-md transition-colors ${viewMode === 'analytics' ? 'bg-white dark:bg-slate-900 text-primary-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <BarChart3 size={16}/> Analytics
-                    </button>
-                </div>
+
             </header>
 
             {error && <div className="p-4 bg-red-50 text-red-600 rounded-lg text-sm font-bold border border-red-200">{error}</div>}

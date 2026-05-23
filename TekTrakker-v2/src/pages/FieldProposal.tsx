@@ -9,6 +9,7 @@ import Button from 'components/ui/Button';
 import Select from 'components/ui/Select';
 import { CheckCircle, Eye, Sparkles, Edit2, Mail, Book, Save } from 'lucide-react';
 import { db } from 'lib/firebase';
+import { getNextProposalNumber } from 'lib/numbering';
 import type { Proposal, ProposalItem, ProposalPreset, Customer } from 'types';
 import SignaturePad, { SignaturePadHandle } from 'components/ui/SignaturePad';
 import DocumentPreview from 'components/ui/DocumentPreview';
@@ -156,7 +157,16 @@ const FieldProposal: React.FC = () => {
         setItems(prevItems => prevItems.map(item => {
             if (item.id === id) {
                 const updated = { ...item, [field]: value };
-                if (field === 'unitPrice' || field === 'quantity') {
+                if (field === 'type') {
+                    if (value === 'Discount') {
+                        updated.unitPrice = -Math.abs(Number(updated.unitPrice) || 0);
+                        updated.taxable = false;
+                    } else {
+                        updated.unitPrice = Math.abs(Number(updated.unitPrice) || 0);
+                        updated.taxable = value === 'Part';
+                    }
+                }
+                if (field === 'unitPrice' || field === 'quantity' || field === 'type') {
                     updated.total = (Number(updated.unitPrice) || 0) * (Number(updated.quantity) || 1);
                 }
                 return updated;
@@ -332,7 +342,7 @@ const FieldProposal: React.FC = () => {
         
         setIsSaving(true);
         
-        const proposalId = editProposalId || `prop-${Date.now()}`;
+        const proposalId = editProposalId || await getNextProposalNumber(state.currentOrganization?.id || '');
         
         const getProcessedItems = () => {
             const baseSubtotals: Record<string, number> = { good: 0, better: 0, best: 0 };
@@ -366,6 +376,8 @@ const FieldProposal: React.FC = () => {
             organizationId: state.currentOrganization?.id || '',
             technicianId: state.currentUser?.id || '',
             createdAt: state.proposals.find(p => p.id === editProposalId)?.createdAt || new Date().toISOString(),
+            sentAt: action === 'send' ? new Date().toISOString() : (state.proposals.find(p => p.id === editProposalId)?.sentAt || undefined),
+            remindersSent: state.proposals.find(p => p.id === editProposalId)?.remindersSent || [],
             customerName: customer.name,
             customerId: customer.id,
             customerEmail: customer.email,

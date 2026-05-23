@@ -91,8 +91,23 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         return { subtotal: parseFloat(subtotal.toFixed(2)), tax: parseFloat(tax.toFixed(2)), total: parseFloat(total.toFixed(2)), additionalFeeAmount: parseFloat(additionalFeeAmount.toFixed(2)) };
     }, [lineItems, taxRate, additionalFeePercent]);
 
-    const handleAddItem = (type: InvoiceLineItem['type'] = 'Labor', description: string = '') => {
-        const newItem: InvoiceLineItem = { id: `item-${Date.now()}`, name: 'New Item', description, quantity: 1, unitPrice: 0, total: 0, type, taxable: true };
+    const handleAddItem = (
+        type: InvoiceLineItem['type'] = 'Labor', 
+        description: string = '', 
+        unitPrice: number = 0, 
+        taxable: boolean = true
+    ) => {
+        const randomIdSuffix = Math.floor(Math.random() * 1000000);
+        const newItem: InvoiceLineItem = { 
+            id: `item-${Date.now()}-${randomIdSuffix}`, 
+            name: 'New Item', 
+            description, 
+            quantity: 1, 
+            unitPrice, 
+            total: unitPrice, 
+            type, 
+            taxable 
+        };
         setLineItems(prev => [...prev, newItem]);
     };
 
@@ -100,7 +115,18 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         setLineItems(items => items.map(item => {
             if (item.id === id) {
                 const updated = { ...item, [field]: value };
-                updated.total = updated.quantity * updated.unitPrice; 
+                if (field === 'type') {
+                    if (value === 'Discount') {
+                        updated.unitPrice = -Math.abs(item.unitPrice || 0);
+                        updated.taxable = false;
+                    } else {
+                        updated.unitPrice = Math.abs(item.unitPrice || 0);
+                        updated.taxable = value === 'Part';
+                    }
+                }
+                if (field === 'unitPrice' || field === 'quantity' || field === 'type') {
+                    updated.total = updated.quantity * updated.unitPrice; 
+                }
                 return updated;
             }
             return item;
@@ -374,6 +400,16 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 type: 'Invoice',
                 createdAt: new Date().toISOString()
             });
+            
+            // Record initial invoice sent date
+            const sentAtDate = new Date().toISOString();
+            await db.collection('jobs').doc(currentJob.id).update({
+                'invoice.sentAt': sentAtDate
+            });
+            if (currentJob.invoice) {
+                currentJob.invoice.sentAt = sentAtDate;
+            }
+
             showToast.warn(`Invoice sent to ${email}!`);
             onClose();
         } catch (e) { console.error(e); showToast.warn("Error sending invoice."); }
@@ -421,6 +457,21 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             }
         }
 
+        if (currentJob?.invoice?.remindersSent) {
+            const alreadySentToday = currentJob.invoice.remindersSent.some((dateStr: string) => {
+                try {
+                    return new Date(dateStr).toLocaleDateString() === new Date().toLocaleDateString();
+                } catch (e) {
+                    return false;
+                }
+            });
+            if (alreadySentToday) {
+                if (!await globalConfirm("A reminder has already been sent to this customer today. Are you sure you want to send another one?")) {
+                    return;
+                } 
+            }
+        }
+
         if (!currentJob || !await globalConfirm(`Send payment reminder for invoice #${currentJob.invoice.id} to ${email || 'this customer'}?`)) return;
         if (!email && !phone) { showToast.warn("Customer requires an email or phone number for reminders."); return; }
         setIsSaving(true);
@@ -429,14 +480,15 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             if (!updatedJob) throw new Error("Could not prepare invoice for sending.");
             const link = `${getBaseUrl()}/#/invoice/${currentJob.id}`;
             const orgName = currentOrganization?.name || 'Service Provider';
+            const invTotal = Number(updatedJob.invoice.totalAmount) || Number(updatedJob.invoice.amount) || 0;
             
             if (email) {
                 await db.collection('mail').add({
                     to: [email],
                     message: {
                         subject: `Reminder: Invoice #${updatedJob.invoice.id} from ${orgName}`,
-                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;"><h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${customerName},</p><p>This is a friendly reminder that your invoice <strong>#${updatedJob.invoice.id}</strong> for <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
-                        text: `Reminder: Invoice #${updatedJob.invoice.id} for $${updatedJob.invoice.totalAmount?.toFixed(2)} is outstanding. Pay here: ${link}`
+                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;"><h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${customerName},</p><p>This is a friendly reminder that your invoice <strong>#${updatedJob.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                        text: `Reminder: Invoice #${updatedJob.invoice.id} for $${invTotal.toFixed(2)} is outstanding. Pay here: ${link}`
                     },
                     organizationId: currentOrganization?.id,
                     type: 'InvoiceReminder',
@@ -447,12 +499,23 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             if (phone) {
                 await db.collection('messages').add({
                     to: phone,
-                    body: `Reminder from ${orgName}: Your invoice #${updatedJob.invoice.id} for $${updatedJob.invoice.totalAmount?.toFixed(2)} is outstanding. View and pay securely here: ${link}`,
+                    body: `Reminder from ${orgName}: Your invoice #${updatedJob.invoice.id} for $${invTotal.toFixed(2)} is outstanding. View and pay securely here: ${link}`,
                     organizationId: currentOrganization?.id,
                     status: 'pending',
                     type: 'sms',
                     createdAt: new Date().toISOString()
                 });
+            }
+
+            // Record reminder date
+            const reminderDate = new Date().toISOString();
+            const currentReminders = updatedJob.invoice.remindersSent || [];
+            const newReminders = [...currentReminders, reminderDate];
+            await db.collection('jobs').doc(currentJob.id).update({
+                'invoice.remindersSent': newReminders
+            });
+            if (currentJob.invoice) {
+                currentJob.invoice.remindersSent = newReminders;
             }
 
             showToast.warn(`Reminder sent via ${email ? 'email' : ''} ${email && phone ? 'and ' : ''}${phone ? 'SMS text' : ''}!`);

@@ -13,6 +13,7 @@ import Textarea from '../../../components/ui/Textarea';
 import { useNavigate } from 'react-router-dom';
 import InvoiceEditorModal from '../../../components/modals/InvoiceEditorModal';
 import IndustryToolsHub from '../../tools/IndustryToolsHub';
+import AmbientSafetyRibbon from './AmbientSafetyRibbon';
 import Tesseract from 'tesseract.js';
 
 // Sub-components
@@ -87,8 +88,10 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         }
         
         if (currentPropertyId) {
-            // Only show assets mapped to this property, or unmapped assets
-            customerEquipment = customerEquipment.filter(e => e.propertyId === currentPropertyId || !e.propertyId);
+            // Only show assets mapped to this property.
+            // If the customer has multiple locations, prevent unmapped assets from carrying over between them.
+            const hasMultipleLocations = (customer?.serviceLocations?.length || 0) > 1;
+            customerEquipment = customerEquipment.filter(e => e.propertyId === currentPropertyId || (!hasMultipleLocations && !e.propertyId));
         } else if (customer?.serviceLocations && customer.serviceLocations.length > 1) {
             // If we can't determine the property but there are multiple properties, 
             // only show unmapped equipment to be safe, rather than everything
@@ -117,6 +120,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [isWebCameraOpen, setIsWebCameraOpen] = useState(false);
     const [viewingPhoto, setViewingPhoto] = useState<StoredFile | null>(null);
+    const [assetCameraTarget, setAssetCameraTarget] = useState<'serialPhotoUrl' | 'unitTagPhotoUrl' | 'conditionPhotoUrl' | null>(null);
 
     // Data Capture Modals
     const [isRefrigerantModalOpen, setIsRefrigerantModalOpen] = useState(false);
@@ -135,10 +139,11 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
     const [partLocation, setPartLocation] = useState('Truck');
 
     const docTemplates = useMemo(() => {
+        let templates = state.inspectionTemplates || [];
         if (job.assignedPartnerId === state.currentOrganization?.id && job.embeddedData?.inspectionTemplates) {
-            return job.embeddedData.inspectionTemplates;
+            templates = job.embeddedData.inspectionTemplates;
         }
-        return state.inspectionTemplates || [];
+        return templates.filter((t: InspectionTemplate) => !t.isHiringPacket);
     }, [state.inspectionTemplates, job, state.currentOrganization]);
 
 
@@ -376,11 +381,24 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         }
         const customer = state.customers.find(c => c.id === job.customerId);
         if (customer) {
+            // Determine the current property ID to attach to the new asset
+            const jobAddressStr = typeof job.address === 'string' ? job.address : '';
+            let currentPropertyId = job.locationId;
+            
+            if (!currentPropertyId && jobAddressStr && customer?.serviceLocations) {
+                const matchingLoc = customer.serviceLocations.find(loc => loc.address === jobAddressStr);
+                if (matchingLoc) currentPropertyId = matchingLoc.id;
+            }
+
             let updatedEquipment;
             if (newAsset.id) {
                 updatedEquipment = (customer.equipment || []).map(e => e.id === newAsset.id ? newAsset as EquipmentAsset : e);
             } else {
-                const assetToAdd = { ...newAsset, id: `asset-${Date.now()}` } as EquipmentAsset;
+                const assetToAdd = { 
+                    ...newAsset, 
+                    id: `asset-${Date.now()}`,
+                    propertyId: newAsset.propertyId || currentPropertyId || undefined
+                } as EquipmentAsset;
                 updatedEquipment = [...(customer.equipment || []), assetToAdd];
             }
             
@@ -715,6 +733,38 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         }
     };
 
+    const handleNativeAssetCameraTrigger = async (photoType: 'serialPhotoUrl' | 'unitTagPhotoUrl' | 'conditionPhotoUrl') => {
+        try {
+            const isNative = (window as any).Capacitor?.isNativePlatform();
+            
+            if (isNative) {
+                const image = await Camera.getPhoto({
+                    quality: 60,
+                    allowEditing: false,
+                    resultType: CameraResultType.DataUrl,
+                    source: CameraSource.Camera,
+                    saveToGallery: false
+                });
+
+                if (image.dataUrl) {
+                    const response = await fetch(image.dataUrl);
+                    const blob = await response.blob();
+                    const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    
+                    const mockEvent = { target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>;
+                    await handleAssetPhotoUpload(mockEvent, photoType);
+                }
+            } else {
+                setAssetCameraTarget(photoType);
+                setIsWebCameraOpen(true);
+            }
+        } catch (e: any) {
+            console.error("Camera error:", e);
+            setAssetCameraTarget(photoType);
+            setIsWebCameraOpen(true);
+        }
+    };
+
     const processCapturedFile = async (file: File, label: string) => {
         setIsSaving(true);
         try {
@@ -900,6 +950,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
             </div>
 
             <div className="flex-1 overflow-y-auto w-full max-w-4xl mx-auto p-4 md:p-6 custom-scrollbar">
+                <AmbientSafetyRibbon job={job} currentUser={state.currentUser} />
                 <ArrivalStep 
                     job={job} 
                     customer={state.customers?.find(c => c.id === job.customerId)}
@@ -920,6 +971,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                     files={files}
                     handlePhotoUpload={handlePhotoUpload}
                     takeNativePhoto={() => handleNativeCameraTrigger('Pre-Work')}
+                    takeNativeAssetPhoto={handleNativeAssetCameraTrigger}
                     onDeletePhoto={handleDeletePhoto}
                     onViewPhoto={setViewingPhoto}
                     hidden={step !== 1} 
@@ -983,7 +1035,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                     setMembershipOffered={(val) => updateWorkflowState('membershipOffered', val)} 
                     hidden={step !== 4} 
                 />
-                {step === 5 && <BillingStep handleGoToPayments={() => setIsInvoiceEditorOpen(true)} handleLeaveSite={handleLeaveSite} onOpenInvoiceSelector={() => setIsInvoiceSelectorOpen(true)} />}
+                {step === 5 && <BillingStep handleGoToPayments={() => setIsInvoiceEditorOpen(true)} onOpenInvoiceSelector={() => setIsInvoiceSelectorOpen(true)} />}
             </div>
 
             <div className="w-full shrink-0 z-10 p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] safe-bottom">
@@ -1291,10 +1343,20 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         <WaiverModal isOpen={isWaiverOpen} onClose={() => setIsWaiverOpen(false)} onSign={() => {}} job={job} />
         <VisualQCModal isOpen={isQCOpen} onClose={() => setIsQCOpen(false)} onComplete={() => setIsQCOpen(false)} jobId={job.id} organizationId={job.organizationId} />
         <BarcodeScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScan={handleScanResult} />
-        <WebCameraModal isOpen={isWebCameraOpen} onClose={() => setIsWebCameraOpen(false)} onCapture={(dataUrl) => {
-             fetch(dataUrl).then(r => r.blob()).then(blob => {
+        <WebCameraModal isOpen={isWebCameraOpen} onClose={() => {
+            setIsWebCameraOpen(false);
+            setAssetCameraTarget(null);
+        }} onCapture={(dataUrl) => {
+             fetch(dataUrl).then(r => r.blob()).then(async blob => {
                  const file = new File([blob], `webcam_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                 processCapturedFile(file, cameraLabel);
+                 if (assetCameraTarget) {
+                     const mockEvent = { target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>;
+                     await handleAssetPhotoUpload(mockEvent, assetCameraTarget);
+                     setAssetCameraTarget(null);
+                 } else {
+                     processCapturedFile(file, cameraLabel);
+                 }
+                 setIsWebCameraOpen(false);
              });
         }} />
         

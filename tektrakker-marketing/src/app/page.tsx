@@ -5,7 +5,8 @@ import {
     Zap, Shield, BarChart3, Smartphone,
     CheckCircle, ArrowRight, Cpu, Users, DollarSign,
     Heart, TrendingUp, Layers, MapPin, Star, X, Mail,
-    UserCircle, Wrench, Layout, HandCoins, Bot
+    UserCircle, Wrench, Layout, HandCoins, Bot,
+    Calendar, Award, PhoneCall
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -26,87 +27,179 @@ const Logo = ({ className }: { className?: string }) => (
 
 const FEATURES = [
     {
-        id: 'invoicing',
+        id: 'scheduling-dispatch',
+        title: 'Scheduling & Dispatch',
+        desc: 'The command center for your entire service fleet. Visually manage schedules, dispatch techs instantly, and reduce driving time.',
+        icon: Calendar,
+        color: 'text-blue-600',
+        bgColor: 'bg-blue-50',
+        borderColor: 'border-blue-200',
+        benefit: 'Customers receive automatic dispatch updates with a live tracking link, reducing incoming status calls by 60%.'
+    },
+    {
+        id: 'invoicing-payments',
         title: 'Automated Invoicing & Payments',
         desc: 'Generate professional invoices, accept online payments, process credit cards directly on the field, and automate follow-ups to get paid faster.',
         icon: HandCoins,
         color: 'text-green-600',
         bgColor: 'bg-green-50',
-        borderColor: 'border-green-200'
+        borderColor: 'border-green-200',
+        benefit: 'Technicians report a 40% reduction in billing disputes and same-day payment collection increase.'
     },
     {
-        id: 'gps',
-        title: 'Geofenced Time Tracking',
-        desc: 'Automatically track technician arrival and departure times using precise GPS geofencing. Ensure 100% accurate payroll and eliminate time theft effortlessly.',
-        icon: MapPin,
-        color: 'text-orange-600',
-        bgColor: 'bg-orange-50',
-        borderColor: 'border-orange-200'
-    },
-    {
-        id: 'mobile',
+        id: 'field-service-app',
         title: 'Mobile App for Technicians',
-        desc: 'Empower your field team with a dedicated mobile app for job details, checklists, time tracking, picture taking, and full on-site sales presentations.',
+        desc: 'Empower your field team with a dedicated mobile app for job details, safety notifications, time tracking, and on-site payments.',
         icon: Smartphone,
         color: 'text-sky-600',
         bgColor: 'bg-sky-50',
-        borderColor: 'border-sky-200'
+        borderColor: 'border-sky-200',
+        benefit: 'A unified field experience that works offline and keeps everyone synced without a single phone call.'
     },
     {
-        id: 'memberships',
+        id: 'estimating-proposals',
+        title: 'Estimating & Proposals',
+        desc: 'Offer Good, Better, Best proposal tiers with digital signatures that make buying easy and raise average ticket sizes.',
+        icon: Layout,
+        color: 'text-pink-600',
+        bgColor: 'bg-pink-50',
+        borderColor: 'border-pink-200',
+        benefit: 'The system suggests tiers and upsells based on job type, increasing average ticket size by 25%.'
+    },
+    {
+        id: 'service-agreements',
         title: 'Recurring Memberships',
-        desc: 'Build incredible recurring revenue with native membership plans. Automatically charge cards on file, schedule preventative maintenance, and drive loyalty with ease.',
+        desc: 'Build predictable recurring revenue with native membership plans. Charge cards on file, schedule tuneups, and drive client loyalty.',
         icon: Heart,
         color: 'text-red-600',
         bgColor: 'bg-red-50',
-        borderColor: 'border-red-200'
+        borderColor: 'border-red-200',
+        benefit: 'Secure monthly cash flow that allows you to predict revenue and schedule maintenance during slow seasons.'
     },
     {
-        id: 'analytics',
+        id: 'geofenced-time-tracking',
+        title: 'Geofenced Time Tracking',
+        desc: 'Automatically track technician arrival and departure times using precise GPS geofencing. Ensure 100% accurate payroll.',
+        icon: MapPin,
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-50',
+        borderColor: 'border-orange-200',
+        benefit: 'GPS precision eliminates \'buddy punching\' and ensures your customers get billed for every minute on site.'
+    },
+    {
+        id: 'analytics-reporting',
         title: 'Powerful Analytics & Reporting',
-        desc: 'Gain insights into your business performance with customizable dashboards, real-time P&L tracking, and advanced technician efficiency reports.',
+        desc: 'Gain insights into your business performance with customizable dashboards, real-time P&L tracking, and advanced technician metrics.',
         icon: BarChart3,
         color: 'text-purple-600',
         bgColor: 'bg-purple-50',
-        borderColor: 'border-purple-200'
+        borderColor: 'border-purple-200',
+        benefit: 'Stop guessing. See exactly which technicians are most profitable and which jobs are losing you money.'
     },
     {
-        id: 'crm',
+        id: 'client-management-crm',
         title: 'Client Management (CRM)',
-        desc: 'Keep all customer information, detailed service history, equipment age, and native communication logs in one centralized, search-friendly place.',
+        desc: 'Keep all customer information, detailed service history, equipment age, and native communication logs in one central location.',
         icon: UserCircle,
         color: 'text-teal-600',
         bgColor: 'bg-teal-50',
-        borderColor: 'border-teal-200'
+        borderColor: 'border-teal-200',
+        benefit: 'Every interaction, every picture, and every invoice ever sent to a customer, organized perfectly.'
     },
     {
-        id: 'ai-estimating',
-        title: 'AI-Powered Estimating',
-        desc: 'Generate accurate quotes and Good/Better/Best proposals faster with our intelligent estimating tools that learn from your historical data and win rates.',
-        icon: Cpu,
-        color: 'text-pink-600',
-        bgColor: 'bg-pink-50',
-        borderColor: 'border-pink-200'
-    },
-    {
-        id: 'bid-network',
+        id: 'contractor-bid-network',
         title: 'Contractor Bid Network',
         desc: 'Outsource excess work or bid on available jobs from other businesses. Expand your capacity instantly without hiring.',
         icon: Layers,
         color: 'text-blue-600',
         bgColor: 'bg-blue-50',
         borderColor: 'border-blue-200',
-        isNew: true
+        benefit: 'Never turn down a customer again. Pass the job to a verified partner and take a platform commission.'
     },
     {
-        id: 'ai-marketing',
+        id: 'ai-omni-channel-marketing',
         title: 'AI Omni-Channel Marketing',
         desc: 'Automatically preview and publish perfectly formatted marketing content across all your social networks with a single click.',
         icon: Bot,
         color: 'text-fuchsia-600',
         bgColor: 'bg-fuchsia-50',
         borderColor: 'border-fuchsia-200',
-        isNew: true
+        benefit: 'One click to generate and schedule content for Facebook, Instagram, LinkedIn, and more.'
+    },
+    {
+        id: 'ai-powered-estimating',
+        title: 'AI-Powered Estimating',
+        desc: 'Generate accurate quotes and Good/Better/Best proposals faster with our intelligent estimating tools that parse job diagnostics.',
+        icon: Cpu,
+        color: 'text-pink-600',
+        bgColor: 'bg-pink-50',
+        borderColor: 'border-pink-200',
+        benefit: 'AI instantly turns technician voice notes into code-perfect estimates, cutting admin time by 80%.'
+    },
+    {
+        id: 'ai-virtual-worker',
+        title: 'AI Virtual Worker',
+        desc: 'Stop hiring expensive administrators for data entry. Add a dedicated AI agent to your organization that handles customer inquiries 24/7.',
+        icon: Bot,
+        color: 'text-indigo-600',
+        bgColor: 'bg-indigo-50',
+        borderColor: 'border-indigo-200',
+        benefit: 'The virtual worker books incoming leads, confirms appointments, and schedules dispatches while you sleep.'
+    },
+    {
+        id: 'antigravity-ai',
+        title: 'Antigravity AI Assistant',
+        desc: 'Next-generation AI built directly into your workflow. Automatically highlights operations inefficiencies and runs diagnostics instantly.',
+        icon: Zap,
+        color: 'text-cyan-600',
+        bgColor: 'bg-cyan-50',
+        borderColor: 'border-cyan-200',
+        isNew: true,
+        benefit: 'Highlights operational bottlenecks and automates invoice reconciliation in real time.'
+    },
+    {
+        id: 'osha-safety-reminders',
+        title: 'OSHA Safety Reminders',
+        desc: 'Keep technicians safe and businesses compliant. Ambient risk notifications flash when specific tasks present hazard levels.',
+        icon: Shield,
+        color: 'text-amber-600',
+        bgColor: 'bg-amber-50',
+        borderColor: 'border-amber-200',
+        isNew: true,
+        benefit: 'Technicians get safety updates tailored to active job hazard layers, preventing workplace compliance incidents.'
+    },
+    {
+        id: 'ringcentral-telephony',
+        title: 'RingCentral Telephony',
+        desc: 'Native integrated telephony. Open dialers directly in the platform, make VoIP calls, receive automated logs, and handle text messages.',
+        icon: PhoneCall,
+        color: 'text-sky-600',
+        bgColor: 'bg-sky-50',
+        borderColor: 'border-sky-200',
+        isNew: true,
+        benefit: 'Calls and texts sync to CRM profiles automatically, so you never lose track of a client conversation.'
+    },
+    {
+        id: 'drip-email-campaigns',
+        title: 'Drip Email Campaigns',
+        desc: 'Nurture leads and close more jobs. Build automated transactional sequences and seasonal marketing campaigns with custom email canvases.',
+        icon: Mail,
+        color: 'text-indigo-600',
+        bgColor: 'bg-indigo-50',
+        borderColor: 'border-indigo-200',
+        isNew: true,
+        benefit: 'Boost customer retention by keeping touchpoints active with seasonal promos and post-job check-ins.'
+    },
+    {
+        id: 'custom-tools-marketplace',
+        title: 'Custom Tools & App Marketplace',
+        desc: 'Extend TekTrakker v2 with your own custom workflow modules. Design specialized forms, checklist cards, and technical calculators, or share tools fleet-wide.',
+        icon: Wrench,
+        color: 'text-teal-600',
+        bgColor: 'bg-teal-50',
+        borderColor: 'border-teal-200',
+        isNew: true,
+        benefit: 'Design custom diagnostic and check forms without any code, syncing instantly to all fleet field devices.'
     }
 ];
 
@@ -115,7 +208,7 @@ const InteractiveFeatureShowcase = () => {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            <div className="lg:col-span-5 space-y-3">
+            <div className="lg:col-span-5 max-h-[700px] overflow-y-auto pr-2 space-y-3 scrollbar-thin scrollbar-thumb-slate-300">
                 {FEATURES.map((feature, idx) => (
                     <div 
                         key={feature.id}
@@ -158,25 +251,26 @@ const InteractiveFeatureShowcase = () => {
                             {React.createElement(FEATURES[activeIndex].icon, { size: 40 })}
                         </div>
                         <h3 className="text-3xl md:text-4xl font-black text-slate-900 mb-6">{FEATURES[activeIndex].title}</h3>
-                        <p className="text-lg md:text-xl text-slate-600 leading-relaxed max-w-2xl mx-auto mb-10">
+                        <p className="text-lg md:text-xl text-slate-600 leading-relaxed max-w-2xl mx-auto mb-8">
                             {FEATURES[activeIndex].desc}
                         </p>
                         
-                        <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 text-left">
+                        <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 text-left mb-8">
                             <div className="flex items-center gap-2 text-primary-700 font-bold text-sm mb-4">
                                 <CheckCircle size={16} /> Key Benefit
                             </div>
-                            <p className="text-slate-700 font-medium italic leading-relaxed">
-                                {activeIndex === 0 && "Technicians reported a 40% reduction in billing disputes and same-day payment collection increase."}
-                                {activeIndex === 1 && "GPS precision eliminates 'buddy punching' and ensures your customers get billed for every minute on site."}
-                                {activeIndex === 2 && "A unified field experience that works offline and keeps everyone synced without a single phone call."}
-                                {activeIndex === 3 && "Secure monthly cash flow that allows you to predict revenue and schedule maintenance during slow seasons."}
-                                {activeIndex === 4 && "Stop guessing. See exactly which technicians are most profitable and which jobs are losing you money."}
-                                {activeIndex === 5 && "Every interaction, every picture, and every invoice ever sent to a customer, organized perfectly."}
-                                {activeIndex === 6 && "The system suggests tiers and upsells based on job type, increasing average ticket size by 25%."}
-                                {activeIndex === 7 && "Never turn down a customer again. Pass the job to a verified partner and take a platform commission."}
-                                {activeIndex === 8 && "One click to generate and schedule content for Facebook, Instagram, LinkedIn, and more."}
+                            <p className="text-slate-700 font-medium italic leading-relaxed text-sm md:text-base">
+                                {FEATURES[activeIndex].benefit}
                             </p>
+                        </div>
+
+                        <div className="flex justify-center">
+                            <Link 
+                                href={`/features/${FEATURES[activeIndex].id}`}
+                                className="inline-flex h-14 px-8 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-base hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl hover:shadow-slate-950/20 items-center justify-center gap-2"
+                            >
+                                Explore Detailed Guide & Explore Visuals <ArrowRight size={18} />
+                            </Link>
                         </div>
                     </div>
                 </div>

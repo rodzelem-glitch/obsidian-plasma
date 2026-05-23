@@ -1,11 +1,10 @@
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
 
-const db = admin.firestore();
-
 export const cascadeCustomerUpdates = functions.firestore
     .document('customers/{customerId}')
     .onUpdate(async (change, context) => {
+        const db = admin.firestore();
         const before = change.before.data();
         const after = change.after.data();
         const customerId = context.params.customerId;
@@ -30,14 +29,14 @@ export const cascadeCustomerUpdates = functions.firestore
             const jobsSnap = await db.collection('jobs').where('customerId', '==', customerId).get();
             jobsSnap.forEach(doc => {
                 const job = doc.data();
-                const updates: any = {};
+                const updates: Record<string, unknown> = {};
                 
                 if (nameChanged) updates.customerName = after.name;
                 if (addressChanged && job.address === before.address) updates.address = after.address;
 
                 // Update embedded invoice if present
                 if (job.invoice) {
-                    const invoiceUpdates: any = {};
+                    const invoiceUpdates: Record<string, unknown> = {};
                     if (nameChanged) invoiceUpdates['invoice.customerName'] = after.name;
                     if (emailChanged) invoiceUpdates['invoice.customerEmail'] = after.email;
                     
@@ -57,7 +56,7 @@ export const cascadeCustomerUpdates = functions.firestore
             try {
                 const proposalsSnap = await db.collection('proposals').where('customerId', '==', customerId).get();
                 proposalsSnap.forEach(doc => {
-                    const updates: any = {};
+                    const updates: Record<string, unknown> = {};
                     if (nameChanged) updates.customerName = after.name;
                     if (emailChanged) updates.customerEmail = after.email;
                     
@@ -66,7 +65,7 @@ export const cascadeCustomerUpdates = functions.firestore
                         updateCount++;
                     }
                 });
-            } catch (e) {
+            } catch {
                 // Ignore if proposals collection doesn't exist
             }
 

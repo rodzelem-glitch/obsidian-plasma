@@ -6,7 +6,6 @@ import Button from 'components/ui/Button';
 import Textarea from 'components/ui/Textarea';
 import { Star } from 'lucide-react';
 import { db } from 'lib/firebase';
-import { useAppContext } from 'context/AppContext';
 import type { Review } from 'types';
 
 interface ReviewModalProps {
@@ -64,16 +63,21 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, organization
             <div className="space-y-4">
                 <p className="text-sm text-slate-500">Your feedback helps other customers and allows this provider to improve.</p>
                 <div>
-                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Overall Rating</label>
-                    <div className="flex items-center gap-1 text-amber-400">
+                    <div id="rating-label" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Overall Rating</div>
+                    <div className="flex items-center gap-1 text-amber-400" role="group" aria-labelledby="rating-label">
                         {[1, 2, 3, 4, 5].map(i => (
-                            <Star 
-                                key={i} 
-                                size={32} 
-                                className="cursor-pointer transition-transform hover:scale-110"
-                                fill={i <= rating ? "currentColor" : "none"}
-                                onClick={() => setRating(i)} 
-                            />
+                            <button
+                                type="button"
+                                key={i}
+                                className="cursor-pointer transition-transform hover:scale-110 p-0 border-none bg-transparent"
+                                onClick={() => setRating(i)}
+                                aria-label={`Rate ${i} stars`}
+                            >
+                                <Star 
+                                    size={32} 
+                                    fill={i <= rating ? "currentColor" : "none"}
+                                />
+                            </button>
                         ))}
                     </div>
                 </div>

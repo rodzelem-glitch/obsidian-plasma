@@ -19,7 +19,7 @@ const ListView: React.FC<ListViewProps> = ({ applicants, onSelectApplicant, stat
                     <tr key={app.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td className="px-6 py-3 font-bold text-gray-900 dark:text-white flex items-center gap-2">
                             {app.name || `${app.firstName} ${app.lastName}`}
-                            {app.resumeDataUrl && <div title="Resume Attached" className="p-1 bg-blue-100 text-blue-600 rounded-full"><FileText size={12}/></div>}
+                            {(app.resumeUrl || app.resumeDataUrl) && <div title="Resume Attached" className="p-1 bg-blue-100 text-blue-600 rounded-full"><FileText size={12}/></div>}
                         </td>
                         <td className="px-6 py-3 text-gray-600 dark:text-gray-300">{app.position}</td>
                         <td className="px-6 py-3 text-gray-500 text-sm">{(app.applicationDate || app.appliedDate) ? new Date(app.applicationDate || app.appliedDate).toLocaleDateString() : 'N/A'}</td>

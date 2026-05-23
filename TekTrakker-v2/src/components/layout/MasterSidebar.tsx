@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket, DollarSign } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket, DollarSign, Terminal } from 'lucide-react';
 import type { User } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 
@@ -53,6 +53,12 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
         { path: '/master/sales-team', label: 'Sales Force', icon: Briefcase },
         { path: '/master/messages', label: 'Messages', icon: MessageSquare },
         { path: '/master/inbox', label: 'Email Hub', icon: Mail },
+      ]
+    },
+    {
+      group: 'System Operations',
+      items: [
+        { path: '/master/developer-console', label: 'Mobile Dev Console', icon: Terminal },
       ]
     }
   ];

@@ -395,6 +395,7 @@ const CustomerPayment: React.FC = () => {
                                                 jobId={jobId}
                                                 accountId={currentActiveOrg?.kortAccountId}
                                                 organizationId={currentActiveOrg?.id}
+                                                organization={currentActiveOrg}
                                                 onSuccess={async (_paymentId) => {
                                                     await markJobPaid(_paymentId);
                                                     showToast.success("Payment Successful via Kort");

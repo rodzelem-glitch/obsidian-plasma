@@ -20,7 +20,7 @@ export const getCurrentLocation = async (): Promise<LocationData | null> => {
 
         const position = await Geolocation.getCurrentPosition({
             enableHighAccuracy: true,
-            timeout: 10000
+            timeout: 15000
         });
 
         return {
@@ -30,7 +30,7 @@ export const getCurrentLocation = async (): Promise<LocationData | null> => {
             timestamp: position.timestamp
         };
     } catch (e) {
-        console.error("Geolocation Error:", e);
+        console.warn("Capacitor Geolocation Error, attempting browser fallback:", e);
         // Fallback to browser geolocation if not on native/failed
         return new Promise((resolve) => {
             if (!navigator.geolocation) {
@@ -45,7 +45,7 @@ export const getCurrentLocation = async (): Promise<LocationData | null> => {
                     timestamp: pos.timestamp
                 }),
                 () => resolve(null),
-                { enableHighAccuracy: true, timeout: 10000 }
+                { enableHighAccuracy: false, timeout: 5000 }
             );
         });
     }

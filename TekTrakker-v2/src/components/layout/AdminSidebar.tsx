@@ -9,7 +9,7 @@ import {
     WrenchScrewdriverIcon, FinancialIcon, BoxIcon,
     SettingsIcon, BadgeIcon, BriefcaseIcon,
     Shield, MegaphoneIcon, TrendingUp, Star, FileText,
-    FolderKanban
+    FolderKanban, PresentationIcon
 } from '@constants';
 import { Logo } from '../ui/Logo';
 import { useFeatureGating } from 'hooks/useFeatureGating';
@@ -34,6 +34,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
   const location = useLocation();
   const isDemo = user.role === 'platform_sales' && state.currentOrganization?.id === 'demo-org-1766848718439';
   const isPaymentsOnly = state.currentOrganization?.plan === 'payments_only';
+  const isKortTester = user?.email === 'integrations@kortpayments.com' || (user?.role as string) === 'kort_tester';
+  const isUnlocked = isKortTester && typeof window !== 'undefined' && localStorage.getItem('kort_tester_unlocked') === 'true';
 
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
   const [orderedPaths, setOrderedPaths] = useState<string[]>([]);
@@ -161,24 +163,59 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
   // Payments Only plan: restrict sidebar to only essential pages
   const paymentsOnlyAllowedPaths = ['/admin/dashboard', '/admin/financials', '/admin/estimator', '/admin/settings'];
 
-  const processedItems = orderedPaths.map(path => {
-      if (path.startsWith('__group__:')) {
-          const originalGroup = path.split('__group__:')[1];
-          return { isGroup: true, originalGroup, label: customLabels[originalGroup] || originalGroup, path };
-      } else {
-          const item = allItemsRecord[path];
-          if (!item) return null;
-          // Payments Only plan: hide all nav items except the allowed subset
-          if (isPaymentsOnly && !paymentsOnlyAllowedPaths.includes(item.path)) return null;
-          if (item.featureKey && !hasFeature(item.featureKey)) return null;
-          let roleAllowed = false;
-          if (user.role === 'master_admin' || user.role === 'admin' || user.role === 'both' || isDemo) roleAllowed = true;
-          else if (user.role === 'supervisor') roleAllowed = item.roles.includes('supervisor');
-          if (!roleAllowed) return null;
+  const rawProcessedItems = useMemo(() => {
+    return (isKortTester && !isUnlocked)
+      ? [
+          {
+            isGroup: false,
+            path: '/admin/kort-playground',
+            label: 'Kort Sandbox',
+            icon: WrenchScrewdriverIcon,
+            originalLabel: 'Kort Sandbox'
+          },
+          {
+            isGroup: false,
+            path: '/admin/settings',
+            label: 'Settings',
+            icon: SettingsIcon,
+            originalLabel: 'Settings'
+          }
+        ] as any[]
+      : orderedPaths.map(path => {
+        if (path.startsWith('__group__:')) {
+            const originalGroup = path.split('__group__:')[1];
+            return { isGroup: true, originalGroup, label: customLabels[originalGroup] || originalGroup, path };
+        } else {
+            const item = allItemsRecord[path];
+            if (!item) return null;
+            // Payments Only plan: hide all nav items except the allowed subset
+            if (isPaymentsOnly && !paymentsOnlyAllowedPaths.includes(item.path)) return null;
+            if (item.featureKey && !hasFeature(item.featureKey)) return null;
+            let roleAllowed = false;
+            if (user.role === 'master_admin' || user.role === 'admin' || user.role === 'both' || isDemo || (isKortTester && isUnlocked)) roleAllowed = true;
+            else if (user.role === 'supervisor') roleAllowed = item.roles.includes('supervisor');
+            if (!roleAllowed) return null;
 
-          return { isGroup: false, ...item, originalLabel: item.label, label: customLabels[item.path] || item.label, path };
-      }
-  }).filter(Boolean) as any[];
+            return { isGroup: false, ...item, originalLabel: item.label, label: customLabels[item.path] || item.label, path };
+        }
+    }).filter(Boolean) as any[];
+  }, [isKortTester, isUnlocked, customLabels, isPaymentsOnly, hasFeature, user.role, isDemo, orderedPaths, allItemsRecord]);
+
+  const processedItems = useMemo(() => {
+    if (isKortTester && isUnlocked) {
+      return [
+        {
+          isGroup: false,
+          path: '/admin/kort-playground',
+          label: 'Kort Sandbox',
+          icon: WrenchScrewdriverIcon,
+          originalLabel: 'Kort Sandbox'
+        },
+        ...rawProcessedItems
+      ] as any[];
+    }
+    return rawProcessedItems;
+  }, [isKortTester, isUnlocked, rawProcessedItems]);
 
   const moveGlobalItem = (currentIndex: number, direction: -1 | 1) => {
       if (currentIndex + direction < 0 || currentIndex + direction >= processedItems.length) return;
@@ -375,6 +412,29 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
                 </button>
             )}
 
+            {isKortTester && (
+                <button
+                    onClick={() => {
+                        const newUnlocked = !isUnlocked;
+                        localStorage.setItem('kort_tester_unlocked', String(newUnlocked));
+                        window.location.href = newUnlocked ? '/#/admin/dashboard' : '/#/admin/kort-playground';
+                        window.location.reload();
+                    }}
+                    title={isCollapsed ? (isUnlocked ? "Sandbox View" : "Full Platform Layout") : undefined}
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 border rounded-md shadow-sm text-xs font-semibold transition-all duration-200 ${
+                        isUnlocked 
+                        ? 'border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20 hover:bg-amber-100 dark:hover:bg-amber-950/40' 
+                        : 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40'
+                    } ${isCollapsed ? 'px-0' : ''}`}
+                >
+                    {isCollapsed ? (
+                        isUnlocked ? <WrenchScrewdriverIcon className="h-4 w-4 text-amber-500" /> : <DashboardIcon className="h-4 w-4 text-indigo-500" />
+                    ) : (
+                        isUnlocked ? "Return to Sandbox View" : "See Real Platform Layout"
+                    )}
+                </button>
+            )}
+
             <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : ''}`}>
                 <div className="h-8 w-8 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center text-primary-700 dark:text-primary-300 font-bold shrink-0">
                     {user.firstName ? user.firstName[0] : 'U'}
@@ -410,3 +470,4 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
 };
 
 export default AdminSidebar;
+

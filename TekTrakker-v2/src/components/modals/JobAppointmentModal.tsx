@@ -5,6 +5,7 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
+import { getNextInvoiceNumber } from 'lib/numbering';
 import type { Customer, Job, Subcontractor } from '../../types';
 import CustomerSearch from './job-appointment/CustomerSearch';
 import AssignmentType from './job-appointment/AssignmentType';
@@ -51,7 +52,8 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
 
     // Form State
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [timeSlot, setTimeSlot] = useState('09:00'); 
+    const [timeSlot, setTimeSlot] = useState('09:00');
+    const [duration, setDuration] = useState(120); 
     const [jobType, setJobType] = useState('Repair');
     const [assignMode, setAssignMode] = useState<'internal' | 'partner'>('internal');
     const [technicianId, setTechnicianId] = useState('');
@@ -84,6 +86,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                     setDate(localTime.toISOString().split('T')[0]);
                     setTimeSlot(localTime.toISOString().split('T')[1].slice(0, 5));
                 }
+                setDuration(jobToEdit.duration || 120);
                 setJobType(jobToEdit.tasks && jobToEdit.tasks[0] ? jobToEdit.tasks[0] : 'Repair');
                 setAssignMode(jobToEdit.assignedPartnerId ? 'partner' : 'internal');
                 setTechnicianId(jobToEdit.assignedTechnicianId || '');
@@ -101,6 +104,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
             } else {
                 setDate(new Date().toISOString().split('T')[0]);
                 setTimeSlot('09:00');
+                setDuration(120);
                 setJobType('Repair');
                 setAssignMode('internal');
                 setTechnicianId('');
@@ -194,6 +198,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
 
                 if (jobToEdit) {
                     const updatePayload: Partial<Job> = {
+                        duration,
                         appointmentTime: appointmentTimeIso,
                         tasks: [finalJobType],
                         priority: isHighPriority ? 'High' : 'Normal',
@@ -236,7 +241,9 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
 
                     onClose();
                 } else {
+                    const nextInvId = await getNextInvoiceNumber(state.currentOrganization.id);
                     const newJobData: Job = {
+                        duration,
                         id: `job-${Date.now()}`,
                         organizationId: state.currentOrganization.id,
                         customerName: selectedCustomer.name,
@@ -262,7 +269,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         specialInstructions: notes || '',
                         source: leadSource || 'Call-In',
                         projectId: selectedProjectId || null,
-                        invoice: { id: `INV-${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: (state.currentOrganization.taxRate || 8.25) / 100, taxAmount: 0, totalAmount: 0, amount: 0 },
+                        invoice: { id: nextInvId, status: 'Unpaid', items: [], subtotal: 0, taxRate: (state.currentOrganization.taxRate || 8.25) / 100, taxAmount: 0, totalAmount: 0, amount: 0 },
                         jobEvents: [],
                         createdAt: new Date().toISOString(),
                         requiredWaiverIds: selectedWaivers,
@@ -377,6 +384,8 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         setDate={setDate}
                         timeSlot={timeSlot}
                         setTimeSlot={setTimeSlot}
+                        duration={duration}
+                        setDuration={setDuration}
                         jobType={jobType}
                         setJobType={setJobType}
                         availableTypes={availableTypes}
@@ -387,7 +396,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         isHighPriority={isHighPriority}
                         setIsHighPriority={setIsHighPriority}
                         waiverTemplates={state.documents.filter(d => d.type === 'Waiver Template')}
-                        checklistTemplates={state.inspectionTemplates || []}
+                        checklistTemplates={(state.inspectionTemplates || []).filter(t => !t.isHiringPacket)}
                         selectedWaivers={selectedWaivers}
                         setSelectedWaivers={setSelectedWaivers}
                         selectedDiagChecklists={selectedDiagChecklists}

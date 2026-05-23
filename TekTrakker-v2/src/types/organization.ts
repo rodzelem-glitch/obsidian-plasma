@@ -31,6 +31,8 @@ export interface Organization {
     complianceFooter?: string | null;
     financingLink?: string | null;
     termsAndConditions?: string | null;
+    customerTerms?: string | null;
+    proposalTerms?: string | null;
     membershipTerms?: string | null;
     footerImage?: string | null;
     subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled' | 'paused';
@@ -108,6 +110,12 @@ export interface Organization {
     customDiscountPct?: number;
     quickbooksConnected?: boolean;
     aiPricebookEnabled?: boolean;
+    invoicePrefix?: string;
+    invoiceStartNumber?: number;
+    nextInvoiceNum?: number;
+    proposalPrefix?: string;
+    proposalStartNumber?: number;
+    nextProposalNum?: number;
     salesRepId?: string;
     promoCode?: string | null;
     measureQuickApiKey?: string;

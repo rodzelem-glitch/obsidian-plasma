@@ -43,8 +43,11 @@ export const submitWidgetForm = functions.https.onRequest((req, res) => {
       const uploadFile = async (dataUrl: string, folder: string, originalName: string) => {
         try {
           if (!dataUrl || !dataUrl.startsWith('data:')) return null;
-          const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-          if (!matches || matches.length !== 3) return null;
+          const matches = dataUrl.match(/^data:(.*?);base64,(.+)$/);
+          if (!matches || matches.length !== 3) {
+              console.error("dataUrl did not match regex. Mime type might be unsupported or string is malformed.");
+              return null;
+          }
           
           const contentType = matches[1];
           const buffer = Buffer.from(matches[2], 'base64');

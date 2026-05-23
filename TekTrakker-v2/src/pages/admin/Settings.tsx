@@ -6,7 +6,7 @@ import { useAppContext } from 'context/AppContext';
 import Button from 'components/ui/Button';
 import { db, functions } from 'lib/firebase';
 import {
-    Building, Globe, Activity, Scale, CreditCard, Palette, Zap, Database, FileText, Wrench
+    Building, Globe, Activity, Scale, CreditCard, Palette, Zap, Database, FileText, Wrench, AlertTriangle
 } from 'lucide-react';
 import type { Organization, IndustryVertical, Address } from 'types';
 import Modal from 'components/ui/Modal';
@@ -78,6 +78,16 @@ const Settings: React.FC = () => {
     const [marketMultiplier, setMarketMultiplier] = useState('1.0');
     const [aiPricebookEnabled, setAiPricebookEnabled] = useState(true);
     const [virtualWorkerEnabled, setVirtualWorkerEnabled] = useState(false);
+    const [invoicePrefix, setInvoicePrefix] = useState('INV-');
+    const [invoiceStartNumber, setInvoiceStartNumber] = useState('1000');
+    const [proposalPrefix, setProposalPrefix] = useState('PROP-');
+    const [proposalStartNumber, setProposalStartNumber] = useState('1000');
+    const [cardProcessingFeeEnabled, setCardProcessingFeeEnabled] = useState(false);
+    const [cardProcessingFeePercent, setCardProcessingFeePercent] = useState('2.9');
+    const [cardProcessingFeeFlat, setCardProcessingFeeFlat] = useState('0.30');
+    const [achProcessingFeeEnabled, setAchProcessingFeeEnabled] = useState(false);
+    const [achProcessingFeePercent, setAchProcessingFeePercent] = useState('1.0');
+    const [achProcessingFeeFlat, setAchProcessingFeeFlat] = useState('0.00');
 
     // HR
     const [customPositions, setCustomPositions] = useState<string[]>([]);
@@ -87,6 +97,8 @@ const Settings: React.FC = () => {
 
     // Legal
     const [termsAndConditions, setTermsAndConditions] = useState('');
+    const [customerTerms, setCustomerTerms] = useState('');
+    const [proposalTerms, setProposalTerms] = useState('');
     const [proposalDisclaimer, setProposalDisclaimer] = useState('');
     const [invoiceTerms, setInvoiceTerms] = useState('');
     const [membershipTerms, setMembershipTerms] = useState('');
@@ -169,6 +181,7 @@ const Settings: React.FC = () => {
     const [rcBackendClientId, setRcBackendClientId] = useState('');
     const [ringCentralClientSecret, setRingCentralClientSecret] = useState('');
     const [ringCentralJwtToken, setRingCentralJwtToken] = useState('');
+    const [ringCentralLoginFlow, setRingCentralLoginFlow] = useState<'jwt' | 'oauth'>('jwt');
     const [rcPrimarySms, setRcPrimarySms] = useState(false);
     const [rcEnableVoiceAi, setRcEnableVoiceAi] = useState(false);
     const [rcRingsBeforeAi, setRcRingsBeforeAi] = useState('');
@@ -253,9 +266,17 @@ const Settings: React.FC = () => {
             setMarketMultiplier(org.marketMultiplier?.toString() || '1.0');
             setAiPricebookEnabled(org.aiPricebookEnabled !== false);
             setVirtualWorkerEnabled(org.virtualWorkerEnabled || false);
+            setCardProcessingFeeEnabled(org.cardProcessingFeeEnabled || false);
+            setCardProcessingFeePercent(org.cardProcessingFeePercent?.toString() ?? '2.9');
+            setCardProcessingFeeFlat(org.cardProcessingFeeFlat?.toString() ?? '0.30');
+            setAchProcessingFeeEnabled(org.achProcessingFeeEnabled || false);
+            setAchProcessingFeePercent(org.achProcessingFeePercent?.toString() ?? '1.0');
+            setAchProcessingFeeFlat(org.achProcessingFeeFlat?.toString() ?? '0.00');
             setCustomPositions(org.customPositions || []);
             setRequiredCerts(org.requiredCertifications || []);
             setTermsAndConditions(org.termsAndConditions || '');
+            setCustomerTerms(org.customerTerms || '');
+            setProposalTerms(org.proposalTerms || '');
             setProposalDisclaimer(org.proposalDisclaimer || '');
             setInvoiceTerms(org.invoiceTerms || '');
             setMembershipTerms(org.membershipTerms || '');
@@ -299,6 +320,7 @@ const Settings: React.FC = () => {
                         if (sec.rcBackendClientId) setRcBackendClientId(sec.rcBackendClientId);
                         if (sec.ringCentralClientSecret) setRingCentralClientSecret(sec.ringCentralClientSecret);
                         if (sec.ringCentralJwtToken) setRingCentralJwtToken(sec.ringCentralJwtToken);
+                        if (sec.ringCentralLoginFlow) setRingCentralLoginFlow(sec.ringCentralLoginFlow);
                         if (sec.rcPrimarySms !== undefined) setRcPrimarySms(sec.rcPrimarySms);
                         if (sec.rcEnableVoiceAi !== undefined) setRcEnableVoiceAi(sec.rcEnableVoiceAi);
                         if (sec.rcRingsBeforeAi) setRcRingsBeforeAi(sec.rcRingsBeforeAi);
@@ -388,6 +410,10 @@ const Settings: React.FC = () => {
     const handleSave = async () => {
         if (!state.currentOrganization) return;
         setIsSaving(true);
+        const prevInvoiceStartNumber = (state.currentOrganization as any).invoiceStartNumber;
+        const prevProposalStartNumber = (state.currentOrganization as any).proposalStartNumber;
+        const newInvoiceStart = parseInt(invoiceStartNumber) || 1000;
+        const newProposalStart = parseInt(proposalStartNumber) || 1000;
         const notifyArray = notificationEmails.split(',').map(e => e.trim()).filter(e => e.length > 0);
 
         const newAddress: Address = {
@@ -406,7 +432,7 @@ const Settings: React.FC = () => {
             address: newAddress,
             taxRate: parseFloat(taxRate) || 0,
             licenseNumber, ueid, cageCode, primaryNaics, customPositions, requiredCertifications: requiredCerts,
-            termsAndConditions, proposalDisclaimer, invoiceTerms, membershipTerms, complianceFooter,
+            termsAndConditions, customerTerms, proposalTerms, proposalDisclaimer, invoiceTerms, membershipTerms, complianceFooter,
             warrantyDisclaimer, defaultWorkmanshipMonths, defaultPartsMonths,
             stripePublicKey, squareApplicationId: squareAppId, squareLocationId: squareLocId,
             kortAccountId,
@@ -414,6 +440,10 @@ const Settings: React.FC = () => {
             marketMultiplier: parseFloat(marketMultiplier) || 1.0,
             aiPricebookEnabled,
             virtualWorkerEnabled,
+            invoicePrefix,
+            invoiceStartNumber: newInvoiceStart,
+            proposalPrefix,
+            proposalStartNumber: newProposalStart,
             quickbooksConnected,
             settings: {
                 ...(state.currentOrganization.settings || {}),
@@ -426,7 +456,13 @@ const Settings: React.FC = () => {
                 shovelsApiKey: shovelsApiKey,
                 shovelsUsageCount: shovelsUsageCount
             },
-            acceptsSubcontracting
+            acceptsSubcontracting,
+            cardProcessingFeeEnabled,
+            cardProcessingFeePercent: parseFloat(cardProcessingFeePercent) || 0,
+            cardProcessingFeeFlat: parseFloat(cardProcessingFeeFlat) || 0,
+            achProcessingFeeEnabled,
+            achProcessingFeePercent: parseFloat(achProcessingFeePercent) || 0,
+            achProcessingFeeFlat: parseFloat(achProcessingFeeFlat) || 0
         };
 
         const secretsData = {
@@ -448,6 +484,7 @@ const Settings: React.FC = () => {
             rcBackendClientId,
             ringCentralClientSecret,
             ringCentralJwtToken,
+            ringCentralLoginFlow,
             rcPrimarySms,
             rcEnableVoiceAi,
             rcRingsBeforeAi,
@@ -468,6 +505,14 @@ const Settings: React.FC = () => {
         try {
             const orgRef = db.collection('organizations').doc(state.currentOrganization.id);
             const batch = db.batch();
+
+            // If start numbers are modified, adjust the next sequence pointers
+            if (prevInvoiceStartNumber === undefined || prevInvoiceStartNumber !== newInvoiceStart) {
+                (updatedOrgData as any).nextInvoiceNum = newInvoiceStart;
+            }
+            if (prevProposalStartNumber === undefined || prevProposalStartNumber !== newProposalStart) {
+                (updatedOrgData as any).nextProposalNum = newProposalStart;
+            }
 
             // Scrub undefined values to prevent Firebase errors
             const cleanOrgData = JSON.parse(JSON.stringify(updatedOrgData));
@@ -756,14 +801,29 @@ const Settings: React.FC = () => {
 
     return (
         <div className="space-y-6 pb-24">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-gradient-to-r from-amber-500/5 to-orange-500/5 dark:from-amber-500/10 dark:to-orange-500/10 border border-amber-500/20 dark:border-amber-500/30 rounded-2xl p-6 shadow-sm">
+                <div className="flex items-start gap-3 max-w-xl">
+                    <div className="p-2 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 rounded-xl mt-0.5 animate-pulse">
+                        <AlertTriangle size={20} />
+                    </div>
+                    <div>
+                        <h1 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                            Unsaved Changes Warning
+                        </h1>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                            You must click <strong className="text-amber-600 dark:text-amber-400">Commit All Settings</strong> to save any changes made across all tabs. Navigating away or changing tabs without committing will result in loss of changes.
+                        </p>
+                    </div>
+                </div>
 
                 <Button
                     onClick={handleSave}
                     disabled={isSaving || saveStatus !== 'idle'}
-                    className={`shadow-xl px-10 py-3 font-black uppercase text-xs tracking-widest transition-all ${saveStatus === 'success' ? '!bg-green-500 hover:!bg-green-600 !text-white' :
-                            saveStatus === 'error' ? '!bg-red-500 !text-white' : ''
-                        }`}
+                    className={`shadow-xl shadow-amber-500/10 px-10 py-4 font-black uppercase text-xs tracking-widest transition-all duration-300 ring-2 ring-amber-500/50 hover:ring-amber-500 hover:scale-105 active:scale-95 ${
+                        saveStatus === 'success' ? '!bg-green-500 hover:!bg-green-600 !text-white ring-0 shadow-green-500/20' :
+                        saveStatus === 'error' ? '!bg-red-500 !text-white ring-0 shadow-red-500/20' :
+                        '!bg-gradient-to-r !from-amber-500 !to-orange-500 hover:!from-amber-600 hover:!to-orange-600 !text-white animate-pulse'
+                    }`}
                 >
                     {saveStatus === 'success' ? '✓ SETTINGS SAVED' :
                         saveStatus === 'error' ? 'ERROR SAVING' :
@@ -792,10 +852,10 @@ const Settings: React.FC = () => {
             <div className="animate-fade-in">
                 {activeTab === 'profile' && <ProfileTab {...{ orgName, setOrgName, email, setEmail, phone, setPhone, website, setWebsite, notificationEmails, setNotificationEmails, industry, setIndustry, supportedTrades, handleTradeToggle, allIndustries: ALL_INDUSTRIES }} />}
                 {activeTab === 'social' && <SocialTab {...{ socialLinks, setSocialLinks, reviewLinks, setReviewLinks }} />}
-                {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled }} />}
+                {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled, cardProcessingFeeEnabled, setCardProcessingFeeEnabled, cardProcessingFeePercent, setCardProcessingFeePercent, cardProcessingFeeFlat, setCardProcessingFeeFlat, achProcessingFeeEnabled, setAchProcessingFeeEnabled, achProcessingFeePercent, setAchProcessingFeePercent, achProcessingFeeFlat, setAchProcessingFeeFlat, invoicePrefix, setInvoicePrefix, invoiceStartNumber, setInvoiceStartNumber, proposalPrefix, setProposalPrefix, proposalStartNumber, setProposalStartNumber }} />}
                 {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
-                {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths }} />}
-                {activeTab === 'integrations' && <IntegrationsTab {...{ stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, kortAccountId, setKortAccountId, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
+                {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, customerTerms, setCustomerTerms, proposalTerms, setProposalTerms, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths }} />}
+                {activeTab === 'integrations' && <IntegrationsTab {...{ stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, kortAccountId, setKortAccountId, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, ringCentralLoginFlow, setRingCentralLoginFlow, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
                 {activeTab === 'branding' && <BrandingTab {...{ brandingColor, setBrandingColor, financingLink, setFinancingLink, logoUrl, setLogoUrl, publicLogoUrl, setPublicLogoUrl, letterheadUrl, setLetterheadUrl, footerImageUrl, setFooterImageUrl, bannerUrl, setBannerUrl, handleFileUpload, publicProfileEnabled, setPublicProfileEnabled, publicDescription, setPublicDescription, publicCredentials, setPublicCredentials, publicServices, setPublicServices, acceptsSubcontracting, setAcceptsSubcontracting }} />}
                 {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling, handleReactivate }} />}
                 {activeTab === 'data' && <DataTab {...{ handleExportData, handleDetectDuplicates, handleCleanupRecords, handleFlushCache, handleResetOverlays, handleImportFile: (e) => { e.target.value = ''; showToast.info('Bulk import is currently disabled. Contact support to migrate data.'); }, handleDownloadTemplate }} />}

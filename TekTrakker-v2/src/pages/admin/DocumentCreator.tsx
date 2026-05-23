@@ -162,7 +162,7 @@ const DocumentCreator: React.FC = () => {
             const systemInstruction = "You are a business operations assistant. Format your response as clean, well-structured HTML using elements like <h2>, <p>, <ul>, and <li> for easy readability. Do not include ```html blocks.";
             const fullPrompt = `${systemInstruction}\n\n${aiPrompt}`;
             
-            const result = await callGeminiAI({ prompt: fullPrompt, modelName: "gemini-3.1-pro-preview" }); 
+            const result = await callGeminiAI({ prompt: fullPrompt, modelName: "gemini-3.5-flash" }); 
             const data = result.data as { text: string };
             
             setEditingDoc(prev => prev ? { ...prev, content: data.text } : null);

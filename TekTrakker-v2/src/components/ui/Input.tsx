@@ -44,7 +44,6 @@ const Input: React.FC<InputProps> = ({ label, className, id, value, isBlock, ico
                     name={props.name || inputId}
                     {...(props.type !== 'file' ? { value: safeValue } : {})}
                     onInput={(e) => {
-                        triggerHapticSelectionChanged();
                         if (onInput) onInput(e);
                     }}
                     onFocus={(e) => {

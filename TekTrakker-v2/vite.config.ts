@@ -20,7 +20,7 @@ export default defineConfig(() => {
       },
       VitePWA({
         injectRegister: null,
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         devOptions: { enabled: true },
         manifest: {
           name: 'TekTrakker Technician App',

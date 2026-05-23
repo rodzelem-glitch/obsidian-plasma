@@ -1,4 +1,4 @@
-// Consolidated types for the Tektrakker project
+﻿// Consolidated types for the Tektrakker project
 // This file is used as a central hub for all type definitions via the 'types' alias.
 
 // --- Organization & Address ---
@@ -70,6 +70,8 @@ export interface Organization {
     complianceFooter?: string | null;
     financingLink?: string | null;
     termsAndConditions?: string | null;
+    customerTerms?: string | null;
+    proposalTerms?: string | null;
     membershipTerms?: string | null;
     footerImage?: string | null;
     subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled' | 'paused';
@@ -146,6 +148,12 @@ export interface Organization {
     customDiscountPct?: number;
     quickbooksConnected?: boolean;
     aiPricebookEnabled?: boolean;
+    invoicePrefix?: string;
+    invoiceStartNumber?: number;
+    nextInvoiceNum?: number;
+    proposalPrefix?: string;
+    proposalStartNumber?: number;
+    nextProposalNum?: number;
     virtualWorkerEnabled?: boolean;
     salesRepId?: string;
     settings?: OrganizationSettings; 
@@ -183,6 +191,13 @@ export interface Organization {
         source: string;
         gclid?: string;
     };
+    platformCustomerId?: string | null;
+    cardProcessingFeeEnabled?: boolean;
+    cardProcessingFeePercent?: number;
+    cardProcessingFeeFlat?: number;
+    achProcessingFeeEnabled?: boolean;
+    achProcessingFeePercent?: number;
+    achProcessingFeeFlat?: number;
 }
 
 // --- User & Employee ---
@@ -388,10 +403,13 @@ export interface Customer {
   savedProviders?: string[]; 
   serviceLocations?: ServiceLocation[];
   contacts?: Record<string, unknown>[];
+  agreedToCustomerTerms?: boolean | null;
+  customerTermsAgreedAt?: string | null;
 }
 
 // --- Job & Scheduling ---
 export interface Job {
+  duration?: number;
   id: string;
   organizationId: string;
   assignedPartnerId?: string | null; 
@@ -528,6 +546,8 @@ export interface InvoiceDetails {
     additionalFeePercent?: number;
     additionalFeeName?: string;
     additionalFeeAmount?: number;
+    sentAt?: string;
+    remindersSent?: string[];
 }
 
 // --- Proposals ---
@@ -538,7 +558,7 @@ export interface ProposalItem {
     quantity: number;
     price: number;
     total: number;
-    type: 'Labor' | 'Part' | 'Fee' | 'Service' | 'Discount'; 
+    type: 'Labor' | 'Part' | 'Part/Labor' | 'Fee' | 'Discount' | 'Service'; 
     tier: 'Good' | 'Better' | 'Best';
     partCost?: number;
     laborHours?: number;
@@ -574,6 +594,10 @@ export interface Proposal {
     signatureDataUrl?: string | null;
     recommendations?: string;
     title?: string | null;
+    sentAt?: string;
+    remindersSent?: string[];
+    proposalTermsAgreed?: boolean | null;
+    proposalTermsAgreedAt?: string | null;
 }
 
 export interface ProposalPreset {
@@ -1036,6 +1060,7 @@ export interface Applicant {
     appliedDate: string;
     applicationDate?: string;
     resumeDataUrl?: string;
+    resumeUrl?: string;
     resumeFileName?: string;
     notes?: string;
     marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; };
@@ -1093,6 +1118,9 @@ export interface MembershipPlan {
     color: string;
     benefits?: string[];
     pricePerAdditionalSystem?: number;
+    addonFeeName?: string;
+    addonFeeAmount?: number;
+    addonFeePercent?: number;
 }
 
 export interface Expense {
@@ -1211,6 +1239,8 @@ export interface Bid {
     additionalFeePercent?: number;
     additionalFeeName?: string;
     additionalFeeAmount?: number;
+    sentAt?: string;
+    remindersSent?: string[];
 }
 
 export interface BidDoc {
@@ -1304,3 +1334,4 @@ export interface Review {
 }
 
 export interface Franchise { id: string; name: string; status: string; currentRoyaltyPct: number; currentMarketingFeePct: number; franchiseAgreementSignature?: string; franchiseAgreementSignedDate?: string; overrideSetupFee?: number; stripeAccountId?: string | null; ownerId?: string; createdAt: string; }
+

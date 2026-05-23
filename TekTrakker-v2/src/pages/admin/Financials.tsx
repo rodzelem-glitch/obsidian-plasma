@@ -9,9 +9,11 @@ import Input from '../../components/ui/Input';
 import {
     Download, Calendar, Filter, FileText, TrendingUp, TrendingDown,
     MoreHorizontal, DollarSign, Wallet, ArrowUpRight, ArrowDownRight,
-    PieChart, Briefcase, Calculator, Plus, User, Search, Paperclip, Users, Shield
+    PieChart, Briefcase, Calculator, Plus, User, Search, Paperclip, Users, Shield,
+    Loader2, Trash2, Receipt, Camera as CameraIcon
 } from 'lucide-react';
 import { db, functions } from '../../lib/firebase';
+import { getNextInvoiceNumber } from 'lib/numbering';
 import { uploadFileToStorage } from '../../lib/storageService';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import type { Expense, Job, Customer } from '../../types';
@@ -113,6 +115,67 @@ const Financials: React.FC = () => {
         }
     }, [searchParams, state.jobs, state.expenses]);
 
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const base64Promises: Promise<string>[] = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file.size > 5 * 1024 * 1024) {
+                showToast.warn(`File "${file.name}" is too large. Receipts must be under 5MB.`);
+                continue;
+            }
+            const promise = new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = (err) => reject(err);
+                reader.readAsDataURL(file);
+            }) as Promise<string>;
+            base64Promises.push(promise);
+        }
+
+        try {
+            const base64Strings = await Promise.all(base64Promises);
+            if (base64Strings.length === 0) return;
+
+            const wasEmpty = newExpensePhotos.length === 0;
+            const updatedPhotos = [...newExpensePhotos, ...base64Strings];
+            setNewExpensePhotos(updatedPhotos);
+
+            if (wasEmpty) {
+                setIsAnalyzing(true);
+                try {
+                    const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
+                    const res = await analyzeFn({ base64Images: [base64Strings[0]] });
+                    const extracted = (res.data as any).data;
+                    if (extracted) {
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        setNewExpense(prev => ({
+                            ...prev,
+                            vendor: prev.vendor ? prev.vendor : (extracted.vendor || prev.vendor),
+                            amount: prev.amount && prev.amount !== 0 ? prev.amount : (extracted.amount ? parseFloat(extracted.amount) : prev.amount),
+                            date: prev.date && prev.date !== todayStr ? prev.date : (extracted.date || prev.date),
+                            category: prev.category && prev.category !== 'Materials' ? prev.category : (extracted.category || prev.category),
+                            description: prev.description ? prev.description : (extracted.description || prev.description)
+                        }));
+                    }
+                } catch (aiErr) {
+                    console.error('OCR Extraction failed:', aiErr);
+                } finally {
+                    setIsAnalyzing(false);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to read files", err);
+            showToast.warn("Failed to process selected files.");
+        } finally {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
     const handleCaptureReceipt = async () => {
         try {
             const image = await Camera.getPhoto({
@@ -123,23 +186,25 @@ const Financials: React.FC = () => {
             });
             if (image.base64String) {
                 const dataUrl = `data:image/jpeg;base64,${image.base64String}`;
+                const wasEmpty = newExpensePhotos.length === 0;
                 const updatedPhotos = [...newExpensePhotos, dataUrl];
                 setNewExpensePhotos(updatedPhotos);
 
-                if (updatedPhotos.length === 1) {
+                if (wasEmpty) {
                     setIsAnalyzing(true);
                     try {
                         const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
                         const res = await analyzeFn({ base64Images: [dataUrl] });
                         const extracted = (res.data as any).data;
                         if (extracted) {
+                            const todayStr = new Date().toISOString().split('T')[0];
                             setNewExpense(prev => ({
                                 ...prev,
-                                vendor: extracted.vendor || prev.vendor,
-                                amount: extracted.amount ? parseFloat(extracted.amount) : prev.amount,
-                                date: extracted.date || prev.date,
-                                category: extracted.category || prev.category,
-                                description: extracted.description || prev.description
+                                vendor: prev.vendor ? prev.vendor : (extracted.vendor || prev.vendor),
+                                amount: prev.amount && prev.amount !== 0 ? prev.amount : (extracted.amount ? parseFloat(extracted.amount) : prev.amount),
+                                date: prev.date && prev.date !== todayStr ? prev.date : (extracted.date || prev.date),
+                                category: prev.category && prev.category !== 'Materials' ? prev.category : (extracted.category || prev.category),
+                                description: prev.description ? prev.description : (extracted.description || prev.description)
                             }));
                         }
                     } catch (aiErr) {
@@ -186,7 +251,7 @@ const Financials: React.FC = () => {
         setIsSubmittingExpense(true);
         try {
             let uploadedUrls: string[] = [];
-            if (newExpensePhotos.length > 0 && !newExpensePhotos[0].startsWith('http')) {
+            if (newExpensePhotos.length > 0) {
                 for (let i = 0; i < newExpensePhotos.length; i++) {
                     if (newExpensePhotos[i].startsWith('http')) {
                         uploadedUrls.push(newExpensePhotos[i]);
@@ -197,8 +262,6 @@ const Financials: React.FC = () => {
                     const url = await uploadFileToStorage(path, newExpensePhotos[i]);
                     uploadedUrls.push(url);
                 }
-            } else if (newExpensePhotos.length > 0) {
-                uploadedUrls = newExpensePhotos;
             }
 
             let finalReceiptData = uploadedUrls.length > 0 ? uploadedUrls[0] : (editingExpense ? (editingExpense.receiptUrl || editingExpense.receiptData) : null);
@@ -282,6 +345,7 @@ const Financials: React.FC = () => {
     const handleCreateInvoice = async (customer?: Customer) => {
         if (!state.currentUser) return;
         setIsCreatingInvoice(true); setIsCustomerSelectOpen(false);
+        const nextInvId = await getNextInvoiceNumber(state.currentOrganization?.id || '');
         const id = `job-inv-${Date.now()}`;
         const newJob: Job = { 
             id, 
@@ -292,7 +356,7 @@ const Financials: React.FC = () => {
             jobStatus: 'Completed', 
             appointmentTime: new Date().toISOString(), 
             invoice: { 
-                id: `INV-${Date.now()}`,
+                id: nextInvId,
                 status: 'Unpaid', 
                 items: [], 
                 subtotal: 0, 
@@ -743,14 +807,78 @@ const Financials: React.FC = () => {
                     </div>
 
                     <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                        <p className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Receipt Images</p>
-                        <Button type="button" variant="secondary" onClick={handleCaptureReceipt} className="w-full flex items-center justify-center gap-2 mb-2">
-                            <Plus size={16} /> Capture Receipt / Add Page
-                        </Button>
+                        <p className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Receipt Images (Optional)</p>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                            <Button type="button" variant="secondary" onClick={handleCaptureReceipt} className="flex items-center justify-center gap-2 py-2.5">
+                                <CameraIcon size={16} /> Take Photo
+                            </Button>
+                            <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-2 py-2.5">
+                                <Paperclip size={16} /> Upload Files
+                            </Button>
+                            <input 
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleFileSelect}
+                                aria-label="Upload Receipts"
+                                title="Upload Receipts"
+                            />
+                        </div>
+
                         {newExpensePhotos.length > 0 && (
-                            <div className="mt-2 text-emerald-600 text-xs flex flex-col gap-1 font-medium bg-emerald-50 dark:bg-emerald-900/30 p-2 rounded border border-emerald-100 dark:border-emerald-800">
-                                <div><Paperclip size={14} className="inline mr-1" /> {newExpensePhotos.length} {newExpensePhotos.length === 1 ? 'Page' : 'Pages'} Uploaded</div>
-                                {isAnalyzing && <div className="text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1 font-bold animate-pulse">AI Extracting Receipt Data...</div>}
+                            <div className="space-y-3 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 transition-all">
+                                <div className="flex justify-between items-center text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                    <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                        <Receipt size={14} />
+                                        <span>{newExpensePhotos.length} {newExpensePhotos.length === 1 ? 'Page' : 'Pages'} Queued</span>
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setNewExpensePhotos([])}
+                                        className="text-red-500 hover:text-red-600 hover:underline flex items-center gap-1 transition-colors"
+                                    >
+                                        Clear All
+                                    </button>
+                                </div>
+
+                                {isAnalyzing && (
+                                    <div className="text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1.5 font-medium bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-100 dark:border-blue-900/50">
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span>AI Extracting Receipt Data...</span>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-2">
+                                    {newExpensePhotos.map((photo, index) => (
+                                        <div 
+                                            key={index} 
+                                            className="group relative aspect-square bg-slate-900 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all duration-200"
+                                        >
+                                            <img 
+                                                src={photo} 
+                                                alt={`Receipt Page ${index + 1}`} 
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                            />
+                                            <div className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-[2px] text-[10px] text-white px-1.5 py-0.5 rounded font-bold">
+                                                p.${index + 1}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const updated = [...newExpensePhotos];
+                                                    updated.splice(index, 1);
+                                                    setNewExpensePhotos(updated);
+                                                }}
+                                                className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full opacity-0 group-hover:opacity-100 shadow transition-opacity duration-200 flex items-center justify-center animate-fade-in"
+                                                title="Delete Page"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>

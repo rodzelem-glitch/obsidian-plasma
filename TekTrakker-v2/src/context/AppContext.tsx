@@ -72,6 +72,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
     const getRedirectPath = useCallback((user: User | null, isMasterAdmin: boolean): string => {
         if (!user) return '/login';
+        if ((user.role as string) === 'kort_tester') return '/admin/kort-playground';
 
         if (isMasterAdmin || user.role === 'franchise_admin') return '/master/dashboard';
         if (user.role === 'platform_sales') return '/sales/dashboard';
@@ -120,6 +121,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             mockUser = APEX_MOCK_USERS[0];
         }
 
+        // Deep clone mock user to prevent modifications
+        const clonedCurrentUser = JSON.parse(JSON.stringify(mockUser));
+
         const jobs = JSON.parse(JSON.stringify(APEX_MOCK_JOBS));
         const jobIndex = jobs.findIndex((j: Job) => j.id === 'apex-job-2');
         if (jobIndex !== -1 && mockUser) {
@@ -128,25 +132,41 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             jobs[jobIndex].assignedTechnicianName = `${mockUser.firstName} ${mockUser.lastName}`;
         }
 
+        // Deep clone other interactive mock data to avoid mutating in-memory static arrays
+        const clonedOrg = JSON.parse(JSON.stringify(APEX_MOCK_ORG));
+        const clonedUsers = JSON.parse(JSON.stringify(APEX_MOCK_USERS));
+        const clonedCustomers = JSON.parse(JSON.stringify(APEX_MOCK_CUSTOMERS));
+        const clonedProposals = JSON.parse(JSON.stringify(APEX_MOCK_PROPOSALS));
+        const clonedProjects = JSON.parse(JSON.stringify(APEX_MOCK_PROJECTS));
+        const clonedAgreements = JSON.parse(JSON.stringify(APEX_MOCK_AGREEMENTS));
+        const clonedPlans = JSON.parse(JSON.stringify(APEX_MOCK_PLANS));
+        const clonedApplicants = JSON.parse(JSON.stringify(MOCK_DEMO_APPLICANTS));
+        const clonedDocuments = JSON.parse(JSON.stringify(MOCK_DEMO_DOCUMENTS));
+        const clonedVehicles = JSON.parse(JSON.stringify(MOCK_DEMO_VEHICLES));
+        const clonedReviews = JSON.parse(JSON.stringify(MOCK_DEMO_REVIEWS));
+        const clonedSubcontractors = JSON.parse(JSON.stringify(MOCK_DEMO_SUBCONTRACTORS));
+        const clonedExpenses = JSON.parse(JSON.stringify(MOCK_DEMO_EXPENSES));
+        const clonedRentals = JSON.parse(JSON.stringify(MOCK_DEMO_RENTALS));
+
         dispatch({
             type: 'START_DEMO',
             payload: {
-                currentUser: mockUser,
-                currentOrganization: APEX_MOCK_ORG,
-                users: APEX_MOCK_USERS as User[],
+                currentUser: clonedCurrentUser,
+                currentOrganization: clonedOrg,
+                users: clonedUsers as User[],
                 jobs: jobs as Job[],
-                customers: APEX_MOCK_CUSTOMERS as Customer[],
-                membershipPlans: APEX_MOCK_PLANS as MembershipPlan[],
-                projects: APEX_MOCK_PROJECTS as Project[],
-                proposals: APEX_MOCK_PROPOSALS as Proposal[],
-                serviceAgreements: APEX_MOCK_AGREEMENTS as ServiceAgreement[],
-                applicants: MOCK_DEMO_APPLICANTS as Applicant[],
-                documents: MOCK_DEMO_DOCUMENTS as BusinessDocument[],
-                vehicles: MOCK_DEMO_VEHICLES as Vehicle[],
-                reviews: MOCK_DEMO_REVIEWS as Review[],
-                subcontractors: MOCK_DEMO_SUBCONTRACTORS as Subcontractor[],
-                expenses: MOCK_DEMO_EXPENSES as Expense[],
-                rentals: MOCK_DEMO_RENTALS as EquipmentRental[],
+                customers: clonedCustomers as Customer[],
+                membershipPlans: clonedPlans as MembershipPlan[],
+                projects: clonedProjects as Project[],
+                proposals: clonedProposals as Proposal[],
+                serviceAgreements: clonedAgreements as ServiceAgreement[],
+                applicants: clonedApplicants as Applicant[],
+                documents: clonedDocuments as BusinessDocument[],
+                vehicles: clonedVehicles as Vehicle[],
+                reviews: clonedReviews as Review[],
+                subcontractors: clonedSubcontractors as Subcontractor[],
+                expenses: clonedExpenses as Expense[],
+                rentals: clonedRentals as EquipmentRental[],
             }
         });
     }, [unsubscribeData]);

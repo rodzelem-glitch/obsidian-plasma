@@ -9,8 +9,9 @@ import Select from '../ui/Select';
 import Textarea from '../ui/Textarea';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
+import { getNextInvoiceNumbers } from 'lib/numbering';
 import type { Customer, EquipmentAsset, ServiceAgreement, MembershipPlan, Job, StoredFile } from 'types';
-import { TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Mail, Printer, Sparkles, ShieldCheck, MessageSquare, CheckCircle, Edit, Share2, Copy, Upload } from 'lucide-react';
+import { TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Mail, Printer, Sparkles, ShieldCheck, MessageSquare, CheckCircle, Edit, Share2, Copy, Upload, PhoneCall, PhoneOff, Calendar, XCircle, Clock, AlertCircle } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { globalConfirm } from "lib/globalConfirm";
 import { uploadFileToStorage } from 'lib/storageService';
@@ -32,7 +33,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
 
 
 
-    const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'history' | 'financials' | 'docs' | 'warranties'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'history' | 'financials' | 'docs' | 'warranties' | 'communications'>('overview');
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState<Partial<Customer>>({});
     const [isSendingInvite, setIsSendingInvite] = useState(false);
@@ -88,6 +89,197 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         });
         return files.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [customer, customerJobs]);
+
+    const normalizedCustomerPhone = useMemo(() => {
+        if (!customer?.phone) return '';
+        const digits = customer.phone.replace(/\\D/g, '');
+        return digits.length === 11 && digits.startsWith('1') ? digits.substring(1) : digits;
+    }, [customer?.phone]);
+
+    const customerEmails = useMemo(() => {
+        const emails = new Set<string>();
+        if (customer?.email) emails.add(customer.email.trim().toLowerCase());
+        if (customer?.contacts) {
+            customer.contacts.forEach((c: any) => {
+                if (c.email) emails.add(c.email.trim().toLowerCase());
+            });
+        }
+        return Array.from(emails);
+    }, [customer?.email, customer?.contacts]);
+
+    const customerPhones = useMemo(() => {
+        const phones = new Set<string>();
+        const main = normalizedCustomerPhone;
+        if (main) phones.add(main);
+        if (customer?.contacts) {
+            customer.contacts.forEach((c: any) => {
+                if (c.phone) {
+                    const dig = c.phone.replace(/\\D/g, '');
+                    const ten = dig.length === 11 && dig.startsWith('1') ? dig.substring(1) : dig;
+                    if (ten) phones.add(ten);
+                }
+            });
+        }
+        return Array.from(phones);
+    }, [normalizedCustomerPhone, customer?.contacts]);
+
+    const communicationTimeline = useMemo(() => {
+        const items: any[] = [];
+
+        // 1. Process Messages (SMS, Call logs, Emails) from state.messages
+        if (state.messages) {
+            state.messages.forEach((m: any) => {
+                let isMatch = false;
+
+                // Match by ID direct check
+                if (m.customerId === customer?.id || m.senderId === customer?.id || m.receiverId === customer?.id) {
+                    isMatch = true;
+                }
+
+                // Match by normalized phones
+                if (!isMatch) {
+                    const sendDig = m.senderId ? m.senderId.replace(/\\D/g, '') : '';
+                    const sendTen = sendDig.length === 11 && sendDig.startsWith('1') ? sendDig.substring(1) : sendDig;
+                    
+                    const recvDig = m.receiverId ? m.receiverId.replace(/\\D/g, '') : '';
+                    const recvTen = recvDig.length === 11 && recvDig.startsWith('1') ? recvDig.substring(1) : recvDig;
+
+                    if (customerPhones.some(p => p === sendTen || p === recvTen)) {
+                        isMatch = true;
+                    }
+                }
+
+                // Match by email
+                if (!isMatch && m.type === 'email') {
+                    const mSenderEmail = m.senderId ? m.senderId.trim().toLowerCase() : '';
+                    const mRecvEmail = m.receiverId ? m.receiverId.trim().toLowerCase() : '';
+                    if (customerEmails.some(e => e === mSenderEmail || e === mRecvEmail)) {
+                        isMatch = true;
+                    }
+                }
+
+                if (isMatch) {
+                    const isOutbound = m.senderId === state.currentUser?.id || m.senderName?.toLowerCase().includes('staff') || m.senderName?.toLowerCase().includes('admin');
+                    
+                    let type = 'sms_in';
+                    let icon = MessageSquare;
+                    let iconColor = 'text-teal-500';
+                    let badgeColor = 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400';
+                    let badgeLabel = 'SMS Inbound';
+
+                    if (m.type === 'email') {
+                        type = isOutbound ? 'email_out' : 'email_in';
+                        icon = Mail;
+                        iconColor = isOutbound ? 'text-indigo-500' : 'text-blue-500';
+                        badgeColor = isOutbound ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400' : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+                        badgeLabel = isOutbound ? 'Email Outbound' : 'Email Inbound';
+                    } else if (m.type === 'alert' || m.content?.toLowerCase().includes('call')) {
+                        const isMissed = m.content?.toLowerCase().includes('missed');
+                        type = isMissed ? 'call_missed' : 'call_in';
+                        icon = isMissed ? PhoneOff : PhoneCall;
+                        iconColor = isMissed ? 'text-red-500' : 'text-emerald-500';
+                        badgeColor = isMissed ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
+                        badgeLabel = isMissed ? 'Missed Call' : 'Call Received';
+                    } else {
+                        // Default SMS
+                        type = isOutbound ? 'sms_out' : 'sms_in';
+                        icon = MessageSquare;
+                        iconColor = isOutbound ? 'text-teal-600' : 'text-cyan-500';
+                        badgeColor = isOutbound ? 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400' : 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400';
+                        badgeLabel = isOutbound ? 'SMS Sent' : 'SMS Received';
+                    }
+
+                    items.push({
+                        id: m.id || `msg-${Date.now()}-${Math.random()}`,
+                        timestamp: m.timestamp || m.createdAt || new Date().toISOString(),
+                        type,
+                        title: badgeLabel,
+                        subtitle: m.senderName ? `From: ${m.senderName}` : undefined,
+                        content: m.content,
+                        icon,
+                        iconColor,
+                        badgeColor,
+                        badgeLabel
+                    });
+                }
+            });
+        }
+
+        // 2. Process Appointment Lifecycle Events from customerJobs
+        if (customerJobs) {
+            customerJobs.forEach((job: any) => {
+                if (job.createdAt) {
+                    items.push({
+                        id: `job-sched-${job.id}`,
+                        timestamp: job.createdAt,
+                        type: 'job_scheduled',
+                        title: 'Work Order Created',
+                        subtitle: `Job ID: #${job.id.slice(0, 8)}`,
+                        content: `Scheduled for ${new Date(job.appointmentTime).toLocaleString()} | Tasks: ${job.tasks?.join(', ')}`,
+                        icon: Calendar,
+                        iconColor: 'text-amber-500',
+                        badgeColor: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+                        badgeLabel: 'Scheduled'
+                    });
+                }
+
+                if (job.jobStatus === 'Completed') {
+                    const compTime = job.completionDate || job.appointmentTime || job.createdAt;
+                    items.push({
+                        id: `job-comp-${job.id}`,
+                        timestamp: compTime,
+                        type: 'job_completed',
+                        title: 'Work Order Completed',
+                        subtitle: `Job ID: #${job.id.slice(0, 8)}`,
+                        content: `Completed by ${job.assignedTechnicianName || 'Unassigned'}. Invoice: ${job.invoice?.id || 'N/A'} | Total: $${(job.invoice?.amount || 0).toFixed(2)}`,
+                        icon: CheckCircle,
+                        iconColor: 'text-green-500',
+                        badgeColor: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+                        badgeLabel: 'Completed'
+                    });
+                }
+
+                if (job.jobStatus === 'Cancelled') {
+                    const cancelEvent = job.jobEvents?.find((e: any) => e.status === 'Cancelled' || e.type?.toLowerCase().includes('cancel'));
+                    const cancelTime = cancelEvent?.timestamp || job.appointmentTime || job.createdAt;
+                    items.push({
+                        id: `job-canc-${job.id}`,
+                        timestamp: cancelTime,
+                        type: 'job_cancelled',
+                        title: 'Work Order Cancelled',
+                        subtitle: `Job ID: #${job.id.slice(0, 8)}`,
+                        content: `Job for ${new Date(job.appointmentTime).toLocaleString()} has been cancelled.`,
+                        icon: XCircle,
+                        iconColor: 'text-red-500',
+                        badgeColor: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+                        badgeLabel: 'Cancelled'
+                    });
+                }
+
+                if (job.jobEvents) {
+                    job.jobEvents.forEach((ev: any, evIdx: number) => {
+                        const isResched = ev.type === 'Rescheduled' || ev.status === 'Rescheduled' || ev.note?.toLowerCase().includes('resched');
+                        if (isResched) {
+                            items.push({
+                                id: `job-resched-${job.id}-${evIdx}`,
+                                timestamp: ev.timestamp || job.appointmentTime,
+                                type: 'job_rescheduled',
+                                title: 'Work Order Rescheduled',
+                                subtitle: `Job ID: #${job.id.slice(0, 8)}`,
+                                content: ev.note || `Appointment time updated to ${new Date(job.appointmentTime).toLocaleString()}`,
+                                icon: Clock,
+                                iconColor: 'text-purple-500',
+                                badgeColor: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+                                badgeLabel: 'Rescheduled'
+                            });
+                        }
+                    });
+                }
+            });
+        }
+
+        return items.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }, [customer?.id, customerPhones, customerEmails, state.messages, customerJobs, state.currentUser?.id]);
 
     if (!customer) return null;
 
@@ -294,13 +486,16 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             finalPrice = priceOverride;
         }
 
+        const planFee = (plan.addonFeeAmount || 0) + (finalPrice * (plan.addonFeePercent || 0) / 100);
+        const totalRecurrentPrice = finalPrice + planFee;
+
         const newAgreement: ServiceAgreement = {
             id: agreementId,
             organizationId: orgId,
             customerId: customer.id,
             customerName: customer.name,
             planName: plan.name,
-            price: finalPrice,
+            price: totalRecurrentPrice,
             billingCycle: 'Monthly',
             startDate: new Date().toISOString(),
             endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString(),
@@ -327,19 +522,31 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             invoice: {
                 id: `INV-MEM-${Date.now()}`,
                 status: 'Unpaid',
-                items: [{
-                    id: 'it-1',
-                    description: `Join ${plan.name} Membership (${enrollSystemCount} Systems)`,
-                    quantity: 1,
-                    unitPrice: finalPrice,
-                    total: finalPrice,
-                    type: 'Fee'
-                }],
-                subtotal: finalPrice,
+                items: [
+                    {
+                        id: 'it-1',
+                        description: `Join ${plan.name} Membership (${enrollSystemCount} Systems)`,
+                        quantity: 1,
+                        unitPrice: finalPrice,
+                        total: finalPrice,
+                        type: 'Service' as const,
+                        taxable: false
+                    },
+                    ...((planFee > 0) ? [{
+                        id: 'it-2',
+                        description: `${plan.addonFeeName || 'Plan Fee'} - ${plan.name}`,
+                        quantity: 1,
+                        unitPrice: planFee,
+                        total: planFee,
+                        type: 'Fee' as const,
+                        taxable: false
+                    }] : [])
+                ],
+                subtotal: finalPrice + planFee,
                 taxRate: 0,
                 taxAmount: 0,
-                totalAmount: finalPrice,
-                amount: finalPrice
+                totalAmount: finalPrice + planFee,
+                amount: finalPrice + planFee
             },
             jobEvents: [],
             createdAt: new Date().toISOString()
@@ -481,6 +688,8 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         
         if (!await globalConfirm(`Schedule Maintenance for all ${customer.serviceLocations.length} properties? This will create Ad-Hoc Scheduled Work Orders for each location.`)) return;
 
+        const generatedInvoiceIds = await getNextInvoiceNumbers(state.currentOrganization?.id || '', customer.serviceLocations.length);
+        let pmIndex = 0;
         let generatedCount = 0;
         for (const loc of customer.serviceLocations) {
             const techId = (loc as any).preferredTechnicianId || null;
@@ -504,7 +713,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                 assignedTechnicianName: techName,
                 source: 'AdHoc-Bulk',
                 specialInstructions: `Ad-Hoc Bulk Maintenance Request (Non-Membership).`,
-                invoice: { id: `INV-${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: 0, taxAmount: 0, totalAmount: 0, amount: 0 },
+                invoice: { id: generatedInvoiceIds[pmIndex++], status: 'Unpaid', items: [], subtotal: 0, taxRate: 0, taxAmount: 0, totalAmount: 0, amount: 0 },
                 jobEvents: [],
                 createdAt: new Date().toISOString()
             };
@@ -628,6 +837,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                         { id: 'financials', icon: DollarSign, label: 'Financials' },
                         { id: 'warranties', icon: ShieldCheck, label: 'Warranties' },
                         { id: 'docs', icon: Image, label: 'Docs & Media' },
+                        { id: 'communications', icon: MessageSquare, label: 'Communications Log' },
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -1018,6 +1228,17 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                             >
                                                 <p className="font-bold text-sm text-gray-900 dark:text-white">{plan.name}</p>
                                                 <p className="text-xs text-primary-600 font-bold">${plan.monthlyPrice}/mo base</p>
+                                                {((plan.addonFeeAmount || 0) > 0 || (plan.addonFeePercent || 0) > 0) && (
+                                                    <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">
+                                                        +{plan.addonFeeName || 'Fee'}: {
+                                                            (plan.addonFeeAmount || 0) > 0 && (plan.addonFeePercent || 0) > 0
+                                                                ? `$${plan.addonFeeAmount.toFixed(2)} + ${plan.addonFeePercent}%`
+                                                                : (plan.addonFeeAmount || 0) > 0
+                                                                    ? `$${plan.addonFeeAmount.toFixed(2)}`
+                                                                    : `${plan.addonFeePercent}%`
+                                                        }
+                                                    </p>
+                                                )}
                                                 <p className="text-[10px] text-gray-400 mt-1">{plan.visitsPerYear} Visits • {plan.discountPercentage}% Off</p>
                                             </button>
                                         ))}
@@ -1269,6 +1490,72 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                             </div>
                         </div>
                     </div>
+                    )}
+
+                    {activeTab === 'communications' && (
+                        <div className="space-y-6">
+                            <div className="flex justify-between items-center">
+                                <h3 className="font-bold text-gray-950 dark:text-white text-lg">Communications & Lifecycle Log</h3>
+                                <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                    {communicationTimeline.length} total events tracked
+                                </span>
+                            </div>
+
+                            {communicationTimeline.length === 0 ? (
+                                <div className="p-12 text-center bg-white/50 dark:bg-slate-900/40 backdrop-blur-md border border-slate-100 dark:border-slate-800 rounded-2xl">
+                                    <MessageSquare size={48} className="mx-auto mb-4 text-slate-300 dark:text-slate-600" />
+                                    <p className="font-bold text-slate-700 dark:text-slate-300">No communication logs recorded yet</p>
+                                    <p className="text-sm text-slate-400 mt-1">SMS, calls, emails, and schedule updates will be tracked automatically here.</p>
+                                </div>
+                            ) : (
+                                <div className="relative pl-6 border-l-2 border-slate-200 dark:border-slate-700 ml-4 space-y-8 py-2">
+                                    {communicationTimeline.map((item: any) => {
+                                        const ItemIcon = item.icon;
+                                        return (
+                                            <div key={item.id} className="relative group animate-in fade-in slide-in-from-left-2 duration-300">
+                                                {/* Bullet dot */}
+                                                <span className={`absolute -left-[35px] top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white dark:bg-slate-800 ring-4 ring-slate-50 dark:ring-slate-900 border-2 shadow-sm ${item.iconColor.replace('text-', 'border-')}`}>
+                                                    <ItemIcon size={14} className={item.iconColor} />
+                                                </span>
+
+                                                {/* Premium Card */}
+                                                <div className="backdrop-blur-md bg-white/70 dark:bg-slate-900/50 hover:bg-white/95 dark:hover:bg-slate-900/80 border border-slate-100 dark:border-slate-800/80 hover:border-slate-200 dark:hover:border-slate-700/60 p-4 rounded-xl shadow-sm transition-all duration-200">
+                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100">{item.title}</h4>
+                                                            <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border uppercase tracking-wider ${item.badgeColor}`}>
+                                                                {item.badgeLabel}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                                                            {new Date(item.timestamp).toLocaleString(undefined, {
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                                year: 'numeric',
+                                                                hour: 'numeric',
+                                                                minute: '2-digit'
+                                                            })}
+                                                        </span>
+                                                    </div>
+
+                                                    {item.subtitle && (
+                                                        <p className="text-xs font-semibold text-primary-600 dark:text-primary-400 mb-1">
+                                                            {item.subtitle}
+                                                        </p>
+                                                    )}
+
+                                                    {item.content && (
+                                                        <div className="text-xs text-slate-600 dark:text-slate-300 mt-1 whitespace-pre-wrap leading-relaxed bg-slate-50/50 dark:bg-slate-950/20 p-2.5 rounded-lg border border-slate-100/50 dark:border-slate-900/50 font-normal">
+                                                            {item.content}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     )}
 
                     {activeTab === 'docs' && (

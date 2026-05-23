@@ -69,6 +69,67 @@ const SalesExpenses: React.FC = () => {
         }
     };
 
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const base64Promises: Promise<string>[] = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file.size > 5 * 1024 * 1024) {
+                showToast.warn(`File "${file.name}" is too large. Receipts must be under 5MB.`);
+                continue;
+            }
+            const promise = new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = (err) => reject(err);
+                reader.readAsDataURL(file);
+            });
+            base64Promises.push(promise);
+        }
+
+        try {
+            const base64Strings = await Promise.all(base64Promises);
+            if (base64Strings.length === 0) return;
+
+            const wasEmpty = newExpensePhotos.length === 0;
+            const updatedPhotos = [...newExpensePhotos, ...base64Strings];
+            setNewExpensePhotos(updatedPhotos);
+
+            if (wasEmpty) {
+                setIsAnalyzing(true);
+                try {
+                    const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
+                    const res = await analyzeFn({ base64Images: [base64Strings[0]] });
+                    const extracted = (res.data as { data: { vendor?: string, amount?: string, date?: string, category?: string, description?: string } }).data;
+                    if (extracted) {
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        setNewExpense(prev => ({
+                            ...prev,
+                            vendor: prev.vendor ? prev.vendor : (extracted.vendor || prev.vendor),
+                            amount: prev.amount && prev.amount !== 0 ? prev.amount : (extracted.amount ? parseFloat(extracted.amount) : prev.amount),
+                            date: prev.date && prev.date !== todayStr ? prev.date : (extracted.date || prev.date),
+                            category: prev.category && prev.category !== 'Travel' ? prev.category : (extracted.category || prev.category),
+                            description: prev.description ? prev.description : (extracted.description || prev.description)
+                        }));
+                    }
+                } catch (aiErr) {
+                    console.error('OCR Extraction failed:', aiErr);
+                } finally {
+                    setIsAnalyzing(false);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to read files", err);
+            showToast.warn("Failed to process selected files.");
+        } finally {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
     const handleCaptureReceipt = async () => {
         try {
             const image = await Camera.getPhoto({
@@ -79,23 +140,25 @@ const SalesExpenses: React.FC = () => {
             });
             if (image.base64String) {
                 const dataUrl = `data:image/jpeg;base64,${image.base64String}`;
+                const wasEmpty = newExpensePhotos.length === 0;
                 const updatedPhotos = [...newExpensePhotos, dataUrl];
                 setNewExpensePhotos(updatedPhotos);
 
-                if (updatedPhotos.length === 1) {
+                if (wasEmpty) {
                     setIsAnalyzing(true);
                     try {
                         const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
                         const res = await analyzeFn({ base64Images: [dataUrl] });
                         const extracted = (res.data as { data: { vendor?: string, amount?: string, date?: string, category?: string, description?: string } }).data;
                         if (extracted) {
+                            const todayStr = new Date().toISOString().split('T')[0];
                             setNewExpense(prev => ({
                                 ...prev,
-                                vendor: extracted.vendor || prev.vendor,
-                                amount: extracted.amount ? parseFloat(extracted.amount) : prev.amount,
-                                date: extracted.date || prev.date,
-                                category: extracted.category || prev.category,
-                                description: extracted.description || prev.description
+                                vendor: prev.vendor ? prev.vendor : (extracted.vendor || prev.vendor),
+                                amount: prev.amount && prev.amount !== 0 ? prev.amount : (extracted.amount ? parseFloat(extracted.amount) : prev.amount),
+                                date: prev.date && prev.date !== todayStr ? prev.date : (extracted.date || prev.date),
+                                category: prev.category && prev.category !== 'Travel' ? prev.category : (extracted.category || prev.category),
+                                description: prev.description ? prev.description : (extracted.description || prev.description)
                             }));
                         }
                     } catch (aiErr) {
@@ -487,15 +550,77 @@ const SalesExpenses: React.FC = () => {
                     
                     <div>
                         <p className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Receipt Images (Optional)</p>
-                        <div className="flex gap-2 mb-2">
-                            <Button type="button" variant="secondary" onClick={handleCaptureReceipt} className="w-full flex items-center justify-center gap-2">
-                                <CameraIcon size={16} /> Capture Receipt / Add Page
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                            <Button type="button" variant="secondary" onClick={handleCaptureReceipt} className="flex items-center justify-center gap-2 py-2.5">
+                                <CameraIcon size={16} /> Take Photo
                             </Button>
+                            <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} className="flex items-center justify-center gap-2 py-2.5">
+                                <Paperclip size={16} /> Upload Files
+                            </Button>
+                            <input 
+                                ref={fileInputRef}
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleFileSelect}
+                                aria-label="Upload Receipts"
+                                title="Upload Receipts"
+                            />
                         </div>
+
                         {newExpensePhotos.length > 0 && (
-                            <div className="mt-2 text-emerald-600 text-xs flex flex-col gap-1 font-medium bg-emerald-50 dark:bg-emerald-900/30 p-2 rounded">
-                                <div><Receipt size={14} className="inline mr-1" /> {newExpensePhotos.length} {newExpensePhotos.length === 1 ? 'Page' : 'Pages'} Captured</div>
-                                {isAnalyzing && <div className="text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1"><Loader2 size={12} className="animate-spin"/> AI Extracting Receipt Data...</div>}
+                            <div className="space-y-3 bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 transition-all">
+                                <div className="flex justify-between items-center text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                    <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                                        <Receipt size={14} />
+                                        <span>{newExpensePhotos.length} {newExpensePhotos.length === 1 ? 'Page' : 'Pages'} Queued</span>
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setNewExpensePhotos([])}
+                                        className="text-red-500 hover:text-red-600 hover:underline flex items-center gap-1 transition-colors"
+                                    >
+                                        Clear All
+                                    </button>
+                                </div>
+
+                                {isAnalyzing && (
+                                    <div className="text-blue-600 dark:text-blue-400 text-xs flex items-center gap-1.5 font-medium bg-blue-50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-100 dark:border-blue-900/50">
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span>AI Extracting Receipt Data...</span>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-2">
+                                    {newExpensePhotos.map((photo, index) => (
+                                        <div 
+                                            key={index} 
+                                            className="group relative aspect-square bg-slate-900 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 hover:shadow-md transition-all duration-200"
+                                        >
+                                            <img 
+                                                src={photo} 
+                                                alt={`Receipt Page ${index + 1}`} 
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                            />
+                                            <div className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-[2px] text-[10px] text-white px-1.5 py-0.5 rounded font-bold">
+                                                p.{index + 1}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const updated = [...newExpensePhotos];
+                                                    updated.splice(index, 1);
+                                                    setNewExpensePhotos(updated);
+                                                }}
+                                                className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full opacity-0 group-hover:opacity-100 shadow transition-opacity duration-200 flex items-center justify-center animate-fade-in"
+                                                title="Delete Page"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                     </div>

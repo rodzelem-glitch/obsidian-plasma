@@ -7,6 +7,10 @@ import { Scale } from 'lucide-react';
 interface LegalTabProps {
     termsAndConditions: string;
     setTermsAndConditions: (val: string) => void;
+    customerTerms: string;
+    setCustomerTerms: (val: string) => void;
+    proposalTerms: string;
+    setProposalTerms: (val: string) => void;
     proposalDisclaimer: string;
     setProposalDisclaimer: (val: string) => void;
     invoiceTerms: string;
@@ -25,6 +29,8 @@ interface LegalTabProps {
 
 const LegalTab: React.FC<LegalTabProps> = ({
     termsAndConditions, setTermsAndConditions,
+    customerTerms, setCustomerTerms,
+    proposalTerms, setProposalTerms,
     proposalDisclaimer, setProposalDisclaimer,
     invoiceTerms, setInvoiceTerms,
     membershipTerms, setMembershipTerms,
@@ -38,6 +44,8 @@ const LegalTab: React.FC<LegalTabProps> = ({
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-700 dark:text-slate-300"><Scale size={20}/> Legal Documents &amp; Disclaimers</h3>
             <div className="space-y-4">
                 <Textarea label="Terms &amp; Conditions (General)" value={termsAndConditions} onChange={e => setTermsAndConditions(e.target.value)} rows={6} placeholder="Standard terms for all services..." />
+                <Textarea label="Customer Terms of Agreement" value={customerTerms} onChange={e => setCustomerTerms(e.target.value)} rows={6} placeholder="Terms that new customers must agree to upon first login..." />
+                <Textarea label="Proposal Terms of Agreement" value={proposalTerms} onChange={e => setProposalTerms(e.target.value)} rows={6} placeholder="Terms that customers must agree to before viewing proposals..." />
                 <Textarea label="Proposal Disclaimer" value={proposalDisclaimer} onChange={e => setProposalDisclaimer(e.target.value)} rows={4} placeholder="Estimates are valid for 30 days..." />
                 <Textarea label="Invoice Terms" value={invoiceTerms} onChange={e => setInvoiceTerms(e.target.value)} rows={4} placeholder="Payment due upon receipt..." />
                 <Textarea label="Membership Terms" value={membershipTerms} onChange={e => setMembershipTerms(e.target.value)} rows={4} placeholder="Terms for recurring service plans..." />

@@ -1,13 +1,97 @@
 import React, { useMemo } from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
+import { useAppContext } from 'context/AppContext';
+import { db } from 'lib/firebase';
+import showToast from "lib/toast";
+import { getBaseUrl } from "lib/utils";
+import { Bell } from 'lucide-react';
 
 interface AgingReportTabProps {
     jobs: any[];
 }
 
 const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
+    const { state } = useAppContext();
     const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
+
+    const handleSendInvoiceReminder = async (job: any) => {
+        let email = job.customerEmail;
+        let phone = job.customerPhone;
+        
+        if (!email && job.customerId) {
+            const cust = state.customers.find((c: any) => c.id === job.customerId);
+            if (cust) {
+                email = cust.email;
+                phone = cust.phone || phone;
+            }
+        }
+
+        if (!email && !phone) {
+            showToast.warn("Customer requires an email or phone number for reminders.");
+            return;
+        }
+
+        if (job.invoice?.remindersSent) {
+            const alreadySentToday = job.invoice.remindersSent.some((dateStr: string) => {
+                try {
+                    return new Date(dateStr).toLocaleDateString() === new Date().toLocaleDateString();
+                } catch (e) {
+                    return false;
+                }
+            });
+            if (alreadySentToday) {
+                if (!confirm("A reminder has already been sent to this customer today. Are you sure you want to send another one?")) {
+                    return;
+                }
+            }
+        }
+
+        if (!confirm(`Send payment reminder for invoice #${job.invoice.id} to ${email || 'this customer'}?`)) return;
+
+        try {
+            const link = `${getBaseUrl()}/#/invoice/${job.id}`;
+            const orgName = state.currentOrganization?.name || 'Service Provider';
+            const invTotal = Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0;
+            
+            if (email) {
+                await db.collection('mail').add({
+                    to: [email],
+                    message: {
+                        subject: `Reminder: Invoice #${job.invoice.id} from ${orgName}`,
+                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;"><h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${job.customerName},</p><p>This is a friendly reminder that your invoice <strong>#${job.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                        text: `Reminder: Invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. Pay here: ${link}`
+                    },
+                    organizationId: state.currentOrganization?.id,
+                    type: 'InvoiceReminder',
+                    createdAt: new Date().toISOString()
+                });
+            }
+
+            if (phone) {
+                await db.collection('messages').add({
+                    to: phone,
+                    body: `Reminder from ${orgName}: Your invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. View and pay securely here: ${link}`,
+                    organizationId: state.currentOrganization?.id,
+                    status: 'pending',
+                    type: 'sms',
+                    createdAt: new Date().toISOString()
+                });
+            }
+
+            const reminderDate = new Date().toISOString();
+            const currentReminders = job.invoice.remindersSent || [];
+            const newReminders = [...currentReminders, reminderDate];
+            await db.collection('jobs').doc(job.id).update({
+                'invoice.remindersSent': newReminders
+            });
+
+            showToast.warn(`Reminder sent via ${email ? 'email' : ''} ${email && phone ? 'and ' : ''}${phone ? 'SMS text' : ''}!`);
+        } catch (e) {
+            console.error(e);
+            showToast.warn("Error sending reminder.");
+        }
+    };
 
     const agingData = useMemo(() => {
         const unpaidJobs = jobs.filter(j => j.invoice && j.invoice.status !== 'Paid');
@@ -72,7 +156,7 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
             </div>
 
             <h4 className="font-bold text-slate-900 dark:text-white mb-4 mt-8">Aging Details</h4>
-            <Table headers={['Customer', 'Invoice #', 'Date', 'Age (Days)', 'Amount']}>
+            <Table headers={['Customer', 'Invoice #', 'Date / Sent Date', 'Age (Days)', 'Amount', 'Reminders Sent', 'Actions']}>
                 {['current', 'days30', 'days60', 'older'].flatMap((bucketKey) => {
                     return agingData.buckets[bucketKey as keyof typeof agingData.buckets].map((job: any) => {
                         const amt = Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0;
@@ -82,13 +166,45 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                             <tr key={job.id} className="bg-white dark:bg-slate-900/50">
                                 <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{job.customerName}</td>
                                 <td className="px-6 py-4 font-mono text-xs text-slate-500 dark:text-slate-400">{job.invoice.id}</td>
-                                <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">{new Date(job.appointmentTime).toLocaleDateString()}</td>
+                                <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+                                    <div>{new Date(job.appointmentTime).toLocaleDateString()}</div>
+                                    {job.invoice.sentAt ? (
+                                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                            Sent: {new Date(job.invoice.sentAt).toLocaleDateString()}
+                                        </div>
+                                    ) : (
+                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 italic">Not Sent</div>
+                                    )}
+                                </td>
                                 <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
                                     <span className={`px-2 py-1 rounded text-xs font-bold ${days > 90 ? 'bg-red-100 text-red-800' : days > 60 ? 'bg-orange-100 text-orange-800' : days > 30 ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-800'}`}>
                                         {days} Days
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{fmt(amt)}</td>
+                                <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400">
+                                    {job.invoice.remindersSent && job.invoice.remindersSent.length > 0 ? (
+                                        <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                            {job.invoice.remindersSent.map((dateStr: string, idx: number) => (
+                                                <span key={idx} className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                                    {new Date(dateStr).toLocaleDateString()}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <span className="italic text-slate-400">None</span>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4 text-sm">
+                                    <button 
+                                        onClick={() => handleSendInvoiceReminder(job)}
+                                        className="inline-flex items-center px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 border border-orange-500/20 hover:border-orange-500/40"
+                                        title="Send Payment Reminder"
+                                    >
+                                        <Bell size={12} className="mr-1.5" />
+                                        Send Reminder
+                                    </button>
+                                </td>
                             </tr>
                         );
                     });

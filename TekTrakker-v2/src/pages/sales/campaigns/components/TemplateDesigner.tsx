@@ -86,7 +86,7 @@ const TemplateDesigner: React.FC = () => {
 
             const result: any = await callGeminiAI({ 
                 prompt: systemContext,
-                modelName: 'gemini-3.1-pro-preview'
+                modelName: 'gemini-3.5-flash'
             });
 
             setEditingTemplate(prev => ({ ...prev, content: result.data.text }));

@@ -90,9 +90,9 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
 
             const files = await Promise.all(filePromises);
             
-            const result = await analyzeRFPWithAI({ files }) as { data?: { success?: boolean, data?: any } };
+            const result = await analyzeRFPWithAI({ files }) as { data?: { success?: boolean, data?: Record<string, unknown> } };
             if (result.data?.success && result.data?.data) {
-                const aiData = result.data.data;
+                const aiData = result.data.data as Partial<RFPNotice>;
                 setForm(prev => ({
                     ...prev,
                     title: aiData.title || prev.title,
@@ -162,7 +162,7 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="sm:col-span-2">
-                                    <label id="tradesLabel" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Required Trades / Components</label>
+                                    <div id="tradesLabel" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Required Trades / Components</div>
                                     <div className="flex flex-wrap gap-2" role="group" aria-labelledby="tradesLabel">
                                         {['HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General Contracting', 'Cleaning', 'Painting', 'Roofing', 'Masonry', 'Telecommunications', 'Solar', 'Security', 'Pet Grooming', 'Property Management', 'Appliance Repair', 'Garage Door'].map(tradeOpt => {
                                             const isSelected = form.trades?.includes(tradeOpt) || form.trade === tradeOpt;
@@ -281,7 +281,7 @@ const CreateRFPModal: React.FC<CreateRFPModalProps> = ({ isOpen, onClose, onSave
                             </div>
 
                             <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                                <label id="attachLabel" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Attachments & AI Extraction</label>
+                                <div id="attachLabel" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Attachments & AI Extraction</div>
                                 <div className="flex flex-col gap-3" role="group" aria-labelledby="attachLabel">
                                     <div className="flex flex-col sm:flex-row gap-2">
                                         <button 

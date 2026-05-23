@@ -12,7 +12,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { 
     CalculatorIcon, Wrench, Save, Thermometer, Wind, Droplet, Zap, 
     Ruler, Cpu, Activity, AlertTriangle, FileText, Mail, Download, 
-    History, Edit, Trash2, ArrowRight, Zap as Sparkles, ClipboardCheck, Bluetooth, Camera
+    History, Edit, Trash2, ArrowRight, Zap as Sparkles, ClipboardCheck, Bluetooth, Camera, Paperclip
 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import Tesseract from 'tesseract.js';
@@ -196,7 +196,7 @@ const IndustryToolsHub: React.FC = () => {
             const functions = getFunctions();
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             const prompt = `Senior VRF Tech Support: ${vrfBrand} VRF, Error ${vrfError}. Identify issue and 3-5 tech steps. JSON: { "issue": "...", "steps": ["..."] }`;
-            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.1-pro-preview', config: { response_mime_type: "application/json" } });
+            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.5-flash', config: { response_mime_type: "application/json" } });
             const cleanJson = (result.data.text || '{}').replace(/```json/g, '').replace(/```/g, '').trim();
             setVrfAnalysis(JSON.parse(cleanJson));
         } catch (e) {
@@ -297,6 +297,69 @@ const IndustryToolsHub: React.FC = () => {
         }
     };
 
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const processOCRImage = async (dataUrl: string) => {
+        setIsScanningOCR(true);
+        showToast.info("Analyzing image with OCR...");
+        try {
+            const result = await Tesseract.recognize(dataUrl, 'eng');
+            const text = result.data.text;
+            
+            const lraMatch = text.match(/LRA[\s:]*([\d\.]+)/i);
+            const rlaMatch = text.match(/RLA[\s:]*([\d\.]+)/i);
+            
+            const updates: any = {};
+            let found = false;
+            
+            if (lraMatch && lraMatch[1]) { updates.comp_lra = lraMatch[1]; found = true; }
+            if (rlaMatch && rlaMatch[1]) { updates.comp_rla = rlaMatch[1]; found = true; }
+            
+            if (found) {
+                setVitalsData(prev => {
+                    const merged = { ...prev };
+                    if (updates.comp_lra && (!prev.comp_lra || prev.comp_lra.trim() === '')) {
+                        merged.comp_lra = updates.comp_lra;
+                    }
+                    if (updates.comp_rla && (!prev.comp_rla || prev.comp_rla.trim() === '')) {
+                        merged.comp_rla = updates.comp_rla;
+                    }
+                    return merged;
+                });
+                showToast.success("OCR Successful: Extracted data plate values.");
+            } else {
+                showToast.warn("OCR couldn't find expected values (LRA/RLA). Please enter manually.");
+            }
+        } catch (e) {
+            console.error("OCR Error:", e);
+            showToast.warn("OCR processing failed.");
+        } finally {
+            setIsScanningOCR(false);
+        }
+    };
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        
+        if (file.size > 5 * 1024 * 1024) {
+            showToast.warn("File Too Large: The photo must be under 5MB.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const dataUrl = reader.result as string;
+            await processOCRImage(dataUrl);
+        };
+        reader.onerror = () => {
+            showToast.warn("Failed to read the file.");
+        };
+        reader.readAsDataURL(file);
+        
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
     const handleOCRScan = async () => {
         try {
             const image = await CapCamera.getPhoto({
@@ -307,33 +370,10 @@ const IndustryToolsHub: React.FC = () => {
             });
 
             if (image.dataUrl) {
-                setIsScanningOCR(true);
-                showToast.info("Analyzing image with OCR...");
-                
-                const result = await Tesseract.recognize(image.dataUrl, 'eng');
-                const text = result.data.text;
-                
-                const lraMatch = text.match(/LRA[\s:]*([\d\.]+)/i);
-                const rlaMatch = text.match(/RLA[\s:]*([\d\.]+)/i);
-                
-                const updates: any = {};
-                let found = false;
-                
-                if (lraMatch && lraMatch[1]) { updates.comp_lra = lraMatch[1]; found = true; }
-                if (rlaMatch && rlaMatch[1]) { updates.comp_rla = rlaMatch[1]; found = true; }
-                
-                if (found) {
-                    setVitalsData(prev => ({ ...prev, ...updates }));
-                    showToast.success("OCR Successful: Extracted data plate values.");
-                } else {
-                    showToast.warn("OCR couldn't find expected values (LRA/RLA). Please enter manually.");
-                }
+                await processOCRImage(image.dataUrl);
             }
         } catch (e) {
-            console.error("OCR Error:", e);
-            showToast.warn("Camera or OCR failed.");
-        } finally {
-            setIsScanningOCR(false);
+            console.error("Camera Cancelled/Failed", e);
         }
     };
 
@@ -521,26 +561,45 @@ const IndustryToolsHub: React.FC = () => {
                         </Card>
 
                         <Card title="Diagnostic Integrations" className="bg-slate-50 dark:bg-slate-900 border-dashed border-2">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <Button 
                                     onClick={handleBluetoothConnect} 
                                     disabled={isBluetoothConnecting}
-                                    className="bg-blue-600 hover:bg-blue-700 h-14"
+                                    className="bg-blue-600 hover:bg-blue-700 h-14 font-semibold"
                                 >
                                     <Bluetooth size={20} className="mr-2" />
-                                    {isBluetoothConnecting ? 'Connecting to Probes...' : 'Connect Bluetooth Gauges'}
+                                    {isBluetoothConnecting ? 'Connecting...' : 'Connect Bluetooth'}
                                 </Button>
                                 
                                 <Button 
                                     onClick={handleOCRScan} 
                                     disabled={isScanningOCR}
-                                    className="bg-slate-800 hover:bg-slate-700 h-14"
+                                    className="bg-slate-800 hover:bg-slate-700 h-14 font-semibold"
                                 >
                                     <Camera size={20} className="mr-2" />
-                                    {isScanningOCR ? 'Processing Image...' : 'Photo-to-Data (OCR Scan)'}
+                                    {isScanningOCR ? 'Processing...' : 'Take Photo (OCR)'}
                                 </Button>
+
+                                <Button 
+                                    onClick={() => fileInputRef.current?.click()} 
+                                    disabled={isScanningOCR}
+                                    className="bg-slate-700 hover:bg-slate-600 h-14 font-semibold"
+                                >
+                                    <Paperclip size={20} className="mr-2" />
+                                    Upload File (OCR)
+                                </Button>
+
+                                <input 
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={handleFileSelect}
+                                    aria-label="Upload OCR Image"
+                                    title="Upload OCR Image"
+                                />
                             </div>
-                            <p className="text-xs text-slate-500 mt-3 text-center">Auto-populate vitals using your smart gauges or by snapping a photo of the equipment data plate.</p>
+                            <p className="text-xs text-slate-500 mt-3 text-center">Auto-populate vitals using your smart gauges, scanning via camera, or uploading a data plate photo.</p>
                         </Card>
 
                         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

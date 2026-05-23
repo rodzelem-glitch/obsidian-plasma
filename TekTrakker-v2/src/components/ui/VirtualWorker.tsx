@@ -1,6 +1,6 @@
 import showToast from "lib/toast";
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, X, Send, Image as ImageIcon, Loader2, Mic, MicOff, Volume2, VolumeX, PhoneCall, PhoneOff } from 'lucide-react';
+import { Bot, X, Send, Image as ImageIcon, Loader2, Mic, MicOff, Volume2, VolumeX, PhoneCall, PhoneOff, RefreshCw } from 'lucide-react';
 import Draggable from 'react-draggable';
 import { useAppContext } from 'context/AppContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -49,6 +49,7 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
         }
     }, [messages]);
     const [isTyping, setIsTyping] = useState(false);
+    const [typingStatus, setTypingStatus] = useState<'typing' | 'synthesizing' | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [pendingImageBase64, setPendingImageBase64] = useState<string | null>(null);
@@ -70,6 +71,7 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
     const isConversationalModeRef = useRef(isConversationalMode);
     const isVoiceEnabledRef = useRef(isVoiceEnabled);
     const isListeningRef = useRef(isListening);
+    const typingStatusRef = useRef(typingStatus);
 
     useEffect(() => {
         isTypingRef.current = isTyping;
@@ -383,7 +385,7 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                                             : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700 rounded-bl-sm'
                                     }`}
                                 >
-                                    <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                                    {renderMessageContent(msg)}
                                     {msg.imageUrl && (
                                         <img src={msg.imageUrl} alt="Attached" className="mt-2 max-w-full h-auto rounded-lg shadow-sm border border-black/10" />
                                     )}
@@ -535,3 +537,150 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
 };
 
 export default VirtualWorker;
+
+// Premium Interactive SVG schematic viewer and zoomable visual panel
+const SvgSchematicViewer = ({ svgCode }) => {
+    const [zoom, setZoom] = React.useState(1);
+    const [pan, setPan] = React.useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = React.useState(false);
+    const [dragStart, setDragStart] = React.useState({ x: 0, y: 0 });
+    const containerRef = React.useRef(null);
+
+    const handleMouseDown = (e) => {
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    };
+
+    const handleMouseMove = (e) => {
+        if (!isDragging) return;
+        setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+    };
+
+    const handleMouseUpOrLeave = () => {
+        setIsDragging(false);
+    };
+
+    const handleTouchStart = (e) => {
+        if (e.touches.length === 1) {
+            setIsDragging(true);
+            setDragStart({ x: e.touches[0].clientX - pan.x, y: e.touches[0].clientY - pan.y });
+        }
+    };
+
+    const handleTouchMove = (e) => {
+        if (!isDragging || e.touches.length !== 1) return;
+        setPan({ x: e.touches[0].clientX - dragStart.x, y: e.touches[0].clientY - dragStart.y });
+    };
+
+    const handleDownload = () => {
+        try {
+            const blob = new Blob([svgCode], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = svgCode.includes('DIAGNOSTIC SYSTEM SCHEMATIC') ? 'technical-schematic.svg' : 'marketing-asset.svg';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast.success("Downloaded schematic successfully!");
+        } catch (e) {
+            showToast.error("Failed to download graphic.");
+        }
+    };
+
+    return (
+        <div className="my-3 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg select-none">
+            <div className="flex justify-between items-center bg-slate-950 px-3 py-2 border-b border-slate-850 text-slate-400">
+                <span className="text-[10px] font-bold tracking-widest text-slate-500 uppercase flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                    Interactive Schematic View
+                </span>
+                <div className="flex items-center gap-2">
+                    <button 
+                        type="button"
+                        onClick={() => setZoom(z => Math.min(3, z + 0.15))} 
+                        className="p-1 hover:bg-slate-800 hover:text-white rounded transition-colors text-xs font-bold"
+                        title="Zoom In"
+                    >
+                        +
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={() => setZoom(z => Math.max(0.5, z - 0.15))} 
+                        className="p-1 hover:bg-slate-800 hover:text-white rounded transition-colors text-xs font-bold"
+                        title="Zoom Out"
+                    >
+                        -
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} 
+                        className="p-1 hover:bg-slate-800 hover:text-white rounded transition-colors text-[10px] font-bold uppercase leading-none"
+                        title="Reset View"
+                    >
+                        Reset
+                    </button>
+                    <button 
+                        type="button"
+                        onClick={handleDownload} 
+                        className="p-1 hover:bg-slate-800 hover:text-white rounded transition-colors text-[10px] font-bold uppercase leading-none"
+                        title="Download Asset"
+                    >
+                        Download
+                    </button>
+                </div>
+            </div>
+            <div 
+                ref={containerRef}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUpOrLeave}
+                onMouseLeave={handleMouseUpOrLeave}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleMouseUpOrLeave}
+                className="w-full h-72 overflow-hidden flex items-center justify-center relative cursor-grab active:cursor-grabbing bg-slate-950/80"
+            >
+                <div 
+                    style={{ 
+                        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                        transformOrigin: 'center center',
+                        transition: isDragging ? 'none' : 'transform 0.15s ease-out'
+                    }}
+                    className="w-full h-full flex items-center justify-center p-4"
+                    dangerouslySetInnerHTML={{ __html: svgCode }}
+                />
+            </div>
+        </div>
+    );
+};
+
+const renderMessageContent = (msg) => {
+    if (msg.role === 'user') {
+        return <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>;
+    }
+    
+    const xmlBlockRegex = /```(?:xml|svg)\n([\s\S]*?)\n```/gi;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+    
+    while ((match = xmlBlockRegex.exec(msg.content)) !== null) {
+        const textBefore = msg.content.substring(lastIndex, match.index);
+        if (textBefore) {
+            parts.push(<p key={`text-${lastIndex}`} className="whitespace-pre-wrap leading-relaxed mb-2">{textBefore}</p>);
+        }
+        
+        const svgMarkup = match[1];
+        parts.push(<SvgSchematicViewer key={`svg-${match.index}`} svgCode={svgMarkup} />);
+        lastIndex = xmlBlockRegex.lastIndex;
+    }
+    
+    if (lastIndex < msg.content.length) {
+        const remainingText = msg.content.substring(lastIndex);
+        parts.push(<p key={`text-${lastIndex}`} className="whitespace-pre-wrap leading-relaxed">{remainingText}</p>);
+    }
+    
+    return <div className="space-y-2">{parts.length > 0 ? parts : <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>}</div>;
+};

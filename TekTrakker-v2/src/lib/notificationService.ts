@@ -1,4 +1,4 @@
-import { db } from './firebase';
+import { db, auth } from './firebase';
 
 export interface NotificationPayload {
     title: string;
@@ -52,6 +52,13 @@ export const sendNotification = async (userId: string, payload: NotificationPayl
  * Notifies all admin users in the organization.
  */
 export const notifyAdmins = async (organizationId: string, payload: NotificationPayload) => {
+    // Check if user is logged in before querying the user database on client-side.
+    // Anonymous/unauthenticated guests don't have read access to the users collection.
+    if (!auth.currentUser || auth.currentUser.isAnonymous) {
+        console.info("[Notification] Unauthenticated/anonymous user: Offloading admin notification to backend trigger.");
+        return;
+    }
+
     try {
         const adminsSnapshot = await db.collection('users')
             .where('organizationId', '==', organizationId)
@@ -81,6 +88,7 @@ export const notifyAdmins = async (organizationId: string, payload: Notification
         console.error("Failed to notify admins:", error);
     }
 };
+
 /**
  * Centralized email sending utility that handles SMTP configurations and standard headers.
  */

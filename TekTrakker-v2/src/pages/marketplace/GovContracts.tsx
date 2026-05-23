@@ -27,7 +27,7 @@ interface GovOpportunity {
     naicsCodes: string[];
     classificationCode: string;
     active: 'Yes' | 'No';
-    pointOfContact: any[];
+    pointOfContact: unknown[];
     description: string;
     uiLink: string;
 }
@@ -44,6 +44,8 @@ const GovContracts: React.FC = () => {
     const [naicsCode, setNaicsCode] = useState(state.currentOrganization?.primaryNaics || '');
     const [keyword, setKeyword] = useState('');
     const [targetState, setTargetState] = useState(state.currentOrganization?.address?.state || '');
+    const [targetCity, setTargetCity] = useState(state.currentOrganization?.address?.city || '');
+    const [targetZip, setTargetZip] = useState(state.currentOrganization?.address?.zip || '');
 
     const fetchContracts = async () => {
         setLoading(true);
@@ -67,18 +69,22 @@ const GovContracts: React.FC = () => {
                 naicsCode: naicsCode.trim(),
                 keyword: keyword.trim(),
                 state: targetState.trim(),
+                city: targetCity.trim(),
+                zip: targetZip.trim(),
                 postedFrom: formatDateForApi(fromDate),
                 postedTo: formatDateForApi(toDate),
                 limit: 50
             });
             
-            const data = result.data as any;
+            const data = result.data as Record<string, unknown>;
             if (data.success) {
-                setOpportunities(data.opportunities);
+                setOpportunities(data.opportunities as GovOpportunity[]);
+            } else {
+                throw new Error((data.error as string) || "Failed to load federal contracts.");
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Failed to fetch SAM.gov contracts", err);
-            setError(err.message || "Failed to load federal contracts.");
+            setError((err as Error).message || "Failed to load federal contracts.");
         } finally {
             setLoading(false);
         }
@@ -101,6 +107,8 @@ const GovContracts: React.FC = () => {
                 naicsCode,
                 keyword,
                 targetState,
+                targetCity,
+                targetZip,
                 email: state.currentUser?.email || '',
                 createdAt: new Date().toISOString()
             });
@@ -138,12 +146,13 @@ const GovContracts: React.FC = () => {
 
             {/* Filters */}
             <Card className="border-blue-100 dark:border-blue-900 shadow-md">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                    <div>
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Keywords / Title</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4 items-end">
+                    <div className="xl:col-span-2">
+                        <label htmlFor="keyword-input" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Keywords / Title</label>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                             <input 
+                                id="keyword-input"
                                 type="text"
                                 value={keyword}
                                 onChange={e => setKeyword(e.target.value)}
@@ -153,8 +162,9 @@ const GovContracts: React.FC = () => {
                         </div>
                     </div>
                     <div>
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">NAICS Code</label>
+                        <label htmlFor="naics-input" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">NAICS Code</label>
                         <input 
+                            id="naics-input"
                             type="text"
                             value={naicsCode}
                             onChange={e => setNaicsCode(e.target.value)}
@@ -163,22 +173,49 @@ const GovContracts: React.FC = () => {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">State Abbreviation</label>
+                        <label htmlFor="state-input" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">State</label>
                         <div className="relative">
                             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                             <input 
+                                id="state-input"
                                 type="text"
                                 value={targetState}
                                 onChange={e => setTargetState(e.target.value.toUpperCase())}
-                                placeholder="TX, CA, FL..."
+                                placeholder="TX, CA..."
                                 maxLength={2}
                                 className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none uppercase"
                             />
                         </div>
                     </div>
                     <div>
+                        <label htmlFor="city-input" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">City</label>
+                        <input 
+                            id="city-input"
+                            type="text"
+                            value={targetCity}
+                            onChange={e => setTargetCity(e.target.value)}
+                            placeholder="e.g. Dallas"
+                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="zip-input" className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Zip</label>
+                        <input 
+                            id="zip-input"
+                            type="text"
+                            value={targetZip}
+                            onChange={e => setTargetZip(e.target.value)}
+                            placeholder="e.g. 75001"
+                            maxLength={10}
+                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                    </div>
+                    <div className="xl:col-span-6 flex flex-col md:flex-row justify-between items-start md:items-center mt-2 gap-4">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-2xl">
+                            <span className="font-bold text-blue-500">Pro Tip:</span> SAM.gov treats all filled fields as strict requirements. If you aren't getting enough results, try searching with just one location field at a time (e.g., just State, or just Zip).
+                        </p>
                         <Button 
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold"
+                            className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-8"
                             onClick={fetchContracts}
                             disabled={loading}
                         >
@@ -220,10 +257,14 @@ const GovContracts: React.FC = () => {
                         <Loader2 className="animate-spin" size={48} />
                     </div>
                 ) : opportunities.length === 0 ? (
-                    <Card className="text-center py-20 border-dashed border-2">
-                        <Filter className="mx-auto text-slate-300 mb-4" size={48} />
-                        <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">No opportunities found</h3>
-                        <p className="text-slate-500 mt-2">Try adjusting your NAICS code or state filter to find more contracts.</p>
+                    <Card className={error ? "text-center py-20 border-dashed border-2 border-red-200 dark:border-red-900/50" : "text-center py-20 border-dashed border-2"}>
+                        <Filter className={error ? "mx-auto text-red-300 dark:text-red-800/50 mb-4" : "mx-auto text-slate-300 mb-4"} size={48} />
+                        <h3 className={error ? "text-lg font-bold text-red-700 dark:text-red-400" : "text-lg font-bold text-slate-700 dark:text-slate-300"}>
+                            {error ? "Search Unavailable" : "No opportunities found"}
+                        </h3>
+                        <p className="text-slate-500 mt-2">
+                            {error ? "We could not fetch data due to SAM.gov API gateway stability issues. Please try again later." : "Try adjusting your NAICS code or state filter to find more contracts."}
+                        </p>
                     </Card>
                 ) : (
                     <div className="grid grid-cols-1 gap-4">

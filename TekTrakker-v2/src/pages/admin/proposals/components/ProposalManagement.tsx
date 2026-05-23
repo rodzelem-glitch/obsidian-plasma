@@ -7,7 +7,8 @@ import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import Button from 'components/ui/Button';
 import Select from 'components/ui/Select';
-import { Search, Eye, Send, Trash2 } from 'lucide-react';
+import { Search, Eye, Send, Trash2, Bell } from 'lucide-react';
+import { getBaseUrl } from 'lib/utils';
 import type { Proposal } from 'types';
 import { db } from 'lib/firebase';
 import DocumentPreview from 'components/ui/DocumentPreview';
@@ -51,10 +52,99 @@ const ProposalManagement: React.FC = () => {
     const handleSend = async (p: Proposal) => {
         if (!await globalConfirm(`Send proposal to ${p.customerName}?`)) return;
         try {
-            await db.collection('proposals').doc(p.id).update({ status: 'Sent' });
-            showToast.warn("Status updated to Sent.");
+            let email = p.customerEmail;
+            if (!email && p.customerId) {
+                const cust = state.customers.find((c: any) => c.id === p.customerId);
+                if (cust) {
+                    email = cust.email;
+                }
+            }
+
+            if (email) {
+                const proposalLink = `${getBaseUrl()}/#/proposal-view/${p.id}`;
+                await db.collection('mail').add({
+                    to: [email],
+                    message: {
+                        subject: `New Proposal from ${state.currentOrganization?.name || 'Service Provider'}`,
+                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #e0f2fe;border-radius:8px;"><h2 style="color:#0284c7;">New Proposal Ready</h2><p>Hi ${p.customerName},</p><p>We have prepared a new proposal for you (total: <strong>$${(p.total || 0).toLocaleString()}</strong>). Please review and sign it online:</p><div style="margin:20px 0;"><a href="${proposalLink}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Sign Proposal</a></div><p style="font-size:12px;color:#666;">Link: ${proposalLink}</p></div>`,
+                        text: `New Proposal from ${state.currentOrganization?.name || 'Service Provider'} for $${(p.total || 0).toLocaleString()}. View here: ${proposalLink}`
+                    },
+                    organizationId: state.currentOrganization?.id,
+                    type: 'ProposalLink',
+                    createdAt: new Date().toISOString(),
+                });
+            }
+
+            const sentAt = new Date().toISOString();
+            await db.collection('proposals').doc(p.id).update({ 
+                status: 'Sent',
+                sentAt: sentAt
+            });
+            showToast.warn("Proposal sent and status updated to Sent.");
         } catch (e) {
             showToast.warn("Update failed.");
+        }
+    };
+
+    const handleSendProposalReminder = async (p: Proposal) => {
+        let email = p.customerEmail;
+        if (!email && p.customerId) {
+            const cust = state.customers.find((c: any) => c.id === p.customerId);
+            if (cust) {
+                email = cust.email;
+            }
+        }
+
+        if (!email) {
+            showToast.warn("Customer requires an email address for proposal reminders.");
+            return;
+        }
+
+        if (p.remindersSent) {
+            const alreadySentToday = p.remindersSent.some((dateStr: string) => {
+                try {
+                    return new Date(dateStr).toLocaleDateString() === new Date().toLocaleDateString();
+                } catch (e) {
+                    return false;
+                }
+            });
+            if (alreadySentToday) {
+                if (!confirm("A reminder has already been sent to this customer today. Are you sure you want to send another one?")) {
+                    return;
+                }
+            }
+        }
+
+        if (!confirm(`Send reminder for proposal #${p.id.slice(-6)} to ${email}?`)) return;
+
+        try {
+            const link = `${getBaseUrl()}/#/proposal-view/${p.id}`;
+            const orgName = state.currentOrganization?.name || 'Service Provider';
+            const totalVal = p.total || 0;
+
+            await db.collection('mail').add({
+                to: [email],
+                message: {
+                    subject: `Reminder: Proposal from ${orgName}`,
+                    html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #e0f2fe;border-radius:8px;"><h2 style="color:#0284c7;">Proposal Reminder</h2><p>Hi ${p.customerName},</p><p>This is a friendly reminder to review the proposal we prepared for you (total: <strong>$${totalVal.toLocaleString()}</strong>).</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Sign Proposal</a></div><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                    text: `Reminder: Please review and sign your proposal for $${totalVal.toLocaleString()}. Link: ${link}`
+                },
+                organizationId: state.currentOrganization?.id,
+                type: 'ProposalReminder',
+                createdAt: new Date().toISOString()
+            });
+
+            const reminderDate = new Date().toISOString();
+            const currentReminders = p.remindersSent || [];
+            const newReminders = [...currentReminders, reminderDate];
+            await db.collection('proposals').doc(p.id).update({
+                remindersSent: newReminders
+            });
+
+            showToast.warn("Proposal reminder sent successfully!");
+        } catch (e) {
+            console.error(e);
+            showToast.warn("Error sending reminder.");
         }
     };
 
@@ -147,7 +237,7 @@ const ProposalManagement: React.FC = () => {
             </div>
 
             <Card className="p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-lg rounded-2xl">
-                <Table headers={['Date', 'ID', 'Customer', 'Value', 'Status', 'Actions']}>
+                <Table headers={['Created Date', 'Sent Date', 'ID', 'Customer', 'Value', 'Status', 'Reminders Sent', 'Actions']}>
                     {filteredProposals.map(p => (
                         <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all cursor-pointer" onClick={() => setViewProposalId(p.id)}>
                             <td className="px-6 py-4 text-xs font-bold text-slate-500 uppercase">

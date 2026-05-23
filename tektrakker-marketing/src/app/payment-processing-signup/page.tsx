@@ -71,7 +71,7 @@ export default function PaymentProcessingSignup() {
                 {/* Hero Section */}
                 <section className="relative pt-32 pb-20 md:pt-40 md:pb-28 overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950" />
-                    <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 30% 50%, rgba(16,185,129,0.3) 0%, transparent 50%), radial-gradient(circle at 70% 80%, rgba(59,130,246,0.2) 0%, transparent 50%)' }} />
+                    <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_30%_50%,rgba(16,185,129,0.3)_0%,transparent_50%),radial-gradient(circle_at_70%_80%,rgba(59,130,246,0.2)_0%,transparent_50%)]" />
                     
                     <div className="relative max-w-5xl mx-auto px-4 text-center">
                         <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-8 border border-emerald-500/20 backdrop-blur-sm">
@@ -234,7 +234,7 @@ export default function PaymentProcessingSignup() {
                 {/* Final CTA */}
                 <section className="relative py-24 md:py-32 overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900" />
-                    <div className="absolute inset-0 opacity-30" style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(16,185,129,0.3) 0%, transparent 60%)' }} />
+                    <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_50%_50%,rgba(16,185,129,0.3)_0%,transparent_60%)]" />
                     
                     <div className="relative max-w-3xl mx-auto px-4 text-center">
                         <div className="inline-flex items-center gap-2 text-emerald-400 text-sm font-bold uppercase tracking-widest mb-6">

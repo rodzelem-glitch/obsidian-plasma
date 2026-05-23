@@ -1,10 +1,21 @@
 import React from 'react';
 import { CheckCircle } from 'lucide-react';
 
-export const PlanCard = ({ id, name, price, users, ribbonText, selectedPlan, setSelectedPlan }: any) => (
-    <div 
+interface PlanCardProps {
+    id: string;
+    name: string;
+    price: string | number;
+    users: string;
+    ribbonText?: string;
+    selectedPlan: string;
+    setSelectedPlan: (id: string) => void;
+}
+
+export const PlanCard: React.FC<PlanCardProps> = ({ id, name, price, users, ribbonText, selectedPlan, setSelectedPlan }) => (
+    <button 
+      type="button"
       onClick={() => setSelectedPlan(id)}
-      className={`relative overflow-hidden p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPlan === id ? 'border-primary-500 bg-primary-500/10' : 'border-slate-700 bg-slate-800/50 hover:border-slate-500'}`}
+      className={`w-full text-left relative overflow-hidden p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedPlan === id ? 'border-primary-500 bg-primary-500/10' : 'border-slate-700 bg-slate-800/50 hover:border-slate-500'}`}
     >
         {ribbonText && (
             <div className="absolute top-0 right-0">
@@ -19,5 +30,5 @@ export const PlanCard = ({ id, name, price, users, ribbonText, selectedPlan, set
         </div>
         <p className="text-2xl font-black text-white">${price}<span className="text-xs font-normal text-slate-400">/mo</span></p>
         <p className="text-[10px] text-slate-400 mt-1">{users}</p>
-    </div>
+    </button>
 );

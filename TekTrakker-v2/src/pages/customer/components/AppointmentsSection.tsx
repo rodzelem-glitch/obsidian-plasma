@@ -9,6 +9,7 @@ interface AppointmentsSectionProps {
     jobs: Job[];
     documents: BusinessDocument[];
     users?: AppUser[]; // All org users to look up technicians
+    onEditJob?: (job: Job) => void;
 }
 
 const CertBadge: React.FC<{ label: string; icon: React.ReactNode }> = ({ label, icon }) => (
@@ -17,7 +18,7 @@ const CertBadge: React.FC<{ label: string; icon: React.ReactNode }> = ({ label, 
     </div>
 );
 
-const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documents, users = [] }) => {
+const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documents, users = [], onEditJob }) => {
     const [viewingPastDocument, setViewingPastDocument] = useState<{ title: string; htmlContent?: string; dataUrl?: string } | null>(null);
 
     const getJobDocuments = (jobId: string): BusinessDocument[] => {
@@ -122,12 +123,22 @@ const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documen
                                         <div className="flex items-center gap-3 mt-2">
                                             <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 capitalize">{job.jobStatus}</span>
                                             {(job.jobStatus === 'Scheduled' || job.jobStatus === 'In Progress') && (
+                                                <>
                                                 <button 
                                                     onClick={() => handleAddToCalendar(job)}
                                                     className="flex items-center gap-1 text-[10px] font-black uppercase text-primary-600 hover:text-primary-700 transition"
                                                 >
                                                     <CalendarPlus size={12}/> Add to Calendar
                                                 </button>
+                                                {onEditJob && (
+                                                    <button 
+                                                        onClick={() => onEditJob(job)}
+                                                        className="flex items-center gap-1 text-[10px] font-black uppercase text-primary-600 hover:text-primary-700 transition ml-2"
+                                                    >
+                                                        <Clock size={12}/> Reschedule
+                                                    </button>
+                                                )}
+                                                </>
                                             )}
                                         </div>
                                     </div>

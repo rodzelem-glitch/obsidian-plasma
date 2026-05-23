@@ -113,9 +113,9 @@ const FormBuilder: React.FC = () => {
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             
             // Dynamically select model based on input type
-            let modelName = "gemini-3.1-pro-preview"; // Default for text/reasoning
+            let modelName = "gemini-3.5-flash"; // Default for text/reasoning
             if (aiImportMode === 'image') {
-                modelName = "gemini-3.1-pro-preview"; // For vision tasks
+                modelName = "gemini-3.5-flash"; // For vision tasks
             }
 
             let promptPayload: Record<string, unknown> = {

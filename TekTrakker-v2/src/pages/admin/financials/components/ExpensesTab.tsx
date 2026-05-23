@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import showToast from "lib/toast";
 
 import React, { useState } from 'react';
@@ -92,7 +93,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
         }
     };
 
-    const [reconcileMode, setReconcileMode] = useState(false);
+    const reconcileMode = false; // Disabled since setReconcileMode was unused
 
     const duplicateGroups = React.useMemo(() => {
         if (!reconcileMode) return [];

@@ -10,7 +10,7 @@ type InternalProposalItem = {
     quantity: number;
     unitPrice: number;
     total: number;
-    type: 'Part' | 'Labor' | 'Service' | 'Fee' | 'Discount';
+    type: 'Part' | 'Labor' | 'Part/Labor' | 'Service' | 'Fee' | 'Discount';
     tier: 'Good' | 'Better' | 'Best';
     taxable?: boolean;
     isPercentage?: boolean;
@@ -49,7 +49,20 @@ const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier
                                 onChange={e => onUpdate(item.id, 'name', e.target.value)}
                                 placeholder="Item Name"
                             />
-                            <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-600 dark:text-slate-300 uppercase font-bold tracking-wider self-start">{item.type}</span>
+                            <select
+                                value={item.type}
+                                onChange={e => onUpdate(item.id, 'type', e.target.value)}
+                                className="text-[10px] bg-slate-100 dark:bg-slate-700 border-none outline-none px-2 py-0.5 rounded text-slate-600 dark:text-slate-300 uppercase font-bold tracking-wider self-start cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                                aria-label="Item Type"
+                                title="Item Type"
+                            >
+                                <option value="Labor">Labor</option>
+                                <option value="Part">Part</option>
+                                <option value="Part/Labor">Part/Labor</option>
+                                <option value="Fee">Fee</option>
+                                <option value="Service">Service</option>
+                                <option value="Discount">Discount</option>
+                            </select>
                         </div>
                         <textarea 
                             className="w-full min-h-[60px] h-auto font-medium text-xs text-slate-700 dark:text-slate-300 bg-slate-50/30 dark:bg-slate-900/30 border border-slate-100 dark:border-slate-800 rounded px-2 py-1.5 focus:ring-1 focus:ring-primary-500 placeholder-slate-400 resize-none"

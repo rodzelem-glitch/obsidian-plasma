@@ -42,8 +42,8 @@ const DEFAULT_COMMISSION_RULES: CommissionSettings = {
 
 
 
-const GEMINI_FLASH_MODEL = "gemini-3.1-flash-lite-preview";
-const GEMINI_PRO_MODEL = "gemini-3.1-pro-preview";
+const GEMINI_FLASH_MODEL = "gemini-3.5-flash";
+const GEMINI_PRO_MODEL = "gemini-3.5-flash";
 
 // --- NEW COMMISSION LOGIC ---
 export const generateCommissionOnSubscriptionPayment = functions.firestore
@@ -310,6 +310,89 @@ export const sendSms = functions.firestore.document('messages/{msgId}').onCreate
     try {
         const secretDoc = await db.collection('organizations').doc(msg.organizationId).collection('secrets').doc('config').get();
         const secrets = secretDoc.data() || {};
+
+        const customerDoc = await db.collection('customers').doc(msg.receiverId).get();
+        const customer = customerDoc.data();
+        const toPhone = customer?.phone;
+
+        if (!toPhone) {
+            await snap.ref.update({ deliveryStatus: 'failed', deliveryError: 'Invalid Customer Phone' });
+            return;
+        }
+
+        // --- RingCentral Routing Strategy ---
+        if (secrets.rcPrimarySms === true || secrets.rcPrimarySms === 'true') {
+            // Find sender phone number matching senderId mapping
+            let fromNumber = '';
+            if (secrets.rcMappings && Array.isArray(secrets.rcMappings)) {
+                const match = secrets.rcMappings.find((m: any) => m.assignedUserId === msg.senderId || m.forwardToUserId === msg.senderId);
+                if (match && match.phoneNumber) {
+                    fromNumber = match.phoneNumber;
+                } else if (secrets.rcMappings.length > 0 && secrets.rcMappings[0].phoneNumber) {
+                    fromNumber = secrets.rcMappings[0].phoneNumber;
+                }
+            }
+
+            if (!fromNumber) {
+                await snap.ref.update({ deliveryStatus: 'failed', deliveryError: 'No RingCentral Phone Number mapped/configured for organization.' });
+                return;
+            }
+
+            const rcUrl = secrets.ringCentralEnvironment === 'sandbox' ? "https://platform.devtest.ringcentral.com" : "https://platform.ringcentral.com";
+            
+            const clientId = secrets.rcBackendClientId || secrets.ringCentralClientId;
+            const clientSecret = secrets.ringCentralClientSecret || '';
+            const jwtToken = secrets.ringCentralJwtToken;
+
+            if (!clientId || !jwtToken) {
+                await snap.ref.update({ deliveryStatus: 'failed', deliveryError: 'RingCentral Client ID or JWT Token is missing in secrets configuration.' });
+                return;
+            }
+
+            // Get a fresh access token using the stored JWT
+            const tokenResponse = await fetch(`${rcUrl}/restapi/oauth/token`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+                },
+                body: new URLSearchParams({
+                    'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                    'assertion': jwtToken
+                }).toString()
+            });
+
+            if (!tokenResponse.ok) {
+                const errBody = await tokenResponse.text();
+                throw new Error(`Failed to authenticate with RingCentral: ${errBody}`);
+            }
+
+            const { access_token } = await tokenResponse.json() as any;
+
+            // Send SMS via RingCentral API
+            const smsResponse = await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/sms`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${access_token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    from: { phoneNumber: fromNumber },
+                    to: [{ phoneNumber: toPhone }],
+                    text: msg.content
+                })
+            });
+
+            if (smsResponse.ok) {
+                await snap.ref.update({ deliveryStatus: 'sent' });
+            } else {
+                const errBody = await smsResponse.text();
+                await snap.ref.update({ deliveryStatus: 'failed', deliveryError: `RingCentral SMS API Error: ${errBody}` });
+            }
+            return;
+        }
+
+        // --- Twilio Fallback Routing Strategy ---
         const accountSid = secrets.twilioConfig?.accountSid || process.env.TWILIO_ACCOUNT_SID;
         const authToken = secrets.twilioConfig?.authToken || process.env.TWILIO_AUTH_TOKEN;
         const fromNumber = secrets.twilioConfig?.phoneNumber || process.env.TWILIO_PHONE_NUMBER;
@@ -325,15 +408,6 @@ export const sendSms = functions.firestore.document('messages/{msgId}').onCreate
                 senderId: msg.senderId || 'Platform'
             });
             await snap.ref.update({ deliveryStatus: 'fallback-push', deliveryError: 'No Twilio Config - Routed as Portal Push Notification' });
-            return;
-        }
-
-        const customerDoc = await db.collection('customers').doc(msg.receiverId).get();
-        const customer = customerDoc.data();
-        const toPhone = customer?.phone;
-
-        if (!toPhone) {
-            await snap.ref.update({ deliveryStatus: 'failed', deliveryError: 'Invalid Customer Phone' });
             return;
         }
 
@@ -524,6 +598,12 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
 
     const { prompt, modelName = GEMINI_FLASH_MODEL, config = {}, imageParts = [], image = null, contextOrgId = null } = data;
 
+    // Transparently upgrade older models to gemini-3.5-flash
+    let resolvedModelName = modelName;
+    if (resolvedModelName.startsWith("gemini-3.1-") || resolvedModelName === "gemini-2.0-flash") {
+        resolvedModelName = "gemini-3.5-flash";
+    }
+
     // Allow master admin to specify which org's context to load (defaults to caller's org)
     const contextTarget = contextOrgId || orgId;
 
@@ -544,7 +624,7 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
             : prompt;
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: modelName, ...config });
+        const model = genAI.getGenerativeModel({ model: resolvedModelName, ...config });
 
         let result;
         const parts: any /* eslint-disable-line @typescript-eslint/no-explicit-any */[] = [{ text: enrichedPrompt }];
@@ -573,7 +653,7 @@ export const callGeminiAI = functions.runWith({ timeoutSeconds: 540 }).https.onC
         const response = await result.response;
 
         const tokens = response.usageMetadata?.totalTokenCount || 0;
-        await trackAiUsage(orgId, 'General AI Content', modelName, tokens);
+        await trackAiUsage(orgId, 'General AI Content', resolvedModelName, tokens);
 
         return { text: response.text() };
 
@@ -739,7 +819,7 @@ export const analyzeRFP = functions.runWith({ timeoutSeconds: 540, memory: '1GB'
                 if (err.message && (err.message.includes("503") || err.message.includes("429") || err.message.includes("overloaded"))) {
                     console.warn("Pro model overloaded. Falling back to Flash model...");
                     try {
-                        const fallbackModel = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
+                        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
                         const fallbackResult = await fallbackModel.generateContent([
                             { inlineData: { data: fileData, mimeType } },
                             { text: prompt }
@@ -977,7 +1057,7 @@ Example of correct output start:
         } catch (err: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             if (err.message && (err.message.includes("503") || err.message.includes("429") || err.message.includes("overloaded"))) {
                 functions.logger.warn("Pro model overloaded in document generation. Falling back to Flash model...");
-                const fallbackModel = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
+                const fallbackModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
                 const fallbackResult = await fallbackModel.generateContent(fullPrompt);
                 const fallbackResponse = await fallbackResult.response;
                 tokens = fallbackResponse.usageMetadata?.totalTokenCount || 0;
@@ -1042,20 +1122,29 @@ export const suggestBidPricing = functions.runWith({ timeoutSeconds: 540, memory
         const apiKey = await getGeminiApiKey(orgId);
         const genAI = new GoogleGenerativeAI(apiKey);
         // Using flash model for faster, consistent parsing
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
 
         // 1. Gather historical context if available.
-        // Similar to the historical research report, we find recent bids.
-        const recentBidsSnap = await db.collection('bids')
+        // Similar to the historical research report, we find recent awarded bids to ensure accurate pricing.
+        let recentBidsSnap = await db.collection('bids')
             .where('organizationId', '==', bid.organizationId || orgId)
-            .limit(10)
+            .where('status', '==', 'Won')
+            .limit(20)
             .get();
+
+        if (recentBidsSnap.empty) {
+            recentBidsSnap = await db.collection('bids')
+                .where('organizationId', '==', bid.organizationId || orgId)
+                .where('status', '==', 'Submitted')
+                .limit(20)
+                .get();
+        }
 
         let historicalContext = '';
         if (!recentBidsSnap.empty) {
             historicalContext = recentBidsSnap.docs.map(doc => {
                 const b = doc.data();
-                return `Bid: ${b.title || 'Untitled'}\nAgency: ${b.agency || 'Unknown'}\nTotal Value: $${b.totalValue || 'Unknown'}\nItems: ${b.lineItems?.map((li: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => `${li.description} - qty ${li.qty} @ $${li.unitPrice}`).join(', ') || 'None'}`;
+                return `Bid: ${b.title || 'Untitled'} (Status: ${b.status})\nAgency: ${b.agency || 'Unknown'}\nTotal Value: $${b.totalValue || 'Unknown'}\nItems: ${b.lineItems?.map((li: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) => `${li.description} - qty ${li.qty} @ $${li.unitPrice}`).join(', ') || 'None'}`;
             }).join('\n\n');
         }
 
@@ -1085,9 +1174,9 @@ ${JSON.stringify(bid.lineItems.map((item: any /* eslint-disable-line @typescript
 
 Instructions:
 1. Review each line item's description, unit, and quantity.
-2. Consider any historical pricing context provided. If an item is similar to a past bid, factor that in.
+2. CRITICALLY IMPORTANT: Look closely at the Historical Pricing Context for past awarded or submitted bids. If a line item is identical or similar to one that was awarded in the past, heavily weight your recommendation towards that past successful price. Do not invent a completely different price if you have historical data for a similar item.
 3. Suggest a realistic, competitive, and profitable unit price for each item.
-4. If a currentUnitPrice is already provided (>0), use it as a baseline but optimize it if necessary.
+4. If a currentUnitPrice is already provided (>0), use it as a baseline but optimize it based on historical data and standard market rates.
 5. Return ONLY a valid JSON array of objects. Do not include markdown formatting (like \`\`\`json).
 
 Output Format:
@@ -1107,8 +1196,8 @@ Output Format:
             ]);
         } catch (error: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
             if (error.message?.includes("429") || error.status === 429) {
-                functions.logger.warn(`429 Too Many Requests on gemini-2.0-flash, falling back to ${GEMINI_FLASH_MODEL}`);
-                const fallbackModel = genAI.getGenerativeModel({ model: GEMINI_FLASH_MODEL });
+                functions.logger.warn(`429 Too Many Requests on gemini-3.5-flash, falling back to gemini-1.5-flash`);
+                const fallbackModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
                 response = await fallbackModel.generateContent([
                     { text: "You are an expert pricing estimator that outputs pure JSON arrays." },
                     { text: prompt }
@@ -2744,3 +2833,5 @@ export const checkNewHireReporting = functions.pubsub.schedule('0 9 * * *').time
 });
 
 export * from './office365Webhook';
+
+export * from './telemetryWatcher';

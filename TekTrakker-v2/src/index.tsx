@@ -1,3 +1,4 @@
+(window as any).appLoaded = true;
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
@@ -33,17 +34,36 @@ if ('serviceWorker' in navigator) {
         });
     } else {
         // Register it manually for production web users
-        const updateSW = registerSW({
+        let updateSW: any;
+        const triggerUpdate = (reload = true) => {
+            if (typeof updateSW === 'function') {
+                return updateSW(reload);
+            } else {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    for (let r of registrations) {
+                        if (r.waiting) {
+                            r.waiting.postMessage({ type: 'SKIP_WAITING' });
+                        }
+                    }
+                    if (reload) {
+                        setTimeout(() => window.location.reload(), 500);
+                    }
+                });
+            }
+        };
+        (window as any).updateServiceWorker = triggerUpdate;
+
+        updateSW = registerSW({
             immediate: true,
             onNeedRefresh() {
-                // Do NOT auto-activate + reload here — it destroys SPA state (especially demo sessions).
-                // Instead, notify the app so it can show a non-intrusive toast.
-                // The user can choose when to reload via the toast's click handler.
                 console.info('[VitePWA] New service worker available. Notifying user via toast.');
-                window.dispatchEvent(new CustomEvent('app-update-available'));
+                setTimeout(() => { 
+                    window.dispatchEvent(new CustomEvent('app-update-available', { 
+                        detail: { updateSW: triggerUpdate } 
+                    })); 
+                }, 100);
             },
             onRegisteredSW(swUrl, r) {
-                // Periodically check for updates (every hour)
                 if (r) {
                     setInterval(() => {
                         r.update();
@@ -99,7 +119,7 @@ const handleChunkError = (event: ErrorEvent | PromiseRejectionEvent) => {
                 window.location.reload();
             }
         } else {
-            document.body.innerHTML = '<div style="padding:40px; background:yellow; color:black; font-family:sans-serif; height:100vh; z-index:99999; position:relative;"><h1 style="font-size:30px">App Update Failed</h1><p>A new version of the app is available, but the browser cache prevents it from loading. Please clear your browser cache manually.</p></div>';
+            document.body.innerHTML = "<div style=\"background: radial-gradient(135deg, #0f172a 0%, #1e1b4b 100%); display: flex; align-items: center; justify-content: center; height: 100vh; font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #f8fafc; text-align: center; padding: 20px; box-sizing: border-box; overflow: hidden; margin: 0;\">\n    <div style=\"background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 24px; padding: 40px; max-width: 480px; width: 100%; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); box-sizing: border-box; transition: all 0.3s ease;\">\n        <div style=\"width: 64px; height: 64px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;\">\n            <svg style=\"width: 32px; height: 32px; color: #ef4444;\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" stroke-width=\"2\">\n                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z\" />\n            </svg>\n        </div>\n        <h1 style=\"font-size: 24px; font-weight: 800; margin: 0 0 12px; letter-spacing: -0.025em; background: linear-gradient(to right, #f8fafc, #cbd5e1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;\">App Update Required</h1>\n        <p style=\"font-size: 14px; line-height: 1.6; color: #94a3b8; margin: 0 0 32px;\">A critical update is available, but the browser cache prevents it from loading correctly. Press below to clear cache and reload.</p>\n        <button onclick=\"window.location.reload(true);\" style=\"background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #ffffff; border: none; padding: 14px 28px; font-size: 14px; font-weight: 700; border-radius: 12px; cursor: pointer; box-shadow: 0 4px 20px rgba(79, 70, 229, 0.4); transition: all 0.2s ease; width: 100%; display: inline-block; box-sizing: border-box;\">Force Reload & Update</button>\n    </div>\n</div>";
         }
     }
 };

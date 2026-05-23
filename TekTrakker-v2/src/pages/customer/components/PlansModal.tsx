@@ -12,7 +12,7 @@ interface PlansModalProps {
     onApprove: (data: unknown, plan: MembershipPlan, systemCount: number) => Promise<void>;
 }
 
-const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organization: _organization, onApprove: _onApprove }) => {
+const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organization, onApprove: _onApprove }) => {
     const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
     const [systemCount, setSystemCount] = useState(1);
 
@@ -97,14 +97,49 @@ const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organiz
                                                         <Plus size={16} />
                                                     </button>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className="text-xs text-slate-400">Total Monthly</p>
-                                                    <p className="text-xl font-black text-primary-600">
-                                                        ${(plan.monthlyPrice + ((systemCount - 1) * (plan.pricePerAdditionalSystem || 0))).toFixed(2)}
-                                                    </p>
-                                                </div>
+                                                    {(() => {
+                                                        const finalizedPrice = plan.monthlyPrice + ((systemCount - 1) * (plan.pricePerAdditionalSystem || 0));
+                                                        const planFee = (plan.addonFeeAmount || 0) + (finalizedPrice * (plan.addonFeePercent || 0) / 100);
+                                                        const totalMonthly = finalizedPrice + planFee;
+                                                        return (
+                                                            <div className="text-right">
+                                                                <p className="text-xs text-slate-400">Total Monthly</p>
+                                                                <p className="text-xl font-black text-primary-600">
+                                                                    ${totalMonthly.toFixed(2)}
+                                                                </p>
+                                                                {planFee > 0 && (
+                                                                    <p className="text-[10px] text-indigo-500 font-semibold mt-0.5">
+                                                                        Includes ${planFee.toFixed(2)} {plan.addonFeeName || 'Signup Fee'}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                             </div>
                                         </div>
+
+                                        {organization && (organization.cardProcessingFeeEnabled || organization.achProcessingFeeEnabled) && (
+                                            <div className="p-3 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-800 dark:text-indigo-200 text-xs rounded-xl border border-indigo-100 dark:border-indigo-900 space-y-1">
+                                                <div className="font-bold flex items-center gap-1">
+                                                    💳 Automatic Payment Processing Notice
+                                                </div>
+                                                <p className="text-slate-500 dark:text-slate-400 font-normal">
+                                                    Please note the following automatic processing surcharges will apply at online checkout/billing:
+                                                </p>
+                                                <ul className="list-disc pl-4 space-y-0.5 text-slate-600 dark:text-slate-400 font-normal">
+                                                    {organization.cardProcessingFeeEnabled && (
+                                                        <li>
+                                                            Credit Card payments: <strong className="text-indigo-600 dark:text-indigo-400">{organization.cardProcessingFeePercent}% + ${organization.cardProcessingFeeFlat.toFixed(2)}</strong> surcharge.
+                                                        </li>
+                                                    )}
+                                                    {organization.achProcessingFeeEnabled && (
+                                                        <li>
+                                                            Bank ACH payments: <strong className="text-indigo-600 dark:text-indigo-400">{organization.achProcessingFeePercent}% + ${organization.achProcessingFeeFlat.toFixed(2)}</strong> surcharge.
+                                                        </li>
+                                                    )}
+                                                </ul>
+                                            </div>
+                                        )}
 
                                         <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-xs font-bold text-center rounded-xl border border-amber-100 dark:border-amber-800">
                                             Online enrollment is temporarily disabled as we migrate to our new payment processor. Please contact the office to enroll.

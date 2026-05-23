@@ -5,7 +5,7 @@ import Card from '../../../../components/ui/Card';
 import Button from '../../../../components/ui/Button';
 import Textarea from '../../../../components/ui/Textarea';
 import { VoiceInput } from '../../../../components/ui/VoiceInput';
-import { StoredFile } from '../../../../types';
+import { StoredFile, Job } from '../../../../types';
 
 interface RepairStepProps {
     setIsScannerOpen: (open: boolean) => void;
@@ -19,7 +19,7 @@ interface RepairStepProps {
     onViewPhoto: (file: StoredFile) => void;
     setIsRefrigerantModalOpen: (open: boolean) => void;
     setIsPartModalOpen: (open: boolean) => void;
-    partsUsed: any[];
+    partsUsed: NonNullable<Job['partsUsed']>;
     onRemovePart: (index: number) => void;
     hidden?: boolean;
 }
@@ -116,7 +116,7 @@ const RepairStep: React.FC<RepairStepProps> = ({
                     </label>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    {files.filter(f => (f.metadata?.label || (f as any).label) === 'Completed Work').map(f => (
+                    {files.filter(f => (f.metadata?.label || f.label) === 'Completed Work').map(f => (
                         <div key={f.id} className="relative group w-20 h-20 rounded-lg overflow-hidden border border-green-200/50 shadow-sm">
                             <button 
                                 type="button"
@@ -124,7 +124,7 @@ const RepairStep: React.FC<RepairStepProps> = ({
                                 className="w-full h-full p-0 border-none outline-none block"
                             >
                                 <img 
-                                    src={f.dataUrl || (f as any).url} 
+                                    src={f.dataUrl || f.url} 
                                     alt={f.fileName} 
                                     className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
                                 />

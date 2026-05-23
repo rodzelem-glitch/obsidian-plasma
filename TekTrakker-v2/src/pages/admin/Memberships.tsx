@@ -12,6 +12,7 @@ import Textarea from 'components/ui/Textarea';
 import { useNavigate } from 'react-router-dom';
 import type { MembershipPlan, ServiceAgreement } from 'types';
 import { db } from 'lib/firebase';
+import { getNextInvoiceNumbers } from 'lib/numbering';
 import { Shield, CheckCircle, Users, DollarSign, Wrench, FileText, Plus, Ban, Trash2 } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 
@@ -51,6 +52,9 @@ const Memberships: React.FC = () => {
             if (!base.benefits) base.benefits = def.benefits;
             if (!base.discountScope) base.discountScope = 'Both'; // Default for existing plans
             if (base.pricePerAdditionalSystem === undefined) base.pricePerAdditionalSystem = def.pricePerAdditionalSystem || 0; // Default
+            if (base.addonFeeName === undefined) base.addonFeeName = '';
+            if (base.addonFeeAmount === undefined) base.addonFeeAmount = 0;
+            if (base.addonFeePercent === undefined) base.addonFeePercent = 0;
             return base as MembershipPlan;
         });
         return mergedDefaults;
@@ -131,6 +135,9 @@ const Memberships: React.FC = () => {
         const totalSysPrice = (enrollForm.systemCount - 1) * (plan.pricePerAdditionalSystem || 0);
         const finalizedPrice = enrollForm.billingCycle === 'Monthly' ? (price + totalSysPrice) : (price + (totalSysPrice * 12));
 
+        const planFee = (plan.addonFeeAmount || 0) + (finalizedPrice * (plan.addonFeePercent || 0) / 100);
+        const totalRecurrentPrice = finalizedPrice + planFee;
+
         const newId = 'm-' + Date.now();
         const agreement: ServiceAgreement = {
             id: newId,
@@ -138,7 +145,7 @@ const Memberships: React.FC = () => {
             customerId: customer.id,
             customerName: customer.name,
             planName: plan.name,
-            price: finalizedPrice,
+            price: totalRecurrentPrice,
             billingCycle: enrollForm.billingCycle,
             startDate: new Date().toISOString(),
             endDate: new Date(Date.now() + (enrollForm.billingCycle === 'Annual' ? 365 : 30) * 24 * 60 * 60 * 1000).toISOString(),
@@ -169,6 +176,19 @@ const Memberships: React.FC = () => {
         
         let generatedCount = 0;
         const activeAgreements = state.serviceAgreements.filter(a => a.status === 'Active' && a.visitsRemaining > 0);
+        
+        let totalPms = 0;
+        for (const agreement of activeAgreements) {
+            const customer = state.customers.find(c => c.id === agreement.customerId);
+            if (!customer) continue;
+            const targetLocations = (customer.customerType as string) === 'Property Management' && customer.serviceLocations && customer.serviceLocations.length > 0 
+                ? customer.serviceLocations 
+                : [{ id: 'default', address: customer.address, propertyName: 'Primary Location', name: 'Primary Location', preferredTechnicianId: null as string | null }];
+            totalPms += targetLocations.length;
+        }
+
+        const generatedInvoiceIds = await getNextInvoiceNumbers(state.currentOrganization?.id || '', totalPms);
+        let pmIndex = 0;
         
         for (const agreement of activeAgreements) {
             const customer = state.customers.find(c => c.id === agreement.customerId);
@@ -201,7 +221,7 @@ const Memberships: React.FC = () => {
                     assignedTechnicianName: techName,
                     source: 'Auto-PM',
                     specialInstructions: `Auto-generated PM for ${agreement.planName} Membership.`,
-                    invoice: { id: `INV-${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: 0, taxAmount: 0, totalAmount: 0, amount: 0 },
+                    invoice: { id: generatedInvoiceIds[pmIndex++], status: 'Unpaid', items: [], subtotal: 0, taxRate: 0, taxAmount: 0, totalAmount: 0, amount: 0 },
                     jobEvents: [],
                     createdAt: new Date().toISOString()
                 };
@@ -293,6 +313,17 @@ const Memberships: React.FC = () => {
                             <li className="flex items-center gap-2 text-sm"><CheckCircle size={14} className="text-green-500"/> {plan.visitsPerYear} Visits / Year</li>
                             <li className="flex items-center gap-2 text-sm"><CheckCircle size={14} className="text-green-500"/> {plan.discountPercentage}% Discount ({plan.discountScope || 'Both'})</li>
                             <li className="flex items-center gap-2 text-sm font-semibold text-slate-500"><Plus size={14}/> +${plan.pricePerAdditionalSystem}/mo per extra system</li>
+                            {((plan.addonFeeAmount || 0) > 0 || (plan.addonFeePercent || 0) > 0) && (
+                                <li className="flex items-center gap-2 text-sm font-semibold text-indigo-500">
+                                    <Plus size={14}/> + {plan.addonFeeName || 'Signup Fee'}: {
+                                        (plan.addonFeeAmount || 0) > 0 && (plan.addonFeePercent || 0) > 0
+                                            ? `$${plan.addonFeeAmount.toFixed(2)} + ${plan.addonFeePercent}%`
+                                            : (plan.addonFeeAmount || 0) > 0
+                                                ? `$${plan.addonFeeAmount.toFixed(2)}`
+                                                : `${plan.addonFeePercent}%`
+                                    }
+                                </li>
+                            )}
                             {plan.benefits?.map((b, i) => (
                                 <li key={i} className="flex items-center gap-2 text-sm"><CheckCircle size={14} className="text-green-500"/> {b}</li>
                             ))}
@@ -372,6 +403,30 @@ const Memberships: React.FC = () => {
                         
 
 
+                        <div className="p-3 border border-dashed border-gray-300 rounded-lg bg-gray-50/50 dark:bg-gray-800/30 space-y-3">
+                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Plan Add-on Fee (Sign-up, Processing, etc.)</h4>
+                            <Input 
+                                label="Fee Label / Name" 
+                                placeholder="e.g. Signup Fee, Account Setup Fee"
+                                value={editingPlan.addonFeeName || ''} 
+                                onChange={e => setEditingPlan({...editingPlan, addonFeeName: e.target.value})} 
+                            />
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input 
+                                    label="Flat Amount ($)" 
+                                    type="number" 
+                                    value={editingPlan.addonFeeAmount || 0} 
+                                    onChange={e => setEditingPlan({...editingPlan, addonFeeAmount: parseFloat(e.target.value) || 0})} 
+                                />
+                                <Input 
+                                    label="Percentage (%)" 
+                                    type="number" 
+                                    value={editingPlan.addonFeePercent || 0} 
+                                    onChange={e => setEditingPlan({...editingPlan, addonFeePercent: parseFloat(e.target.value) || 0})} 
+                                />
+                            </div>
+                        </div>
+
                         <Textarea label="Benefits (One per line)" rows={5} value={benefitsText} onChange={e => setBenefitsText(e.target.value)} />
                         <div className="flex justify-end gap-2 pt-4">
                             <Button variant="secondary" onClick={() => setIsPlanModalOpen(false)}>Cancel</Button>
@@ -439,6 +494,20 @@ const Memberships: React.FC = () => {
                             <option value="Complimentary">Complimentary / Free Trial</option>
                         </Select>
                     </div>
+
+                    {state.currentOrganization && (state.currentOrganization.cardProcessingFeeEnabled || state.currentOrganization.achProcessingFeeEnabled) && (
+                        <div className="p-3 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-800 dark:text-indigo-200 text-xs rounded-lg border border-indigo-100 dark:border-indigo-900 space-y-1">
+                            <div className="font-bold">💳 Active Payment Processor Fees Notice</div>
+                            <ul className="list-disc pl-4 space-y-0.5">
+                                {state.currentOrganization.cardProcessingFeeEnabled && (
+                                    <li>Card Surcharge: {state.currentOrganization.cardProcessingFeePercent}% + ${state.currentOrganization.cardProcessingFeeFlat.toFixed(2)}</li>
+                                )}
+                                {state.currentOrganization.achProcessingFeeEnabled && (
+                                    <li>ACH Surcharge: {state.currentOrganization.achProcessingFeePercent}% + ${state.currentOrganization.achProcessingFeeFlat.toFixed(2)}</li>
+                                )}
+                            </ul>
+                        </div>
+                    )}
 
                     <div className="flex justify-end gap-2 pt-4">
                         <Button variant="secondary" onClick={() => setIsEnrollModalOpen(false)}>Cancel</Button>

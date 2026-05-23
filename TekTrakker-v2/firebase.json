@@ -81,5 +81,24 @@
         "supportEmail": "roderick.macdonell@gmail.com"
       }
     }
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8081
+    },
+    "storage": {
+      "port": 9199
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4000
+    },
+    "singleProjectMode": true
   }
 }

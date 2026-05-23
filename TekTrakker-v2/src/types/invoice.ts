@@ -1,4 +1,4 @@
-
+﻿
 export interface InvoiceLineItem {
     id: string;
     name?: string; // Added name field
@@ -6,7 +6,7 @@ export interface InvoiceLineItem {
     quantity: number;
     unitPrice: number;
     total: number;
-    type: 'Labor' | 'Part' | 'Part/Labor' | 'Fee' | 'Discount';
+    type: 'Labor' | 'Part' | 'Part/Labor' | 'Fee' | 'Discount' | 'Service';
     taxable?: boolean;
 }
 
@@ -35,4 +35,7 @@ export interface InvoiceDetails {
     paymentProofUrl?: string | null; // Added for proof of payment
     paymentProofDate?: string | null;
     recommendations?: string;
+    sentAt?: string;
+    remindersSent?: string[];
 }
+

@@ -101,10 +101,10 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
             
             const prompt = "Act as a quality control inspector for a field service company. Analyze this photo of a completed repair/installation. Check for cleanliness, proper connections, and professional finishing. Respond strictly in JSON format: { \"status\": \"pass\" | \"fail\" | \"warning\", \"comments\": \"string\" }";
 
-            // Using gemini-3.1-pro-preview for high-quality vision analysis
+            // Using gemini-3.5-flash for high-quality vision analysis
             const result = await callGeminiAI({ 
                 prompt,
-                modelName: "gemini-3.1-pro-preview",
+                modelName: "gemini-3.5-flash",
                 image: {
                     data: base64Content,
                     mimeType: "image/jpeg"

@@ -10,6 +10,7 @@ import Modal from 'components/ui/Modal';
 import Spinner from 'components/ui/Spinner';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
+import { getNextInvoiceNumber } from 'lib/numbering';
 import type { PartOrder, InvoiceLineItem, Job, Proposal, ShopOrder, Customer } from 'types';
 import InvoiceEditorModal from 'components/modals/InvoiceEditorModal';
 import { useNavigate } from 'react-router-dom';
@@ -92,6 +93,7 @@ const PaymentsAndOrders: React.FC = () => {
         setIsCreatingInvoice(true);
         setIsCustomerSelectOpen(false);
 
+        const nextInvId = await getNextInvoiceNumber(state.currentOrganization?.id || '');
         const id = `job-inv-${Date.now()}`;
         const newJob: Job = {
             id,
@@ -106,7 +108,7 @@ const PaymentsAndOrders: React.FC = () => {
             appointmentTime: new Date().toISOString(),
             specialInstructions: '',
             invoice: {
-                id: `INV-${Date.now()}`,
+                id: nextInvId,
                 status: 'Unpaid',
                 items: [],
                 subtotal: 0,

@@ -306,7 +306,7 @@ const JobScheduling: React.FC = () => {
     };
 
     const waiverTemplates = useMemo(() => state.documents.filter(d => d.type === 'Waiver Template'), [state.documents]);
-    const checklistTemplates = useMemo(() => state.inspectionTemplates || [], [state.inspectionTemplates]);
+    const checklistTemplates = useMemo(() => (state.inspectionTemplates || []).filter((t: InspectionTemplate) => !t.isHiringPacket), [state.inspectionTemplates]);
     
     return (
         <div className="space-y-6">

@@ -223,16 +223,22 @@ const OnboardingTour: React.FC<OnboardingTourProps> = ({ isPaymentsOnly, isTechV
     }, [currentStep, updateHighlight]);
 
     useEffect(() => {
-        const handleResize = () => updateHighlight();
+        const handleResize = () => {
+            if (window.innerWidth < 1024) {
+                handleSkip();
+            } else {
+                updateHighlight();
+            }
+        };
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, [updateHighlight]);
 
-    const handleSkip = () => {
-        localStorage.setItem(`onboarding_complete_${userId}`, 'true');
+    const handleSkip = useCallback(() => {
+        if (userId) localStorage.setItem(`onboarding_complete_${userId}`, 'true');
         setIsVisible(false);
         onComplete();
-    };
+    }, [userId, onComplete]);
 
     const handleNext = () => {
         if (currentStep < steps.length - 1) {
@@ -258,8 +264,8 @@ const OnboardingTour: React.FC<OnboardingTourProps> = ({ isPaymentsOnly, isTechV
         const tooltipWidth = Math.min(380, window.innerWidth - padding * 2);
         const tooltipHeight = 240; // rough estimate for bounds checking
 
-        let top = 0;
-        let left = 0;
+        let top: number;
+        let left: number;
 
         if (isCenter || !highlightRect) {
             top = (window.innerHeight - tooltipHeight) / 2;
@@ -314,36 +320,52 @@ const OnboardingTour: React.FC<OnboardingTourProps> = ({ isPaymentsOnly, isTechV
 
     return (
         <>
+            {/* Dynamic Styles to replace inline styles */}
+            <style>{`
+                .tour-overlay-box {
+                    background-color: ${highlightRect && !isCenter ? 'transparent' : 'rgba(0, 0, 0, 0.65)'};
+                }
+                .tour-highlight-box {
+                    ${highlightRect && !isCenter ? `
+                    top: ${highlightRect.top - 6}px;
+                    left: ${highlightRect.left - 6}px;
+                    width: ${highlightRect.width + 12}px;
+                    height: ${highlightRect.height + 12}px;
+                    box-shadow: 0 0 0 9999px rgba(0,0,0,0.65), 0 0 30px rgba(99,102,241,0.3);
+                    ` : ''}
+                }
+                .tour-tooltip-box {
+                    position: fixed;
+                    top: ${getTooltipPosition().top}px;
+                    left: ${getTooltipPosition().left}px;
+                    width: ${getTooltipPosition().width}px;
+                    z-index: 10002;
+                }
+                .tour-progress-bar {
+                    width: ${progress}%;
+                }
+            `}</style>
+
             {/* Overlay */}
             <div
-                className="fixed inset-0 z-[10000] transition-opacity duration-300 pointer-events-auto"
-                style={{ backgroundColor: (highlightRect && !isCenter) ? 'transparent' : 'rgba(0, 0, 0, 0.65)' }}
+                className="fixed inset-0 z-[10000] transition-opacity duration-300 pointer-events-auto tour-overlay-box"
             />
 
             {/* Highlight cutout */}
             {highlightRect && !isCenter && (
                 <div
-                    className="fixed z-[10001] rounded-xl ring-4 ring-primary-500/60 shadow-[0_0_30px_rgba(99,102,241,0.3)] transition-all duration-300 pointer-events-none"
-                    style={{
-                        top: highlightRect.top - 6,
-                        left: highlightRect.left - 6,
-                        width: highlightRect.width + 12,
-                        height: highlightRect.height + 12,
-                        boxShadow: `0 0 0 9999px rgba(0,0,0,0.65), 0 0 30px rgba(99,102,241,0.3)`
-                    }}
+                    className="fixed z-[10001] rounded-xl ring-4 ring-primary-500/60 transition-all duration-300 pointer-events-none tour-highlight-box"
                 />
             )}
 
             {/* Tooltip card */}
             <div
-                style={getTooltipPosition()}
-                className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-[fadeInScale_0.3s_ease-out]"
+                className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-[fadeInScale_0.3s_ease-out] tour-tooltip-box"
             >
                 {/* Progress bar */}
                 <div className="h-1.5 bg-slate-100 dark:bg-slate-700">
                     <div
-                        className="h-full bg-gradient-to-r from-primary-500 to-emerald-500 transition-all duration-500 ease-out rounded-r-full"
-                        style={{ width: `${progress}%` }}
+                        className="h-full bg-gradient-to-r from-primary-500 to-emerald-500 transition-all duration-500 ease-out rounded-r-full tour-progress-bar"
                     />
                 </div>
 
@@ -428,28 +450,9 @@ const OnboardingTour: React.FC<OnboardingTourProps> = ({ isPaymentsOnly, isTechV
 export default OnboardingTour;
 
 export function useOnboardingTour(userId: string | undefined) {
-    const [showTour, setShowTour] = useState(false);
-
-    useEffect(() => {
-        if (!userId) return;
-        const completed = localStorage.getItem(`onboarding_complete_${userId}`);
-        if (!completed) {
-            // Small delay to let the dashboard render first
-            const timer = setTimeout(() => setShowTour(true), 1500);
-            return () => clearTimeout(timer);
-        }
-    }, [userId]);
-
-    const completeTour = useCallback(() => {
-        setShowTour(false);
-    }, []);
-
-    const restartTour = useCallback(() => {
-        if (userId) {
-            localStorage.removeItem(`onboarding_complete_${userId}`);
-            setShowTour(true);
-        }
-    }, [userId]);
+    const showTour = false;
+    const completeTour = useCallback(() => {}, []);
+    const restartTour = useCallback(() => {}, []);
 
     return { showTour, completeTour, restartTour };
 }

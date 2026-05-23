@@ -51,7 +51,7 @@ const SalesSidebar: React.FC<SalesSidebarProps> = ({ user, onLogout, isOpen = fa
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-20 bg-black bg-opacity-50 sm:hidden transition-opacity" onClick={onClose}></div>
+        <button type="button" aria-label="Close Sidebar" className="fixed inset-0 z-20 bg-black bg-opacity-50 sm:hidden transition-opacity w-full h-full cursor-default" onClick={onClose}></button>
       )}
 
       <aside className={`fixed sm:sticky sm:top-0 sm:self-start inset-y-0 left-0 z-30 w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'} flex flex-col h-[100dvh] sm:max-h-[100dvh] shrink-0`}>

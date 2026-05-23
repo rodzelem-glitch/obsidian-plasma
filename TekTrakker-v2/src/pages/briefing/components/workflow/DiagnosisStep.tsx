@@ -37,7 +37,17 @@ interface DiagnosisStepProps {
     hidden?: boolean;
 }
 
-const AccordionSection = ({ id, title, icon: Icon, children, badge, isOpen, toggleSection }: any) => {
+interface AccordionSectionProps {
+    id: string;
+    title: string;
+    icon: React.ElementType;
+    children: React.ReactNode;
+    badge?: number | string;
+    isOpen: boolean;
+    toggleSection: (id: string) => void;
+}
+
+const AccordionSection = ({ id, title, icon: Icon, children, badge, isOpen, toggleSection }: AccordionSectionProps) => {
     return (
         <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl overflow-hidden shadow-sm transition-all duration-200">
             <button 
@@ -242,7 +252,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                 />
             </AccordionSection>
 
-            <AccordionSection id="photos" title="Job Photos" icon={Camera} badge={files.filter(f => (f.metadata?.label || (f as any).label) === 'Pre-Work').length} isOpen={expandedSections['photos']} toggleSection={toggleSection}>
+            <AccordionSection id="photos" title="Job Photos" icon={Camera} badge={files.filter(f => (f.metadata?.label || f.label) === 'Pre-Work').length} isOpen={expandedSections['photos']} toggleSection={toggleSection}>
                 <div className="flex flex-col md:flex-row gap-6">
                     <div className="flex gap-3 w-full md:w-auto h-24">
                         <button 
@@ -262,7 +272,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                     </div>
                     
                     <div className="flex-1 flex overflow-x-auto gap-3 pb-2 custom-scrollbar">
-                        {files.filter(f => (f.metadata?.label || (f as any).label) === 'Pre-Work').map(f => (
+                        {files.filter(f => (f.metadata?.label || f.label) === 'Pre-Work').map(f => (
                             <div key={f.id} className="relative group w-24 h-24 rounded-xl overflow-hidden border border-slate-200 shadow-sm shrink-0">
                                 <button 
                                     type="button"
@@ -270,7 +280,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                                     className="w-full h-full p-0 border-none outline-none block"
                                 >
                                     <img 
-                                        src={f.dataUrl || (f as any).url} 
+                                        src={f.dataUrl || f.url} 
                                         alt={f.fileName} 
                                         className="w-full h-full object-cover cursor-pointer hover:scale-110 transition-transform duration-300"
                                     />
@@ -288,7 +298,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                                 </div>
                             </div>
                         ))}
-                        {files.filter(f => (f.metadata?.label || (f as any).label) === 'Pre-Work').length === 0 && (
+                        {files.filter(f => (f.metadata?.label || f.label) === 'Pre-Work').length === 0 && (
                             <div className="flex-1 border-2 border-dashed rounded-xl border-slate-200 flex items-center justify-center text-slate-400 text-xs font-medium h-24 min-w-[200px]">
                                 No pre-work photos uploaded.
                             </div>

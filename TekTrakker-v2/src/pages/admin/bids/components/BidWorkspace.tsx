@@ -131,8 +131,11 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
             
             const { docs } = result.data as { docs: BidDoc[] };
             
-            // Replace the entire document array with the new comprehensive package
-            onUpdate({ generatedDocs: docs });
+            // Preserve historical research report if it exists
+            const historicalDocs = (bid.generatedDocs || []).filter(doc => doc.title === 'Historical Research Report');
+            
+            // Replace the entire document array with the new comprehensive package, plus the historical research
+            onUpdate({ generatedDocs: [...historicalDocs, ...docs] });
             showToast.warn('Package generated successfully!');
         } catch (error: any) {
             console.error('Error generating documents:', error);
@@ -159,7 +162,11 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
             });
             
             const { docs } = result.data as { docs: BidDoc[] };
-            onUpdate({ generatedDocs: docs });
+            
+            // Preserve historical research report if it exists
+            const historicalDocs = (bid.generatedDocs || []).filter(doc => doc.title === 'Historical Research Report');
+            
+            onUpdate({ generatedDocs: [...historicalDocs, ...docs] });
             showToast.warn('Edits applied successfully!');
         } catch (error: any) {
             console.error('Error editing documents:', error);
@@ -203,13 +210,40 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
         }
     };
 
+    const handleSignDoc = (docIndex: number, signatureHtml: string) => {
+        const updatedDocs = [...(bid.generatedDocs || [])];
+        const docToUpdate = { ...updatedDocs[docIndex] };
+        docToUpdate.content = docToUpdate.content + signatureHtml;
+        updatedDocs[docIndex] = docToUpdate;
+        onUpdate({ generatedDocs: updatedDocs });
+        showToast.success('Signature embedded into document!');
+    };
+
+    const handleRemoveSignature = (docIndex: number) => {
+        const updatedDocs = [...(bid.generatedDocs || [])];
+        const docToUpdate = { ...updatedDocs[docIndex] };
+        
+        let newContent = docToUpdate.content.replace(/<div[^>]*class="embedded-signature"[^>]*>[\s\S]*?<\/div>\s*/g, '');
+        // For backwards compatibility with the document the user just signed
+        newContent = newContent.replace(/<div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 20px; width: 300px; font-family: sans-serif;">[\s\S]*?<p style="margin: 0 0 10px 0; font-weight: bold; color: #0f172a;">Signed by:<\/p>[\s\S]*?<\/div>\s*/g, '');
+        
+        docToUpdate.content = newContent;
+        updatedDocs[docIndex] = docToUpdate;
+        onUpdate({ generatedDocs: updatedDocs });
+        showToast.success('Signature removed from document!');
+    };
+
     const handleSearch = async () => {
         setIsSearching(true);
         try {
             const result = await searchHistoricalBidData({ bid: getCleanBidPayload() });
             const { content } = result.data as { content: string };
             const newDoc: BidDoc = { title: 'Historical Research Report', content };
-            onUpdate({ generatedDocs: [...(bid.generatedDocs || []), newDoc] });
+            
+            // Filter out existing historical research report to avoid duplicates
+            const otherDocs = (bid.generatedDocs || []).filter(doc => doc.title !== 'Historical Research Report');
+            
+            onUpdate({ generatedDocs: [...otherDocs, newDoc] });
         } catch (error: any) {
             console.error('Error searching historical data:', error);
             showToast.warn('Failed to search historical data.');
@@ -461,6 +495,8 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
                     onDownload={downloadDocument}
                     onSubmit={handleSubmitBidClick}
                     hasSubmissionEmail={true}
+                    onSignDoc={handleSignDoc}
+                    onRemoveSignature={handleRemoveSignature}
                 />
             );
             case 'history': return <HistoryTab bid={bid} onSearch={handleSearch} isSearching={isSearching} onDownload={downloadDocument} />;

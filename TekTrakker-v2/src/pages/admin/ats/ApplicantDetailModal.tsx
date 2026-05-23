@@ -36,9 +36,9 @@ const ApplicantDetailModal: React.FC<ApplicantDetailModalProps> = ({
                             <a href={`tel:${applicant.phone}`} className="hover:underline">{applicant.phone}</a>
                         </div>
                         
-                        {applicant.resumeDataUrl && (
+                        {(applicant.resumeUrl || applicant.resumeDataUrl) && (
                             <a 
-                                href={applicant.resumeDataUrl} 
+                                href={applicant.resumeUrl || applicant.resumeDataUrl} 
                                 download={applicant.resumeFileName || `${applicant.firstName || 'Applicant'}_Resume`}
                                 target="_blank"
                                 rel="noreferrer"

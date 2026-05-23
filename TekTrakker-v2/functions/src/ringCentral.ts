@@ -12,6 +12,67 @@ try {
 
 const db = admin.firestore();
 
+/**
+ * Normalizes phone numbers and performs a two-tier lookup to find a customer:
+ * 1. Fast-path (O(1)) check against 8 common formatting variations.
+ * 2. Safe-path fallback scan clearing non-digits in-memory to guarantee a match.
+ */
+async function findCustomerByPhone(orgId: string, rawPhone: string) {
+    if (!rawPhone) return null;
+    const digits = rawPhone.replace(/\D/g, '');
+    const tenDigits = digits.length === 11 && digits.startsWith('1') ? digits.substring(1) : digits;
+    
+    const variants = [rawPhone];
+    if (tenDigits.length === 10) {
+        const area = tenDigits.substring(0, 3);
+        const prefix = tenDigits.substring(3, 6);
+        const line = tenDigits.substring(6, 10);
+        variants.push(
+            tenDigits,
+            `(${area}) ${prefix}-${line}`,
+            `${area}-${prefix}-${line}`,
+            `${area}.${prefix}.${line}`,
+            `+1${tenDigits}`,
+            `+1 (${area}) ${prefix}-${line}`,
+            `+1 ${area}-${prefix}-${line}`,
+            `1${tenDigits}`
+        );
+    }
+    
+    const uniqueVariants = Array.from(new Set(variants)).filter(Boolean);
+    
+    // Fast-path: query index with variations
+    const querySnap = await db.collection('customers')
+        .where('organizationId', '==', orgId)
+        .where('phone', 'in', uniqueVariants)
+        .limit(1)
+        .get();
+        
+    if (!querySnap.empty) {
+        return { id: querySnap.docs[0].id, name: querySnap.docs[0].data().name };
+    }
+    
+    // Safe-path fallback: check all organization customers in-memory
+    const allCustomersSnap = await db.collection('customers')
+        .where('organizationId', '==', orgId)
+        .get();
+        
+    for (const doc of allCustomersSnap.docs) {
+        const custPhone = doc.data().phone;
+        if (custPhone) {
+            const custDigits = custPhone.replace(/\D/g, '');
+            const custTenDigits = custDigits.length === 11 && custDigits.startsWith('1') ? custDigits.substring(1) : custDigits;
+            if (custTenDigits === tenDigits && tenDigits) {
+                return { id: doc.id, name: doc.data().name };
+            }
+        }
+    }
+    
+    return null;
+}
+
+
+
 
 
 // 1. Webhook Receiver Endpoint
@@ -65,17 +126,11 @@ export const ringCentralWebhook = functions.https.onRequest(async (req, res) => 
                     let customerId = null;
                     let customerName = party.from.name || "Unknown Caller";
                     
-                    // Simple search query (assuming phone field exists)
-                    const customersSnap = await db.collection('customers')
-                        .where('organizationId', '==', orgId)
-                        .where('phone', '==', fromNumber)
-                        .limit(1)
-                        .get();
-
-                    if (!customersSnap.empty) {
-                        const cust = customersSnap.docs[0].data();
-                        customerId = customersSnap.docs[0].id;
-                        customerName = cust.name;
+                    // Use robust phone matching helper
+                    const customerMatch = await findCustomerByPhone(orgId, fromNumber);
+                    if (customerMatch) {
+                        customerId = customerMatch.id;
+                        customerName = customerMatch.name;
                     }
 
                     // Write to active_calls for the Screen Pop
@@ -137,16 +192,10 @@ export const ringCentralWebhook = functions.https.onRequest(async (req, res) => 
                     // Find customer to link message to
                     let customerId = fromNumber;
                     let customerName = "Unknown Caller";
-                    const customersSnap = await db.collection('customers')
-                        .where('organizationId', '==', orgId)
-                        .where('phone', '==', fromNumber)
-                        .limit(1)
-                        .get();
-
-                    if (!customersSnap.empty) {
-                        const cust = customersSnap.docs[0].data();
-                        customerId = customersSnap.docs[0].id;
-                        customerName = cust.name;
+                    const customerMatch = await findCustomerByPhone(orgId, fromNumber);
+                    if (customerMatch) {
+                        customerId = customerMatch.id;
+                        customerName = customerMatch.name;
                     }
 
                     const orgDoc = orgsSnapshot.docs[0];
@@ -189,7 +238,7 @@ export const ringCentralWebhook = functions.https.onRequest(async (req, res) => 
                             
                             // Get a fresh access token using the stored JWT
                             try {
-                                const rcUrl = "https://platform.ringcentral.com";
+                                const rcUrl = config.ringCentralEnvironment === 'sandbox' ? "https://platform.devtest.ringcentral.com" : "https://platform.ringcentral.com";
                                 const tokenResponse = await fetch(`${rcUrl}/restapi/oauth/token`, {
                                     method: 'POST',
                                     headers: {
@@ -243,16 +292,10 @@ export const ringCentralWebhook = functions.https.onRequest(async (req, res) => 
                 // Find customer to link message to
                 let customerId = fromNumber;
                 let customerName = "Unknown Sender";
-                const customersSnap = await db.collection('customers')
-                    .where('organizationId', '==', orgId)
-                    .where('phone', '==', fromNumber)
-                    .limit(1)
-                    .get();
-
-                if (!customersSnap.empty) {
-                    const cust = customersSnap.docs[0].data();
-                    customerId = customersSnap.docs[0].id;
-                    customerName = cust.name;
+                const customerMatch = await findCustomerByPhone(orgId, fromNumber);
+                if (customerMatch) {
+                    customerId = customerMatch.id;
+                    customerName = customerMatch.name;
                 }
 
                 const orgDoc = orgsSnapshot.docs[0];
@@ -334,6 +377,7 @@ export const registerRingCentralWebhook = functions.https.onCall(async (data, co
         // Step 1: Get Access Token
         let tokenResponse;
         let activeUrl = "https://platform.ringcentral.com";
+        let detectedEnvironment = "production";
 
         const authenticate = async (baseUrl: string) => {
             if (jwtToken) {
@@ -365,8 +409,15 @@ export const registerRingCentralWebhook = functions.https.onCall(async (data, co
         tokenResponse = await authenticate(activeUrl);
 
         if (!tokenResponse.ok) {
-            const errBody = await tokenResponse.text();
-            throw new Error(`Failed to authenticate with RingCentral: ${errBody}`);
+            console.log("Failed to authenticate with Production, trying Sandbox...");
+            activeUrl = "https://platform.devtest.ringcentral.com";
+            tokenResponse = await authenticate(activeUrl);
+            
+            if (!tokenResponse.ok) {
+                const errBody = await tokenResponse.text();
+                throw new Error(`Failed to authenticate with RingCentral (both Production and Sandbox failed). Sandbox response: ${errBody}`);
+            }
+            detectedEnvironment = "sandbox";
         }
 
         const tokenData = await tokenResponse.json() as any;
@@ -405,10 +456,10 @@ export const registerRingCentralWebhook = functions.https.onCall(async (data, co
         });
         
         await db.collection('organizations').doc(orgId).collection('secrets').doc('config').set({
-            ringCentralEnvironment: "production"
+            ringCentralEnvironment: detectedEnvironment
         }, { merge: true });
 
-        return { success: true, subscriptionId, environment: "production" };
+        return { success: true, subscriptionId, environment: detectedEnvironment };
     } catch (error: any) {
         console.error("Register RingCentral Error:", error);
         throw new functions.https.HttpsError('internal', error.message || 'Failed to setup RingCentral integration.');

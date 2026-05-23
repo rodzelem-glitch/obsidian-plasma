@@ -41,6 +41,19 @@ if (isNative) {
     // Standard desktop execution (No forced polling required)
 }
 
+const auth = firebase.auth();
+const functions = firebase.functions();
+const storage = firebase.storage();
+const app = firebase.app();
+
+if (import.meta.env.VITE_USE_EMULATOR === 'true') {
+  console.log('Testing Mode: Connecting to Firebase Emulators');
+  db.useEmulator('localhost', 8081);
+  auth.useEmulator('http://localhost:9099');
+  functions.useEmulator('localhost', 5001);
+  storage.useEmulator('localhost', 9199);
+}
+
 // Activate Physical IndexDB Persistence for Offline Technicians
 (async () => {
     try {
@@ -53,7 +66,7 @@ if (isNative) {
         }
         localStorage.setItem('__tektrakker_fb_project', currentProjectId || '');
         
-        await db.enablePersistence();
+        await db.enablePersistence({ synchronizeTabs: true });
     } catch (err: unknown) {
         const error = err as { code?: string };
         if (error.code === 'failed-precondition') {
@@ -66,10 +79,7 @@ if (isNative) {
     }
 })();
 
-const auth = firebase.auth();
-const functions = firebase.functions();
-const storage = firebase.storage();
-const app = firebase.app();
+
 
 let messaging: firebase.messaging.Messaging | null = null;
 try {
@@ -104,3 +114,4 @@ if (isNative) {
 }
 
 export { db, auth, functions, storage, app, messaging, firebase };
+

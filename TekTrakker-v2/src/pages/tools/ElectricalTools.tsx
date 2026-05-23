@@ -9,7 +9,7 @@ import Modal from '../../components/ui/Modal';
 import { db } from '../../lib/firebase';
 import { 
     Zap, Save, Ruler, Activity, AlertTriangle, 
-    Wrench, Cpu, Info, Bluetooth, Camera
+    Wrench, Cpu, Info, Bluetooth, Camera, Paperclip
 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import Tesseract from 'tesseract.js';
@@ -79,6 +79,60 @@ const ElectricalTools: React.FC = () => {
         }
     };
 
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const processOCRImage = async (dataUrl: string) => {
+        setIsScanningOCR(true);
+        showToast.info("Analyzing image with OCR...");
+        try {
+            const result = await Tesseract.recognize(dataUrl, 'eng');
+            const text = result.data.text;
+            
+            const voltsMatch = text.match(/([\d]+\.?[\d]*)[\s]*V/i);
+            const ampsMatch = text.match(/([\d]+\.?[\d]*)[\s]*A/i);
+            const wattsMatch = text.match(/([\d]+\.?[\d]*)[\s]*W/i);
+            
+            let found = false;
+            
+            if (voltsMatch && voltsMatch[1]) { setVolts(prev => prev ? prev : voltsMatch[1]); found = true; }
+            if (ampsMatch && ampsMatch[1]) { setAmps(prev => prev ? prev : ampsMatch[1]); found = true; }
+            if (wattsMatch && wattsMatch[1]) { setWatts(prev => prev ? prev : wattsMatch[1]); found = true; }
+            
+            if (found) {
+                showToast.success("OCR Successful: Extracted meter values.");
+            } else {
+                showToast.warn("OCR couldn't find expected values. Please enter manually.");
+            }
+        } catch (e) {
+            console.error("OCR Error:", e);
+            showToast.warn("OCR processing failed.");
+        } finally {
+            setIsScanningOCR(false);
+        }
+    };
+
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        
+        if (file.size > 5 * 1024 * 1024) {
+            showToast.warn("File Too Large: The photo must be under 5MB.");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async () => {
+            const dataUrl = reader.result as string;
+            await processOCRImage(dataUrl);
+        };
+        reader.onerror = () => {
+            showToast.warn("Failed to read the file.");
+        };
+        reader.readAsDataURL(file);
+        
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
     const handleOCRScan = async () => {
         try {
             const image = await CapCamera.getPhoto({
@@ -89,33 +143,10 @@ const ElectricalTools: React.FC = () => {
             });
 
             if (image.dataUrl) {
-                setIsScanningOCR(true);
-                showToast.info("Analyzing image with OCR...");
-                
-                const result = await Tesseract.recognize(image.dataUrl, 'eng');
-                const text = result.data.text;
-                
-                const voltsMatch = text.match(/([\d]+\.?[\d]*)[\s]*V/i);
-                const ampsMatch = text.match(/([\d]+\.?[\d]*)[\s]*A/i);
-                const wattsMatch = text.match(/([\d]+\.?[\d]*)[\s]*W/i);
-                
-                let found = false;
-                
-                if (voltsMatch && voltsMatch[1]) { setVolts(voltsMatch[1]); found = true; }
-                if (ampsMatch && ampsMatch[1]) { setAmps(ampsMatch[1]); found = true; }
-                if (wattsMatch && wattsMatch[1]) { setWatts(wattsMatch[1]); found = true; }
-                
-                if (found) {
-                    showToast.success("OCR Successful: Extracted meter values.");
-                } else {
-                    showToast.warn("OCR couldn't find expected values. Please enter manually.");
-                }
+                await processOCRImage(image.dataUrl);
             }
         } catch (e) {
-            console.error("OCR Error:", e);
-            showToast.warn("Camera or OCR failed.");
-        } finally {
-            setIsScanningOCR(false);
+            console.error("Camera Cancelled/Failed", e);
         }
     };
 
@@ -186,26 +217,45 @@ const ElectricalTools: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="col-span-1 md:col-span-2">
                         <Card title="Diagnostic Integrations" className="bg-slate-50 dark:bg-slate-900 border-dashed border-2 mb-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <Button 
                                     onClick={handleBluetoothConnect} 
                                     disabled={isBluetoothConnecting}
-                                    className="bg-blue-600 hover:bg-blue-700 h-14"
+                                    className="bg-blue-600 hover:bg-blue-700 h-14 font-semibold"
                                 >
                                     <Bluetooth size={20} className="mr-2" />
-                                    {isBluetoothConnecting ? 'Connecting to Meter...' : 'Connect Bluetooth Multimeter'}
+                                    {isBluetoothConnecting ? 'Connecting...' : 'Connect Bluetooth'}
                                 </Button>
                                 
                                 <Button 
                                     onClick={handleOCRScan} 
                                     disabled={isScanningOCR}
-                                    className="bg-slate-800 hover:bg-slate-700 h-14"
+                                    className="bg-slate-800 hover:bg-slate-700 h-14 font-semibold"
                                 >
                                     <Camera size={20} className="mr-2" />
-                                    {isScanningOCR ? 'Processing Image...' : 'Photo-to-Data (OCR Meter Scan)'}
+                                    {isScanningOCR ? 'Processing...' : 'Take Photo (OCR)'}
                                 </Button>
+
+                                <Button 
+                                    onClick={() => fileInputRef.current?.click()} 
+                                    disabled={isScanningOCR}
+                                    className="bg-slate-700 hover:bg-slate-600 h-14 font-semibold"
+                                >
+                                    <Paperclip size={20} className="mr-2" />
+                                    Upload File (OCR)
+                                </Button>
+
+                                <input 
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={handleFileSelect}
+                                    aria-label="Upload OCR Image"
+                                    title="Upload OCR Image"
+                                />
                             </div>
-                            <p className="text-xs text-slate-500 mt-3 text-center">Auto-populate readings using your smart multimeter or by snapping a photo of the display.</p>
+                            <p className="text-xs text-slate-500 mt-3 text-center">Auto-populate readings using your smart multimeter, scanning via camera, or uploading a meter screenshot.</p>
                         </Card>
                         </div>
                         <Card title="Circuit Inputs" className="space-y-4">

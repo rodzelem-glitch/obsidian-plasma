@@ -30,19 +30,25 @@ export const fetchFederalContracts = functions.https.onCall(async (data, context
         const url = 'https://api.sam.gov/prod/opportunities/v2/search';
         
         // SAM.gov requires postedFrom and postedTo if 'limit' is provided
-        // We will default to searching the last 90 days
-        const toDate = new Date();
-        const fromDate = new Date();
-        fromDate.setDate(toDate.getDate() - 90);
+        // Use dates provided from frontend, fallback to last 90 days if not provided
+        let postedFrom = data.postedFrom;
+        let postedTo = data.postedTo;
         
-        const formatDate = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+        if (!postedFrom || !postedTo) {
+            const toDate = new Date();
+            const fromDate = new Date();
+            fromDate.setDate(toDate.getDate() - 90);
+            const formatDate = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+            postedFrom = postedFrom || formatDate(fromDate);
+            postedTo = postedTo || formatDate(toDate);
+        }
 
         // Build query parameters
         const params: Record<string, string | number | undefined> = {
             api_key: getSamApiKey(),
             limit,
-            postedFrom: formatDate(fromDate),
-            postedTo: formatDate(toDate),
+            postedFrom,
+            postedTo,
             ptype: 'p,o,k,s'
         };
 
@@ -54,10 +60,17 @@ export const fetchFederalContracts = functions.https.onCall(async (data, context
         } else {
             if (naicsCode) params.ncode = naicsCode;
             if (state) params.state = state;
+            if (data.city) params.city = data.city;
+            if (data.zip) params.zip = data.zip;
             if (keyword) params.title = keyword;
         }
 
         // Perform the request
+        console.log("Sending request to SAM.gov with params:", JSON.stringify({
+            ...params,
+            api_key: params.api_key ? 'HIDDEN' : 'MISSING'
+        }));
+        
         const response = await axios.get(url, { params });
 
         // The API returns the opportunities in a specific structure
@@ -106,22 +119,26 @@ export const fetchFederalContracts = functions.https.onCall(async (data, context
             opportunities: opportunitiesData
         };
     } catch (error: unknown) {
-        const err = error as { response?: { status: number } };
-        if (err.response && err.response.status === 404) {
-            // SAM.gov returns 404 when there is NO DATA FOUND for the specific filters.
-            // We should intercept this and return an empty array gracefully.
+        const e = error as { response?: { data?: any; status?: number; code?: string }; message?: string };
+        console.error("SAM.gov API Error:", e.response?.data || e.message);
+
+        // Handle SAM.gov WSO2 Gateway 101500 "Error in Sender" or standard 5xx outages gracefully
+        const isGatewayError = e.response?.data?.code === '101500';
+        const isServerError = e.response && e.response.status && e.response.status >= 500;
+        
+        if (isGatewayError || isServerError) {
+            console.warn("SAM.gov API is currently unavailable or returning gateway errors. Returning empty results gracefully.");
             return {
-                success: true,
+                success: false,
+                error: "SAM.gov service is temporarily unavailable or experiencing high traffic. Please try again later.",
                 totalRecords: 0,
                 opportunities: []
             };
         }
 
-        const e = error as { response?: { data?: { error?: { message?: string } } }; message?: string };
-        console.error("SAM.gov API Error:", e.response?.data || e.message);
         throw new functions.https.HttpsError(
             'internal', 
-            `Failed to fetch from SAM.gov: ${e.response?.data?.error?.message || e.message}`
+            `Failed to fetch from SAM.gov: ${e.response?.data?.error?.message || e.response?.data?.message || e.message}`
         );
     }
 });

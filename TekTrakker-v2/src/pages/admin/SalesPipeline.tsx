@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import showToast from "lib/toast";
 import { getBaseUrl } from "lib/utils";
 import React, { useState, useMemo } from 'react';
@@ -6,6 +7,7 @@ import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import Button from 'components/ui/Button';
 import { db } from 'lib/firebase';
+import { getNextInvoiceNumber } from 'lib/numbering';
 import type { Proposal, Job, Notification } from 'types';
 import { 
     DollarSign, Briefcase, CheckCircle, 
@@ -165,6 +167,7 @@ const SalesPipeline: React.FC = () => {
         if (!state.currentOrganization) return;
         if (!await globalConfirm(`Convert proposal for ${proposal.customerName} into a scheduled job?`)) return;
 
+        const nextInvId = await getNextInvoiceNumber(state.currentOrganization.id);
         const customer = state.customers.find(c => c.name === proposal.customerName);
         
         const newJob: Job = {
@@ -177,7 +180,7 @@ const SalesPipeline: React.FC = () => {
             jobStatus: 'Scheduled',
             appointmentTime: new Date().toISOString(), 
             invoice: {
-                id: `INV-${Date.now()}`,
+                id: nextInvId,
                 items: proposal.items.map(i => ({
                     id: i.id,
                     description: i.name,

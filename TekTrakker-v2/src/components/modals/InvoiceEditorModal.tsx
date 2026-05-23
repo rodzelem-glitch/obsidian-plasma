@@ -78,6 +78,9 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         return DEFAULT_PLANS.map(def => {
             const existing = dbPlansMap.get(def.id);
             const base: any = existing || { ...def, organizationId: orgId };
+            if (base.addonFeeName === undefined) base.addonFeeName = '';
+            if (base.addonFeeAmount === undefined) base.addonFeeAmount = 0;
+            if (base.addonFeePercent === undefined) base.addonFeePercent = 0;
             return base as MembershipPlan;
         });
     }, [state.membershipPlans, state.currentOrganization?.id]);
@@ -90,17 +93,21 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         const totalSysPrice = (systemCount - 1) * (plan.pricePerAdditionalSystem || 0);
         const finalizedPrice = billingCycle === 'Monthly' ? (price + totalSysPrice) : (price + (totalSysPrice * 12));
 
+        const planFee = (plan.addonFeeAmount || 0) + (finalizedPrice * (plan.addonFeePercent || 0) / 100);
+
         setMembershipEnrollment({
             planId,
             planName: plan.name,
             billingCycle,
             systemCount,
-            price: finalizedPrice
+            price: finalizedPrice + planFee
         });
         
         // Ensure to add it to the line items of the current invoice!
-        handleAddItem('Part', `${plan.name} (${billingCycle} Subscription)`);
-        // We cannot cleanly get the new item ID immediately, but they can edit the price themselves or just let us add it explicitly using lineItems modification
+        handleAddItem('Service', `${plan.name} (${billingCycle} Subscription)`, finalizedPrice, false);
+        if (planFee > 0) {
+            handleAddItem('Fee', `${plan.addonFeeName || 'Plan Fee'} - ${plan.name}`, planFee, false);
+        }
         
         setIsMembershipModalOpen(false);
     };

@@ -6,14 +6,14 @@ import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import SignatureCanvasModule from 'react-signature-canvas';
 const SignatureCanvas = (SignatureCanvasModule as any).default || SignatureCanvasModule;
-import { StoredFile, Job } from '../../../types';
-import { Eye, CheckCircle, FileText, ArrowRight } from 'lucide-react';
+import { StoredFile, Job, BusinessDocument } from '../../../types';
+import { Eye, CheckCircle, ArrowRight } from 'lucide-react';
 import DocumentPreview from '../../../components/ui/DocumentPreview';
 import DOMPurify from 'dompurify';
 
 const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClose: () => void, onSign: (signature: string) => void, job?: Job }) => {
     const { state, dispatch } = useAppContext();
-    const sigCanvas = useRef<any>(null);
+    const sigCanvas = useRef<React.ElementRef<typeof SignatureCanvas>>(null);
     const [step, setStep] = useState(1); // 1: Selection, 2: Preview & Sign
     const [selectedTemplates, setSelectedTemplates] = useState<string[]>([]);
     const [combinedText, setCombinedText] = useState('');
@@ -155,7 +155,7 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
 
             if (state.isDemoMode) {
                 dispatch({ type: 'UPDATE_JOB', payload: { ...job, files: [...currentFiles, pendingWaiver] } });
-                dispatch({ type: 'ADD_DOCUMENT', payload: newDoc as any });
+                dispatch({ type: 'ADD_DOCUMENT', payload: newDoc as BusinessDocument });
             } else {
                 await db.collection('jobs').doc(job.id).update({
                     files: [...currentFiles, pendingWaiver]
@@ -215,10 +215,11 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                                 {waiverTemplates.map(t => {
                                     const isSelected = selectedTemplates.includes(t.id);
                                     return (
-                                        <div 
+                                        <button 
+                                            type="button"
                                             key={t.id}
                                             onClick={() => handleTemplateToggle(t.id)}
-                                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all flex items-start gap-3 ${
+                                            className={`w-full text-left p-4 rounded-lg border-2 cursor-pointer transition-all flex items-start gap-3 ${
                                                 isSelected 
                                                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
                                                     : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'
@@ -233,7 +234,7 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                                                 <h4 className="font-bold text-gray-900 dark:text-white text-sm">{t.title}</h4>
                                                 <p className="text-xs text-gray-500 line-clamp-2 mt-1" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(t.content.substring(0, 100).replace(/<[^>]*>?/gm, '') + '...') }} />
                                             </div>
-                                        </div>
+                                        </button>
                                     );
                                 })}
                                 {waiverTemplates.length === 0 && <p className="col-span-2 text-center py-10 text-gray-400 italic">No waiver templates available.</p>}

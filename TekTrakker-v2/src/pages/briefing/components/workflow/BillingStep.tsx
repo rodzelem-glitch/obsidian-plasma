@@ -4,13 +4,11 @@ import { FilePlus, Import, Send } from 'lucide-react';
 
 interface BillingStepProps {
     handleGoToPayments: () => void;
-    handleLeaveSite: () => void;
     onOpenInvoiceSelector: () => void;
 }
 
 const BillingStep: React.FC<BillingStepProps> = ({
     handleGoToPayments,
-    handleLeaveSite,
     onOpenInvoiceSelector
 }) => {
     return (

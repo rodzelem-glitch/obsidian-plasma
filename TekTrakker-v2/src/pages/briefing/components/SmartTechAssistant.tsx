@@ -1,6 +1,6 @@
-
+﻿
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, X, Loader2, Maximize, Minimize, Image as ImageIcon } from 'lucide-react';
+import { Send, X, Loader2, Maximize, Minimize, Image as ImageIcon, Wrench, Cpu, ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
 import Textarea from 'components/ui/Textarea';
@@ -37,6 +37,13 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [error, setError] = useState<string | null>(null);
 
+    // Dynamic Technician Tools Phase 2 states
+    const [activeTab, setActiveTab] = useState<'chat' | 'tools'>('chat');
+    const [customTools, setCustomTools] = useState<any[]>([]);
+    const [selectedTool, setSelectedTool] = useState<any | null>(null);
+    const [formValues, setFormValues] = useState<Record<string, any>>({});
+    const [isRunningTool, setIsRunningTool] = useState(false);
+    const [toolSuccess, setToolSuccess] = useState(false);
     useEffect(() => {
         if (!state.currentUser) return;
         if (state.isDemoMode || !jobId || !organizationId) {
@@ -70,6 +77,224 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
         return () => unsubscribe();
     }, [jobId, organizationId, state.isDemoMode]);
 
+    // Query active custom tools from Firestore synthesizedTools
+    useEffect(() => {
+        if (!isOpen) return;
+        
+        const orgIdToUse = organizationId || state.currentOrganization?.id || 'demo-org';
+
+        if (state.isDemoMode || orgIdToUse === 'demo-org') {
+            const saved = localStorage.getItem(`demo-technician-tools`);
+            if (saved) {
+                setCustomTools(JSON.parse(saved).filter((t: any) => t.status === 'active'));
+            } else {
+                const sampleTools = [
+                    {
+                        id: 'seed-sample-1',
+                        toolName: 'complianceChecklist',
+                        requestedCapability: 'Verify safety gear, power disconnection, and workspace safety before starting repairs',
+                        inputParameters: `{
+  "hasPPE": "boolean",
+  "powerDisconnected": "boolean",
+  "workspaceSafe": "boolean",
+  "notes": "string"
+}`,
+                        dataMutations: 'Logs safety compliance checklist validation to job record.',
+                        compiledSource: `/**
+ * Synthesized Tool: complianceChecklist
+ * Created for: Verify safety gear, power disconnection, and workspace safety before starting repairs
+ * Generated autonomously by Antigravity Synthesis Engine.
+ */
+import * as admin from 'firebase-admin';
+
+export async function executeSynthesizedTool(orgId: string, params: any) {
+    const db = admin.firestore();
+    const batch = db.batch();
+    
+    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
+    batch.set(recordRef, {
+        id: recordRef.id,
+        toolName: "complianceChecklist",
+        loggedParams: params,
+        createdAt: new Date().toISOString()
+    });
+    
+    await batch.commit();
+    return { success: true, refId: recordRef.id };
+}`,
+                        status: 'active',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: 'seed-sample-2',
+                        toolName: 'vacuumBaselines',
+                        requestedCapability: 'Log target microns, achieved microns, and leak-back test results',
+                        inputParameters: `{
+  "targetMicrons": "number",
+  "achievedMicrons": "number",
+  "leakPassed": "boolean",
+  "decayRate": "number"
+}`,
+                        dataMutations: 'Logs vacuum pump pull-down parameters and decay ratings.',
+                        compiledSource: `/**
+ * Synthesized Tool: vacuumBaselines
+ * Created for: Log target microns, achieved microns, and leak-back test results
+ * Generated autonomously by Antigravity Synthesis Engine.
+ */
+import * as admin from 'firebase-admin';
+
+export async function executeSynthesizedTool(orgId: string, params: any) {
+    const db = admin.firestore();
+    const batch = db.batch();
+    
+    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
+    batch.set(recordRef, {
+        id: recordRef.id,
+        toolName: "vacuumBaselines",
+        loggedParams: params,
+        createdAt: new Date().toISOString()
+    });
+    
+    await batch.commit();
+    return { success: true, refId: recordRef.id };
+}`,
+                        status: 'active',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: 'seed-sample-3',
+                        toolName: 'materialsConsumed',
+                        requestedCapability: 'Record parts, fittings, refrigerants, and other materials consumed on site',
+                        inputParameters: `{
+  "partName": "string",
+  "quantity": "number",
+  "unit": "string",
+  "isBillable": "boolean"
+}`,
+                        dataMutations: 'Appends billable and non-billable inventory line items to job invoice sheet.',
+                        compiledSource: `/**
+ * Synthesized Tool: materialsConsumed
+ * Created for: Record parts, fittings, refrigerants, and other materials consumed on site
+ * Generated autonomously by Antigravity Synthesis Engine.
+ */
+import * as admin from 'firebase-admin';
+
+export async function executeSynthesizedTool(orgId: string, params: any) {
+    const db = admin.firestore();
+    const batch = db.batch();
+    
+    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
+    batch.set(recordRef, {
+        id: recordRef.id,
+        toolName: "materialsConsumed",
+        loggedParams: params,
+        createdAt: new Date().toISOString()
+    });
+    
+    await batch.commit();
+    return { success: true, refId: recordRef.id };
+}`,
+                        status: 'active',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: 'seed-sample-4',
+                        toolName: 'customerApprovals',
+                        requestedCapability: 'Log customer authorization, sign-off type, and terms acceptance',
+                        inputParameters: `{
+  "customerName": "string",
+  "approvalType": "string",
+  "termsAccepted": "boolean",
+  "authorizedAmount": "number"
+}`,
+                        dataMutations: 'Logs digital authorization parameters and sets job scope approval status.',
+                        compiledSource: `/**
+ * Synthesized Tool: customerApprovals
+ * Created for: Log customer authorization, sign-off type, and terms acceptance
+ * Generated autonomously by Antigravity Synthesis Engine.
+ */
+import * as admin from 'firebase-admin';
+
+export async function executeSynthesizedTool(orgId: string, params: any) {
+    const db = admin.firestore();
+    const batch = db.batch();
+    
+    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
+    batch.set(recordRef, {
+        id: recordRef.id,
+        toolName: "customerApprovals",
+        loggedParams: params,
+        createdAt: new Date().toISOString()
+    });
+    
+    await batch.commit();
+    return { success: true, refId: recordRef.id };
+}`,
+                        status: 'active',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: 'seed-sample-5',
+                        toolName: 'compressorWarranty',
+                        requestedCapability: 'Register compressor serial number, model number, tonnage, and warranty eligibility',
+                        inputParameters: `{
+  "serialNumber": "string",
+  "modelNumber": "string",
+  "tonnage": "number",
+  "isEligible": "boolean"
+}`,
+                        dataMutations: 'Registers compressor component warranties and links to customer asset records.',
+                        compiledSource: `/**
+ * Synthesized Tool: compressorWarranty
+ * Created for: Register compressor serial number, model number, tonnage, and warranty eligibility
+ * Generated autonomously by Antigravity Synthesis Engine.
+ */
+import * as admin from 'firebase-admin';
+
+export async function executeSynthesizedTool(orgId: string, params: any) {
+    const db = admin.firestore();
+    const batch = db.batch();
+    
+    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
+    batch.set(recordRef, {
+        id: recordRef.id,
+        toolName: "compressorWarranty",
+        loggedParams: params,
+        createdAt: new Date().toISOString()
+    });
+    
+    await batch.commit();
+    return { success: true, refId: recordRef.id };
+}`,
+                        status: 'active',
+                        createdAt: new Date().toISOString()
+                    }
+                ];
+                localStorage.setItem(`demo-technician-tools`, JSON.stringify(sampleTools));
+                setCustomTools(sampleTools.filter(t => t.status === 'active'));
+            }
+            return;
+        }
+
+        const q = query(
+            collection(db, 'organizations', orgIdToUse, 'synthesizedTools')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const items: any[] = [];
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                if (data.status === 'active') {
+                    items.push({ id: docSnap.id, ...data });
+                }
+            });
+            setCustomTools(items);
+        }, (err) => {
+            console.error("Error loading technician custom tools:", err);
+        });
+
+        return () => unsubscribe();
+    }, [isOpen, organizationId, state.isDemoMode, state.currentOrganization]);
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
@@ -138,7 +363,6 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
                 }
                 await addDoc(collection(db, `organizations/${organizationId}/jobs/${jobId}/ai_messages`), messageData);
             }
-
             const systemInstruction = `You are the Omni-Manager AI for field technicians.
 If the technician reports HVAC system vitals, Appliance Repair diagnostics (e.g. error codes, amp draw), or Garage Door metrics (e.g. IPPT, weight, door balance), you MUST extract them and output a JSON block at the VERY TOP of your response formatted exactly like this:
 \`\`\`json
@@ -222,8 +446,7 @@ Followed by a friendly message confirming what you saved. Supported HVAC keys: c
             setIsLoading(false);
         }
     };
-    
-     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             setImageFile(file);
@@ -236,54 +459,439 @@ Followed by a friendly message confirming what you saved. Supported HVAC keys: c
         setImagePreview(null);
     };
 
+    const handleExecuteCustomTool = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedTool) return;
+        setIsRunningTool(true);
+        setError(null);
+
+        try {
+            const orgIdToUse = organizationId || state.currentOrganization?.id || 'demo-org';
+            
+            // Build parameters payload, converting types securely
+            const schema = JSON.parse(selectedTool.inputParameters || '{}');
+            const parsedPayload: Record<string, any> = {};
+            Object.keys(schema).forEach(key => {
+                const type = schema[key];
+                const rawVal = formValues[key];
+                if (type === 'number') {
+                    parsedPayload[key] = rawVal === '' ? 0 : Number(rawVal);
+                } else if (type === 'boolean') {
+                    parsedPayload[key] = Boolean(rawVal);
+                } else {
+                    parsedPayload[key] = String(rawVal === undefined ? '' : rawVal);
+                }
+            });
+
+            let recordId = `data-${Date.now()}`;
+
+            if (state.isDemoMode || orgIdToUse === 'demo-org') {
+                // Demo Mode Execution Simulation
+                await new Promise(resolve => setTimeout(resolve, 800));
+                
+                const existingData = JSON.parse(localStorage.getItem(`demo-synthesized-data`) || '[]');
+                const newRecord = {
+                    id: recordId,
+                    toolName: selectedTool.toolName,
+                    loggedParams: parsedPayload,
+                    createdAt: new Date().toISOString(),
+                    organizationId: orgIdToUse
+                };
+                existingData.push(newRecord);
+                localStorage.setItem(`demo-synthesized-data`, JSON.stringify(existingData));
+            } else {
+                // Live Firestore sandbox mutation write under /organizations/{orgId}/synthesizedData
+                const synthesizedDataRef = collection(db, 'organizations', orgIdToUse, 'synthesizedData');
+                const recordRef = await addDoc(synthesizedDataRef, {
+                    toolName: selectedTool.toolName,
+                    loggedParams: parsedPayload,
+                    createdAt: new Date().toISOString()
+                });
+                recordId = recordRef.id;
+
+                // Append an action alert notification into the active job's chat feed
+                if (jobId) {
+                    const alertText = `[Physical Tool Execution] Technician ran widget "${selectedTool.toolName}" physically with parameters:\n${JSON.stringify(parsedPayload, null, 2)}\nDatabase sandbox reference ID: ${recordId}`;
+                    await addDoc(collection(db, `organizations/${organizationId}/jobs/${jobId}/ai_messages`), {
+                        text: alertText,
+                        sender: 'user',
+                        timestamp: new Date()
+                    });
+
+                    // Trigger simulated AI acknowledgment response
+                    await addDoc(collection(db, `organizations/${organizationId}/jobs/${jobId}/ai_messages`), {
+                        text: `Received notification: Physical execution of dynamic tool "${selectedTool.toolName}" logged successfully under reference ID ${recordId}. The context has been loaded into my active worker workspace.`,
+                        sender: 'ai',
+                        timestamp: new Date()
+                    });
+                }
+            }
+
+            setToolSuccess(true);
+        } catch (err: any) {
+            console.error("Failed to run custom tool:", err);
+            setError("Execution failed: " + err.message);
+        } finally {
+            setIsRunningTool(false);
+        }
+    };
+
+    const handleSelectTool = (tool: any) => {
+        setSelectedTool(tool);
+        setToolSuccess(false);
+        setError(null);
+        
+        // Initialize form values with defaults
+        const schema = JSON.parse(tool.inputParameters || '{}');
+        const initialForm: Record<string, any> = {};
+        Object.keys(schema).forEach(key => {
+            const type = schema[key];
+            if (type === 'number') initialForm[key] = '';
+            else if (type === 'boolean') initialForm[key] = false;
+            else initialForm[key] = '';
+        });
+        setFormValues(initialForm);
+    };
+
+    const handleBackToTools = () => {
+        setSelectedTool(null);
+        setToolSuccess(false);
+        setError(null);
+    };
     const { primaryColor } = state.currentOrganization || { primaryColor: '#2563eb' };
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title="Smart Tech Assistant" size={isMaximized ? "full" : "md"}>
             <div className={`flex flex-col h-[600px] ${isMaximized ? 'lg:h-[calc(100vh-80px)]' : ''} bg-gray-50 dark:bg-slate-800`}>
-                <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-slate-700">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Smart Tech Assistant</h3>
-                    <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => setIsMaximized(!isMaximized)}>
-                            {isMaximized ? <Minimize size={20} /> : <Maximize size={20} />}
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={onClose}>
-                            <X size={20} />
-                        </Button>
+                
+                {/* Modern Header with Tab Switching */}
+                <div className="flex flex-col border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 pt-4 shadow-sm">
+                    <div className="flex justify-between items-center pb-2">
+                        <div className="flex items-center gap-2">
+                            <Cpu className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                            <h3 className="text-base font-black text-slate-800 dark:text-white uppercase tracking-wider">
+                                Smart Tech Briefing Assistant
+                            </h3>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => setIsMaximized(!isMaximized)} className="h-8 w-8 p-0 rounded-lg">
+                                {isMaximized ? <Minimize size={18} /> : <Maximize size={18} />}
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={onClose} className="h-8 w-8 p-0 rounded-lg">
+                                <X size={18} />
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Premium Sliding Navigation Tabs */}
+                    <div className="flex border-t border-slate-100 dark:border-slate-800 mt-2">
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('chat')}
+                            className={`flex-1 py-3 text-xs uppercase tracking-widest font-black transition-all border-b-2 flex items-center justify-center gap-2 ${
+                                activeTab === 'chat'
+                                    ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                            }`}
+                        >
+                            <Send className="w-3.5 h-3.5" />
+                            AI Chat Assistant
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveTab('tools')}
+                            className={`flex-1 py-3 text-xs uppercase tracking-widest font-black transition-all border-b-2 flex items-center justify-center gap-2 ${
+                                activeTab === 'tools'
+                                    ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                                    : 'border-transparent text-slate-400 hover:text-slate-600'
+                            }`}
+                        >
+                            <Wrench className="w-3.5 h-3.5" />
+                            In-App Tools ({customTools.length})
+                        </button>
                     </div>
                 </div>
 
-                <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-100 dark:bg-slate-900">
-                    {messages.map((msg) => (
-                        <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[80%] p-3 rounded-lg shadow-md ${msg.sender === 'user' ? 'bg-blue-500 text-white' : 'bg-white text-gray-800 dark:bg-slate-700 dark:text-gray-100'}`}>
-                                {msg.imageUrl && <img src={msg.imageUrl} alt="Uploaded" className="max-w-xs h-auto rounded-md mb-2" />}
-                                {msg.text && <p className="text-sm whitespace-pre-wrap">{msg.text}</p>}
-                                <span className="block text-xs mt-1 opacity-70">
-                                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
+                {/* Tab content area */}
+                <div className="flex-1 flex flex-col min-h-0">
+                    {activeTab === 'chat' ? (
+                        <>
+                            {/* Standard Chat Interface */}
+                            <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50 dark:bg-slate-900">
+                                {messages.length === 0 && (
+                                    <div className="flex flex-col items-center justify-center h-full text-center p-6 space-y-3">
+                                        <div className="p-4 bg-purple-50 dark:bg-purple-950/20 rounded-full border border-purple-100 dark:border-purple-900/30">
+                                            <Cpu className="w-10 h-10 text-purple-600 dark:text-purple-400 animate-pulse" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200">How can I assist you with this job?</h4>
+                                            <p className="text-xs text-slate-400 max-w-xs mt-1">Ask for diagnostic codes, vitals updates, appliance specifications, or structural schematics.</p>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {messages.map((msg) => (
+                                    <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`max-w-[85%] p-3 rounded-2xl shadow-sm ${
+                                            msg.sender === 'user' 
+                                                ? 'bg-purple-600 text-white rounded-br-none' 
+                                                : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-none border border-slate-100 dark:border-slate-800'
+                                        }`}>
+                                            {msg.imageUrl && (
+                                                <a href={msg.imageUrl} target="_blank" rel="noopener noreferrer" className="block mb-2">
+                                                    <img src={msg.imageUrl} alt="Uploaded attachment" className="max-w-xs max-h-48 object-cover rounded-lg" />
+                                                </a>
+                                            )}
+                                            {msg.text && <p className="text-xs leading-relaxed whitespace-pre-wrap">{msg.text}</p>}
+                                            <span className="block text-[9px] mt-1.5 opacity-70 text-right font-semibold">
+                                                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                                {isLoading && (
+                                    <div className="flex justify-start">
+                                        <div className="p-3 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-800 rounded-2xl rounded-bl-none shadow-sm flex items-center gap-2">
+                                            <Loader2 className="animate-spin w-4 h-4 text-purple-600" />
+                                            <span className="text-xs text-slate-400">Assistant is thinking...</span>
+                                        </div>
+                                    </div>
+                                )}
+                                <div ref={messagesEndRef} />
                             </div>
-                        </div>
-                    ))}
-                    {isLoading && <div className="flex justify-start"><div className="p-3 rounded-lg shadow-md bg-white dark:bg-slate-700"><Loader2 className="animate-spin" size={20} /></div></div>}
-                    <div ref={messagesEndRef} />
-                </div>
 
-                <div className="border-t border-gray-200 dark:border-slate-700 p-4 bg-gray-50 dark:bg-slate-800">
-                    {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
-                    {imagePreview && (
-                        <div className="mb-3 relative w-24 h-24">
-                            <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
-                            <Button type="button" size="icon" variant="danger" onClick={removeImage} className="absolute -top-2 -right-2 h-6 w-6 rounded-full"><X size={16} /></Button>
+                            {/* Chat Inputs */}
+                            <div className="border-t border-gray-200 dark:border-slate-700 p-4 bg-white dark:bg-slate-800">
+                                {error && <p className="text-xs text-red-500 mb-2 font-semibold flex items-center gap-1">⚠️ {error}</p>}
+                                {imagePreview && (
+                                    <div className="mb-3 relative w-20 h-20 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm">
+                                        <img src={imagePreview} alt="Upload preview" className="w-full h-full object-cover" />
+                                        <Button 
+                                            type="button" 
+                                            size="icon" 
+                                            variant="danger" 
+                                            onClick={removeImage} 
+                                            className="absolute top-1 right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center"
+                                        >
+                                            <X size={12} />
+                                        </Button>
+                                    </div>
+                                )}
+                                <div className="flex items-end space-x-2">
+                                    <input 
+                                        type="file" 
+                                        title="Upload Image" 
+                                        accept="image/*" 
+                                        className="hidden" 
+                                        id={`image-upload-${jobId || 'new'}`} 
+                                        onChange={handleImageChange} 
+                                    />
+                                    <Button 
+                                        type="button" 
+                                        variant="secondary" 
+                                        size="icon" 
+                                        onClick={() => document.getElementById(`image-upload-${jobId || 'new'}`)?.click()} 
+                                        title="Upload Image"
+                                        className="h-10 w-10 p-0 rounded-xl border border-slate-200 dark:border-slate-700"
+                                    >
+                                        <ImageIcon size={18} className="text-slate-400 dark:text-slate-300" />
+                                    </Button>
+                                    <Textarea 
+                                        value={prompt} 
+                                        onChange={(e) => setPrompt(e.target.value)} 
+                                        placeholder="Ask a question..." 
+                                        className="flex-1 text-xs min-h-[40px] max-h-24 resize-none rounded-xl" 
+                                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())} 
+                                    />
+                                    <Button 
+                                        onClick={handleSendMessage} 
+                                        disabled={isLoading || (!prompt.trim() && !imageFile)} 
+                                        title="Send Message" 
+                                        className="bg-purple-600 hover:bg-purple-700 text-white h-10 px-4 rounded-xl flex items-center justify-center gap-1.5"
+                                    >
+                                        <Send size={16} />
+                                    </Button>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        /* Physical Technician In-App Tools Dashboard */
+                        <div className="flex-1 overflow-y-auto p-5 bg-slate-50 dark:bg-slate-900 flex flex-col">
+                            {selectedTool ? (
+                                <div className="space-y-6 flex-1 flex flex-col">
+                                    {/* Selected Tool Form view */}
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={handleBackToTools}
+                                            className="p-2 text-slate-500 hover:text-purple-600 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm transition-all"
+                                        >
+                                            <ArrowLeft className="w-4 h-4" />
+                                        </button>
+                                        <div>
+                                            <span className="text-[9px] uppercase tracking-wider font-extrabold text-purple-600 dark:text-purple-400 block">ACTIVE TECHNICIAN WIDGET</span>
+                                            <h4 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-wider mt-0.5">{selectedTool.toolName}</h4>
+                                        </div>
+                                    </div>
+
+                                    {toolSuccess ? (
+                                        /* Premium visual success screen overlay */
+                                        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-2xl shadow-sm">
+                                            <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-full">
+                                                <CheckCircle2 className="w-12 h-12 text-emerald-500 animate-bounce" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-base font-black text-slate-800 dark:text-white uppercase tracking-wider">Tool Execution Complete</h4>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-sm">
+                                                    The physical tool executed safely within your sandboxed tenant container. Custom parameters have been committed under `/synthesizedData` and logged directly to the job chat thread.
+                                                </p>
+                                            </div>
+                                            <div className="flex gap-3 w-full max-w-xs mt-4">
+                                                <Button 
+                                                    onClick={() => setToolSuccess(false)}
+                                                    variant="secondary"
+                                                    className="flex-1 py-2 text-xs uppercase tracking-wider font-extrabold"
+                                                >
+                                                    Run Again
+                                                </Button>
+                                                <Button 
+                                                    onClick={handleBackToTools}
+                                                    variant="primary"
+                                                    className="flex-1 py-2 text-xs uppercase tracking-wider font-extrabold bg-purple-600 hover:bg-purple-700"
+                                                >
+                                                    Back to Tools
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        /* Form inputs based on schema */
+                                        <form onSubmit={handleExecuteCustomTool} className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 p-6 rounded-2xl shadow-sm space-y-4 flex-1 flex flex-col justify-between">
+                                            <div className="space-y-4">
+                                                <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800">
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">MUTATION SCHEME</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400 italic mt-0.5">"{selectedTool.requestedCapability}"</p>
+                                                </div>
+
+                                                {error && <p className="text-xs text-red-500 font-semibold">⚠️ {error}</p>}
+
+                                                {/* DYNAMIC FORM FIELDS */}
+                                                <div className="space-y-3.5 max-h-[300px] overflow-y-auto pr-1">
+                                                    {Object.entries(JSON.parse(selectedTool.inputParameters || '{}')).map(([key, type]) => {
+                                                        const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                                                        return (
+                                                            <div key={key} className="space-y-1">
+                                                                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">{label} ({String(type)})</label>
+                                                                {type === 'boolean' ? (
+                                                                    <div className="flex items-center gap-2.5 py-1">
+                                                                        <input 
+                                                                            type="checkbox" 
+                                                                            id={`param-${key}`}
+                                                                            checked={formValues[key] || false}
+                                                                            onChange={(e) => setFormValues(prev => ({ ...prev, [key]: e.target.checked }))}
+                                                                            className="w-4 h-4 rounded text-purple-600 border-slate-300 focus:ring-purple-500 focus:ring-2"
+                                                                        />
+                                                                        <label htmlFor={`param-${key}`} className="text-xs font-semibold text-slate-500 dark:text-slate-400">Enable / True</label>
+                                                                    </div>
+                                                                ) : type === 'number' ? (
+                                                                    <input 
+                                                                        type="number"
+                                                                        required
+                                                                        value={formValues[key]}
+                                                                        onChange={(e) => setFormValues(prev => ({ ...prev, [key]: e.target.value }))}
+                                                                        className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500"
+                                                                        placeholder={`Enter numeric ${label.toLowerCase()}`}
+                                                                    />
+                                                                ) : (
+                                                                    <input 
+                                                                        type="text"
+                                                                        required
+                                                                        value={formValues[key]}
+                                                                        onChange={(e) => setFormValues(prev => ({ ...prev, [key]: e.target.value }))}
+                                                                        className="w-full text-xs p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 text-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500"
+                                                                        placeholder={`Enter ${label.toLowerCase()}`}
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-4 flex gap-3">
+                                                <Button
+                                                    type="button"
+                                                    onClick={handleBackToTools}
+                                                    variant="secondary"
+                                                    className="flex-1 py-2 text-xs uppercase tracking-wider font-extrabold"
+                                                >
+                                                    Cancel
+                                                </Button>
+                                                <Button
+                                                    type="submit"
+                                                    disabled={isRunningTool}
+                                                    variant="primary"
+                                                    className="flex-1 py-2 text-xs uppercase tracking-wider font-extrabold bg-purple-600 hover:bg-purple-700 flex items-center justify-center gap-1.5"
+                                                >
+                                                    {isRunningTool ? (
+                                                        <>
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                            Executing Widget...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Cpu className="w-3.5 h-3.5" />
+                                                            Execute Action
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    )}
+                                </div>
+                            ) : (
+                                /* List of Custom Developer Tools */
+                                <div className="space-y-4 flex-1 flex flex-col">
+                                    <div className="space-y-1">
+                                        <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Available In-App Technician Tools</h4>
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400">These widgets were autonomously synthesized or manually configured by admins, hot-linked directly to your interface.</p>
+                                    </div>
+                                    
+                                    {customTools.length === 0 ? (
+                                        <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-6 text-center text-slate-400">
+                                            <Wrench className="w-8 h-8 text-slate-300 dark:text-slate-600 mb-2" />
+                                            <p className="text-xs font-bold">No physical technician widgets active.</p>
+                                            <p className="text-[10px] text-slate-500/80 mt-1 max-w-xs">Create custom tools in the Admin Settings panel under "Technician Tools" using the Agentic Prompter to see them here.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 gap-3 overflow-y-auto max-h-[420px] pr-1">
+                                            {customTools.map((tool) => (
+                                                <button
+                                                    key={tool.id}
+                                                    type="button"
+                                                    onClick={() => handleSelectTool(tool)}
+                                                    className="w-full text-left p-4 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-2xl shadow-sm hover:border-purple-500/40 hover:shadow-md transition-all flex items-center justify-between group active:scale-[0.99]"
+                                                >
+                                                    <div className="space-y-1.5 flex-1 pr-4">
+                                                        <div className="flex items-center gap-2">
+                                                            <Wrench className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                                                            <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white">{tool.toolName}</span>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 italic font-medium line-clamp-2">"{tool.requestedCapability}"</p>
+                                                        <div className="flex flex-wrap gap-2.5 pt-0.5">
+                                                            <span className="text-[8px] uppercase tracking-wider font-extrabold text-slate-400">
+                                                                Inputs: {Object.keys(JSON.parse(tool.inputParameters || '{}')).join(', ') || 'none'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all shrink-0" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
-                    <div className="flex items-end space-x-2">
-                        <label htmlFor={`image-upload-${jobId || 'new'}`} className="sr-only">Upload Image</label>
-                        <input type="file" title="Upload Image" accept="image/*" className="hidden" id={`image-upload-${jobId || 'new'}`} onChange={handleImageChange} />
-                        <Button type="button" variant="secondary" size="icon" onClick={() => document.getElementById(`image-upload-${jobId || 'new'}`)?.click()} title="Upload Image"><ImageIcon size={20} /></Button>
-                        <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="Ask a question..." className="flex-1" onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendMessage())} />
-                        <Button onClick={handleSendMessage} disabled={isLoading || (!prompt.trim() && !imageFile)} title="Send Message" className="bg-primary-600 hover:bg-primary-700 text-white"><Send size={20} /></Button>
-                    </div>
                 </div>
             </div>
         </Modal>

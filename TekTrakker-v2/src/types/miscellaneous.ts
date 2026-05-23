@@ -1,4 +1,4 @@
-
+﻿
 import type { StoredFile } from './file';
 
 
@@ -132,6 +132,7 @@ export interface Applicant {
     appliedDate: string;
     applicationDate?: string;
     resumeDataUrl?: string;
+    resumeUrl?: string;
     resumeFileName?: string;
     notes?: string;
     marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; };
@@ -159,6 +160,9 @@ export interface MembershipPlan {
     color: string;
     benefits?: string[];
     pricePerAdditionalSystem?: number;
+    addonFeeName?: string;
+    addonFeeAmount?: number;
+    addonFeePercent?: number;
 }
 
 export interface ServiceAgreement {
@@ -190,7 +194,7 @@ export interface ProposalItem {
     quantity: number;
     price: number;
     total: number;
-    type: 'Labor' | 'Part' | 'Fee' | 'Discount';
+    type: 'Labor' | 'Part' | 'Part/Labor' | 'Fee' | 'Discount' | 'Service';
     tier: 'Good' | 'Better' | 'Best';
     partCost?: number;
     laborHours?: number;
@@ -218,6 +222,10 @@ export interface Proposal {
     signature?: string | null;
     signatureDataUrl?: string | null;
     title?: string | null;
+    sentAt?: string;
+    remindersSent?: string[];
+    proposalTermsAgreed?: boolean | null;
+    proposalTermsAgreedAt?: string | null;
 }
 
 export interface Expense {
@@ -705,5 +713,6 @@ export interface Appointment {
     createdAt: string;
     marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; };
 }
+
 
 

@@ -68,7 +68,7 @@ const LandingChatbot: React.FC = () => {
             const functions = getFunctions();
             const chatbotFunction = httpsCallable(functions, 'callLandingChatbot');
             
-            const plans = (state.platformSettings?.plans || {}) as any;
+            const plans = (state.platformSettings?.plans || {}) as Record<string, { monthly?: number; maxUsers?: number }>;
             const pricingContext = `
                 TekTrakker Pro: $${plans.starter?.monthly || 99}/mo. Includes ${plans.starter?.maxUsers || 3} users.
                 TekTrakker Premium: $${plans.growth?.monthly || 249}/mo. Includes ${plans.growth?.maxUsers || 10} users.
@@ -140,10 +140,10 @@ const LandingChatbot: React.FC = () => {
                                     {msg.role === 'assistant' ? (
                                         <ReactMarkdown 
                                             components={{
-                                                a: ({node, ...props}) => <a {...props} className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline" />,
-                                                ul: ({node, ...props}) => <ul {...props} className="list-disc pl-4 space-y-1 my-2" />,
-                                                ol: ({node, ...props}) => <ol {...props} className="list-decimal pl-4 space-y-1 my-2" />,
-                                                p: ({node, ...props}) => <p {...props} className="mb-2 last:mb-0" />
+                                                a: ({node: _node, ...props}) => <a {...props} className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline">{props.children}</a>,
+                                                ul: ({node: _node, ...props}) => <ul {...props} className="list-disc pl-4 space-y-1 my-2" />,
+                                                ol: ({node: _node, ...props}) => <ol {...props} className="list-decimal pl-4 space-y-1 my-2" />,
+                                                p: ({node: _node, ...props}) => <p {...props} className="mb-2 last:mb-0" />
                                             }}
                                         >
                                             {msg.content}

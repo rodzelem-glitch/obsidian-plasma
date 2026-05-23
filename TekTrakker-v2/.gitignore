@@ -60,3 +60,11 @@ firebase-export-*/
 
 # Firebase iOS Config
 ios/App/App/GoogleService-Info.plist
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+firebase-service-account.json

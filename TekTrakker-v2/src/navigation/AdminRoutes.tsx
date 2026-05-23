@@ -8,6 +8,7 @@ import AdminLayout from '../components/layout/AdminLayout';
 
 // Admin Components
 import AdminDashboard from '../pages/admin/AdminDashboard';
+import KortPlayground from '../pages/admin/KortPlayground';
 import { ActiveTechsView, ActiveJobsView, PartOrdersView, UnpaidInvoicesView, UpcomingMaintenanceView, ActiveWarrantiesView, AlertsCenterView } from '../pages/admin/DashboardDetails';
 import OperationsView from '../pages/admin/OperationsView';
 import CustomerCenterView from '../pages/admin/CustomerCenterView';
@@ -39,12 +40,25 @@ import VirtualWorkerUpgrade from '../pages/admin/VirtualWorkerUpgrade';
 import VirtualWorkerReports from '../pages/admin/VirtualWorkerReports';
 import HROperationsDashboard from '../pages/admin/HROperationsDashboard';
 import WarrantyClaimsDashboard from '../pages/admin/WarrantyClaimsDashboard';
+import Whiteboard from '../pages/admin/Whiteboard';
 
-const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: boolean }> = ({ user, handleLogout, isDemoMode }) => (
-  <ProtectedRoute isAllowed={!!user && (user.role === 'master_admin' || user.role === 'admin' || user.role === 'both' || user.role === 'supervisor' || isDemoMode)}>
-    <BillingGate>
-      <AdminLayout user={user} onLogout={handleLogout}>
-        <Routes>
+const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: boolean }> = ({ user, handleLogout, isDemoMode }) => {
+  const isKortTester = user?.email === 'integrations@kortpayments.com' || (user?.role as string) === 'kort_tester';
+  const isUnlocked = isKortTester && typeof window !== 'undefined' && localStorage.getItem('kort_tester_unlocked') === 'true';
+
+  return (
+    <ProtectedRoute isAllowed={!!user && (user.role === 'master_admin' || user.role === 'admin' || user.role === 'both' || user.role === 'supervisor' || isKortTester || isDemoMode)}>
+      <BillingGate>
+        <AdminLayout user={user} onLogout={handleLogout}>
+          {isKortTester && !isUnlocked ? (
+            <Routes>
+              <Route path="kort-playground" element={<KortPlayground />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="*" element={<Navigate to="/admin/kort-playground" replace />} />
+            </Routes>
+          ) : (
+            <Routes>
+              {isKortTester && <Route path="kort-playground" element={<KortPlayground />} />}
           <Route path="dashboard" element={<AdminDashboard />} />
           <Route path="hr" element={<HROperationsDashboard />} />
           <Route path="dashboard/active-techs" element={<ActiveTechsView />} />
@@ -83,11 +97,16 @@ const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: 
           <Route path="migrate" element={<DatabaseMigration />} />
           <Route path="ai-worker-upgrade" element={<VirtualWorkerUpgrade />} />
           <Route path="ai-reports" element={<VirtualWorkerReports />} />
-          <Route path="*" element={<Navigate to="dashboard" replace />} />
+          <Route path="whiteboard" element={<Whiteboard />} />
+          <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
         </Routes>
+        )}
       </AdminLayout>
     </BillingGate>
   </ProtectedRoute>
-);
+  );
+};
 
 export default AdminRoutes;
+
+

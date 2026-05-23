@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import Card from 'components/ui/Card';
 import { Zap, Bot, Plus } from 'lucide-react';
 import CancelSubscriptionModal from './CancelSubscriptionModal';
-import { db } from 'lib/firebase';
+import { db, functions } from 'lib/firebase';
 import { doc, getDoc, updateDoc, increment } from 'firebase/firestore';
 import { useAppContext } from 'context/AppContext';
 import { Capacitor } from '@capacitor/core';
@@ -30,6 +30,26 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
     const { state } = useAppContext();
     const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
     const [vwUsage, setVwUsage] = useState({ used: 0, limit: 0 });
+    const [isTestingBilling, setIsTestingBilling] = useState(false);
+
+    const handleTestSubscriptionBilling = async () => {
+        if (!orgId) return;
+        setIsTestingBilling(true);
+        try {
+            const testFn = functions.httpsCallable('testKortSubscriptionPayment');
+            const res = await testFn({ organizationId: orgId });
+            if (res.data && res.data.success) {
+                showToast.success(res.data.message || "Test subscription payment processed successfully!");
+            } else {
+                showToast.error("Failed to process payment.");
+            }
+        } catch (error) {
+            console.error("Test subscription payment error:", error);
+            showToast.error(error.message || "Test subscription payment failed.");
+        } finally {
+            setIsTestingBilling(false);
+        }
+    };
     const orgId = state.currentOrganization?.id;
     const isVwEnabled = state.currentOrganization?.virtualWorkerEnabled;
     const hasVaultedMethod = !!state.currentOrganization?.platformVaultedPaymentMethodId;
@@ -119,8 +139,7 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
                 />
             </Card>
 
-            {orgId === 'tektestsub' && (
-                <Card className="border border-slate-200 shadow-sm">
+            <Card className="border border-slate-200 shadow-sm">
                     <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3 mb-4">
                         <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
@@ -158,14 +177,23 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
                     </div>
                 ) : (
                     hasVaultedMethod ? (
-                        <div className="mt-4 p-4 border border-emerald-200 bg-emerald-50 rounded-lg flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                                {vaultedType === 'ach_debit' ? <Building2 size={16} /> : <CreditCard size={16} />}
+                        <div className="mt-4 p-4 border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-900 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                                    {vaultedType === 'ach_debit' ? <Building2 size={16} /> : <CreditCard size={16} />}
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-emerald-900 dark:text-emerald-300 text-sm">Securely Vaulted</p>
+                                    <p className="text-xs text-emerald-700 dark:text-emerald-400">Your {vaultedType === 'ach_debit' ? 'bank account' : 'credit card'} is linked for automatic payments.</p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="font-semibold text-emerald-900 text-sm">Securely Vaulted</p>
-                                <p className="text-xs text-emerald-700">Your {vaultedType === 'ach_debit' ? 'bank account' : 'credit card'} is linked for automatic payments.</p>
-                            </div>
+                            <button
+                                onClick={handleTestSubscriptionBilling}
+                                disabled={isTestingBilling}
+                                className="text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                            >
+                                {isTestingBilling ? 'Testing Billing...' : 'Test Subscription Payment'}
+                            </button>
                         </div>
                     ) : (
                         <div className="mt-4 p-4 border border-amber-200 bg-amber-50 rounded-lg text-amber-800 text-sm">
@@ -174,7 +202,6 @@ const SubscriptionTab: React.FC<SubscriptionTabProps> = ({ billingDetails, handl
                     )
                 )}
             </Card>
-            )}
 
             {isVwEnabled && (
                 <Card className="border border-indigo-100 shadow-sm">

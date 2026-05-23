@@ -139,6 +139,18 @@ const TimeAndMileage: React.FC = () => {
         try {
             await db.collection('shiftLogs').doc(logId).set(newLog);
             dispatch({ type: 'ADD_SHIFT_LOG', payload: { userId: user.id, log: newLog } });
+            
+            // Immediately sync starting coordinates to technician profile
+            if (loc) {
+                const locationData = { lat: loc.latitude, lng: loc.longitude, timestamp: new Date().toISOString() };
+                await db.collection('users').doc(user.id).update({
+                    location: locationData,
+                    lastLocationUpdate: locationData.timestamp
+                }).catch(err => console.error("Immediate clock-in sync failed:", err));
+                
+                dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...user, location: locationData } });
+            }
+
             setSaveFeedback('Clocked In!');
             setTimeout(() => setSaveFeedback(null), 3000);
         } catch (e) {
@@ -162,6 +174,18 @@ const TimeAndMileage: React.FC = () => {
             try {
                 await db.collection('shiftLogs').doc(activeShift.id).update(updatedLog);
                 dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: user.id, log: updatedLog } });
+                
+                // Immediately sync ending coordinates to technician profile
+                if (loc) {
+                    const locationData = { lat: loc.latitude, lng: loc.longitude, timestamp: new Date().toISOString() };
+                    await db.collection('users').doc(user.id).update({
+                        location: locationData,
+                        lastLocationUpdate: locationData.timestamp
+                    }).catch(err => console.error("Immediate clock-out sync failed:", err));
+                    
+                    dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...user, location: locationData } });
+                }
+
                 setSaveFeedback('Clocked Out!');
                 setTimeout(() => setSaveFeedback(null), 3000);
             } catch (e) {

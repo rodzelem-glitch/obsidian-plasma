@@ -1,4 +1,3 @@
-
 export interface StoredFile {
     id: string;
     organizationId: string;
@@ -9,5 +8,7 @@ export interface StoredFile {
     dataUrl: string;
     createdAt: string;
     uploadedBy: string;
-    metadata?: any;
+    metadata?: Record<string, any>;
+    label?: string;
+    url?: string;
 }

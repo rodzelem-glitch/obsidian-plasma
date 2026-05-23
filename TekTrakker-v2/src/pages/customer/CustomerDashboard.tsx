@@ -34,12 +34,13 @@ import AssetsSection from './components/AssetsSection';
 import PhotosDocumentsSection from './components/PhotosDocumentsSection';
 import WarrantySection from './components/WarrantySection';
 import JobDetailModal from 'components/modals/JobDetailModal';
+import JobAppointmentModal from 'components/modals/JobAppointmentModal';
 import type { StoredFile } from 'types';
 import { uploadFileToStorage } from 'lib/storageService';
 
 
 const CustomerDashboard: React.FC = () => {
-    const { state, dispatch } = useAppContext();
+    const { state, dispatch, exitDemo } = useAppContext();
     const { currentUser, isDemoMode, customers, currentOrganization, jobs } = state;
     const navigate = useNavigate();
     
@@ -63,6 +64,7 @@ const CustomerDashboard: React.FC = () => {
     const [viewingDocumentToSign, setViewingDocumentToSign] = useState<BusinessDocument | null>(null);
     const [viewingWarrantyJob, setViewingWarrantyJob] = useState<Job | null>(null);
     const [isWarrantyModalOpen, setIsWarrantyModalOpen] = useState(false);
+    const [editingJob, setEditingJob] = useState<Job | null>(null);
 
     const [requestData, setRequestData] = useState({ type: 'Repair', date: '', window: 'Anytime', notes: '' });
     const [profileData, setProfileData] = useState<Partial<Customer>>({});
@@ -214,11 +216,25 @@ const CustomerDashboard: React.FC = () => {
 
     const myJobs = useMemo<Job[]>(() => {
         if (!activeCustomerRecord) return [];
-        const cleanName = activeCustomerRecord.name.trim().toLowerCase();
-        let filtered = jobs.filter(j => 
-            j.organizationId === activeOrg?.id && 
-            (j.customerId === activeCustomerRecord.id || j.customerName?.trim().toLowerCase() === cleanName)
-        );
+        const cleanName = activeCustomerRecord.name?.trim().toLowerCase() || '';
+        const cleanEmail = activeCustomerRecord.email?.trim().toLowerCase() || '';
+        const cleanPhone = activeCustomerRecord.phone?.replace(/\D/g, '') || '';
+
+        let filtered = jobs.filter(j => {
+            if (j.organizationId !== activeOrg?.id) return false;
+            
+            const jCleanName = j.customerName?.trim().toLowerCase() || '';
+            const jCleanEmail = j.customerEmail?.trim().toLowerCase() || '';
+            const jCleanPhone = j.customerPhone?.replace(/\D/g, '') || '';
+
+            return (
+                j.customerId === activeCustomerRecord.id || 
+                (cleanName && jCleanName === cleanName) ||
+                (cleanEmail && jCleanEmail === cleanEmail) ||
+                (cleanPhone && jCleanPhone === cleanPhone)
+            );
+        });
+
         if (selectedLocationId !== 'all') {
             filtered = filtered.filter(j => j.locationId === selectedLocationId);
         }
@@ -326,13 +342,15 @@ const CustomerDashboard: React.FC = () => {
         if (!activeCustomerRecord || !activeOrg) return;
         try {
             const finalPrice = plan.monthlyPrice + ((Math.max(1, count) - 1) * (plan.pricePerAdditionalSystem || 0));
+            const planFee = (plan.addonFeeAmount || 0) + (finalPrice * (plan.addonFeePercent || 0) / 100);
+            const totalRecurrentPrice = finalPrice + planFee;
             const newAgreement: ServiceAgreement = {
                 id: `sa-${Date.now()}`,
                 organizationId: activeOrg.id,
                 customerId: activeCustomerRecord.id,
                 customerName: activeCustomerRecord.name,
                 planName: plan.name,
-                price: finalPrice,
+                price: totalRecurrentPrice,
                 billingCycle: 'Monthly',
                 startDate: new Date().toISOString(),
                 endDate: new Date(Date.now() + 31536000000).toISOString(),
@@ -536,12 +554,146 @@ const CustomerDashboard: React.FC = () => {
 
     return (
         <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 font-sans">
+            {activeOrg?.customerTerms && activeCustomerRecord && !activeCustomerRecord.agreedToCustomerTerms && (
+                <div className="fixed inset-0 z-[9999] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 md:p-8 max-w-2xl w-full border border-slate-200 dark:border-slate-700 text-left animate-fade-in">
+                        <div className="flex items-center gap-3 mb-6 text-indigo-600 dark:text-indigo-400">
+                            <Shield size={32} />
+                            <h2 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-white">Terms of Agreement</h2>
+                        </div>
+                        <p className="text-slate-600 dark:text-slate-300 text-sm mb-4">
+                            Welcome! Before you can continue using the portal, you must review and agree to the Terms of Agreement from <strong>{activeOrg.name}</strong>.
+                        </p>
+                        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 md:p-6 border border-slate-200 dark:border-slate-700 overflow-y-auto max-h-80 mb-6 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap font-sans">
+                            {activeOrg.customerTerms}
+                        </div>
+                        <div className="flex gap-3 justify-end pt-4 border-t border-slate-100 dark:border-slate-700">
+                            <Button
+                                variant="secondary"
+                                onClick={async () => {
+                                    try {
+                                        if (isDemoMode) {
+                                            exitDemo();
+                                        } else {
+                                            await auth.signOut();
+                                            dispatch({ type: 'LOGOUT' });
+                                            navigate('/login');
+                                            showToast.success("Logged out successfully.");
+                                        }
+                                    } catch (e: any) {
+                                        showToast.error("Failed to log out: " + e.message);
+                                    }
+                                }}
+                                className="h-12 px-6 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold"
+                            >
+                                Decline & Log Out
+                            </Button>
+                            <Button 
+                                onClick={async () => {
+                                    const now = new Date().toISOString();
+                                    try {
+                                        if (!isDemoMode) {
+                                            try {
+                                                await db.collection('customers').doc(activeCustomerRecord.id).update({
+                                                    agreedToCustomerTerms: true,
+                                                    customerTermsAgreedAt: now
+                                                });
+                                            } catch (dbError: any) {
+                                                console.warn("Firestore customer terms update failed, falling back to local-only updates:", dbError);
+                                            }
+                                        }
+                                        dispatch({
+                                            type: 'UPDATE_CUSTOMER',
+                                            payload: {
+                                                id: activeCustomerRecord.id,
+                                                agreedToCustomerTerms: true,
+                                                customerTermsAgreedAt: now
+                                            }
+                                        });
+                                        setActiveCustomerRecord(prev => prev ? {
+                                            ...prev,
+                                            agreedToCustomerTerms: true,
+                                            customerTermsAgreedAt: now
+                                        } : null);
+                                        showToast.success("Terms accepted. Welcome to the portal!");
+                                    } catch (e: any) {
+                                        showToast.warn("Failed to accept terms: " + e.message);
+                                    }
+                                }}
+                                className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none"
+                            >
+                                Accept & Continue
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {viewingProposal && (
-                <div className="fixed inset-0 z-[100] bg-slate-100 dark:bg-slate-900 flex flex-col">
-                    <DocumentPreview type="Proposal" data={viewingProposal} onClose={() => setViewingProposal(null)} isInternal={false} />
-                    {viewingProposal.status === 'Sent' && (
-                        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110]">
-                            <Button onClick={() => setIsSigningProposal(true)} className="bg-emerald-600 h-16 px-12 text-xl font-black">Accept & Authorize Proposal</Button>
+                <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4">
+                    {activeOrg?.customerTerms && activeCustomerRecord && !activeCustomerRecord.agreedToCustomerTerms ? (
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 md:p-8 max-w-2xl w-full border border-slate-200 dark:border-slate-700 text-left">
+                            <p className="text-slate-600 dark:text-slate-300 text-sm mb-4">Please accept the general terms first.</p>
+                        </div>
+                    ) : activeOrg?.proposalTerms && !viewingProposal.proposalTermsAgreed ? (
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 md:p-8 max-w-2xl w-full border border-slate-200 dark:border-slate-700 text-left animate-fade-in">
+                            <div className="flex items-center gap-3 mb-6 text-indigo-600 dark:text-indigo-400">
+                                <Shield size={32} />
+                                <h2 className="text-2xl font-bold tracking-tight text-slate-800 dark:text-white">Proposal Terms of Agreement</h2>
+                            </div>
+                            <p className="text-slate-600 dark:text-slate-300 text-sm mb-4">
+                                You must agree to the proposal terms before viewing this estimate.
+                            </p>
+                            <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 md:p-6 border border-slate-200 dark:border-slate-700 overflow-y-auto max-h-60 mb-6 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap font-sans">
+                                {activeOrg.proposalTerms}
+                            </div>
+                            <div className="flex gap-3 justify-end pt-4 border-t border-slate-100 dark:border-slate-700">
+                                <Button variant="secondary" onClick={() => setViewingProposal(null)}>Cancel</Button>
+                                <Button 
+                                    onClick={async () => {
+                                        const now = new Date().toISOString();
+                                        try {
+                                            if (!isDemoMode) {
+                                                try {
+                                                    await db.collection('proposals').doc(viewingProposal.id).update({
+                                                        proposalTermsAgreed: true,
+                                                        proposalTermsAgreedAt: now
+                                                    });
+                                                } catch (dbError: any) {
+                                                    console.warn("Firestore proposal terms update failed, falling back to local-only updates:", dbError);
+                                                }
+                                            }
+                                            dispatch({
+                                                type: 'UPDATE_PROPOSAL',
+                                                payload: {
+                                                    id: viewingProposal.id,
+                                                    proposalTermsAgreed: true,
+                                                    proposalTermsAgreedAt: now
+                                                }
+                                            });
+                                            setViewingProposal(prev => prev ? {
+                                                ...prev,
+                                                proposalTermsAgreed: true,
+                                                proposalTermsAgreedAt: now
+                                            } : null);
+                                            showToast.success("Terms agreed! Opening proposal...");
+                                        } catch (e: any) {
+                                            showToast.warn("Failed to accept terms: " + e.message);
+                                        }
+                                    }}
+                                    className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold"
+                                >
+                                    Accept & View Proposal
+                                </Button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="w-full h-full flex flex-col relative bg-slate-100 dark:bg-slate-900">
+                            <DocumentPreview type="Proposal" data={viewingProposal} onClose={() => setViewingProposal(null)} isInternal={false} />
+                            {viewingProposal.status === 'Sent' && (
+                                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110]">
+                                    <Button onClick={() => setIsSigningProposal(true)} className="bg-emerald-600 h-16 px-12 text-xl font-black">Accept & Authorize Proposal</Button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -617,6 +769,12 @@ const CustomerDashboard: React.FC = () => {
                 onPrint={() => window.print()}
             />
 
+            <JobAppointmentModal 
+                isOpen={!!editingJob}
+                onClose={() => setEditingJob(null)}
+                jobToEdit={editingJob}
+            />
+
             <div className="bg-white dark:bg-slate-900 border-b px-6 py-4 md:py-8">
               <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
                   <div className="flex items-center gap-3">
@@ -681,6 +839,7 @@ const CustomerDashboard: React.FC = () => {
                             jobs={upcomingJobs}
                             documents={state.documents}
                             users={state.users}
+                            onEditJob={setEditingJob}
                         />
 
                         {/* Action Required Second */}

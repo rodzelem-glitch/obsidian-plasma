@@ -267,6 +267,8 @@ const LoginPage: React.FC = () => {
           navigate('/admin/dashboard', { replace: true });
       } else if (userData.role === 'master_admin' || userData.role === 'franchise_admin') {
           navigate('/master/dashboard', { replace: true });
+      } else if ((userData.role as string) === 'kort_tester') {
+          navigate('/admin/kort-playground', { replace: true });
       } else if (userData.role === 'customer') {
             if (!userData.organizationId || userData.organizationId === 'unaffiliated') {
                 navigate('/marketplace', { replace: true });

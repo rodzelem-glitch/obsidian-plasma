@@ -10,6 +10,8 @@ interface JobDetailsProps {
     setDate: (date: string) => void;
     timeSlot: string;
     setTimeSlot: (time: string) => void;
+    duration: number;
+    setDuration: (duration: number) => void;
     jobType: string;
     setJobType: (type: string) => void;
     availableTypes: string[];
@@ -31,11 +33,27 @@ interface JobDetailsProps {
     setSelectedQualChecklists: (ids: string[]) => void;
 }
 
+const timeSlots = Array.from({ length: 33 }, (_, i) => {
+    const totalMinutes = 360 + i * 30; // Starts at 06:00 AM
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const hh = hours.toString().padStart(2, '0');
+    const mm = minutes.toString().padStart(2, '0');
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
+    return {
+        value: hh + ':' + mm,
+        label: displayHours + ':' + mm + ' ' + period
+    };
+});
+
 const JobDetails: React.FC<JobDetailsProps> = ({ 
     date, 
     setDate, 
     timeSlot, 
     setTimeSlot, 
+    duration,
+    setDuration,
     jobType, 
     setJobType, 
     availableTypes, 
@@ -56,12 +74,24 @@ const JobDetails: React.FC<JobDetailsProps> = ({
 }) => {
     return (
         <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Input label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
-                <Select label="Time Slot" value={timeSlot} onChange={e => setTimeSlot(e.target.value)}>
-                    <option value="09:00">Morning</option>
-                    <option value="13:00">Afternoon</option>
-                    <option value="17:00">Evening</option>
+                <Select label="Time" value={timeSlot} onChange={e => setTimeSlot(e.target.value)}>
+                    {timeSlots.map(slot => (
+                        <option key={slot.value} value={slot.value}>{slot.label}</option>
+                    ))}
+                </Select>
+                <Select label="Duration" value={duration.toString()} onChange={e => setDuration(parseInt(e.target.value) || 120)}>
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="90">1.5 hours</option>
+                    <option value="120">2 hours</option>
+                    <option value="150">2.5 hours</option>
+                    <option value="180">3 hours</option>
+                    <option value="240">4 hours</option>
+                    <option value="300">5 hours</option>
+                    <option value="360">6 hours</option>
+                    <option value="480">8 hours</option>
                 </Select>
             </div>
 
@@ -91,7 +121,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({
                 <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 mb-2">Job Requirements</h4>
                 
                 <div>
-                    <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Required Waivers</label>
+                    <div className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Required Waivers</div>
                     <div className="max-h-24 overflow-y-auto space-y-1 p-2 bg-white dark:bg-slate-900 rounded border">
                         {waiverTemplates.map(t => (
                             <label key={t.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-1 rounded">
@@ -104,7 +134,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
-                        <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Diagnosis Checklists</label>
+                        <div className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Diagnosis Checklists</div>
                         <div className="max-h-24 overflow-y-auto space-y-1 p-2 bg-white dark:bg-slate-900 rounded border">
                             {checklistTemplates.map(t => (
                                 <label key={t.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-1 rounded">
@@ -115,7 +145,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({
                         </div>
                     </div>
                     <div>
-                        <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Quality Checklists</label>
+                        <div className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Quality Checklists</div>
                         <div className="max-h-24 overflow-y-auto space-y-1 p-2 bg-white dark:bg-slate-900 rounded border">
                             {checklistTemplates.map(t => (
                                 <label key={t.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-1 rounded">

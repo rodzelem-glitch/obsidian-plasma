@@ -15,6 +15,7 @@ const BillingGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const org = state.currentOrganization;
     const isMasterAdmin = state.currentUser?.role === 'master_admin';
     const isOrgAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'both';
+    const isKortTester = state.currentUser?.email === 'integrations@kortpayments.com' || (state.currentUser?.role as string) === 'kort_tester';
 
     // Rigid Access Control Logic
     const isExpired = org?.subscriptionExpiryDate && new Date(org.subscriptionExpiryDate) < new Date();
@@ -77,6 +78,11 @@ const BillingGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             return <>{children}</>;
         }
 
+        // Allow Kort testers to access settings and the playground to link a payment method or simulate subscriptions
+        if (isKortTester && (location.pathname === '/admin/settings' || location.pathname === '/admin/kort-playground')) {
+            return <>{children}</>;
+        }
+
         return (
             <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans relative overflow-hidden">
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -92,7 +98,7 @@ const BillingGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     <p className="text-slate-400 mb-8 text-sm leading-relaxed">
                         The subscription for <strong>{org?.name}</strong> has {isExpired ? 'expired' : 'been cancelled or is past due'}. 
                         <br/><br/>
-                        {isOrgAdmin ? (
+                        {isOrgAdmin || isKortTester ? (
                             "All platform tools, dispatching, and field services are currently locked. Please update your billing preferences to restore access."
                         ) : (
                             "All platform tools, dispatching, and field services are currently locked. Please contact your administrator to update billing preferences to restore access."
@@ -100,12 +106,21 @@ const BillingGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                     </p>
 
                     <div className="space-y-4">
-                        {isOrgAdmin && (
+                        {(isOrgAdmin || isKortTester) && (
                             <Button 
                                 onClick={() => navigate('/admin/settings')} 
                                 className="w-full h-14 text-lg font-black bg-rose-600 hover:bg-rose-700 shadow-xl shadow-rose-500/20"
                             >
                                 View Billing Settings
+                            </Button>
+                        )}
+
+                        {isKortTester && (
+                            <Button 
+                                onClick={() => navigate('/admin/kort-playground')} 
+                                className="w-full h-14 text-lg font-black bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-500/20"
+                            >
+                                Return to Kort Playground
                             </Button>
                         )}
                         

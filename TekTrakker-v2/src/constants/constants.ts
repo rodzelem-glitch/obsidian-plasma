@@ -1,4 +1,3 @@
-
 import { 
     User, MapPin, ChevronLeft, ChevronRight, ChevronDown, FileText, Fuel, 
     Wrench, Trash2, MessageCircle, LayoutDashboard, Users, Briefcase, 
@@ -7,7 +6,7 @@ import {
     Eye, EyeOff, CheckCircle, Shield, Upload, Star, AlertTriangle, Mail, TrendingUp, CheckSquare,
     Calculator, Printer, Download,
     ShieldCheck, DollarSign, Receipt, FileSearch, Image, Globe, Filter, FolderKanban,
-    LogOut, HelpCircle, Camera, Link, Search
+    LogOut, HelpCircle, Camera, Link, Search, Presentation
 } from 'lucide-react';
 
 export const UserIcon = User;
@@ -20,6 +19,7 @@ export const FuelIcon = Fuel;
 export const WrenchScrewdriverIcon = Wrench;
 export const TrashIcon = Trash2;
 export const ChatBubbleIcon = MessageCircle;
+export const PresentationIcon = Presentation;
 
 // Navigation & Sidebar Icons
 export const DashboardIcon = LayoutDashboard;
@@ -45,4 +45,4 @@ export const SettingsIcon = Settings;
 // UI Icons
 export const EyeIcon = Eye;
 export const EyeOffIcon = EyeOff;
-export { CheckCircle, Shield, FileText, Clock, Upload, Star, AlertTriangle, Mail, TrendingUp, CheckSquare, Printer, Download, ShieldCheck, DollarSign, Receipt, FileSearch, Image, Globe, Trash2, Filter, FolderKanban, LogOut, HelpCircle, Briefcase, Camera, Link, Search, Building2 };
+export { CheckCircle, Shield, FileText, Clock, Upload, Star, AlertTriangle, Mail, TrendingUp, CheckSquare, Printer, Download, ShieldCheck, DollarSign, Receipt, FileSearch, Image, Globe, Trash2, Filter, FolderKanban, LogOut, HelpCircle, Briefcase, Camera, Link, Search, Building2, Presentation };

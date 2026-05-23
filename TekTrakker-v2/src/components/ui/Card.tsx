@@ -17,3 +17,16 @@ const Card: React.FC<CardProps> = ({ className, children, interactive, ...props 
 };
 
 export default Card;
+
+
+export const CardHeader: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, ...props }) => (
+    <div className={`flex flex-col space-y-1.5 ${className || ''}`} {...props} />
+);
+
+export const CardTitle: React.FC<React.HTMLAttributes<HTMLHeadingElement>> = ({ className, ...props }) => (
+    <h3 className={`font-semibold leading-none tracking-tight ${className || ''}`} {...props} />
+);
+
+export const CardContent: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, ...props }) => (
+    <div className={`pt-0 ${className || ''}`} {...props} />
+);

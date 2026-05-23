@@ -46,7 +46,7 @@ const AIGenerator: React.FC<AIGeneratorProps> = ({ onSuggestions }) => {
             // Using the project's recommended model for complex reasoning
             const result = await callGeminiAI({ 
                 prompt, 
-                modelName: "gemini-3.1-pro-preview",
+                modelName: "gemini-3.5-flash",
                 config: {
                     responseMimeType: "application/json"
                 }

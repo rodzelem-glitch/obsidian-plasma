@@ -81,6 +81,8 @@ interface IntegrationsTabProps {
     setRingCentralClientSecret: (val: string) => void;
     ringCentralJwtToken: string;
     setRingCentralJwtToken: (val: string) => void;
+    ringCentralLoginFlow: 'jwt' | 'oauth';
+    setRingCentralLoginFlow: (val: 'jwt' | 'oauth') => void;
     rcPrimarySms: boolean;
     setRcPrimarySms: (val: boolean) => void;
     rcEnableVoiceAi: boolean;
@@ -184,6 +186,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
     goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId,
     rcBackendClientId, setRcBackendClientId,
     ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken,
+    ringCentralLoginFlow, setRingCentralLoginFlow,
     rcPrimarySms, setRcPrimarySms,
     rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate,
     rcMappings, setRcMappings,
@@ -786,6 +789,28 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                         <div className="mb-4"></div>
 
                         <div className="text-sm font-semibold text-gray-700 mt-4 mb-2">Frontend Widget App (Browser-Based)</div>
+                        <div className="mb-4">
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Widget Login Flow Option</label>
+                            <select 
+                                aria-label="Widget Login Flow Option"
+                                value={ringCentralLoginFlow} 
+                                onChange={e => setRingCentralLoginFlow(e.target.value as 'jwt' | 'oauth')} 
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500"
+                            >
+                                <option value="jwt">Automatic JWT Login (Fastest, requires JWT auth grant approval)</option>
+                                <option value="oauth">Interactive OAuth Login (Popup dialer login fallback)</option>
+                            </select>
+                        </div>
+                        {ringCentralLoginFlow === 'jwt' && (
+                            <div className="mb-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-400">
+                                <div className="flex items-start gap-2">
+                                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                    <div>
+                                        <strong>Automatic JWT Login Notice:</strong> This flow requires that your RingCentral application has the <strong>JWT Bearer</strong> grant type enabled and approved in the RingCentral Developer Portal. If you see unauthorized client errors, switch to <strong>Interactive OAuth Login</strong>.
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <Input label="Widget Client ID" value={ringCentralClientId} onChange={e => setRingCentralClientId(e.target.value)} placeholder="Enter Browser-Based App Client ID" />
                         
                         <div className="text-sm font-semibold text-gray-700 mt-6 mb-2">Backend Automation App (Server Web App)</div>

@@ -82,6 +82,7 @@ const App: React.FC = () => {
 
   const getRedirectPath = useCallback((user: User | null, isMasterAdmin: boolean): string => {
     if (!user) return '/login';
+    if ((user.role as string) === 'kort_tester') return '/admin/kort-playground';
     if (isMasterAdmin || user.role === 'franchise_admin') return '/master/dashboard';
     if (user.role === 'platform_sales') return '/sales/dashboard';
     if (user.role === 'admin' || user.role === 'both' || user.role === 'supervisor') return '/admin/dashboard';
@@ -169,7 +170,18 @@ const App: React.FC = () => {
       });
 
       // Using native CSS env variables for safe areas which is strictly preferred with Capacitor 8
-      document.documentElement.style.setProperty('--sat', 'env(safe-area-inset-top)');
+      if (Capacitor.getPlatform() === 'android') {
+          import('@capacitor/status-bar').then(({ StatusBar }) => {
+              StatusBar.getInfo().then(info => {
+                  // Always enforce a minimum padding of 32px on Android to clear physical notches 
+                  // even if the OS reports the status bar as "hidden" or 0px height.
+                  const height = (info && info.height && info.height > 20) ? info.height : 32;
+                  document.documentElement.style.setProperty('--sat', `${height}px`);
+              }).catch(() => document.documentElement.style.setProperty('--sat', '32px'));
+          });
+      } else {
+          document.documentElement.style.setProperty('--sat', 'env(safe-area-inset-top)');
+      }
       document.documentElement.style.setProperty('--sab', 'env(safe-area-inset-bottom)');
 
       // Globally Initialize Social Login Native Bridge to prevent iOS "No provider initialized" Error
@@ -214,16 +226,89 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const handleAppUpdate = () => {
-      toast.info('A new version of TekTrakker is available! Click here to update.', {
-        position: 'bottom-center',
-        autoClose: false,
-        onClick: () => window.location.reload(),
-        toastId: 'app-update-toast',
-      });
+    const handleAppUpdate = (event: any) => {
+      const currentHash = window.location.hash.split('?')[0];
+      const isPublicRoute = currentHash.startsWith('#/invoice/') || 
+                            currentHash.startsWith('#/proposal-view/') || 
+                            currentHash.startsWith('#/report/') ||
+                            currentHash.startsWith('#/unsubscribe') ||
+                            currentHash === '#/unsubscribe';
+      
+      if (isPublicRoute || sessionStorage.getItem('dismiss_app_update') === 'true') {
+        console.info('[PWA] Suppressing update toast on public route:', currentHash);
+        return;
+      }
+      const updateSW = event?.detail?.updateSW || (window as any).updateServiceWorker;
+      toast(
+        <div className="flex flex-col gap-3 p-1">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2 w-2 rounded-full bg-indigo-400 animate-pulse"></span>
+            <div className="font-extrabold text-sm text-white tracking-wide">A new version of TekTrakker is available!</div>
+          </div>
+          <div className="text-[12px] text-slate-200 leading-relaxed font-medium">An update is required to keep all real-time field tracking and integrations synchronized.</div>
+          <div className="flex items-center gap-3 mt-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toast.dismiss('app-update-toast');
+                if (typeof updateSW === 'function') {
+                  try {
+                    console.log('Invoking updateSW...');
+                    const res = updateSW(true);
+                    if (res instanceof Promise) {
+                      res.then(() => {
+                        setTimeout(() => window.location.reload(), 500);
+                      }).catch(() => {
+                        window.location.reload();
+                      });
+                    } else {
+                      setTimeout(() => window.location.reload(), 1000);
+                    }
+                  } catch (err) {
+                    console.error('Error invoking updateSW:', err);
+                    window.location.reload();
+                  }
+                } else {
+                  window.location.reload();
+                }
+              }}
+              className="px-5 py-2 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 active:scale-95 cursor-pointer"
+            >
+              Update Now
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                sessionStorage.setItem('dismiss_app_update', 'true');
+                toast.dismiss('app-update-toast');
+              }}
+              className="px-5 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-bold transition-all border border-slate-600/50 active:scale-95 cursor-pointer"
+            >
+              Later
+            </button>
+          </div>
+        </div>,
+        {
+          position: 'bottom-center',
+          autoClose: false,
+          toastId: 'app-update-toast',
+          closeButton: false,
+          style: {
+            background: 'rgba(15, 23, 42, 0.95)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(99, 102, 241, 0.5)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(99, 102, 241, 0.15)',
+            color: '#ffffff',
+            borderRadius: '20px',
+            padding: '24px',
+            maxWidth: '420px',
+          }
+        }
+      );
     };
-    window.addEventListener('app-update-available', handleAppUpdate);
-    return () => window.removeEventListener('app-update-available', handleAppUpdate);
+    window.addEventListener('app-update-available', handleAppUpdate as any);
+    return () => window.removeEventListener('app-update-available', handleAppUpdate as any);
   }, []);
 
   const handleLogout = () => {
@@ -271,8 +356,8 @@ const App: React.FC = () => {
         limit={3}
       />
       <DemoBanner />
+      <LocationTracker />
       <BackgroundDelayer>
-        <LocationTracker />
         <CallListener />
       </BackgroundDelayer>
       

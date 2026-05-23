@@ -6,6 +6,7 @@ import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import Select from 'components/ui/Select';
 import { db } from 'lib/firebase';
+import { getNextInvoiceNumber } from 'lib/numbering';
 import type { Project, Permit, Subcontractor, EquipmentRental, ProjectTask, Job, Expense, Sprint } from 'types';
 import { Search, Trash2, Briefcase, ClipboardList, DollarSign, File, HardHat, Truck, Box, LayoutGrid, List } from 'lucide-react';
 import InvoiceEditorModal from 'components/modals/InvoiceEditorModal';
@@ -261,8 +262,9 @@ const ProjectManagement: React.FC = () => {
 
     const handleCreateInvoice = async () => {
         if (!selectedProject || !state.currentOrganization) return;
+        const nextInvId = await getNextInvoiceNumber(state.currentOrganization.id);
         const jobId = `job-inv-${Date.now()}`;
-        const newInvoice: Job = { id: jobId, organizationId: state.currentOrganization.id, projectId: selectedProject.id, customerName: selectedProject.customerName, customerId: selectedProject.customerId, address: selectedProject.address || '', tasks: [`Project Invoice: ${selectedProject.name}`], jobStatus: 'Completed', appointmentTime: new Date().toISOString(), source: 'ProjectManager', specialInstructions: '', invoice: { id: `INV-${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: (state.currentOrganization.taxRate || 8.25) / 100, taxAmount: 0, totalAmount: 0, amount: 0 }, jobEvents: [], createdAt: new Date().toISOString() };
+        const newInvoice: Job = { id: jobId, organizationId: state.currentOrganization.id, projectId: selectedProject.id, customerName: selectedProject.customerName, customerId: selectedProject.customerId, address: selectedProject.address || '', tasks: [`Project Invoice: ${selectedProject.name}`], jobStatus: 'Completed', appointmentTime: new Date().toISOString(), source: 'ProjectManager', specialInstructions: '', invoice: { id: nextInvId, status: 'Unpaid', items: [], subtotal: 0, taxRate: (state.currentOrganization.taxRate || 8.25) / 100, taxAmount: 0, totalAmount: 0, amount: 0 }, jobEvents: [], createdAt: new Date().toISOString() };
         await db.collection('jobs').doc(jobId).set(newInvoice);
         dispatch({ type: 'ADD_JOB', payload: newInvoice });
         setEditingInvoiceId(jobId);

@@ -437,6 +437,42 @@ const SetupTab: React.FC<SetupTabProps> = ({ bid, onUpdate }) => {
                     <div className="space-y-4">
                         <Input label="Bid Title" value={bid.title} onChange={e => onUpdate({ title: e.target.value })} />
                         <Input label="Solicitation #" value={bid.solicitationNumber || ''} onChange={e => onUpdate({ solicitationNumber: e.target.value })} />
+                        {bid.noticeId && (
+                            <div className="flex items-center gap-3 mt-1 mb-3">
+                                <a 
+                                    href={`https://sam.gov/opp/${bid.noticeId}/view`}
+                                    target="_blank" 
+                                    rel="noreferrer"
+                                    className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                                >
+                                    View on SAM.gov
+                                </a>
+                                <span className="text-slate-300 dark:text-slate-600">|</span>
+                                <button
+                                    onClick={async () => {
+                                        showToast.info("Checking for amendments...");
+                                        try {
+                                            const checkAmendments = httpsCallable(getFunctions(), 'fetchFederalContracts');
+                                            const result = await checkAmendments({ noticeId: bid.noticeId });
+                                            const data = result.data as any;
+                                            if (data.success && data.opportunities && data.opportunities.length > 0) {
+                                                const opp = data.opportunities[0];
+                                                const modifiedDate = opp.modifiedDate || opp.postedDate;
+                                                showToast.success(`Last updated on SAM.gov: ${new Date(modifiedDate).toLocaleDateString()}`);
+                                            } else {
+                                                showToast.warn("Could not retrieve latest status from SAM.gov.");
+                                            }
+                                        } catch (e) {
+                                            console.error(e);
+                                            showToast.error("Error checking amendments. SAM.gov might be busy.");
+                                        }
+                                    }}
+                                    className="text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:underline flex items-center gap-1 transition-colors"
+                                >
+                                    Check for Updates/Amendments
+                                </button>
+                            </div>
+                        )}
                         <Input label="Agency" value={bid.agency || ''} onChange={e => onUpdate({ agency: e.target.value })} />
                         <div className="flex flex-col">
                             <label htmlFor="bid-status" className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-300">Status</label>

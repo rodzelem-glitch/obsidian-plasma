@@ -36,10 +36,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.cascadeCustomerUpdates = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
-const db = admin.firestore();
 exports.cascadeCustomerUpdates = functions.firestore
     .document('customers/{customerId}')
     .onUpdate(async (change, context) => {
+    const db = admin.firestore();
     const before = change.before.data();
     const after = change.after.data();
     const customerId = context.params.customerId;
@@ -96,7 +96,7 @@ exports.cascadeCustomerUpdates = functions.firestore
                 }
             });
         }
-        catch (e) {
+        catch {
             // Ignore if proposals collection doesn't exist
         }
         // Commit batch

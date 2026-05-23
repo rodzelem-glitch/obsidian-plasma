@@ -71,9 +71,11 @@ exports.submitWidgetForm = functions.https.onRequest((req, res) => {
                 try {
                     if (!dataUrl || !dataUrl.startsWith('data:'))
                         return null;
-                    const matches = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-                    if (!matches || matches.length !== 3)
+                    const matches = dataUrl.match(/^data:(.*?);base64,(.+)$/);
+                    if (!matches || matches.length !== 3) {
+                        console.error("dataUrl did not match regex. Mime type might be unsupported or string is malformed.");
                         return null;
+                    }
                     const contentType = matches[1];
                     const buffer = Buffer.from(matches[2], 'base64');
                     const filename = `${folder}/${(0, uuid_1.v4)()}_${originalName.replace(/[^a-zA-Z0-9.]/g, '_')}`;

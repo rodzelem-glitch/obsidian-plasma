@@ -188,6 +188,21 @@ service cloud.firestore {
          allow read: if isMaster() || isPlatformSales() || isOrgMember(orgId);
          allow write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
       }
+
+      match /customizations/{customId} {
+         allow read: if isOrgMember(orgId);
+         allow write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      }
+
+      match /synthesizedTools/{toolId} {
+         allow read: if isOrgMember(orgId);
+         allow write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      }
+
+      match /synthesizedData/{dataId} {
+         allow read: if isOrgMember(orgId);
+         allow write: if isOrgMember(orgId);
+      }
     }
 
     match /franchises/{franchiseDocId} {
@@ -621,6 +636,10 @@ service cloud.firestore {
 
     match /integration_requests/{requestId} {
       allow read, write: if isMaster();
+    }
+
+    match /whiteboards/{boardId} {
+      allow read, write: if isMaster() || isPlatformSales() || isOrgMember(boardId);
     }
   }
 }

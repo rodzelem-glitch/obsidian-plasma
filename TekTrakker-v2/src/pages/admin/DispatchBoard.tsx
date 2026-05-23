@@ -100,7 +100,7 @@ const DispatchBoard: React.FC = () => {
         const startOfDay = new Date(start);
         startOfDay.setHours(timelineStartHour, 0, 0, 0);
 
-        const durationMinutes = 120; // Default duration 2 hours
+        const durationMinutes = job.duration || 120;
         const totalViewMinutes = totalHours * 60 * numDays;
 
         let startOffsetMinutes = (start.getTime() - startOfDay.getTime()) / 60000;
@@ -130,6 +130,61 @@ const DispatchBoard: React.FC = () => {
         setDraggedJobId(jobId);
         e.dataTransfer.effectAllowed = "move";
         e.dataTransfer.setData("text/plain", jobId);
+    };
+
+    const handleResizeMouseDown = (e: React.MouseEvent, job: Job) => {
+        e.stopPropagation();
+        e.preventDefault();
+
+        const startX = e.clientX;
+        const initialDuration = job.duration || 120;
+
+        const cardElement = e.currentTarget.parentElement;
+        if (!cardElement) return;
+        const containerElement = cardElement.parentElement;
+        if (!containerElement) return;
+        const containerWidth = containerElement.getBoundingClientRect().width;
+
+        const totalViewMinutes = totalHours * 60 * numDays;
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            const deltaX = moveEvent.clientX - startX;
+            const deltaMinutes = (deltaX / containerWidth) * totalViewMinutes;
+            let newDuration = initialDuration + deltaMinutes;
+
+            newDuration = Math.round(newDuration / 15) * 15;
+
+            if (newDuration < 30) newDuration = 30;
+            if (newDuration > totalViewMinutes) newDuration = totalViewMinutes;
+
+            dispatch({
+                type: 'UPDATE_JOB',
+                payload: { ...job, duration: newDuration }
+            });
+        };
+
+        const handleMouseUp = async (upEvent: MouseEvent) => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+
+            const deltaX = upEvent.clientX - startX;
+            const deltaMinutes = (deltaX / containerWidth) * totalViewMinutes;
+            let finalDuration = Math.round((initialDuration + deltaMinutes) / 15) * 15;
+
+            if (finalDuration < 30) finalDuration = 30;
+            if (finalDuration > totalViewMinutes) finalDuration = totalViewMinutes;
+
+            try {
+                await db.collection('jobs').doc(job.id).update({ duration: finalDuration });
+                showToast.success(`Job duration updated to ${finalDuration} minutes`);
+            } catch (error) {
+                console.error("Failed to save resized duration:", error);
+                showToast.warn("Failed to save resized duration");
+            }
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -437,6 +492,14 @@ const DispatchBoard: React.FC = () => {
                                                         <Users size={10} /> +{job.assistants.length}
                                                     </div>
                                                 )}
+                                                {/* Resize Handle */}
+                                                <div
+                                                    className="absolute top-0 right-0 bottom-0 w-3 cursor-ew-resize hover:bg-white/10 z-20 flex items-center justify-center group/resize"
+                                                    onMouseDown={(e) => handleResizeMouseDown(e, job)}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <div className="w-[2px] h-4 bg-white/40 group-hover/resize:bg-white/80 rounded"></div>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>

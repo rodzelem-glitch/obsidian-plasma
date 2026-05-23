@@ -126,4 +126,6 @@ export interface Customer {
   // Optional embedded array for legacy or quick-access locations, but root collection is preferred.
   serviceLocations?: ServiceLocation[];
   createdAt?: string;
+  agreedToCustomerTerms?: boolean | null;
+  customerTermsAgreedAt?: string | null;
 }

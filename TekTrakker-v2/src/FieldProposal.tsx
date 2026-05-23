@@ -118,7 +118,7 @@ const FieldProposal: React.FC = () => {
             setIsThinking(true);
             try {
                 const ai = new GoogleGenerativeAI(apiKey);
-                const model = ai.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
+                const model = ai.getGenerativeModel({ model: "gemini-3.5-flash" });
                 const prompt = `Expert Service Estimator: Generate tiered repair options for: "${problemDesc}". Return a JSON object with keys "good", "better", "best". Each key should contain an array of objects with properties: name, description, baseCost (number), avgLabor (number). Ensure valid JSON.`;
                 
                 const result = await model.generateContent(prompt);

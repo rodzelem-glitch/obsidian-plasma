@@ -31,10 +31,11 @@ const SalesRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({ user,
         <Route path="expenses" element={<SalesExpenses />} />
         <Route path="messages" element={<Messages />} />
         <Route path="mailing-lists" element={<MailingListManager />} />
-        <Route path="*" element={<Navigate to="dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/sales/dashboard" replace />} />
       </Routes>
     </SalesLayout>
   </ProtectedRoute>
 );
 
 export default SalesRoutes;
+

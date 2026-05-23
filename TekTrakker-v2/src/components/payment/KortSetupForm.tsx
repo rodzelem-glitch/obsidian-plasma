@@ -28,9 +28,22 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [cardholderName, setCardholderName] = useState('');
+    const [accountType, setAccountType] = useState<'checking' | 'savings'>('checking');
+    const [achAccountNumber, setAchAccountNumber] = useState('');
+    const [achRoutingNumber, setAchRoutingNumber] = useState('');
+    
+    // Load existing organization address if available
+    const orgAddress = state.currentOrganization?.address;
+    const [billingStreet, setBillingStreet] = useState(orgAddress?.street || '123 Main St');
+    const [billingCity, setBillingCity] = useState(orgAddress?.city || 'Austin');
+    const [billingState, setBillingState] = useState(orgAddress?.state || 'TX');
+    const [billingZip, setBillingZip] = useState(orgAddress?.zip || '78701');
+    const [billingCountry, setBillingCountry] = useState((orgAddress as any)?.country || 'US');
 
     const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY;
-    const activeAccountId = import.meta.env.VITE_KORT_ACCOUNT_ID; // The platform account
+    const rawAccountId = state.currentOrganization?.kortAccountId || import.meta.env.VITE_KORT_ACCOUNT_ID;
+    // Fallback to active sandbox connected merchant account if the account is the partner account (which has Card/ACH disabled)
+    const activeAccountId = (rawAccountId === 'acct_AJdH2w6qvR8UAFn7KxIwc') ? 'acct_zDruOrRgOZVtafF9TPC2J' : rawAccountId;
 
     useEffect(() => {
         if (!publishableKey || !activeAccountId) {
@@ -48,6 +61,13 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
 
         const initForm = async () => {
             try {
+                // ACH is processed entirely server-side, no SDK form needed
+                if (paymentMethod === 'ach_debit') {
+                    setPaymentsInstance(null);
+                    setPaymentForm(null);
+                    return;
+                }
+
                 // Initialize Kort Payments SDK for the platform account
                 const payments = new Payments(publishableKey, activeAccountId, { sandbox: true });
                 setPaymentsInstance(payments);
@@ -89,7 +109,7 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
                     cardExpiryField.inject('#kort-setup-card-expiry');
                     cardCvcField.inject('#kort-setup-card-cvc');
                 } else if (paymentMethod === 'ach_debit') {
-                    const accountField = formInstance.createField('bankAccount', { styles: commonStyles });
+                    const accountField = formInstance.createField('bankAccountNumber', { styles: commonStyles });
                     const routingField = formInstance.createField('bankRoutingNumber', { styles: commonStyles });
                     accountField.inject('#kort-setup-ach-account');
                     routingField.inject('#kort-setup-ach-routing');
@@ -118,62 +138,100 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
     }, [publishableKey, activeAccountId, paymentMethod]);
 
     const handleSavePaymentMethod = async () => {
-        if (!paymentsInstance || !paymentForm || !organizationId) return;
+        if (!organizationId) return;
+        if (paymentMethod !== 'ach_debit' && (!paymentsInstance || !paymentForm)) return;
 
         setIsProcessing(true);
         setError(null);
 
         try {
-            // 1. Get Setup Intent from our backend
-            const functions = getFunctions();
-            const createSetupIntent = httpsCallable(functions, 'createKortSetupIntent');
-            const intentRes = await createSetupIntent({
-                organizationId,
-                paymentMethodType: paymentMethod
-            });
+            let pmId = '';
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { client_secret } = intentRes.data as any;
+            if (paymentMethod === 'ach_debit') {
+                if (!achAccountNumber || !achRoutingNumber) {
+                    throw new Error('Please enter your bank account and routing numbers.');
+                }
 
-            if (!client_secret) {
-                throw new Error('Failed to retrieve setup intent from server.');
-            }
+                // Call attachKortPaymentMethod passing achDetails and billingDetails for server-side token creation + attachment
+                const functions = getFunctions();
+                const attachKortPaymentMethodFn = httpsCallable(functions, 'attachKortPaymentMethod');
+                const attachRes = await attachKortPaymentMethodFn({
+                    organizationId,
+                    paymentMethodType: 'ach_debit',
+                    billingDetails: {
+                        name: cardholderName || 'Customer',
+                        street: billingStreet,
+                        city: billingCity,
+                        state: billingState,
+                        zip: billingZip,
+                        country: billingCountry
+                    },
+                    achDetails: {
+                        accountType,
+                        accountNumber: achAccountNumber,
+                        routingNumber: achRoutingNumber
+                    }
+                });
 
-            // 2. Confirm the setup on the frontend using the client_secret
-            const result = await paymentsInstance.confirmSetup(client_secret, {
-                payment_method: {
+                const attachData = attachRes.data as any;
+                if (!attachData || !attachData.success) {
+                    throw new Error('Failed to attach bank account to organization.');
+                }
+                pmId = attachData.paymentMethodId;
+            } else {
+                // 1. Build billing details and call paymentsInstance.createPaymentMethod
+                const paymentMethodData: any = {
                     form: paymentForm,
                     type: paymentMethod,
                     billing_details: {
                         name: cardholderName || 'Customer Name',
+                        address: {
+                            street: billingStreet,
+                            city: billingCity,
+                            state: billingState,
+                            zip: billingZip,
+                            country: billingCountry
+                        }
                     }
+                };
+
+                const result = await paymentsInstance.createPaymentMethod(paymentMethodData);
+
+                if (result.error) {
+                    throw new Error(result.error.message);
                 }
-            });
 
-            if (result.error) {
-                throw new Error(result.error.message);
-            }
+                pmId = result.id;
+                if (!pmId) {
+                    throw new Error('Failed to generate secure payment method token.');
+                }
 
-            // 3. Success! The payment method is now vaulted. Save the ID.
-            const intent = result.setupIntent || result.setup_intent || result;
-            const pmId = intent.payment_method || intent.paymentMethod;
-
-            if (pmId && organizationId) {
-                await updateDoc(doc(db, 'organizations', organizationId), {
-                    platformVaultedPaymentMethodId: pmId,
-                    platformVaultedPaymentType: paymentMethod
+                // 2. Pass the generated paymentMethod.id to backend attachKortPaymentMethod
+                const functions = getFunctions();
+                const attachKortPaymentMethodFn = httpsCallable(functions, 'attachKortPaymentMethod');
+                const attachRes = await attachKortPaymentMethodFn({
+                    organizationId,
+                    paymentMethodId: pmId,
+                    paymentMethodType: paymentMethod
                 });
-                showToast.success('Payment method securely vaulted!');
+
+                const attachData = attachRes.data as any;
+                if (!attachData || !attachData.success) {
+                    throw new Error('Failed to attach payment method to organization.');
+                }
             }
 
-            if (onSuccess && pmId) {
+            // 3. Success! The payment method is now vaulted (updated on the server side via the Cloud Function).
+            showToast.success('Payment method securely vaulted!');
+
+            if (onSuccess) {
                 onSuccess(pmId);
             }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (err: any) {
             console.error('Setup Error:', err);
             let errorMessage = err.message || 'An unknown error occurred during saving.';
-            if (errorMessage.includes("Field of type 'cardNumber'' is not valid") || errorMessage.includes('is not valid')) {
+            if (errorMessage.includes("Field of type 'cardNumber' is not valid") || errorMessage.includes('is not valid')) {
                 errorMessage = 'Please complete all payment fields correctly.';
             }
             setError(errorMessage);
@@ -254,18 +312,122 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
                     {paymentMethod === 'ach_debit' && (
                         <>
                             <div>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Account Type</label>
+                                <div className="flex gap-2">
+                                    <button 
+                                        type="button"
+                                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${accountType === 'checking' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                        onClick={() => setAccountType('checking')}
+                                    >
+                                        Checking
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${accountType === 'savings' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                                        onClick={() => setAccountType('savings')}
+                                    >
+                                        Savings
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
                                 <label htmlFor="kort-setup-ach-routing" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Routing Number</label>
-                                <div 
-                                    id="kort-setup-ach-routing" 
-                                    className="flex flex-col justify-center px-3 h-11 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg"
+                                <input
+                                    id="kort-setup-ach-routing"
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={achRoutingNumber}
+                                    onChange={(e) => setAchRoutingNumber(e.target.value.replace(/\D/g, '').substring(0, 9))}
+                                    placeholder="021000021"
+                                    maxLength={9}
+                                    className="w-full px-3 h-11 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    required
                                 />
                             </div>
                             <div>
                                 <label htmlFor="kort-setup-ach-account" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Account Number</label>
-                                <div 
-                                    id="kort-setup-ach-account" 
-                                    className="flex flex-col justify-center px-3 h-11 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg"
+                                <input
+                                    id="kort-setup-ach-account"
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={achAccountNumber}
+                                    onChange={(e) => setAchAccountNumber(e.target.value.replace(/\D/g, '').substring(0, 17))}
+                                    placeholder="Account number"
+                                    maxLength={17}
+                                    className="w-full px-3 h-11 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    required
                                 />
+                            </div>
+                            <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4">
+                                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">
+                                    Billing Address
+                                </h4>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label htmlFor="kort-setup-billing-street" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Street Address</label>
+                                        <input
+                                            id="kort-setup-billing-street"
+                                            type="text"
+                                            value={billingStreet}
+                                            onChange={(e) => setBillingStreet(e.target.value)}
+                                            placeholder="123 Main St"
+                                            className="w-full px-3 h-11 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label htmlFor="kort-setup-billing-city" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">City</label>
+                                            <input
+                                                id="kort-setup-billing-city"
+                                                type="text"
+                                                value={billingCity}
+                                                onChange={(e) => setBillingCity(e.target.value)}
+                                                placeholder="Austin"
+                                                className="w-full px-3 h-11 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label htmlFor="kort-setup-billing-state" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">State</label>
+                                            <input
+                                                id="kort-setup-billing-state"
+                                                type="text"
+                                                value={billingState}
+                                                onChange={(e) => setBillingState(e.target.value)}
+                                                placeholder="TX"
+                                                className="w-full px-3 h-11 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label htmlFor="kort-setup-billing-zip" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">ZIP / Postal Code</label>
+                                            <input
+                                                id="kort-setup-billing-zip"
+                                                type="text"
+                                                value={billingZip}
+                                                onChange={(e) => setBillingZip(e.target.value)}
+                                                placeholder="78701"
+                                                className="w-full px-3 h-11 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label htmlFor="kort-setup-billing-country" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Country Code</label>
+                                            <input
+                                                id="kort-setup-billing-country"
+                                                type="text"
+                                                value={billingCountry}
+                                                onChange={(e) => setBillingCountry(e.target.value)}
+                                                placeholder="US"
+                                                className="w-full px-3 h-11 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </>
                     )}
@@ -281,7 +443,7 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
                     className="w-full" 
                     size="lg" 
                     onClick={handleSavePaymentMethod} 
-                    disabled={isProcessing || !paymentForm || !!error || !cardholderName}
+                    disabled={isProcessing || (paymentMethod !== 'ach_debit' && !paymentForm) || !!error || !cardholderName}
                 >
                     {isProcessing ? (
                         <>
@@ -303,3 +465,5 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
         </div>
     );
 };
+
+

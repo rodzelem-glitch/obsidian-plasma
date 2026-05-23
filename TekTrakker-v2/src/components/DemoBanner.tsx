@@ -16,7 +16,9 @@ const DemoBanner: React.FC = () => {
                     const text = button.innerText?.toLowerCase() || '';
                     const label = button.getAttribute('aria-label')?.toLowerCase() || '';
                     const isEditAction = ['save', 'delete', 'add ', 'create', 'update', 'remove'].some(keyword => text.includes(keyword) || label.includes(keyword));
-                    if (isEditAction && !text.includes('demo')) {
+                    const isEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
+                    
+                    if (isEditAction && !text.includes('demo') && !isEmulator) {
                         e.preventDefault();
                         e.stopPropagation();
                         alert("Action blocked: The demo environment is locked for edits.");

@@ -3,12 +3,11 @@ import React from 'react';
 import { Trash2, PlusCircle, Tag } from 'lucide-react';
 import Button from '../../ui/Button';
 import type { InvoiceLineItem } from '../../../types';
-import Select from '../../ui/Select';
-import Input from '../../ui/Input';
+
 
 interface LineItemsListProps {
     lineItems: InvoiceLineItem[];
-    handleUpdateItem: (id: string, field: keyof InvoiceLineItem, value: any) => void;
+    handleUpdateItem: (id: string, field: keyof InvoiceLineItem, value: string | number | boolean) => void;
     handleDeleteItem: (id: string) => void;
     handleAddItem: (type?: InvoiceLineItem['type'], description?: string) => void;
     setIsDiscountModalOpen: (open: boolean) => void;
@@ -59,8 +58,9 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                             {/* Left-aligned inputs */}
                             <div className="flex flex-wrap items-end gap-3 sm:gap-4 text-xs text-slate-600 dark:text-slate-400">
                                 <div className="flex flex-col gap-1 w-16 sm:w-20">
-                                    <label className="font-semibold px-1">Qty</label>
+                                    <label htmlFor={`qty-${item.id}`} className="font-semibold px-1">Qty</label>
                                     <input 
+                                        id={`qty-${item.id}`}
                                         type="number" 
                                         value={item.quantity === 0 ? '' : item.quantity}
                                         onChange={e => handleUpdateItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
@@ -71,8 +71,9 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1 w-24 sm:w-28">
-                                    <label className="font-semibold px-1">Price ($)</label>
+                                    <label htmlFor={`price-${item.id}`} className="font-semibold px-1">Price ($)</label>
                                     <input 
+                                        id={`price-${item.id}`}
                                         type="number" 
                                         value={item.unitPrice === 0 ? '' : item.unitPrice}
                                         onChange={e => handleUpdateItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
@@ -84,8 +85,9 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                                     />
                                 </div>
                                 <div className="flex flex-col gap-1 w-28 sm:w-32">
-                                    <label className="font-semibold px-1">Type</label>
+                                    <label htmlFor={`type-${item.id}`} className="font-semibold px-1">Type</label>
                                     <select 
+                                        id={`type-${item.id}`}
                                         value={item.type}
                                         onChange={e => handleUpdateItem(item.id, 'type', e.target.value as InvoiceLineItem['type'])}
                                         className="h-10 px-2 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 border rounded focus:ring-1 focus:ring-primary-500 text-sm font-medium"
@@ -97,6 +99,7 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                                         <option value="Part/Labor">Part/Labor</option>
                                         <option value="Fee">Fee</option>
                                         <option value="Discount">Discount</option>
+                                        <option value="Service">Service</option>
                                     </select>
                                 </div>
                             </div>

@@ -105,12 +105,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         window.dispatchEvent(new CustomEvent('ui-overlay-reset'));
     };
 
-    const handleRestartTour = () => {
-        if (!formData.id) return;
-        localStorage.removeItem(`onboarding_complete_${formData.id}`);
-        showToast.success("Onboarding tour reset. It will start the next time you view your dashboard.");
-        onClose();
-    };
+
 
     const handleDeleteAccount = async () => {
         setIsDeleting(true);
@@ -784,16 +779,12 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                     <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-4">
                                         <div>
                                             <h5 className="font-bold text-sm mb-2 text-slate-700 dark:text-slate-300">User Interface Controls</h5>
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Restore hidden bubbles, reset widget positions to their defaults, or restart the platform onboarding tour.</p>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Restore hidden bubbles or reset widget positions to their defaults.</p>
                                             <div className="flex flex-wrap gap-2">
                                                 <Button type="button" variant="secondary" onClick={handleResetOverlays} className="w-auto">
                                                     Reset UI Customizations
                                                 </Button>
-                                                {isSelf && (
-                                                    <Button type="button" variant="secondary" onClick={handleRestartTour} className="w-auto">
-                                                        Restart Onboarding Tour
-                                                    </Button>
-                                                )}
+
                                             </div>
                                         </div>
                                     </div>

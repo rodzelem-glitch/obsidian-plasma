@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import showToast from "lib/toast";
 import { getBaseUrl } from "lib/utils";
 
 import React, { useState } from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
-import { Trash2, Share2, Copy, Bell, Calculator, Download, UserPlus, Search } from 'lucide-react';
+import { Trash2, Share2, Copy, Bell, Calculator, Download, UserPlus, Search, ExternalLink, CreditCard } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import Select from 'components/ui/Select';
 import Modal from 'components/ui/Modal';
@@ -105,6 +106,21 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
             return;
         }
 
+        if (job.invoice?.remindersSent) {
+            const alreadySentToday = job.invoice.remindersSent.some((dateStr: string) => {
+                try {
+                    return new Date(dateStr).toLocaleDateString() === new Date().toLocaleDateString();
+                } catch (e) {
+                    return false;
+                }
+            });
+            if (alreadySentToday) {
+                if (!confirm("A reminder has already been sent to this customer today. Are you sure you want to send another one?")) {
+                    return;
+                }
+            }
+        }
+
         if (!confirm(`Send payment reminder for invoice #${job.invoice.id} to ${email || 'this customer'}?`)) return;
 
         try {
@@ -136,6 +152,14 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     createdAt: new Date().toISOString()
                 });
             }
+
+            // Save reminder sent date
+            const reminderDate = new Date().toISOString();
+            const currentReminders = job.invoice.remindersSent || [];
+            const newReminders = [...currentReminders, reminderDate];
+            await db.collection('jobs').doc(job.id).update({
+                'invoice.remindersSent': newReminders
+            });
 
             showToast.warn(`Reminder sent via ${email ? 'email' : ''} ${email && phone ? 'and ' : ''}${phone ? 'SMS text' : ''}!`);
         } catch (e) {
@@ -297,8 +321,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 <h3 className="font-bold text-gray-800 dark:text-white">Accounts Receivable</h3>
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2 text-sm">
-                        <label className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
+                        <label htmlFor="sort-invoices" className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
                         <select 
+                            id="sort-invoices"
                             aria-label="Sort Invoices"
                             className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
                             value={sortBy}
@@ -345,17 +370,39 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 </div>
             )}
 
-            <Table headers={['Invoice #', 'Customer', 'Date', 'Amount', 'Status', 'Actions']}>
+            <Table headers={['Invoice #', 'Customer', 'Date / Sent Date', 'Amount', 'Status', 'Reminders Sent', 'Actions']}>
                 {sortedInvoices.map((job: any) => (
                     <tr key={job.id}>
                         <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">{job.invoice.id}</td>
                         <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{job.customerName}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{new Date(job.appointmentTime).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                            <div>{new Date(job.appointmentTime).toLocaleDateString()}</div>
+                            {job.invoice.sentAt ? (
+                                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                    Sent: {new Date(job.invoice.sentAt).toLocaleDateString()}
+                                </div>
+                            ) : (
+                                <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 italic">Not Sent</div>
+                            )}
+                        </td>
                         <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">${(Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0).toFixed(2)}</td>
                         <td className="px-6 py-4">
                             <span className={`px-2 py-1 rounded text-xs font-bold ${job.invoice.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                 {job.invoice.status}
                             </span>
+                        </td>
+                        <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400">
+                            {job.invoice.remindersSent && job.invoice.remindersSent.length > 0 ? (
+                                <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                    {job.invoice.remindersSent.map((dateStr: string, idx: number) => (
+                                        <span key={idx} className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                            {new Date(dateStr).toLocaleDateString()}
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : (
+                                <span className="italic text-slate-400">None</span>
+                            )}
                         </td>
                         <td className="px-6 py-4">
                             <div className="flex flex-wrap gap-2 items-center">
@@ -365,6 +412,21 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                 <button title="View Invoice" onClick={() => setViewingInvoiceJob(job)} className="text-primary-600 hover:underline text-sm font-bold">View</button>
                                 <span className="text-slate-300">|</span>
                                 <button title="Manage Invoice" onClick={() => setEditingInvoiceId(job.id)} className="text-primary-600 hover:underline text-sm font-bold">Manage</button>
+                                {job.invoice.status !== 'Paid' && (
+                                    <>
+                                        <span className="text-slate-300">|</span>
+                                        <a 
+                                            href={`/#/invoice/${job.id}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="text-emerald-600 hover:underline text-sm font-bold inline-flex items-center gap-0.5"
+                                            title="Open Public Payment Page"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <CreditCard size={14} /> Pay
+                                        </a>
+                                    </>
+                                )}
                                 <button aria-label="Reassign Customer" title="Reassign Customer" onClick={(e) => { e.stopPropagation(); setReassignInvoiceJob(job); setNewInvoiceCustomerId(job.customerId || ''); }} className="p-1 text-slate-400 hover:text-orange-600"><UserPlus size={16}/></button>
                                 <button aria-label="Copy Reference" title="Copy Reference" onClick={(e) => { e.stopPropagation(); handleCopyRef(job.id); }} className="p-1 text-slate-400 hover:text-primary-600"><Copy size={16}/></button>
                                 <button aria-label="Share Invoice" title="Share Invoice" onClick={(e) => { e.stopPropagation(); setShareModalInvoice(job); }} className="p-1 text-slate-400 hover:text-primary-600"><Share2 size={16}/></button>

@@ -70,10 +70,11 @@ const AssignmentType: React.FC<AssignmentTypeProps> = ({
                 {setPartnerPayoutAmount && (
                     <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                         <div className="max-w-xs">
-                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Pass-through Payout (Optional)</label>
+                            <label htmlFor="partner-payout" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Pass-through Payout (Optional)</label>
                             <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
                                 <input 
+                                    id="partner-payout"
                                     type="number" 
                                     className="w-full pl-7 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring focus:ring-indigo-200"
                                     placeholder="0.00"

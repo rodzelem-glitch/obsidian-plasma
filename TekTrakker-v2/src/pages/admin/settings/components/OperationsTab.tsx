@@ -3,7 +3,7 @@ import React from 'react';
 import Card from 'components/ui/Card';
 import Input from 'components/ui/Input';
 import Toggle from 'components/ui/Toggle';
-import { MapPinIcon, Gavel, Users, Zap, Bot } from 'lucide-react';
+import { MapPinIcon, Gavel, Users, Zap, Bot, CreditCard } from 'lucide-react';
 
 interface OperationsTabProps {
     address: string;
@@ -38,6 +38,26 @@ interface OperationsTabProps {
     setAiPricebookEnabled: (val: boolean) => void;
     virtualWorkerEnabled: boolean;
     setVirtualWorkerEnabled: (val: boolean) => void;
+    cardProcessingFeeEnabled: boolean;
+    setCardProcessingFeeEnabled: (val: boolean) => void;
+    cardProcessingFeePercent: string;
+    setCardProcessingFeePercent: (val: string) => void;
+    cardProcessingFeeFlat: string;
+    setCardProcessingFeeFlat: (val: string) => void;
+    achProcessingFeeEnabled: boolean;
+    setAchProcessingFeeEnabled: (val: boolean) => void;
+    achProcessingFeePercent: string;
+    setAchProcessingFeePercent: (val: string) => void;
+    achProcessingFeeFlat: string;
+    setAchProcessingFeeFlat: (val: string) => void;
+    invoicePrefix: string;
+    setInvoicePrefix: (val: string) => void;
+    invoiceStartNumber: string;
+    setInvoiceStartNumber: (val: string) => void;
+    proposalPrefix: string;
+    setProposalPrefix: (val: string) => void;
+    proposalStartNumber: string;
+    setProposalStartNumber: (val: string) => void;
 }
 
 const OperationsTab: React.FC<OperationsTabProps> = ({
@@ -55,7 +75,17 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
     requiredCerts, newCert, setNewCert,
     marketMultiplier, setMarketMultiplier,
     aiPricebookEnabled, setAiPricebookEnabled,
-    virtualWorkerEnabled, setVirtualWorkerEnabled
+    virtualWorkerEnabled, setVirtualWorkerEnabled,
+    cardProcessingFeeEnabled, setCardProcessingFeeEnabled,
+    cardProcessingFeePercent, setCardProcessingFeePercent,
+    cardProcessingFeeFlat, setCardProcessingFeeFlat,
+    achProcessingFeeEnabled, setAchProcessingFeeEnabled,
+    achProcessingFeePercent, setAchProcessingFeePercent,
+    achProcessingFeeFlat, setAchProcessingFeeFlat,
+    invoicePrefix, setInvoicePrefix,
+    invoiceStartNumber, setInvoiceStartNumber,
+    proposalPrefix, setProposalPrefix,
+    proposalStartNumber, setProposalStartNumber
 }) => {
     return (
         <div className="space-y-6">
@@ -71,7 +101,143 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
                     <Input id="op-zip" label="Zip Code" value={zip} onChange={e => setZip(e.target.value)} />
                 </div>
             </Card>
+
+            <Card>
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-indigo-600">
+                    <CreditCard size={20} /> Invoice Processing Fees
+                </h3>
+                <p className="text-xs text-slate-500 mb-6 -mt-4 leading-relaxed">
+                    Set up processing fees that will be automatically added to customer invoices depending on their chosen checkout method.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Credit Card Processing Fee */}
+                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h4 className="font-bold text-slate-800 dark:text-slate-200">Credit Card Fees</h4>
+                                <p className="text-xs text-slate-400">Pass-through fee on CC payments</p>
+                            </div>
+                            <Toggle 
+                                label="" 
+                                enabled={cardProcessingFeeEnabled} 
+                                onChange={setCardProcessingFeeEnabled} 
+                            />
+                        </div>
+                        {cardProcessingFeeEnabled && (
+                            <div className="grid grid-cols-2 gap-4 mt-4 animate-fade-in">
+                                <Input 
+                                    id="cc-fee-pct" 
+                                    label="Percentage Fee (%)" 
+                                    type="number" 
+                                    step="0.01" 
+                                    value={cardProcessingFeePercent} 
+                                    onChange={e => setCardProcessingFeePercent(e.target.value)} 
+                                />
+                                <Input 
+                                    id="cc-fee-flat" 
+                                    label="Flat Fee ($)" 
+                                    type="number" 
+                                    step="0.01" 
+                                    value={cardProcessingFeeFlat} 
+                                    onChange={e => setCardProcessingFeeFlat(e.target.value)} 
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ACH / Bank Processing Fee */}
+                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h4 className="font-bold text-slate-800 dark:text-slate-200">ACH / Bank Fees</h4>
+                                <p className="text-xs text-slate-400">Pass-through fee on ACH payments</p>
+                            </div>
+                            <Toggle 
+                                label="" 
+                                enabled={achProcessingFeeEnabled} 
+                                onChange={setAchProcessingFeeEnabled} 
+                            />
+                        </div>
+                        {achProcessingFeeEnabled && (
+                            <div className="grid grid-cols-2 gap-4 mt-4 animate-fade-in">
+                                <Input 
+                                    id="ach-fee-pct" 
+                                    label="Percentage Fee (%)" 
+                                    type="number" 
+                                    step="0.01" 
+                                    value={achProcessingFeePercent} 
+                                    onChange={e => setAchProcessingFeePercent(e.target.value)} 
+                                />
+                                <Input 
+                                    id="ach-fee-flat" 
+                                    label="Flat Fee ($)" 
+                                    type="number" 
+                                    step="0.01" 
+                                    value={achProcessingFeeFlat} 
+                                    onChange={e => setAchProcessingFeeFlat(e.target.value)} 
+                                />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Card>
             
+            <Card>
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-indigo-600">
+                    <Zap size={20} /> Custom Document Numbering Schemes
+                </h3>
+                <p className="text-xs text-slate-500 mb-6 -mt-4 leading-relaxed">
+                    Configure custom prefixes and sequence starting numbers for your organization's Invoices and Proposals. Next document pointer will automatically initialize or synchronize if starting numbers change.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Invoice Numbering */}
+                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-4">
+                        <h4 className="font-bold text-slate-800 dark:text-slate-200">Invoice Series</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                id="inv-prefix"
+                                label="Prefix (e.g. INV-)"
+                                value={invoicePrefix}
+                                onChange={e => setInvoicePrefix(e.target.value)}
+                            />
+                            <Input
+                                id="inv-start-num"
+                                label="Start Number"
+                                type="number"
+                                value={invoiceStartNumber}
+                                onChange={e => setInvoiceStartNumber(e.target.value)}
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-400 italic">
+                            Next Invoice: <span className="font-bold text-indigo-500">{invoicePrefix}{invoiceStartNumber}</span>
+                        </p>
+                    </div>
+
+                    {/* Proposal Numbering */}
+                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-4">
+                        <h4 className="font-bold text-slate-800 dark:text-slate-200">Proposal Series</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                id="prop-prefix"
+                                label="Prefix (e.g. PROP-)"
+                                value={proposalPrefix}
+                                onChange={e => setProposalPrefix(e.target.value)}
+                            />
+                            <Input
+                                id="prop-start-num"
+                                label="Start Number"
+                                type="number"
+                                value={proposalStartNumber}
+                                onChange={e => setProposalStartNumber(e.target.value)}
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-400 italic">
+                            Next Proposal: <span className="font-bold text-indigo-500">{proposalPrefix}{proposalStartNumber}</span>
+                        </p>
+                    </div>
+                </div>
+            </Card>
+
             <Card>
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-lg font-bold flex items-center gap-2 text-emerald-600"><Gavel size={20}/> Government & Pricing</h3>
