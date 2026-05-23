@@ -300,6 +300,9 @@ const DocumentCreator: React.FC = () => {
             wrapper.style.fontFamily = 'system-ui, -apple-system, sans-serif';
             wrapper.style.color = '#000';
             wrapper.style.lineHeight = '1.6';
+            wrapper.style.width = '800px';
+            wrapper.style.height = 'auto';
+            wrapper.style.overflow = 'visible';
             
             // Basic styling for prose
             const style = document.createElement('style');
@@ -314,15 +317,24 @@ const DocumentCreator: React.FC = () => {
             `;
             wrapper.appendChild(style);
 
+            // Temporarily append to body within a hidden wrapper to compute dimensions cleanly
+            const container = document.createElement('div');
+            container.style.position = 'absolute';
+            container.style.left = '-9999px';
+            container.style.top = '-9999px';
+            container.appendChild(wrapper);
+            document.body.appendChild(container);
+
             const opt: Record<string, unknown> = {
                 margin:       0.5,
                 filename:     `${doc.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false },
+                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 800 },
                 jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
             };
 
             await html2pdf().from(wrapper).set(opt).save();
+            document.body.removeChild(container);
             showToast.success("PDF downloaded successfully.");
         } catch (error) {
             console.error("PDF generation failed:", error);

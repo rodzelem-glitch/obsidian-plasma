@@ -173,21 +173,54 @@ const FieldProposal: React.FC = () => {
         if (!proposalRef.current) return;
 
         setIsSubmitting(true);
-        const input = proposalRef.current;
-        const canvas = await html2canvas(input, {});
-        const imgData = canvas.toDataURL('image/png');
-        const pdf = new jsPDF('p', 'mm', 'a4');
+        try {
+            const input = proposalRef.current;
+            
+            // Create a clean clone of the document for PDF generation to avoid viewport sizing/clipping issues
+            const clone = input.cloneNode(true) as HTMLElement;
+            clone.style.boxShadow = 'none';
+            clone.style.margin = '0';
+            clone.style.padding = '40px'; // Consistent padding for A4
+            clone.style.width = '794px'; // ~210mm at 96 DPI
+            clone.style.height = 'auto';
+            clone.style.overflow = 'visible';
 
-        const imgWidth = canvas.width;
-        const imgHeight = canvas.height;
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = (imgHeight * pdfWidth) / imgWidth;
+            // Temporarily append to body to ensure CSS is computed at simulated width
+            const container = document.createElement('div');
+            container.style.position = 'absolute';
+            container.style.left = '-9999px';
+            container.style.top = '-9999px';
+            container.appendChild(clone);
+            document.body.appendChild(container);
 
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        const pdfDataUri = pdf.output('datauristring');
-        const { downloadFile } = await import('lib/downloadHelper');
-        await downloadFile(pdfDataUri, "service_proposal.pdf");
-        setIsSubmitting(false);
+            const canvas = await html2canvas(clone, {
+                windowWidth: 794,
+                scale: 2,
+                useCORS: true,
+                logging: false
+            } as any);
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+
+            const imgWidth = canvas.width;
+            const imgHeight = canvas.height;
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgHeight * pdfWidth) / imgWidth;
+
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            const pdfDataUri = pdf.output('datauristring');
+            
+            document.body.removeChild(container);
+
+            const { downloadFile } = await import('lib/downloadHelper');
+            await downloadFile(pdfDataUri, "service_proposal.pdf");
+        } catch (error) {
+            console.error("PDF generation failed:", error);
+            showToast.error("Failed to generate PDF. Opening browser print dialog...");
+            window.print();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleSubmitProposal = async () => {
