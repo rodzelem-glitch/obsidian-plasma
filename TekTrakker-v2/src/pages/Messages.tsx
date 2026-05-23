@@ -179,6 +179,28 @@ const Messages: React.FC = () => {
         });
     }, [state.users, state.messages, user?.id, user?.role, state.currentOrganization?.id]);
 
+    const sortedCustomers = useMemo(() => {
+        return state.customers.map(c => {
+            const threadMsgs = state.messages.filter(m => 
+                (m.receiverId === c.id || m.senderId === c.id) &&
+                (m.type === 'sms' || m.type === 'email' || m.type === 'customer-log')
+            ).sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp));
+
+            const unreadCount = state.messages.filter(msg => 
+                msg.senderId === c.id && 
+                !msg.read &&
+                (msg.type === 'sms' || msg.type === 'email' || msg.type === 'customer-log')
+            ).length;
+
+            return { ...c, lastMsg: threadMsgs[0], unreadCount };
+        }).sort((a, b) => {
+            const timeA = a.lastMsg ? parseTimestamp(a.lastMsg.timestamp) : 0;
+            const timeB = b.lastMsg ? parseTimestamp(b.lastMsg.timestamp) : 0;
+            return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+        });
+    }, [state.customers, state.messages]);
+
+
     const broadcastUnreadCount = useMemo(() => {
         const broadcasts = state.messages.filter(m => {
             if (user?.role === 'master_admin') {
@@ -261,6 +283,13 @@ const Messages: React.FC = () => {
             });
         }
 
+        if (activeTab === 'customers' && selectedCustomerId) {
+            const unreadFromCustomer = threadMessages.filter(m => m.senderId === selectedCustomerId && !m.read);
+            unreadFromCustomer.forEach(m => {
+                db.collection('messages').doc(m.id).update({ read: true }).catch(() => {});
+            });
+        }
+
         if (activeTab === 'team' && selectedPartnerId === 'all' && threadMessages.length > 0) {
             const lastId = threadMessages[threadMessages.length - 1].id;
             if (lastSeenBroadcastId !== lastId) {
@@ -268,7 +297,8 @@ const Messages: React.FC = () => {
                 setLastSeenBroadcastId(lastId);
             }
         }
-    }, [threadMessages, activeTab, selectedPartnerId, user?.id, lastSeenBroadcastId]);
+    }, [threadMessages, activeTab, selectedPartnerId, selectedCustomerId, user?.id, lastSeenBroadcastId]);
+
 
     // --- ACTIONS ---
 
@@ -593,15 +623,21 @@ const Messages: React.FC = () => {
                                 <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                 <input className="w-full pl-10 pr-4 py-2 text-sm rounded-xl border-none bg-slate-100 dark:bg-slate-800 focus:ring-2 focus:ring-primary-500 transition-all dark:text-white" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
                             </div>
-                            {state.customers.filter(c => (c.name || '').toLowerCase().includes(searchQuery.toLowerCase())).map(c => (
+                            {sortedCustomers.filter(c => (c.name || '').toLowerCase().includes(searchQuery.toLowerCase())).map(c => (
                                 <button key={c.id} onClick={() => handleCustomerSelect(c.id)} className={`w-full text-left px-4 py-3 rounded-2xl flex items-center gap-4 transition-all ${selectedCustomerId === c.id ? 'bg-primary-600 text-white shadow-lg' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${selectedCustomerId === c.id ? 'bg-white/20' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600'}`}>{(c.name || 'C')[0]}</div>
                                     <div className="flex-1 min-w-0">
-                                        <span className="block font-bold text-sm truncate">{c.name}</span>
-                                        <span className={`block text-[10px] truncate ${selectedCustomerId === c.id ? 'text-white/70' : 'text-slate-500'}`}>{c.phone}</span>
+                                        <div className="flex justify-between items-center">
+                                            <span className="block font-bold text-sm truncate">{c.name}</span>
+                                            {c.unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{c.unreadCount}</span>}
+                                        </div>
+                                        <p className={`text-xs truncate ${selectedCustomerId === c.id ? 'text-white/70' : 'text-slate-500'}`}>
+                                            {c.lastMsg ? c.lastMsg.content : c.phone}
+                                        </p>
                                     </div>
                                 </button>
                             ))}
+
                         </>
                     )}
                 </div>
