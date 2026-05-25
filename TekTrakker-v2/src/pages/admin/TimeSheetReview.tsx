@@ -1,6 +1,7 @@
 import showToast from "lib/toast";
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import { db } from 'lib/firebase';
 import { globalConfirm } from 'lib/globalConfirm';
 import Card from 'components/ui/Card';
@@ -14,6 +15,7 @@ import { Monitor } from 'lucide-react';
 
 const TimeSheetReview: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
     const [editingLog, setEditingLog] = useState<ShiftLog | null>(null);
     const currentUser = state.currentUser;
@@ -48,6 +50,31 @@ const TimeSheetReview: React.FC = () => {
         try {
             await db.collection('shiftLogs').doc(log.id).update({ isApproved: true });
             dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: selectedEmployeeId, log: { ...log, isApproved: true } } });
+            
+            // Automated PTO Accrual Policy Engine: automatically increments employee balance in real-time when timesheet is approved
+            const employee = state.users.find(u => u.id === selectedEmployeeId);
+            if (employee && employee.ptoAccrualRate && employee.ptoAccrualRate > 0 && !log.isApproved) {
+                const clockInTime = new Date(log.clockIn).getTime();
+                const clockOutTime = log.clockOut ? new Date(log.clockOut).getTime() : Date.now();
+                const durationHrs = Math.max(0, (clockOutTime - clockInTime) / (1000 * 60 * 60));
+                
+                const ptoAccruedThisShift = durationHrs * employee.ptoAccrualRate;
+                const newPtoTotal = Number((Number(employee.ptoAccrued || 0) + ptoAccruedThisShift).toFixed(4));
+                
+                const isSub = employee.id.startsWith('sub-') || employee.role?.toLowerCase() === 'subcontractor';
+                const collectionName = isSub ? 'subcontractors' : 'users';
+                
+                await db.collection(collectionName).doc(employee.id).update({
+                    ptoAccrued: newPtoTotal
+                });
+                
+                dispatch({
+                    type: 'UPDATE_EMPLOYEE',
+                    payload: { ...employee, ptoAccrued: newPtoTotal } as any
+                });
+                
+                showToast.success(`Automated PTO Policy: Accrued +${ptoAccruedThisShift.toFixed(2)} hrs PTO for this approved shift!`);
+            }
         } catch (error) {
             console.error("Failed to approve shift", error);
             showToast.warn("Failed to save approval to the database.");
@@ -81,14 +108,14 @@ const TimeSheetReview: React.FC = () => {
                         onClick={() => navigate('/admin/kiosk')} 
                         className="w-full md:w-auto justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-md border-b-4 border-indigo-800 active:translate-y-1 active:border-b-0 shrink-0"
                     >
-                        <Monitor size={20} /> Launch Front-Desk Kiosk
+                        <Monitor size={20} /> {t("Launch Front-Desk Kiosk")}
                     </button>
 
                     <div className="h-px md:h-10 w-full md:w-px bg-gray-200 dark:bg-gray-700 shrink-0" />
 
                     <div className="flex flex-col md:flex-row items-center gap-3 w-full">
                         <div className="flex items-center gap-2 w-full md:w-auto">
-                            <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 shrink-0">From</span>
+                            <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 shrink-0">{t("From")}</span>
                             <input 
                                 type="date" 
                                 value={payrollStartDate} 
@@ -97,7 +124,7 @@ const TimeSheetReview: React.FC = () => {
                             />
                         </div>
                         <div className="flex items-center gap-2 w-full md:w-auto">
-                            <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 shrink-0">To</span>
+                            <span className="text-sm font-semibold text-gray-500 dark:text-gray-400 shrink-0">{t("To")}</span>
                             <input 
                                 type="date" 
                                 value={payrollEndDate} 
@@ -110,7 +137,7 @@ const TimeSheetReview: React.FC = () => {
                             disabled={!payrollStartDate || !payrollEndDate}
                             className="w-full md:w-auto justify-center bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:pointer-events-none text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 transition-all active:scale-95 shadow-md shrink-0 border-b-4 border-emerald-800 active:translate-y-1 active:border-b-0"
                         >
-                            Sync & Preview Payroll
+                            {t("Sync & Preview Payroll")}
                         </button>
                     </div>
                 </div>
