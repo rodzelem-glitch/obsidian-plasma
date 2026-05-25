@@ -5,6 +5,7 @@ import Select from 'components/ui/Select';
 import Textarea from 'components/ui/Textarea';
 import Button from 'components/ui/Button';
 import type { User, Subcontractor, OrganizationTeam } from 'types';
+import { useLanguage } from 'context/LanguageContext';
 
 export interface WBSNodeForm {
     type: 'Phase' | 'Deliverable' | 'WorkPackage';
@@ -31,11 +32,12 @@ interface WBSNodeModalProps {
 }
 
 const WBSNodeModal: React.FC<WBSNodeModalProps> = ({ isOpen, onClose, onSave, nodeForm, setNodeForm, employees, subcontractors, teams }) => {
+    const { t } = useLanguage();
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`${nodeForm.id ? 'Edit' : 'Add'} ${nodeForm.type}`}>
+        <Modal isOpen={isOpen} onClose={onClose} title={`${nodeForm.id ? t('Edit') : t('Add')} ${t(nodeForm.type)}`}>
             <div className="space-y-4">
                 <Input 
-                    label="Name" 
+                    label={t("Name")} 
                     value={nodeForm.name} 
                     onChange={e => setNodeForm({...nodeForm, name: e.target.value})} 
                     required 
@@ -43,18 +45,18 @@ const WBSNodeModal: React.FC<WBSNodeModalProps> = ({ isOpen, onClose, onSave, no
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Select 
-                        label="Status" 
+                        label={t("Status")} 
                         value={nodeForm.status} 
                         onChange={e => setNodeForm({...nodeForm, status: e.target.value})}
                     >
-                        <option value="Pending">Pending</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Completed">Completed</option>
+                        <option value="Pending">{t("Pending")}</option>
+                        <option value="In Progress">{t("In Progress")}</option>
+                        <option value="Completed">{t("Completed")}</option>
                     </Select>
                     
                     {nodeForm.type === 'Deliverable' && (
                         <Input 
-                            label="Due Date" 
+                            label={t("Due Date")} 
                             type="date" 
                             value={nodeForm.dueDate || ''} 
                             onChange={e => setNodeForm({...nodeForm, dueDate: e.target.value})} 
@@ -63,13 +65,13 @@ const WBSNodeModal: React.FC<WBSNodeModalProps> = ({ isOpen, onClose, onSave, no
                     {nodeForm.type === 'Phase' && (
                         <>
                             <Input 
-                                label="Start Date" 
+                                label={t("Start Date")} 
                                 type="date" 
                                 value={nodeForm.startDate || ''} 
                                 onChange={e => setNodeForm({...nodeForm, startDate: e.target.value})} 
                             />
                             <Input 
-                                label="End Date" 
+                                label={t("End Date")} 
                                 type="date" 
                                 value={nodeForm.endDate || ''} 
                                 onChange={e => setNodeForm({...nodeForm, endDate: e.target.value})} 
@@ -78,20 +80,20 @@ const WBSNodeModal: React.FC<WBSNodeModalProps> = ({ isOpen, onClose, onSave, no
                     )}
                     {nodeForm.type === 'WorkPackage' && (
                         <Select 
-                            label="Assigned Team/Contractor" 
+                            label={t("Assigned Team/Contractor")} 
                             value={nodeForm.assignedTeam || ''} 
                             onChange={e => setNodeForm({...nodeForm, assignedTeam: e.target.value})} 
                         >
-                            <option value="">Unassigned</option>
+                            <option value="">{t("Unassigned")}</option>
                             {teams && teams.length > 0 && (
-                                <optgroup label="Teams">
+                                <optgroup label={t("Teams")}>
                                     {teams.map(t => (
                                         <option key={t.id} value={t.id}>{t.name}</option>
                                     ))}
                                 </optgroup>
                             )}
                             {employees && employees.length > 0 && (
-                                <optgroup label="Employees">
+                                <optgroup label={t("Employees")}>
                                     {employees.map(emp => (
                                         <option key={emp.id} value={emp.id}>
                                             {emp.firstName} {emp.lastName}
@@ -100,7 +102,7 @@ const WBSNodeModal: React.FC<WBSNodeModalProps> = ({ isOpen, onClose, onSave, no
                                 </optgroup>
                             )}
                             {subcontractors && subcontractors.length > 0 && (
-                                <optgroup label="Subcontractors">
+                                <optgroup label={t("Subcontractors")}>
                                     {subcontractors.map(sub => (
                                         <option key={sub.id} value={sub.id}>
                                             {sub.companyName}
@@ -113,14 +115,14 @@ const WBSNodeModal: React.FC<WBSNodeModalProps> = ({ isOpen, onClose, onSave, no
                 </div>
 
                 <Textarea 
-                    label="Description" 
+                    label={t("Description")} 
                     value={nodeForm.description} 
                     onChange={e => setNodeForm({...nodeForm, description: e.target.value})} 
                 />
 
                 <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button onClick={() => onSave(nodeForm)}>Save {nodeForm.type}</Button>
+                    <Button variant="secondary" onClick={onClose}>{t("Cancel")}</Button>
+                    <Button onClick={() => onSave(nodeForm)}>{t("Save")} {t(nodeForm.type)}</Button>
                 </div>
             </div>
         </Modal>

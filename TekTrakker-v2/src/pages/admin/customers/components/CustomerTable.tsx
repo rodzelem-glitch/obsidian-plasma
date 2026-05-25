@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Customer } from '../../../../types/types';
+import { useLanguage } from '../../../../context/LanguageContext';
 
 interface CustomerTableProps {
     customers: Customer[];
@@ -9,19 +10,20 @@ interface CustomerTableProps {
 }
 
 const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustomer, searchTerm }) => {
+    const { t } = useLanguage();
     return (
         <div className="hidden md:block">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead className="bg-gray-50 dark:bg-gray-800">
                     <tr>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Name
+                            {t("Name")}
                         </th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Contact
+                            {t("Contact")}
                         </th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Address
+                            {t("Address")}
                         </th>
                     </tr>
                 </thead>
@@ -30,7 +32,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                         <tr key={customer.id} onClick={() => onSelectCustomer(customer.id)} className="hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer">
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
                                 {customer.name}
-                                {(customer as any).isNew && <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold dark:bg-blue-900 dark:text-blue-200">New Lead</span>}
+                                {(customer as any).isNew && <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold dark:bg-blue-900 dark:text-blue-200">{t("New Lead")}</span>}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                                 {customer.phone || customer.email}

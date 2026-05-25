@@ -3,6 +3,7 @@ import React from 'react';
 import Modal from 'components/ui/Modal';
 import Input from 'components/ui/Input';
 import { ProposalPreset } from 'types';
+import { useLanguage } from 'context/LanguageContext';
 
 interface PricebookModalProps {
     isOpen: boolean;
@@ -17,11 +18,13 @@ interface PricebookModalProps {
 const PricebookModal: React.FC<PricebookModalProps> = ({ 
     isOpen, onClose, searchQuery, onSearchChange, presets, onSelect, marketMultiplier 
 }) => {
+    const { t } = useLanguage();
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Add from Pricebook">
+        <Modal isOpen={isOpen} onClose={onClose} title={t("Add from Pricebook")}>
             <div className="h-[60vh] flex flex-col">
                 <Input 
-                    placeholder="Search items..." 
+                    placeholder={t("Search items...")} 
                     value={searchQuery} 
                     onChange={e => onSearchChange(e.target.value)} 
                     className="mb-4"
@@ -39,7 +42,7 @@ const PricebookModal: React.FC<PricebookModalProps> = ({
                             </span>
                         </div>
                     ))}
-                    {presets.length === 0 && <p className="text-center text-slate-400 py-4 md:py-8 text-sm">No items found.</p>}
+                    {presets.length === 0 && <p className="text-center text-slate-400 py-4 md:py-8 text-sm">{t("No items found.")}</p>}
                 </div>
             </div>
         </Modal>

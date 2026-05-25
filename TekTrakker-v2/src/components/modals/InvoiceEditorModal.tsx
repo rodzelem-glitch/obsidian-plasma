@@ -152,11 +152,28 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     </div>
                 </div>
 
-                <div className="mt-8 flex justify-end items-center gap-8">
-                    <div className="text-right">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Grand Total Due</p>
-                        <p className="text-3xl font-black text-primary-600">${totals.total.toFixed(2)}</p>
-                    </div>
+                <div className="mt-8 flex flex-col items-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-6">
+                    {currentJob.invoice.amountPaid !== undefined && currentJob.invoice.amountPaid > 0 ? (
+                        <>
+                            <div className="text-right text-sm">
+                                <span className="font-bold text-gray-500 uppercase tracking-widest mr-2">Grand Total:</span>
+                                <span className="font-black text-slate-800 dark:text-slate-200">${totals.total.toFixed(2)}</span>
+                            </div>
+                            <div className="text-right text-emerald-600 dark:text-emerald-400 text-sm">
+                                <span className="font-bold uppercase tracking-widest mr-2">Paid to Date:</span>
+                                <span className="font-black">${currentJob.invoice.amountPaid.toFixed(2)}</span>
+                            </div>
+                            <div className="text-right text-primary-600 dark:text-primary-400 border-t border-dashed border-slate-200 dark:border-slate-700 pt-2 mt-1">
+                                <span className="text-xs font-bold uppercase tracking-widest mr-2">Remaining Balance Due:</span>
+                                <span className="text-3xl font-black">${Math.max(0, totals.total - currentJob.invoice.amountPaid).toFixed(2)}</span>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="text-right">
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Grand Total Due</p>
+                            <p className="text-3xl font-black text-primary-600">${totals.total.toFixed(2)}</p>
+                        </div>
+                    )}
                 </div>
 
                 <InvoiceActions

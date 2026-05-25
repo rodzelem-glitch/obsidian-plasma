@@ -35,6 +35,8 @@ const FranchiseManager: React.FC = () => {
     const [formSetupFeePaid, setFormSetupFeePaid] = useState(false);
     const [formPerUserFee, setFormPerUserFee] = useState(10);
     const [formPerVirtualWorkerFee, setFormPerVirtualWorkerFee] = useState(50);
+    const [formBillingType, setFormBillingType] = useState<'monthly' | 'lifetime'>('monthly');
+    const [formLifetimeFee, setFormLifetimeFee] = useState(25000);
     const [provisioningDomain, setProvisioningDomain] = useState(false);
 
     useEffect(() => {
@@ -115,6 +117,8 @@ const FranchiseManager: React.FC = () => {
         setFormSetupFeePaid(fr.billing?.setupFeePaid || false);
         setFormPerUserFee(fr.billing?.perUserFee ?? 10);
         setFormPerVirtualWorkerFee(fr.billing?.perVirtualWorkerFee ?? 50);
+        setFormBillingType(fr.billing?.billingType ?? 'monthly');
+        setFormLifetimeFee(fr.billing?.lifetimeFee ?? 25000);
         setIsEditing(true);
     };
 
@@ -135,6 +139,8 @@ const FranchiseManager: React.FC = () => {
         setFormSetupFeePaid(false);
         setFormPerUserFee(10);
         setFormPerVirtualWorkerFee(50);
+        setFormBillingType('monthly');
+        setFormLifetimeFee(25000);
     };
 
     const handleSave = async () => {
@@ -159,9 +165,11 @@ const FranchiseManager: React.FC = () => {
                 billing: {
                     agreementSigned: formAgreementSigned,
                     setupFeePaid: formSetupFeePaid,
-                    monthlyFee: 1000,
+                    monthlyFee: formBillingType === 'lifetime' ? 0 : 1000,
                     perUserFee: formPerUserFee,
-                    perVirtualWorkerFee: formPerVirtualWorkerFee
+                    perVirtualWorkerFee: formPerVirtualWorkerFee,
+                    billingType: formBillingType,
+                    lifetimeFee: formLifetimeFee
                 },
                 updatedAt: new Date().toISOString()
             };
@@ -191,6 +199,14 @@ const FranchiseManager: React.FC = () => {
     const handleBillFranchise = async () => {
         if (!selectedFranchise) return;
         
+        const isLifetime = selectedFranchise.billing?.billingType === 'lifetime';
+        const fee = isLifetime 
+            ? (selectedFranchise.billing?.lifetimeFee ?? 25000) 
+            : (selectedFranchise.billing?.monthlyFee ?? 1000);
+        const description = isLifetime 
+            ? 'TekTrakker Franchise Lifetime Access Fee' 
+            : 'TekTrakker Franchise Operations Fee';
+
         const jobId = `franchise-bill-${Date.now()}`;
         const invoiceData = {
             id: jobId,
@@ -199,7 +215,7 @@ const FranchiseManager: React.FC = () => {
             customerName: selectedFranchise.name || 'Unknown',
             customerId: selectedFranchise.id,
             customerEmail: '',
-            tasks: ['Franchise Monthly / Onboarding Fee'],
+            tasks: [isLifetime ? 'Franchise Lifetime License Fee' : 'Franchise Monthly / Onboarding Fee'],
             jobStatus: 'Completed',
             source: 'PlatformAdmin',
             invoice: {
@@ -207,24 +223,24 @@ const FranchiseManager: React.FC = () => {
                 status: 'Unpaid',
                 items: [{
                     id: 'f-fee-1',
-                    description: 'TekTrakker Franchise Operations Fee',
+                    description: description,
                     quantity: 1,
-                    unitPrice: 1000,
-                    total: 1000,
+                    unitPrice: fee,
+                    total: fee,
                     type: 'Fee'
                 }],
-                subtotal: 1000,
+                subtotal: fee,
                 taxRate: 0,
                 taxAmount: 0,
-                totalAmount: 1000,
-                amount: 1000
+                totalAmount: fee,
+                amount: fee
             },
             createdAt: new Date().toISOString()
         };
 
         try {
             await db.collection('jobs').doc(jobId).set(invoiceData);
-            showToast.warn(`Drafted $1,000 Franchise invoice for ${selectedFranchise.name}. View paper trail in Master Billing.`);
+            showToast.warn(`Drafted $${fee.toLocaleString()} Franchise invoice for ${selectedFranchise.name}. View paper trail in Master Billing.`);
         } catch {
             showToast.warn('Failed to bill franchise');
         }
@@ -433,6 +449,19 @@ const FranchiseManager: React.FC = () => {
                                             <div>
                                                 <label htmlFor="formPerVirtualWorkerFeeInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">TekTrakker Rev-Share: Per Virtual Worker ($)</label>
                                                 <input id="formPerVirtualWorkerFeeInput" aria-label="Per Virtual Worker Fee" title="Per Virtual Worker Fee" type="number" placeholder="0" value={formPerVirtualWorkerFee} onChange={e => setFormPerVirtualWorkerFee(parseFloat(e.target.value) || 0)} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5" />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4 mt-2">
+                                            <div>
+                                                <label htmlFor="formBillingTypeInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Franchise Billing Type</label>
+                                                <select id="formBillingTypeInput" aria-label="Billing Type" title="Billing Type" value={formBillingType} onChange={e => setFormBillingType(e.target.value as 'monthly' | 'lifetime')} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5">
+                                                    <option value="monthly">Monthly Subscription ($1,000/mo)</option>
+                                                    <option value="lifetime">Lifetime License Access</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label htmlFor="formLifetimeFeeInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Franchise Lifetime License Fee ($)</label>
+                                                <input id="formLifetimeFeeInput" aria-label="Lifetime Fee" title="Lifetime Fee" type="number" placeholder="25000" value={formLifetimeFee} onChange={e => setFormLifetimeFee(parseFloat(e.target.value) || 0)} disabled={formBillingType !== 'lifetime'} className={`w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 ${formBillingType !== 'lifetime' ? 'opacity-50 cursor-not-allowed' : ''}`} />
                                             </div>
                                         </div>
                                     </div>

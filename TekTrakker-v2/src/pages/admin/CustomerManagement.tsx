@@ -9,10 +9,12 @@ import QuickAddCustomer from './customers/components/QuickAddCustomer';
 import CustomerSearch from './customers/components/CustomerSearch';
 import CustomerTable from './customers/components/CustomerTable';
 import CustomerCard from './customers/components/CustomerCard';
+import { useLanguage } from 'context/LanguageContext';
 
 const CustomerManagement: React.FC = () => {
     const { state } = useAppContext();
     const [searchParams] = useSearchParams();
+    const { t } = useLanguage();
     
     const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
@@ -73,7 +75,7 @@ const CustomerManagement: React.FC = () => {
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 
                 <Button onClick={() => setIsCreating(!isCreating)} className="w-auto flex items-center gap-2">
-                    <PlusCircle size={18} /> Quick Add
+                    <PlusCircle size={18} /> {t("Quick Add")}
                 </Button>
             </header>
 
@@ -82,19 +84,19 @@ const CustomerManagement: React.FC = () => {
             <CustomerSearch searchTerm={searchTerm} onSearchTermChange={handleSearchTermChange} />
 
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 px-2 gap-2">
-                <span className="text-xs text-gray-500">Showing {paginatedCustomers.length} of {filteredCustomers.length} results</span>
+                <span className="text-xs text-gray-500">{t("Showing")} {paginatedCustomers.length} {t("of")} {filteredCustomers.length} {t("results")}</span>
                 <div className="flex items-center gap-2 text-sm">
-                    <label className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
+                    <label className="font-medium text-slate-600 dark:text-slate-300">{t("Sort by:")}</label>
                     <select 
-                        aria-label="Sort Customers"
+                        aria-label={t("Sort Customers")}
                         className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
                     >
-                        <option value="date_desc">Newest First</option>
-                        <option value="date_asc">Oldest First</option>
-                        <option value="name_asc">Name (A-Z)</option>
-                        <option value="name_desc">Name (Z-A)</option>
+                        <option value="date_desc">{t("Newest First")}</option>
+                        <option value="date_asc">{t("Oldest First")}</option>
+                        <option value="name_asc">{t("Name (A-Z)")}</option>
+                        <option value="name_desc">{t("Name (Z-A)")}</option>
                     </select>
                 </div>
             </div>
@@ -110,7 +112,7 @@ const CustomerManagement: React.FC = () => {
             {hasMore && (
                 <div className="p-4 text-center">
                     <button onClick={() => setPage(p => p + 1)} className="text-primary-600 dark:text-primary-400 hover:underline text-sm font-medium">
-                        Load More Results
+                        {t("Load More Results")}
                     </button>
                 </div>
             )}

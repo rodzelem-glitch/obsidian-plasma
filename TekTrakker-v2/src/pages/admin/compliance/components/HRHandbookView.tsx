@@ -9,6 +9,7 @@ import { db } from 'lib/firebase';
 import { BusinessDocument, User } from 'types';
 import { FileText, CheckCircle } from 'lucide-react';
 import DOMPurify from 'dompurify';
+import { useLanguage } from 'context/LanguageContext';
 
 interface HRHandbookViewProps {
     employee: User;
@@ -17,6 +18,7 @@ interface HRHandbookViewProps {
 
 const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     
     const policies = useMemo(() => 
         state.documents.filter(d => d.type === 'Policy' || d.type === 'Handbook'),
@@ -47,11 +49,11 @@ const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => 
                 payload: { ...employee, signedPolicies: updatedSignedPolicies, ...legacyUpdate } 
             });
             
-            showToast.warn('Document Acknowledged.');
+            showToast.warn(t('Document Acknowledged.'));
             setViewDoc(null);
             setSignatureName('');
         } catch {
-            showToast.warn("Failed to save signature.");
+            showToast.warn(t("Failed to save signature."));
         }
     };
 
@@ -63,8 +65,8 @@ const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => 
                         <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded border border-gray-200 dark:border-gray-700 max-h-[60vh] overflow-y-auto">
                             {viewDoc.context ? (
                                 <div className="text-center">
-                                    <p className="mb-4">This document is a file upload.</p>
-                                    <a href={viewDoc.context} download={viewDoc.title} className="text-blue-600 hover:underline font-bold" target="_blank" rel="noreferrer">Open/Download to Read</a>
+                                    <p className="mb-4">{t("This document is a file upload.")}</p>
+                                    <a href={viewDoc.context} download={viewDoc.title} className="text-blue-600 hover:underline font-bold" target="_blank" rel="noreferrer">{t("Open/Download to Read")}</a>
                                 </div>
                             ) : (
                                 <div className="prose dark:prose-invert max-w-none text-sm" dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(viewDoc.content)}} />
@@ -73,22 +75,22 @@ const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => 
                         
                         {!employee?.signedPolicies?.[viewDoc.id] && isSelf && (
                             <div className="border-t pt-4">
-                                <p className="text-sm font-bold mb-2">I have read and agree to this policy.</p>
+                                <p className="text-sm font-bold mb-2">{t("I have read and agree to this policy.")}</p>
                                 <div className="flex gap-2">
-                                    <Input placeholder="Type full name to sign" value={signatureName} onChange={e => setSignatureName(e.target.value)} />
-                                    <Button type="button" onClick={() => handleSign(viewDoc.id)} disabled={!signatureName}>Sign & Accept</Button>
+                                    <Input placeholder={t("Type full name to sign")} value={signatureName} onChange={e => setSignatureName(e.target.value)} />
+                                    <Button type="button" onClick={() => handleSign(viewDoc.id)} disabled={!signatureName}>{t("Sign & Accept")}</Button>
                                 </div>
                             </div>
                         )}
                         {!employee?.signedPolicies?.[viewDoc.id] && !isSelf && (
                             <div className="border-t pt-4">
-                                <p className="text-red-600 font-bold flex items-center gap-2">Employee has not signed this document yet.</p>
+                                <p className="text-red-600 font-bold flex items-center gap-2">{t("Employee has not signed this document yet.")}</p>
                             </div>
                         )}
                         {employee?.signedPolicies?.[viewDoc.id] && (
                             <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded flex items-center gap-2 text-green-700 dark:text-green-400">
                                 <CheckCircle size={20} />
-                                <span>Signed on {new Date(employee.signedPolicies[viewDoc.id]).toLocaleDateString()}</span>
+                                <span>{t("Signed on")} {new Date(employee.signedPolicies[viewDoc.id]).toLocaleDateString()}</span>
                             </div>
                         )}
                     </div>
@@ -96,7 +98,7 @@ const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => 
             )}
 
             <div>
-                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-4"><FileText size={16}/> Required Policies & Handbooks</h4>
+                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-4"><FileText size={16}/> {t("Required Policies & Handbooks")}</h4>
                 <div className="flex flex-col gap-3">
                     {policies.map(doc => {
                         const isSigned = !!employee?.signedPolicies?.[doc.id];
@@ -106,16 +108,16 @@ const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => 
                                     <FileText className={isSigned ? "text-green-500" : "text-slate-400"} size={20} />
                                     <div>
                                         <h4 className="font-bold text-sm text-slate-900 dark:text-white">{doc.title}</h4>
-                                        <p className="text-[10px] text-slate-500">Updated: {new Date(doc.createdAt).toLocaleDateString()}</p>
+                                        <p className="text-[10px] text-slate-500">{t("Updated:")} {new Date(doc.createdAt).toLocaleDateString()}</p>
                                     </div>
                                 </div>
                                 <Button type="button" onClick={() => setViewDoc(doc)} variant="secondary" className="text-xs" size="sm">
-                                    {isSigned ? 'View' : (isSelf ? 'Read & Sign' : 'View Document')}
+                                    {isSigned ? t('View') : (isSelf ? t('Read & Sign') : t('View Document'))}
                                 </Button>
                             </div>
                         );
                     })}
-                    {policies.length === 0 && <p className="text-slate-500 text-xs italic py-2">No policies assigned.</p>}
+                    {policies.length === 0 && <p className="text-slate-500 text-xs italic py-2">{t("No policies assigned.")}</p>}
                 </div>
             </div>
         </div>

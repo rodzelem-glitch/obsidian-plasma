@@ -3,6 +3,7 @@ import showToast from "lib/toast";
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import Button from 'components/ui/Button';
@@ -24,6 +25,7 @@ const CATEGORIES = ['Diagnostics', 'Cooling', 'Heating', 'Electrical', 'Plumbing
 
 const EstimatorSettings: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentPreset, setCurrentPreset] = useState<Partial<ProposalPreset>>({ name: '', description: '', baseCost: 0, avgLabor: 0, category: 'Other' });
     const [searchTerm, setSearchTerm] = useState('');
@@ -235,11 +237,11 @@ const EstimatorSettings: React.FC = () => {
                 <div className="flex gap-2 flex-wrap">
                     <label className="flex items-center gap-2 shadow-lg btn bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded font-bold cursor-pointer transition-colors duration-200">
                          {isPopulating === "CSV/Excel Upload" ? <Sparkles size={18} className="animate-spin" /> : <Book size={18} />}
-                         <span className="text-sm">Import CSV / Excel</span>
+                         <span className="text-sm">{t("Import CSV / Excel")}</span>
                          <input type="file" accept=".csv, .xlsx, .xls" onChange={handleImportTargetFile} className="hidden" />
                     </label>
-                    <Button disabled title="Ferguson API Price Lookup temporarily suspended by provider (Coming Soon)" className="flex items-center gap-2 shadow-lg bg-slate-400 text-white border-0 cursor-not-allowed opacity-75"><Search size={18}/> Ferguson Live Catalog</Button>
-                    <Button onClick={() => { setCurrentPreset({ name: '', description: '', baseCost: 0, avgLabor: 0, category: 'Other' }); setIsModalOpen(true); }} className="flex items-center gap-2 shadow-lg"><Plus size={18}/> Custom Task</Button>
+                    <Button disabled title={t("Ferguson API Price Lookup temporarily suspended by provider (Coming Soon)")} className="flex items-center gap-2 shadow-lg bg-slate-400 text-white border-0 cursor-not-allowed opacity-75"><Search size={18}/> {t("Ferguson Live Catalog")}</Button>
+                    <Button onClick={() => { setCurrentPreset({ name: '', description: '', baseCost: 0, avgLabor: 0, category: 'Other' }); setIsModalOpen(true); }} className="flex items-center gap-2 shadow-lg"><Plus size={18}/> {t("Custom Task")}</Button>
                 </div>
             </header>
 
@@ -250,20 +252,20 @@ const EstimatorSettings: React.FC = () => {
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                             <input 
                                 className="pl-12 w-full h-12 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none font-medium" 
-                                placeholder="Search by task name, category, or part..." 
+                                placeholder={t("Search by task name, category, or part...")} 
                                 value={searchTerm} 
                                 onChange={(e) => setSearchTerm(e.target.value)} 
                             />
                         </div>
 
-                        <Table headers={['Vertical', 'Task Details', 'Retail Estimate', 'Actions']}>
+                        <Table headers={[t('Vertical'), t('Task Details'), t('Retail Estimate'), t('Actions')]}>
                             {filteredPresets.map((preset: ProposalPreset) => {
                                 const retail = ((preset.baseCost * 2) + (preset.avgLabor * laborRate)) * multiplier;
                                 return (
                                     <tr key={preset.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors group">
                                         <td className="px-6 py-4">
                                             <span className="text-[10px] font-black uppercase bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 px-2 py-1 rounded-lg border border-primary-100 dark:border-primary-800">
-                                                {preset.category || 'Other'}
+                                                {preset.category ? t(preset.category) : t('Other')}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
@@ -274,8 +276,8 @@ const EstimatorSettings: React.FC = () => {
                                             ${retail.toFixed(2)}
                                         </td>
                                         <td className="px-6 py-4 flex gap-2">
-                                            <button aria-label="Edit Preset" title="Edit Preset" onClick={() => {setCurrentPreset(preset); setIsModalOpen(true);}} className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"><Plus size={16}/></button>
-                                            <button aria-label="Delete Preset" title="Delete Preset" onClick={() => handleDelete(preset.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                                            <button aria-label={t("Edit Preset")} title={t("Edit Preset")} onClick={() => {setCurrentPreset(preset); setIsModalOpen(true);}} className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"><Plus size={16}/></button>
+                                            <button aria-label={t("Delete Preset")} title={t("Delete Preset")} onClick={() => handleDelete(preset.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={16}/></button>
                                         </td>
                                     </tr>
                                 );
@@ -284,8 +286,8 @@ const EstimatorSettings: React.FC = () => {
                         {filteredPresets.length === 0 && (
                             <div className="text-center py-20 bg-slate-50 dark:bg-slate-800/50 rounded-xl m-4 border-2 border-dashed border-slate-200">
                                 <Book className="mx-auto text-slate-300 mb-4" size={48} />
-                                <p className="text-slate-500 font-bold">Your Pricebook is empty.</p>
-                                <p className="text-xs text-slate-400">Use the library tools on the right to populate it instantly.</p>
+                                <p className="text-slate-500 font-bold">{t("Your Pricebook is empty.")}</p>
+                                <p className="text-xs text-slate-400">{t("Use the library tools on the right to populate it instantly.")}</p>
                             </div>
                         )}
                     </Card>
@@ -295,9 +297,9 @@ const EstimatorSettings: React.FC = () => {
                     <Card className="border-t-4 border-indigo-600 shadow-xl">
                         <div className="flex items-center gap-2 mb-6">
                             <Sparkles className="text-indigo-600" />
-                            <h3 className="font-black uppercase tracking-widest text-sm">Pricebook Library</h3>
+                            <h3 className="font-black uppercase tracking-widest text-sm">{t("Pricebook Library")}</h3>
                         </div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase mb-4">Master Vertical Population</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase mb-4">{t("Master Vertical Population")}</p>
                         <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
                             {Object.keys(PRICE_BOOKS).filter(k => k !== 'Other').map(v => (
                                 <button 
@@ -308,9 +310,9 @@ const EstimatorSettings: React.FC = () => {
                                 >
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg">{getIcon(v)}</div>
-                                        <span className="font-bold text-sm">{v} Master</span>
+                                        <span className="font-bold text-sm">{t(`${v} Master`)}</span>
                                     </div>
-                                    <span className="text-[10px] font-black text-indigo-500 uppercase group-hover:translate-x-1 transition-transform">Import</span>
+                                    <span className="text-[10px] font-black text-indigo-500 uppercase group-hover:translate-x-1 transition-transform">{t("Import")}</span>
                                 </button>
                             ))}
                         </div>
@@ -319,57 +321,57 @@ const EstimatorSettings: React.FC = () => {
                     <Card className="border-t-4 border-primary-600 shadow-xl">
                         <div className="flex items-center gap-2 mb-6">
                             <TrendingUp className="text-primary-600" />
-                            <h3 className="font-black uppercase tracking-widest text-sm">Financial Rules</h3>
+                            <h3 className="font-black uppercase tracking-widest text-sm">{t("Financial Rules")}</h3>
                         </div>
                         <div className="space-y-4">
-                            <Input type="number" step="0.01" label="Market Multiplier" value={multiplier} onChange={(e) => setMultiplier(parseFloat(e.target.value) || 1.0)} placeholder="1.0" />
-                            <Input type="number" label="Labor Rate ($/hr)" value={laborRate} onChange={(e) => setLaborRate(parseInt(e.target.value) || 120)} placeholder="120" />
-                            <Input type="number" label="Default Markup %" value={markupPct} onChange={(e) => setMarkupPct(parseInt(e.target.value) || 50)} placeholder="50" />
+                            <Input type="number" step="0.01" label={t("Market Multiplier")} value={multiplier} onChange={(e) => setMultiplier(parseFloat(e.target.value) || 1.0)} placeholder="1.0" />
+                            <Input type="number" label={t("Labor Rate ($/hr)")} value={laborRate} onChange={(e) => setLaborRate(parseInt(e.target.value) || 120)} placeholder="120" />
+                            <Input type="number" label={t("Default Markup %")} value={markupPct} onChange={(e) => setMarkupPct(parseInt(e.target.value) || 50)} placeholder="50" />
                             <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 text-[10px] text-blue-700 dark:text-blue-300 font-medium italic">
-                                Note: These rules define how "Retail Price" is estimated in the table and how the AI Generator calculates proposals.
+                                {t("Note: These rules define how \"Retail Price\" is estimated in the table and how the AI Generator calculates proposals.")}
                             </div>
                         </div>
                     </Card>
                 </div>
             </div>
 
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentPreset.id ? "Edit Pricebook Entry" : "Create New Flat Rate Task"}>
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentPreset.id ? t("Edit Pricebook Entry") : t("Create New Flat Rate Task")}>
                 <form onSubmit={handleSave} className="space-y-4">
-                    <Select label="Category" value={currentPreset.category ?? 'Other'} onChange={(e) => setCurrentPreset({...currentPreset, category: e.target.value as any})}>
-                        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    <Select label={t("Category")} value={currentPreset.category ?? 'Other'} onChange={(e) => setCurrentPreset({...currentPreset, category: e.target.value as any})}>
+                        {CATEGORIES.map(c => <option key={c} value={c}>{t(c)}</option>)}
                     </Select>
-                    <Input label="Task Name" value={currentPreset.name || ''} onChange={(e) => setCurrentPreset({...currentPreset, name: e.target.value})} required placeholder="e.g. Capacitor Replacement" />
-                    <Textarea label="Public Description" value={currentPreset.description || ''} onChange={(e: any) => setCurrentPreset({...currentPreset, description: e.target.value})} placeholder="What the customer sees on the proposal..." />
+                    <Input label={t("Task Name")} value={currentPreset.name || ''} onChange={(e) => setCurrentPreset({...currentPreset, name: e.target.value})} required placeholder={t("e.g. Capacitor Replacement")} />
+                    <Textarea label={t("Public Description")} value={currentPreset.description || ''} onChange={(e: any) => setCurrentPreset({...currentPreset, description: e.target.value})} placeholder={t("What the customer sees on the proposal...")} />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input label="Internal Cost (Parts)" type="number" step="0.01" value={currentPreset.baseCost || 0} onChange={(e) => setCurrentPreset({...currentPreset, baseCost: Number(e.target.value)})} />
-                        <Input label="Labor Estimate (Hrs)" type="number" step="0.1" value={currentPreset.avgLabor || 0} onChange={(e) => setCurrentPreset({...currentPreset, avgLabor: Number(e.target.value)})} />
+                        <Input label={t("Internal Cost (Parts)")} type="number" step="0.01" value={currentPreset.baseCost || 0} onChange={(e) => setCurrentPreset({...currentPreset, baseCost: Number(e.target.value)})} />
+                        <Input label={t("Labor Estimate (Hrs)")} type="number" step="0.1" value={currentPreset.avgLabor || 0} onChange={(e) => setCurrentPreset({...currentPreset, avgLabor: Number(e.target.value)})} />
                     </div>
                     <div className="pt-4 border-t border-slate-100 dark:border-slate-700 flex flex-col items-center">
-                        <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Retail Calculation Preview</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase mb-2">{t("Retail Calculation Preview")}</p>
                         <div className="text-2xl font-black text-emerald-600">
                             ${(((Number(currentPreset.baseCost) * 2) + (Number(currentPreset.avgLabor) * laborRate)) * multiplier).toFixed(2)}
                         </div>
                     </div>
-                    <Button type="submit" className="w-full h-12 shadow-lg shadow-primary-500/20">Save to Pricebook</Button>
+                    <Button type="submit" className="w-full h-12 shadow-lg shadow-primary-500/20">{t("Save to Pricebook")}</Button>
                 </form>
             </Modal>
 
             {/* Ferguson API Modal */}
-            <Modal isOpen={isFergusonModalOpen} onClose={() => setIsFergusonModalOpen(false)} title="Live Ferguson Parts Catalog">
+            <Modal isOpen={isFergusonModalOpen} onClose={() => setIsFergusonModalOpen(false)} title={t("Live Ferguson Parts Catalog")}>
                 <form onSubmit={handleSearchFerguson} className="space-y-4">
                     <div className="p-3 bg-sky-50 dark:bg-sky-900/20 text-sky-800 dark:text-sky-300 rounded text-xs font-semibold">
-                        Query live corporate pricing & availability. Modify the API endpoint below exactly as it is written in your Ferguson Developer Portal.
+                        {t("Query live corporate pricing & availability. Modify the API endpoint below exactly as it is written in your Ferguson Developer Portal.")}
                     </div>
-                    <Input label="Ferguson API Endpoint" value={fergusonEndpoint} onChange={e => setFergusonEndpoint(e.target.value)} placeholder="e.g. pricing-availability/v1/products" />
-                    <Input label="Search Keyword (Optional)" value={fergusonQuery} onChange={e => setFergusonQuery(e.target.value)} placeholder="e.g. Water Heater or SKU" />
+                    <Input label={t("Ferguson API Endpoint")} value={fergusonEndpoint} onChange={e => setFergusonEndpoint(e.target.value)} placeholder="e.g. pricing-availability/v1/products" />
+                    <Input label={t("Search Keyword (Optional)")} value={fergusonQuery} onChange={e => setFergusonQuery(e.target.value)} placeholder="e.g. Water Heater or SKU" />
                     <Button type="submit" className="w-full bg-sky-600 hover:bg-sky-700 shadow-lg shadow-sky-600/30 text-white border-0" disabled={isFergusonLoading}>
-                        {isFergusonLoading ? 'Querying Ferguson Master Server...' : 'Live Search'}
+                        {isFergusonLoading ? t('Querying Ferguson Master Server...') : t('Live Search')}
                     </Button>
                 </form>
 
                 {fergusonResults && (
                     <div className="mt-4 p-4 border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 max-h-96 overflow-y-auto custom-scrollbar">
-                        <h4 className="font-bold text-sm mb-2 text-slate-500 uppercase tracking-wider">Raw Server Response</h4>
+                        <h4 className="font-bold text-sm mb-2 text-slate-500 uppercase tracking-wider">{t("Raw Server Response")}</h4>
                         {fergusonResults.error ? (
                             <div className="text-red-500 font-bold">{fergusonResults.error}</div>
                         ) : (
@@ -379,7 +381,7 @@ const EstimatorSettings: React.FC = () => {
                         )}
                         {!fergusonResults.error && (
                             <div className="mt-6 border-t border-slate-200 dark:border-slate-700 pt-4 flex flex-col items-center">
-                                <p className="text-xs font-medium text-slate-500 italic mb-4 text-center">Once you can see your live material data returning in the box above, you can map the specific Fields (like "Price" and "Part Name") to spawn Instantly as Custom Tasks in your Pricebook!</p>
+                                <p className="text-xs font-medium text-slate-500 italic mb-4 text-center">{t("Once you can see your live material data returning in the box above, you can map the specific Fields (like \"Price\" and \"Part Name\") to spawn Instantly as Custom Tasks in your Pricebook!")}</p>
                             </div>
                         )}
                     </div>

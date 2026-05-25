@@ -9,6 +9,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useAppContext } from '../../../context/AppContext';
 import { db } from '../../../lib/firebase';
 import { toast } from 'react-toastify';
+import { useLanguage } from 'context/LanguageContext';
 
 interface Message {
     role: 'user' | 'assistant';
@@ -23,8 +24,9 @@ interface LiveAssistModalProps {
 }
 
 const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobContext, job }) => {
+    const { t } = useLanguage();
     const [messages, setMessages] = useState<Message[]>([
-        { role: 'assistant', content: 'Hi, I\'m your assistant. How can I help?' }
+        { role: 'assistant', content: "Hi, I'm your assistant. How can I help?" }
     ]);
     const [input, setInput] = useState('');
     const [isThinking, setIsThinking] = useState(false);
@@ -63,11 +65,11 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                     notes: [...existingNotes, newNote],
                     updatedAt: new Date().toISOString()
                 });
-                toast.success("Voice transcript saved to job notes!");
+                toast.success(t("Voice transcript saved to job notes!"));
             }
         } catch (e) {
             console.error("Failed to save transcript:", e);
-            toast.error("Failed to save transcript to job.");
+            toast.error(t("Failed to save transcript to job."));
         }
     };
 
@@ -153,7 +155,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
 
         } catch (error) {
             console.error("AI Assistant Error:", error);
-            const errMsg = "Connection lost. Please try again.";
+            const errMsg = t("Connection lost. Please try again.");
             setMessages(prev => [...prev, { role: 'assistant', content: errMsg }]);
             speakText(errMsg);
         } finally {
@@ -170,7 +172,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
         }
 
         if (!('webkitSpeechRecognition' in window)) {
-            showToast.warn("Voice recognition is not supported in this browser.");
+            showToast.warn(t("Voice recognition is not supported in this browser."));
             return;
         }
 
@@ -228,7 +230,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
     }, [state.currentOrganization?.id, job, technicianName]);
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Live AI Supervisor" size="lg">
+        <Modal isOpen={isOpen} onClose={onClose} title={t("Live AI Supervisor")} size="lg">
             <div className="flex flex-col h-[75vh]">
                 {/* Status Bar */}
                 <div className="bg-indigo-600 p-4 rounded-xl mb-4 text-white shadow-lg flex items-center gap-4">
@@ -236,16 +238,16 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                         <Bot size={24}/>
                     </div>
                     <div className="flex-1">
-                        <p className="text-[10px] font-black uppercase opacity-70">Voice Engine Status</p>
+                        <p className="text-[10px] font-black uppercase opacity-70">{t("Voice Engine Status")}</p>
                         <p className="text-sm font-bold truncate">
-                            {isVoiceActive ? 'Listening for your question...' : isSpeaking ? 'AI Supervisor is speaking...' : 'Voice Mode Ready'}
+                            {isVoiceActive ? t('Listening for your question...') : isSpeaking ? t('AI Supervisor is speaking...') : t('Voice Mode Ready')}
                         </p>
                     </div>
                     <div className="flex gap-2">
                         {job && messages.length > 1 && (
                             <button 
                                 onClick={saveTranscriptToJob}
-                                title="Save Transcript to Job Notes"
+                                title={t("Save Transcript to Job Notes")}
                                 className="w-12 h-12 rounded-full flex items-center justify-center transition-all bg-white/20 hover:bg-white/30"
                             >
                                 <Save size={20} />
@@ -267,7 +269,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                 {/* Job Context Bubble */}
                 <div className="bg-slate-100 dark:bg-slate-800/50 p-3 rounded-lg mb-4 flex items-center gap-2 border border-slate-200 dark:border-slate-700">
                     <Zap size={14} className="text-indigo-500" />
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Context: {context}</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">{t("Context")}: {context}</span>
                 </div>
 
                 {/* Messages List */}
@@ -279,10 +281,10 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                                     ? 'bg-primary-600 text-white rounded-tr-none' 
                                     : 'bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-tl-none text-slate-800 dark:text-slate-200'
                             }`}>
-                                {msg.content}
+                                {t(msg.content)}
                                 {msg.role === 'assistant' && (
                                     <button 
-                                        title="Speak Answer"
+                                        title={t("Speak Answer")}
                                         onClick={() => speakText(msg.content)}
                                         className="block mt-2 text-indigo-500 hover:text-indigo-600 transition-colors"
                                     >
@@ -296,7 +298,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                         <div className="flex justify-start">
                             <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-2xl rounded-tl-none flex gap-2 items-center">
                                 <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
-                                <span className="text-xs font-bold text-slate-400">AI Thinking...</span>
+                                <span className="text-xs font-bold text-slate-400">{t("AI Thinking...")}</span>
                             </div>
                         </div>
                     )}
@@ -306,7 +308,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                 <div className="flex gap-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700">
                     <input 
                         className="flex-1 bg-transparent border-none focus:ring-0 text-sm font-medium placeholder-slate-400 px-3"
-                        placeholder="Type a technical question or tap mic..."
+                        placeholder={t("Type a technical question or tap mic...")}
                         value={input}
                         onChange={e => setInput(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && handleSend()}
@@ -321,7 +323,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                 </div>
                 
                 <p className="text-[10px] text-center mt-3 text-slate-400 font-bold uppercase tracking-tighter">
-                    Powered by TekTrakker Master Tech Engine
+                    {t("Powered by TekTrakker Master Tech Engine")}
                 </p>
             </div>
         </Modal>

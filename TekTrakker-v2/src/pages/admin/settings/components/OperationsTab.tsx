@@ -58,6 +58,8 @@ interface OperationsTabProps {
     setProposalPrefix: (val: string) => void;
     proposalStartNumber: string;
     setProposalStartNumber: (val: string) => void;
+    allowPartialPayments: boolean;
+    setAllowPartialPayments: (val: boolean) => void;
 }
 
 const OperationsTab: React.FC<OperationsTabProps> = ({
@@ -85,7 +87,8 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
     invoicePrefix, setInvoicePrefix,
     invoiceStartNumber, setInvoiceStartNumber,
     proposalPrefix, setProposalPrefix,
-    proposalStartNumber, setProposalStartNumber
+    proposalStartNumber, setProposalStartNumber,
+    allowPartialPayments, setAllowPartialPayments
 }) => {
     return (
         <div className="space-y-6">
@@ -178,6 +181,28 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
                                 />
                             </div>
                         )}
+                    </div>
+                </div>
+            </Card>
+
+            <Card>
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-indigo-600">
+                    <CreditCard size={20} /> Invoice Payment Options
+                </h3>
+                <p className="text-xs text-slate-500 mb-6 -mt-4 leading-relaxed">
+                    Configure customer-facing payment options for outstanding invoices.
+                </p>
+                <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <h4 className="font-bold text-slate-800 dark:text-slate-200">Allow Partial Payments</h4>
+                            <p className="text-xs text-slate-400">Enable customers to pay invoices in multiple increments rather than forcing the full balance.</p>
+                        </div>
+                        <Toggle 
+                            label="" 
+                            enabled={allowPartialPayments} 
+                            onChange={setAllowPartialPayments} 
+                        />
                     </div>
                 </div>
             </Card>

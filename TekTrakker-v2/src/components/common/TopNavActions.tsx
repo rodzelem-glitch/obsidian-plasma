@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import type { User } from 'types';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
-import { QrCode, X, User as UserIcon, PhoneCall } from 'lucide-react';
+import { QrCode, X, User as UserIcon, PhoneCall, Languages, ChevronDown } from 'lucide-react';
 import EmployeeProfileModal from '../modals/EmployeeProfileModal';
 import { db } from 'lib/firebase';
 import VirtualWorker from '../ui/VirtualWorker';
 import { LiveSupportFloatingButton } from '../common/LiveSupportComponent';
 import Modal from '../ui/Modal';
+import { useLanguage } from 'context/LanguageContext';
 
 interface TopNavActionsProps {
     user: User;
@@ -18,6 +19,8 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const { state, dispatch } = useAppContext();
+    const { language, setLanguage, t } = useLanguage();
+    const [showLangMenu, setShowLangMenu] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -29,7 +32,20 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
         setShowNotifications(false);
         setIsScannerOpen(false);
         setIsProfileModalOpen(false);
+        setShowLangMenu(false);
     }, [location.pathname]);
+
+    useEffect(() => {
+        if (!showLangMenu) return;
+        const handleOutsideClick = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (!target.closest('.lang-selector-container')) {
+                setShowLangMenu(false);
+            }
+        };
+        document.addEventListener('click', handleOutsideClick);
+        return () => document.removeEventListener('click', handleOutsideClick);
+    }, [showLangMenu]);
 
     const myNotifications = state.notifications.filter(n => 
         n.userId === user.id || 
@@ -168,15 +184,70 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
                     const newVisible = !isPhoneVisible;
                     setIsPhoneVisible(newVisible);
                     localStorage.setItem('rc-widget-hidden', (!newVisible).toString());
-                }} className={`hidden md:block p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${!isPhoneVisible ? 'text-gray-400' : 'text-orange-500 bg-orange-50 dark:bg-orange-500/10'}`} title="Toggle Phone Widget"><PhoneCall className="w-5 h-5 sm:w-6 sm:h-6" /></button>
-                <button onClick={() => setIsScannerOpen(true)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="Scan QR/Barcode"><QrCode className="w-5 h-5 sm:w-6 sm:h-6" /></button>
-                <button onClick={() => setIsProfileModalOpen(true)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="My Profile"><UserIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
-                <button onClick={toggleTheme} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="Toggle Theme">
+                }} className={`hidden md:block p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${!isPhoneVisible ? 'text-gray-400' : 'text-orange-500 bg-orange-50 dark:bg-orange-500/10'}`} title={t("Toggle Phone Widget")}><PhoneCall className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+                
+                {/* Language Selector Dropdown */}
+                <div className="relative lang-selector-container">
+                    <button
+                        onClick={() => setShowLangMenu(!showLangMenu)}
+                        className={`flex items-center gap-1.5 p-1.5 sm:p-2 rounded-full sm:rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-all font-medium text-xs border border-transparent hover:border-slate-200 dark:hover:border-slate-600 cursor-pointer ${
+                            showLangMenu ? 'bg-gray-100 dark:bg-gray-700 border-slate-200 dark:border-slate-600' : ''
+                        }`}
+                        title={t("Select Language")}
+                    >
+                        <Languages className="w-5 h-5 sm:w-5 sm:h-5" />
+                        <span className="hidden sm:inline uppercase font-bold tracking-wider">{language}</span>
+                        <ChevronDown className={`w-3 h-3 opacity-60 hidden sm:inline transition-transform duration-200 ${showLangMenu ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {showLangMenu && (
+                        <div className="absolute right-0 mt-2 w-40 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 shadow-xl py-1 z-[110] animate-fadeIn">
+                            <button
+                                onClick={() => {
+                                    setLanguage('en');
+                                    setShowLangMenu(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-4 py-2 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left ${
+                                    language === 'en'
+                                        ? 'text-primary-600 dark:text-primary-400 bg-primary-50/30 dark:bg-primary-900/10'
+                                        : 'text-slate-700 dark:text-slate-300'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <span className="text-base select-none">🇺🇸</span>
+                                    {t("English")}
+                                </span>
+                                {language === 'en' && <span className="h-1.5 w-1.5 rounded-full bg-primary-500 animate-pulse"></span>}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setLanguage('es');
+                                    setShowLangMenu(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-4 py-2 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left ${
+                                    language === 'es'
+                                        ? 'text-primary-600 dark:text-primary-400 bg-primary-50/30 dark:bg-primary-900/10'
+                                        : 'text-slate-700 dark:text-slate-300'
+                                }`}
+                            >
+                                <span className="flex items-center gap-2">
+                                    <span className="text-base select-none">🇪🇸</span>
+                                    {t("Spanish")}
+                                </span>
+                                {language === 'es' && <span className="h-1.5 w-1.5 rounded-full bg-primary-500 animate-pulse"></span>}
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <button onClick={() => setIsScannerOpen(true)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title={t("Scan QR/Barcode")}><QrCode className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+                <button onClick={() => setIsProfileModalOpen(true)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title={t("My Profile")}><UserIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
+                <button onClick={toggleTheme} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title={t("Toggle Theme")}>
                     {state.theme === 'dark' ? <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" /></svg> : <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" /></svg>}
                 </button>
 
                 <div className="relative">
-                    <button onClick={() => setShowNotifications(!showNotifications)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 relative transition-colors" title="Notifications">
+                    <button onClick={() => setShowNotifications(!showNotifications)} className="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 relative transition-colors" title={t("Notifications")}>
                         <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" /></svg>
                         {unreadCount > 0 && <span className="absolute top-0 right-0 h-4 w-4 rounded-full bg-red-500 text-[10px] text-white flex items-center justify-center font-bold">{unreadCount}</span>}
                     </button>

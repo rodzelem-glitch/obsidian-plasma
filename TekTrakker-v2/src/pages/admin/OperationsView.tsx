@@ -6,11 +6,13 @@ import JobScheduling from 'pages/admin/JobScheduling';
 import Button from 'components/ui/Button';
 import JobAppointmentModal from 'components/modals/JobAppointmentModal';
 import { Calendar, List } from 'lucide-react';
+import { useLanguage } from 'context/LanguageContext';
 
 const OperationsView: React.FC = () => {
     const [searchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState<'dispatch' | 'jobs'>('dispatch');
     const [isBookingOpen, setIsBookingOpen] = useState(false);
+    const { t } = useLanguage();
 
     useEffect(() => {
         const tab = searchParams.get('tab');
@@ -26,10 +28,10 @@ const OperationsView: React.FC = () => {
             <JobAppointmentModal isOpen={isBookingOpen} onClose={() => setIsBookingOpen(false)} />
             
             <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Operations</h2>
+                <h2 className="text-3xl font-bold text-gray-900 dark:text-white">{t('Operations')}</h2>
                 <div className="flex flex-wrap gap-3 w-full md:w-auto">
                     <Button onClick={() => setIsBookingOpen(true)} className="flex-1 md:flex-none shadow-md justify-center">
-                        + Book
+                        {t('+ Book')}
                     </Button>
                     <div className="flex bg-gray-200 dark:bg-gray-700 p-1 rounded-lg flex-1 md:flex-none overflow-x-auto whitespace-nowrap scrollbar-hide">
                         <button
@@ -40,7 +42,7 @@ const OperationsView: React.FC = () => {
                                     : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
                             }`}
                         >
-                            <Calendar size={16}/> <span className="hidden sm:inline">Dispatch Board</span>
+                            <Calendar size={16}/> <span className="hidden sm:inline">{t('Dispatch Board')}</span>
                         </button>
                         <button
                             onClick={() => setActiveTab('jobs')}
@@ -50,7 +52,7 @@ const OperationsView: React.FC = () => {
                                     : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
                             }`}
                         >
-                            <List size={16}/> <span className="hidden sm:inline">Job List</span>
+                            <List size={16}/> <span className="hidden sm:inline">{t('Job List')}</span>
                         </button>
                     </div>
                 </div>

@@ -19,6 +19,7 @@ import { sendEmail } from 'lib/notificationService';
 import showToast from 'lib/toast';
 import EquipmentHierarchy from 'pages/admin/projects/components/tabs/equipment/EquipmentHierarchy';
 import WarrantySection from 'pages/customer/components/WarrantySection';
+import { useLanguage } from 'context/LanguageContext';
 
 interface CustomerMasterModalProps {
     isOpen: boolean;
@@ -28,6 +29,7 @@ interface CustomerMasterModalProps {
 
 const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClose, customerId }) => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const customer = state.customers.find(c => c.id === customerId);
     
 
@@ -848,7 +850,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                     : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
                             }`}
                         >
-                            <tab.icon size={16} /> {tab.label}
+                            <tab.icon size={16} /> {t(tab.label)}
                         </button>
                     ))}
                 </div>

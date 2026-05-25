@@ -67,16 +67,6 @@ export const notifyAdmins = async (organizationId: string, payload: Notification
 
         const adminIds = adminsSnapshot.docs.map(doc => doc.id);
         
-        // Ensure Master Admins receive cross-platform notifications
-        const masterAdminsSnapshot = await db.collection('users')
-            .where('role', '==', 'master_admin')
-            .get();
-        
-        masterAdminsSnapshot.docs.forEach(doc => {
-            if (!adminIds.includes(doc.id)) {
-                adminIds.push(doc.id);
-            }
-        });
 
         const BATCH_SIZE = 50;
         for (let i = 0; i < adminIds.length; i += BATCH_SIZE) {

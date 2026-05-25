@@ -8,6 +8,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import WebCameraModal from './WebCameraModal';
 import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
+import { useLanguage } from 'context/LanguageContext';
 
 interface VisualQCModalProps {
     isOpen: boolean;
@@ -18,6 +19,7 @@ interface VisualQCModalProps {
 }
 
 const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComplete, jobId, organizationId }) => {
+    const { t } = useLanguage();
     const [image, setImage] = useState<string | null>(null);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -70,7 +72,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
             const qcRecord = {
                 id: `qc-${Date.now()}`,
                 status: overrideStatus || result?.status,
-                comments: result?.comments || (overrideStatus === 'manual' ? 'Manually overridden by technician.' : ''),
+                comments: result?.comments || (overrideStatus === 'manual' ? t('Manually overridden by technician.') : ''),
                 timestamp: new Date().toISOString(),
                 imageUrl: finalImageUrl
             };
@@ -84,7 +86,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
             onComplete(qcRecord.id);
         } catch (error) {
             console.error("Save QC Error:", error);
-            showToast.warn("Failed to save QC result. Please try again.");
+            showToast.warn(t("Failed to save QC result. Please try again."));
         } finally {
             setIsSaving(false);
         }
@@ -119,7 +121,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
             setResult(JSON.parse(text));
         } catch (error) {
             console.error("AI QC Error:", error);
-            setResult({ status: 'warning', comments: "Visual analysis unavailable. Please review manually." });
+            setResult({ status: 'warning', comments: t("Visual analysis unavailable. Please review manually.") });
         } finally {
             setIsAnalyzing(false);
         }
@@ -132,7 +134,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="AI Visual QC Audit">
+        <Modal isOpen={isOpen} onClose={onClose} title={t("AI Visual QC Audit")}>
             <div className="space-y-6">
                 {!image ? (
                     <div className="space-y-4">
@@ -145,7 +147,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
                                     <Camera size={28}/>
                                 </div>
                                 <div className="text-center">
-                                    <p className="font-black text-slate-700 dark:text-slate-300 text-sm uppercase">Take Photo</p>
+                                    <p className="font-black text-slate-700 dark:text-slate-300 text-sm uppercase">{t("Take Photo")}</p>
                                 </div>
                             </button>
 
@@ -157,15 +159,15 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
                                     <Upload size={28}/>
                                 </div>
                                 <div className="text-center">
-                                    <p className="font-black text-slate-700 dark:text-slate-300 text-sm uppercase">Upload</p>
+                                    <p className="font-black text-slate-700 dark:text-slate-300 text-sm uppercase">{t("Upload")}</p>
                                 </div>
                             </button>
                         </div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-center bg-slate-50 dark:bg-slate-900/50 py-2 rounded-full">
-                            AI will audit for compliance & quality
+                            {t("AI will audit for compliance & quality")}
                         </p>
-                        <label htmlFor="qc-upload" className="sr-only">Upload Quality Photo</label>
-                        <input type="file" id="qc-upload" title="Upload Quality Photo" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
+                        <label htmlFor="qc-upload" className="sr-only">{t("Upload Quality Photo")}</label>
+                        <input type="file" id="qc-upload" title={t("Upload Quality Photo")} ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
                     </div>
                 ) : (
                     <div className="space-y-6 animate-fade-in">
@@ -173,7 +175,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
                             <img src={image} className="w-full h-full object-cover" alt="QC Work" />
                             <button 
                                 onClick={reset}
-                                title="Reset"
+                                title={t("Reset")}
                                 className="absolute top-4 right-4 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 backdrop-blur-md"
                             >
                                 <X size={20}/>
@@ -185,7 +187,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
                                         <div className="w-20 h-20 border-4 border-white/20 border-t-white rounded-full animate-spin" />
                                         <Bot className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" size={24}/>
                                     </div>
-                                    <p className="mt-4 font-black uppercase tracking-[0.2em] text-sm">Analyzing Quality...</p>
+                                    <p className="mt-4 font-black uppercase tracking-[0.2em] text-sm">{t("Analyzing Quality...")}</p>
                                 </div>
                             )}
                         </div>
@@ -195,7 +197,7 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
                                 onClick={runAIQC} 
                                 className="w-full h-16 text-lg font-black bg-indigo-600 shadow-xl shadow-indigo-500/20"
                             >
-                                <Zap size={20} className="mr-2 fill-current"/> Start AI Work Audit
+                                <Zap size={20} className="mr-2 fill-current"/> {t("Start AI Work Audit")}
                             </Button>
                         )}
 
@@ -214,21 +216,21 @@ const VisualQCModal: React.FC<VisualQCModalProps> = ({ isOpen, onClose, onComple
                                         {result.status === 'pass' ? <ShieldCheck size={24}/> : <AlertTriangle size={24}/>}
                                     </div>
                                     <div className="flex-1">
-                                        <h4 className="font-black uppercase tracking-widest text-[10px] mb-1 opacity-60">Audit Result</h4>
-                                        <p className="font-bold text-slate-900 dark:text-white leading-relaxed">{result.comments}</p>
+                                        <h4 className="font-black uppercase tracking-widest text-[10px] mb-1 opacity-60">{t("Audit Result")}</h4>
+                                        <p className="font-bold text-slate-900 dark:text-white leading-relaxed">{t(result.comments)}</p>
                                     </div>
                                 </div>
                                 
                                 <div className="mt-6 flex gap-3">
                                     {result.status === 'pass' ? (
                                         <Button onClick={() => handleSaveResult()} disabled={(isSaving as any)} className="flex-1 bg-emerald-600 font-black uppercase text-xs tracking-widest">
-                                            {isSaving ? 'Saving...' : 'Submit as Passed'}
+                                            {isSaving ? t('Saving...') : t('Submit as Passed')}
                                         </Button>
                                     ) : (
                                         <>
-                                            <Button variant="secondary" onClick={reset} disabled={(isSaving as any)} className="flex-1 font-black uppercase text-xs tracking-widest">Retry Photo</Button>
+                                            <Button variant="secondary" onClick={reset} disabled={(isSaving as any)} className="flex-1 font-black uppercase text-xs tracking-widest">{t("Retry Photo")}</Button>
                                             <Button onClick={() => handleSaveResult('manual')} disabled={(isSaving as any)} variant="secondary" className="flex-1 bg-slate-800 text-white border-none font-black uppercase text-xs tracking-widest">
-                                                {isSaving ? 'Saving...' : 'Manual Override'}
+                                                {isSaving ? t('Saving...') : t('Manual Override')}
                                             </Button>
                                         </>
                                     )}

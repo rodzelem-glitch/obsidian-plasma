@@ -17,6 +17,7 @@ import Modal from '../ui/Modal';
 import { db } from 'lib/firebase';
 import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
+import { useLanguage } from 'context/LanguageContext';
 
 interface AdminSidebarProps {
   user: User;
@@ -30,6 +31,7 @@ interface AdminSidebarProps {
 const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = false, onClose, isCollapsedOverride, onToggleCollapse }) => {
   const { state, dispatch } = useAppContext();
   const { hasFeature } = useFeatureGating();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const isDemo = user.role === 'platform_sales' && state.currentOrganization?.id === 'demo-org-1766848718439';
@@ -169,14 +171,14 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
           {
             isGroup: false,
             path: '/admin/kort-playground',
-            label: 'Kort Sandbox',
+            label: t('Kort Sandbox'),
             icon: WrenchScrewdriverIcon,
             originalLabel: 'Kort Sandbox'
           },
           {
             isGroup: false,
             path: '/admin/settings',
-            label: 'Settings',
+            label: t('Settings'),
             icon: SettingsIcon,
             originalLabel: 'Settings'
           }
@@ -184,7 +186,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
       : orderedPaths.map(path => {
         if (path.startsWith('__group__:')) {
             const originalGroup = path.split('__group__:')[1];
-            return { isGroup: true, originalGroup, label: customLabels[originalGroup] || originalGroup, path };
+            return { isGroup: true, originalGroup, label: customLabels[originalGroup] || t(originalGroup), path };
         } else {
             const item = allItemsRecord[path];
             if (!item) return null;
@@ -196,10 +198,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
             else if (user.role === 'supervisor') roleAllowed = item.roles.includes('supervisor');
             if (!roleAllowed) return null;
 
-            return { isGroup: false, ...item, originalLabel: item.label, label: customLabels[item.path] || item.label, path };
+            return { isGroup: false, ...item, originalLabel: item.label, label: customLabels[item.path] || t(item.label), path };
         }
     }).filter(Boolean) as any[];
-  }, [isKortTester, isUnlocked, customLabels, isPaymentsOnly, hasFeature, user.role, isDemo, orderedPaths, allItemsRecord]);
+  }, [isKortTester, isUnlocked, customLabels, isPaymentsOnly, hasFeature, user.role, isDemo, orderedPaths, allItemsRecord, t]);
 
   const processedItems = useMemo(() => {
     if (isKortTester && isUnlocked) {
@@ -401,13 +403,13 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
             {canSwitchToTech && (
                 <button
                     onClick={() => navigate('/briefing')}
-                    title={isCollapsed ? "Switch to Tech View" : undefined}
+                    title={isCollapsed ? t("Switch to Tech View") : undefined}
                     className={`w-full flex items-center justify-center px-4 py-2 border border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-primary-50 dark:hover:bg-primary-900/20 focus:outline-none transition-colors ${isCollapsed ? 'px-0' : ''}`}
                 >
                     {isCollapsed ? (
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     ) : (
-                        'Switch to Tech View'
+                        t('Switch to Tech View')
                     )}
                 </button>
             )}
@@ -420,7 +422,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
                         window.location.href = newUnlocked ? '/#/admin/dashboard' : '/#/admin/kort-playground';
                         window.location.reload();
                     }}
-                    title={isCollapsed ? (isUnlocked ? "Sandbox View" : "Full Platform Layout") : undefined}
+                    title={isCollapsed ? (isUnlocked ? t("Sandbox View") : t("Full Platform Layout")) : undefined}
                     className={`w-full flex items-center justify-center gap-2 px-4 py-2 border rounded-md shadow-sm text-xs font-semibold transition-all duration-200 ${
                         isUnlocked 
                         ? 'border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20 hover:bg-amber-100 dark:hover:bg-amber-950/40' 
@@ -430,7 +432,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
                     {isCollapsed ? (
                         isUnlocked ? <WrenchScrewdriverIcon className="h-4 w-4 text-amber-500" /> : <DashboardIcon className="h-4 w-4 text-indigo-500" />
                     ) : (
-                        isUnlocked ? "Return to Sandbox View" : "See Real Platform Layout"
+                        isUnlocked ? t("Return to Sandbox View") : t("See Real Platform Layout")
                     )}
                 </button>
             )}
@@ -451,13 +453,13 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
                     onClick={onLogout}
                     className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none transition-colors"
                 >
-                    Log Out
+                    {t('Log Out')}
                 </button>
             )}
             {isCollapsed && (
                 <button
                     onClick={onLogout}
-                    title="Log Out"
+                    title={t("Log Out")}
                     className="w-full flex items-center justify-center py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none transition-colors"
                 >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>

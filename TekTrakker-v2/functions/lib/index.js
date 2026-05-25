@@ -43,6 +43,7 @@ exports.checkNewHireReporting = exports.checkApiKeyExpirations = exports.cleanup
 const functions = __importStar(require("firebase-functions/v1"));
 const twitter_api_v2_1 = require("twitter-api-v2");
 const admin = __importStar(require("firebase-admin"));
+const nodemailer = __importStar(require("nodemailer"));
 const billing_budgets_1 = require("@google-cloud/billing-budgets");
 const monitoring_1 = require("@google-cloud/monitoring");
 const billing_1 = require("@google-cloud/billing");
@@ -89,10 +90,10 @@ exports.generateCommissionOnSubscriptionPayment = functions.firestore
             return null;
         }
         const settingsDocs = await Promise.all([
-            db.collection('platformSettings').limit(1).get(),
+            db.collection('platformSettings').doc('global').get(),
             db.collection('settings').doc('commission_rules').get()
         ]);
-        const platformSettings = settingsDocs[0].docs[0]?.data();
+        const platformSettings = settingsDocs[0].exists ? settingsDocs[0].data() : undefined;
         const rules = settingsDocs[1].exists ? settingsDocs[1].data() : DEFAULT_COMMISSION_RULES;
         if (!platformSettings) {
             functions.logger.error("Platform settings not found. Cannot calculate commission.");
@@ -1317,26 +1318,14 @@ exports.manageHandshake = functions.https.onCall(async (data, context) => {
 exports.processMailQueue = functions.firestore.document('mail_queue/{docId}').onCreate(async (snap) => {
     const payload = snap.data();
     const orgId = payload.organizationId;
+    let smtpConfig = null;
     try {
         if (orgId && orgId !== 'unaffiliated') {
             const secretDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
             if (secretDoc.exists) {
                 const secrets = secretDoc.data() || {};
-                const smtp = secrets.smtpConfig;
-                if (smtp && smtp.host && smtp.user && smtp.pass) {
-                    payload.transport = {
-                        host: smtp.host,
-                        port: smtp.port || 587,
-                        auth: {
-                            user: smtp.user,
-                            pass: smtp.pass
-                        }
-                    };
-                    if (smtp.fromName && smtp.fromEmail) {
-                        if (!payload.message)
-                            payload.message = {};
-                        payload.message.from = `"${smtp.fromName}" <${smtp.fromEmail}>`;
-                    }
+                if (secrets.smtpConfig && secrets.smtpConfig.host && secrets.smtpConfig.user && secrets.smtpConfig.pass) {
+                    smtpConfig = secrets.smtpConfig;
                 }
             }
             else {
@@ -1344,18 +1333,8 @@ exports.processMailQueue = functions.firestore.document('mail_queue/{docId}').on
                 const orgDoc = await db.collection('organizations').doc(orgId).get();
                 if (orgDoc.exists) {
                     const orgData = orgDoc.data() || {};
-                    const smtp = orgData.smtpConfig;
-                    if (smtp && smtp.host && smtp.user && smtp.pass) {
-                        payload.transport = {
-                            host: smtp.host,
-                            port: smtp.port || 587,
-                            auth: { user: smtp.user, pass: smtp.pass }
-                        };
-                        if (smtp.fromName && smtp.fromEmail) {
-                            if (!payload.message)
-                                payload.message = {};
-                            payload.message.from = `"${smtp.fromName}" <${smtp.fromEmail}>`;
-                        }
+                    if (orgData.smtpConfig && orgData.smtpConfig.host && orgData.smtpConfig.user && orgData.smtpConfig.pass) {
+                        smtpConfig = orgData.smtpConfig;
                     }
                 }
             }
@@ -1377,8 +1356,65 @@ exports.processMailQueue = functions.firestore.document('mail_queue/{docId}').on
         if (payload.message && payload.message.html) {
             payload.message.html += signature;
         }
-        // Forward the securely populated payload to the final 'mail' collection for delivery
-        await db.collection('mail').add(payload);
+        if (payload.message && payload.message.html && !payload.message.text) {
+            payload.message.text = payload.message.html.replace(/<[^>]*>?/gm, '');
+        }
+        let sentViaCustomSmtp = false;
+        // If organization has their SMTP set up, try sending directly via nodemailer
+        if (smtpConfig) {
+            try {
+                functions.logger.info(`Attempting direct custom SMTP send for org ${orgId}...`);
+                const transporter = nodemailer.createTransport({
+                    host: smtpConfig.host,
+                    port: smtpConfig.port || 587,
+                    secure: smtpConfig.port === 465, // True for 465, false for others
+                    auth: {
+                        user: smtpConfig.user,
+                        pass: smtpConfig.pass
+                    }
+                });
+                const fromHeader = smtpConfig.fromName && smtpConfig.fromEmail
+                    ? `"${smtpConfig.fromName}" <${smtpConfig.fromEmail}>`
+                    : payload.message?.from || `"${smtpConfig.user}" <${smtpConfig.user}>`;
+                const mailOptions = {
+                    from: fromHeader,
+                    to: payload.to,
+                    subject: payload.message?.subject || 'Notification',
+                    html: payload.message?.html,
+                    text: payload.message?.text,
+                    replyTo: payload.message?.replyTo
+                };
+                const info = await transporter.sendMail(mailOptions);
+                functions.logger.info(`Successfully sent email via custom SMTP for org ${orgId}:`, info.messageId);
+                // Write the log to the 'mail' collection with a completed/success delivery state so it is kept in history but not sent again by the trigger-email extension
+                await db.collection('mail').add({
+                    ...payload,
+                    delivery: {
+                        state: "SUCCESS",
+                        info: {
+                            messageId: info.messageId,
+                            response: info.response
+                        },
+                        attempts: 1,
+                        endTime: admin.firestore.Timestamp.now(),
+                        startTime: admin.firestore.Timestamp.now()
+                    }
+                });
+                sentViaCustomSmtp = true;
+            }
+            catch (smtpError) {
+                functions.logger.error(`Failed to send via custom SMTP for org ${orgId}. Falling back to platform email.`, smtpError);
+                // Reset/clean payload so that we do not put SMTP config in final public mail document
+                if (payload.transport)
+                    delete payload.transport;
+            }
+        }
+        // Fallback: If custom SMTP failed or was never configured, send via platform default SMTP
+        if (!sentViaCustomSmtp) {
+            functions.logger.info(`Sending email via default platform SMTP trigger...`);
+            // Forward payload to the final 'mail' collection for delivery via the Firebase extension trigger
+            await db.collection('mail').add(payload);
+        }
         // Clean up the queue
         await snap.ref.delete();
     }

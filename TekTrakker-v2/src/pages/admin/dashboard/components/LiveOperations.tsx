@@ -5,9 +5,11 @@ import { useNavigate } from 'react-router-dom';
 import { Clock, MapPin, User, ArrowRight } from 'lucide-react';
 import Card from '../../../../components/ui/Card';
 import { formatAddress } from '../../../../lib/utils';
+import { useAppContext } from '../../../../context/AppContext';
 
 const LiveOperations: React.FC<{ liveOps: Job[], hideLink?: boolean }> = ({ liveOps, hideLink }) => {
     const navigate = useNavigate();
+    const { state } = useAppContext();
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -48,7 +50,13 @@ const LiveOperations: React.FC<{ liveOps: Job[], hideLink?: boolean }> = ({ live
                         <div className="mt-2 text-xs space-y-1.5">
                              <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
                                 <User size={14} className="text-gray-400 flex-shrink-0" />
-                                <span>{job.assignedTechnicianName || 'Unassigned'}</span>
+                                <span>{(() => {
+                                    if (job.assignedTechnicianId) {
+                                        const tech = state.users?.find((u: any) => u.id === job.assignedTechnicianId);
+                                        if (tech) return `${tech.firstName} ${tech.lastName}`;
+                                    }
+                                    return job.assignedTechnicianName || 'Unassigned';
+                                })()}</span>
                             </div>
                             <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
                                 <MapPin size={14} className="text-gray-400 flex-shrink-0" />

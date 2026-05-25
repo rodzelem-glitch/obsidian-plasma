@@ -3,6 +3,7 @@ import Card from '../../../../../components/ui/Card';
 import Button from '../../../../../components/ui/Button';
 import type { Project, ProjectTask, User, ProjectPhase, Deliverable, WorkPackage, ProjectSubtask } from '../../../../../types';
 import { ChevronDown, ChevronRight, CheckCircle, Circle, Clock, AlertOctagon, Eye } from 'lucide-react';
+import { useLanguage } from 'context/LanguageContext';
 
 interface TasksTabProps {
     project: Project;
@@ -18,6 +19,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
     const [expandedDeliverables, setExpandedDeliverables] = useState<Record<string, boolean>>({});
     const [expandedWorkPackages, setExpandedWorkPackages] = useState<Record<string, boolean>>({});
     const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+    const { t } = useLanguage();
 
     const togglePhase = (id: string) => setExpandedPhases(prev => ({ ...prev, [id]: !prev[id] }));
     const toggleDeliverable = (id: string) => setExpandedDeliverables(prev => ({ ...prev, [id]: !prev[id] }));
@@ -25,9 +27,9 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
     const toggleTask = (id: string) => setExpandedTasks(prev => ({ ...prev, [id]: !prev[id] }));
 
     const getAssigneeName = (id?: string) => {
-        if (!id) return 'Unassigned';
+        if (!id) return t('Unassigned');
         const user = employees.find(u => u.id === id);
-        return user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+        return user ? `${user.firstName} ${user.lastName}` : t('Unknown');
     };
 
     const StatusIcon = ({ status }: { status?: string }) => {
@@ -56,7 +58,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
     };
 
     const renderTasks = (tasks?: ProjectTask[]) => {
-        if (!tasks || tasks.length === 0) return <div className="text-sm text-slate-500 p-2 ml-6">No tasks assigned.</div>;
+        if (!tasks || tasks.length === 0) return <div className="text-sm text-slate-500 p-2 ml-6">{t("No tasks assigned.")}</div>;
         return (
             <div className="ml-6 mt-2 space-y-2">
                 {tasks.map(task => {
@@ -70,22 +72,22 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
                                     <StatusIcon status={task.status} />
                                     <span className="font-medium text-sm text-slate-900 dark:text-white">{task.description}</span>
                                     {task.storyPoints && <span className="text-[10px] bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-bold">{task.storyPoints}pt</span>}
-                                    {task.isBenchmark && <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-bold uppercase">Milestone</span>}
+                                    {task.isBenchmark && <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-bold uppercase">{t("Milestone")}</span>}
                                     {task.priority && (
                                         <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${
                                             task.priority === 'High' ? 'bg-red-100 text-red-800' :
                                             task.priority === 'Medium' ? 'bg-orange-100 text-orange-800' :
                                             'bg-slate-100 text-slate-800'
-                                        }`}>{task.priority}</span>
+                                        }`}>{t(task.priority)}</span>
                                     )}
                                 </div>
                                 <div className="flex items-center space-x-4">
                                     <div className="text-xs text-slate-500 hidden sm:block">
                                         <div className="font-medium">{getAssigneeName(task.assignedTo)}</div>
-                                        <div>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date'}</div>
+                                        <div>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : t('No due date')}</div>
                                     </div>
                                     {canSeeAllTasks && (
-                                        <button onClick={() => onTaskEdit(task)} className="text-blue-600 hover:underline text-xs font-medium">Edit</button>
+                                        <button onClick={() => onTaskEdit(task)} className="text-blue-600 hover:underline text-xs font-medium">{t("Edit")}</button>
                                     )}
                                 </div>
                             </div>
@@ -102,7 +104,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
     };
 
     const renderWorkPackages = (workPackages?: WorkPackage[]) => {
-        if (!workPackages || workPackages.length === 0) return <div className="text-sm text-slate-500 p-2 ml-6">No work packages.</div>;
+        if (!workPackages || workPackages.length === 0) return <div className="text-sm text-slate-500 p-2 ml-6">{t("No work packages.")}</div>;
         return (
             <div className="ml-6 mt-2 space-y-3">
                 {workPackages.map(wp => {
@@ -115,9 +117,9 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
                             >
                                 <div className="flex items-center space-x-2">
                                     {isExpanded ? <ChevronDown className="w-4 h-4 text-indigo-500" /> : <ChevronRight className="w-4 h-4 text-indigo-500" />}
-                                    <span className="font-semibold text-sm text-indigo-900 dark:text-indigo-300">WP: {wp.name}</span>
+                                    <span className="font-semibold text-sm text-indigo-900 dark:text-indigo-300">{t("WP:")} {wp.name}</span>
                                 </div>
-                                {wp.assignedTeam && <span className="text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 px-2 py-1 rounded">Team: {wp.assignedTeam}</span>}
+                                {wp.assignedTeam && <span className="text-xs text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 px-2 py-1 rounded">{t("Team:")} {wp.assignedTeam}</span>}
                             </div>
                             {isExpanded && (
                                 <div className="p-3 bg-white dark:bg-slate-800 border-t border-indigo-100 dark:border-indigo-900/30">
@@ -133,7 +135,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
     };
 
     const renderDeliverables = (deliverables?: Deliverable[]) => {
-        if (!deliverables || deliverables.length === 0) return <div className="text-sm text-slate-500 p-2 ml-6">No deliverables.</div>;
+        if (!deliverables || deliverables.length === 0) return <div className="text-sm text-slate-500 p-2 ml-6">{t("No deliverables.")}</div>;
         return (
             <div className="ml-6 mt-2 space-y-3">
                 {deliverables.map(del => {
@@ -147,16 +149,16 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
                                 <div className="flex items-center space-x-2">
                                     {isExpanded ? <ChevronDown className="w-4 h-4 text-purple-500" /> : <ChevronRight className="w-4 h-4 text-purple-500" />}
                                     <StatusIcon status={del.status} />
-                                    <span className="font-semibold text-sm text-purple-900 dark:text-purple-300">Deliverable: {del.name}</span>
+                                    <span className="font-semibold text-sm text-purple-900 dark:text-purple-300">{t("Deliverable:")} {del.name}</span>
                                 </div>
-                                {del.dueDate && <span className="text-xs text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/50 px-2 py-1 rounded">Due: {new Date(del.dueDate).toLocaleDateString()}</span>}
+                                {del.dueDate && <span className="text-xs text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/50 px-2 py-1 rounded">{t("Due:")} {new Date(del.dueDate).toLocaleDateString()}</span>}
                             </div>
                             {isExpanded && (
                                 <div className="p-3 bg-white dark:bg-slate-800 border-t border-purple-100 dark:border-purple-900/30">
                                     {del.description && <div className="text-xs text-slate-500 mb-3 ml-6">{del.description}</div>}
                                     {canSeeAllTasks && onAddWBSNode && (
                                         <div className="px-3 pb-3 ml-3">
-                                            <Button variant="secondary" className="text-xs py-1 h-7" onClick={() => onAddWBSNode('WorkPackage', del.id)}>+ Add Work Package</Button>
+                                            <Button variant="secondary" className="text-xs py-1 h-7" onClick={() => onAddWBSNode('WorkPackage', del.id)}>+ {t("Add Work Package")}</Button>
                                         </div>
                                     )}
                                     {renderWorkPackages(del.workPackages)}
@@ -175,7 +177,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
         
         return (
             <div className="space-y-4 mb-8">
-                <h4 className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-xs mb-3">Project Phases</h4>
+                <h4 className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-xs mb-3">{t("Project Phases")}</h4>
                 {phases.map(phase => {
                     const isExpanded = expandedPhases[phase.id] !== false; // Default expanded
                     return (
@@ -190,8 +192,8 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
                                     <h3 className="font-bold text-lg text-slate-900 dark:text-white">{phase.name}</h3>
                                 </div>
                                 <div className="flex space-x-2 text-xs">
-                                    {phase.startDate && <span className="px-2 py-1 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700">Start: {new Date(phase.startDate).toLocaleDateString()}</span>}
-                                    {phase.endDate && <span className="px-2 py-1 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700">End: {new Date(phase.endDate).toLocaleDateString()}</span>}
+                                    {phase.startDate && <span className="px-2 py-1 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700">{t("Start:")} {new Date(phase.startDate).toLocaleDateString()}</span>}
+                                    {phase.endDate && <span className="px-2 py-1 bg-white dark:bg-slate-900 rounded border border-slate-200 dark:border-slate-700">{t("End:")} {new Date(phase.endDate).toLocaleDateString()}</span>}
                                 </div>
                             </div>
                             {isExpanded && (
@@ -199,7 +201,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
                                     {phase.description && <div className="text-sm text-slate-600 dark:text-slate-400 mb-4 ml-8">{phase.description}</div>}
                                     {canSeeAllTasks && onAddWBSNode && (
                                         <div className="px-4 pb-4 ml-4">
-                                            <Button variant="secondary" className="text-sm py-1 h-8" onClick={() => onAddWBSNode('Deliverable', phase.id)}>+ Add Deliverable</Button>
+                                            <Button variant="secondary" className="text-sm py-1 h-8" onClick={() => onAddWBSNode('Deliverable', phase.id)}>+ {t("Add Deliverable")}</Button>
                                         </div>
                                     )}
                                     {renderDeliverables(phase.deliverables)}
@@ -220,15 +222,15 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
         <Card className="p-6">
             <div className="flex justify-between items-center mb-6">
                 <div>
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Project Work Breakdown Structure</h2>
-                    <p className="text-sm text-slate-500 mt-1">Hierarchical view of phases, deliverables, work packages, and tasks.</p>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">{t("Project Work Breakdown Structure")}</h2>
+                    <p className="text-sm text-slate-500 mt-1">{t("Hierarchical view of phases, deliverables, work packages, and tasks.")}</p>
                 </div>
                 <div className="flex gap-2">
                     {canSeeAllTasks && onAddWBSNode && (
-                        <Button variant="secondary" onClick={() => onAddWBSNode('Phase')} className="shadow-sm">+ Add Phase</Button>
+                        <Button variant="secondary" onClick={() => onAddWBSNode('Phase')} className="shadow-sm">+ {t("Add Phase")}</Button>
                     )}
                     {canSeeAllTasks && (
-                        <Button onClick={onTaskAdd} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm">+ Create Task</Button>
+                        <Button onClick={onTaskAdd} className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm">+ {t("Create Task")}</Button>
                     )}
                 </div>
             </div>
@@ -238,7 +240,7 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
             {(hasBacklog || hasLegacyTasks) && (
                 <div className="mt-8 border-t border-slate-200 dark:border-slate-700 pt-6">
                     <h4 className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-xs mb-3">
-                        {hasBacklog ? 'Backlog / Unassigned Tasks' : 'Legacy Tasks'}
+                        {hasBacklog ? t('Backlog / Unassigned Tasks') : t('Legacy Tasks')}
                     </h4>
                     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
                         {renderTasks(project.backlog || project.projectTasks)}
@@ -249,9 +251,9 @@ const TasksTab: React.FC<TasksTabProps> = ({ project, employees, canSeeAllTasks,
             {!hasPhases && !hasBacklog && !hasLegacyTasks && (
                 <div className="text-center py-12 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
                     <Clock className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                    <h3 className="text-lg font-medium text-slate-900 dark:text-white">No tasks or phases defined</h3>
-                    <p className="text-slate-500 mt-1 mb-4">Start building your project structure by adding phases and tasks.</p>
-                    {canSeeAllTasks && <Button onClick={onTaskAdd}>Add First Task</Button>}
+                    <h3 className="text-lg font-medium text-slate-900 dark:text-white">{t("No tasks or phases defined")}</h3>
+                    <p className="text-slate-500 mt-1 mb-4">{t("Start building your project structure by adding phases and tasks.")}</p>
+                    {canSeeAllTasks && <Button onClick={onTaskAdd}>{t("Add First Task")}</Button>}
                 </div>
             )}
         </Card>

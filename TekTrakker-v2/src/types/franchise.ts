@@ -30,6 +30,8 @@ export interface Franchise {
     perUserFee?: number;
     perVirtualWorkerFee?: number;
     signatureBase64?: string;
+    billingType?: 'monthly' | 'lifetime';
+    lifetimeFee?: number;
   };
 
   constraints?: {

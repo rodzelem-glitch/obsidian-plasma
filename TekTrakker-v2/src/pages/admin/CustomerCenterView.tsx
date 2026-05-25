@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import CustomerManagement from 'pages/admin/CustomerManagement';
 import Memberships from 'pages/admin/Memberships';
+import { useLanguage } from 'context/LanguageContext';
 
 const CustomerCenterView: React.FC = () => {
     const [searchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState<'customers' | 'memberships'>('customers');
+    const { t } = useLanguage();
 
     useEffect(() => {
         const tab = searchParams.get('tab');
@@ -27,7 +29,7 @@ const CustomerCenterView: React.FC = () => {
                             : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
                     }`}
                 >
-                    Customers
+                    {t("Customers")}
                 </button>
                 <button
                     onClick={() => setActiveTab('memberships')}
@@ -37,7 +39,7 @@ const CustomerCenterView: React.FC = () => {
                             : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
                     }`}
                 >
-                    Memberships
+                    {t("Memberships")}
                 </button>
             </header>
 

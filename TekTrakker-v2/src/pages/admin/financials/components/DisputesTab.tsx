@@ -4,6 +4,7 @@ import Table from 'components/ui/Table';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../../../lib/firebase';
 import { useAppContext } from '../../../../context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 
 interface DisputesTabProps {
     disputes: any[];
@@ -11,10 +12,11 @@ interface DisputesTabProps {
 
 const DisputesTab: React.FC<DisputesTabProps> = ({ disputes }) => {
     const { state } = useAppContext();
+    const { t } = useLanguage();
     const [submitting, setSubmitting] = useState<string | null>(null);
 
     const handleSubmitEvidence = async (disputeId: string) => {
-        const text = prompt('Enter evidence text to submit for this dispute:');
+        const text = prompt(t('Enter evidence text to submit for this dispute:'));
         if (!text) return;
 
         setSubmitting(disputeId);
@@ -25,10 +27,10 @@ const DisputesTab: React.FC<DisputesTabProps> = ({ disputes }) => {
                 organizationId: state.currentOrganization?.id,
                 evidenceText: text
             });
-            alert('Evidence submitted successfully. Status will update shortly.');
+            alert(t('Evidence submitted successfully. Status will update shortly.'));
         } catch (error: any) {
             console.error('Failed to submit evidence:', error);
-            alert(`Error: ${error.message}`);
+            alert(`${t('Error:')} ${error.message}`);
         } finally {
             setSubmitting(null);
         }
@@ -37,16 +39,16 @@ const DisputesTab: React.FC<DisputesTabProps> = ({ disputes }) => {
     return (
         <Card>
             <div className="flex justify-between items-center mb-4">
-                <h3 className="font-bold text-gray-800 dark:text-white">Chargebacks & Disputes</h3>
-                <p className="text-sm text-gray-500">Track and respond to payment disputes from customers.</p>
+                <h3 className="font-bold text-gray-800 dark:text-white">{t("Chargebacks & Disputes")}</h3>
+                <p className="text-sm text-gray-500">{t("Track and respond to payment disputes from customers.")}</p>
             </div>
             {disputes.length === 0 ? (
                 <div className="p-8 text-center text-gray-500 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
-                    <p>No disputes found.</p>
-                    <p className="text-xs mt-2">Any chargebacks filed by customers will appear here.</p>
+                    <p>{t("No disputes found.")}</p>
+                    <p className="text-xs mt-2">{t("Any chargebacks filed by customers will appear here.")}</p>
                 </div>
             ) : (
-                <Table headers={['Date', 'Amount', 'Status', 'Reason', 'Charge ID', 'Action']}>
+                <Table headers={[t('Date'), t('Amount'), t('Status'), t('Reason'), t('Charge ID'), t('Action')]}>
                     {disputes.map(d => (
                         <tr key={d.id}>
                             <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
@@ -62,11 +64,11 @@ const DisputesTab: React.FC<DisputesTabProps> = ({ disputes }) => {
                                     d.status === 'needs_response' ? 'bg-amber-100 text-amber-800' :
                                     'bg-blue-100 text-blue-800'
                                 }`}>
-                                    {d.status?.replace(/_/g, ' ') || 'pending'}
+                                    {t(d.status || 'pending').replace(/_/g, ' ')}
                                 </span>
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-900 dark:text-white capitalize">
-                                {d.reason?.replace(/_/g, ' ') || 'Unknown'}
+                                {t(d.reason || 'Unknown').replace(/_/g, ' ')}
                             </td>
                             <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">
                                 {d.chargeId || d.charge_id}
@@ -78,7 +80,7 @@ const DisputesTab: React.FC<DisputesTabProps> = ({ disputes }) => {
                                         disabled={submitting === d.id}
                                         className="text-xs px-3 py-1 bg-amber-500 text-white font-bold rounded-lg hover:bg-amber-600 disabled:opacity-50"
                                     >
-                                        {submitting === d.id ? 'Submitting...' : 'Submit Evidence'}
+                                        {submitting === d.id ? t('Submitting...') : t('Submit Evidence')}
                                     </button>
                                 )}
                             </td>

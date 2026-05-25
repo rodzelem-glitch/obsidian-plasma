@@ -13,6 +13,7 @@ import Button from 'components/ui/Button';
 import Textarea from 'components/ui/Textarea';
 import { db } from 'lib/firebase';
 import DocumentPreview from 'components/ui/DocumentPreview';
+import { useLanguage } from 'context/LanguageContext';
 
 interface InvoicesTabProps {
     jobs: any[];
@@ -22,6 +23,7 @@ interface InvoicesTabProps {
 
 const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, handleDeleteInvoice }) => {
     const { state } = useAppContext();
+    const { t } = useLanguage();
     const [shareModalInvoice, setShareModalInvoice] = useState<any>(null);
     const [shareTargetId, setShareTargetId] = useState<string>('');
     const [shareMessageText, setShareMessageText] = useState('');
@@ -36,7 +38,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
 
     const handleCopyRef = (jobId: string) => {
         navigator.clipboard.writeText(`#INV-${jobId}`);
-        showToast.warn("Invoice Reference Copied! Paste it anywhere to create a smart link.");
+        showToast.warn(t("Invoice Reference Copied! Paste it anywhere to create a smart link."));
     };
 
     const handleShareInvoice = async () => {
@@ -48,18 +50,18 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 senderId: state.currentUser?.id,
                 senderName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
                 receiverId: shareTargetId,
-                content: `${shareMessageText ? shareMessageText + '\n\n' : ''}Check out this invoice: #INV-${shareModalInvoice.id}`,
+                content: `${shareMessageText ? shareMessageText + '\n\n' : ''}${t("Check out this invoice:")} #INV-${shareModalInvoice.id}`,
                 timestamp: new Date().toISOString(),
                 createdAt: new Date().toISOString(),
                 organizationId: state.currentOrganization?.id,
                 type: 'internal'
             };
             await db.collection('messages').doc(msgObj.id).set(msgObj);
-            showToast.warn("Invoice shared successfully!");
+            showToast.warn(t("Invoice shared successfully!"));
             setShareModalInvoice(null);
             setShareMessageText('');
         } catch (e) {
-            showToast.warn("Failed to share.");
+            showToast.warn(t("Failed to share."));
         } finally {
             setIsSharing(false);
         }
@@ -80,11 +82,11 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 'invoice.billToName': newCustomer.name,
                 'invoice.billToAddress': newCustomer.address || ''
             });
-            showToast.success("Invoice reassigned successfully.");
+            showToast.success(t("Invoice reassigned successfully."));
             setReassignInvoiceJob(null);
             setNewInvoiceCustomerId('');
         } catch (e) {
-            showToast.warn("Failed to reassign invoice.");
+            showToast.warn(t("Failed to reassign invoice."));
         }
     };
 
@@ -102,7 +104,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
         }
 
         if (!email && !phone) {
-            showToast.warn("Customer requires an email or phone number for reminders.");
+            showToast.warn(t("Customer requires an email or phone number for reminders."));
             return;
         }
 
@@ -115,13 +117,13 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 }
             });
             if (alreadySentToday) {
-                if (!confirm("A reminder has already been sent to this customer today. Are you sure you want to send another one?")) {
+                if (!confirm(t("A reminder has already been sent to this customer today. Are you sure you want to send another one?"))) {
                     return;
                 }
             }
         }
 
-        if (!confirm(`Send payment reminder for invoice #${job.invoice.id} to ${email || 'this customer'}?`)) return;
+        if (!confirm(`${t("Send payment reminder for invoice #")}${job.invoice.id} ${t("to")} ${email || t("this customer")}?`)) return;
 
         try {
             const link = `${getBaseUrl()}/#/invoice/${job.id}`;
@@ -161,10 +163,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 'invoice.remindersSent': newReminders
             });
 
-            showToast.warn(`Reminder sent via ${email ? 'email' : ''} ${email && phone ? 'and ' : ''}${phone ? 'SMS text' : ''}!`);
+            showToast.warn(`${t("Reminder sent via")} ${email ? t("email") : ""} ${email && phone ? t("and") + " " : ""}${phone ? t("SMS text") : ""}!`);
         } catch (e) {
             console.error(e);
-            showToast.warn("Error sending reminder.");
+            showToast.warn(t("Error sending reminder."));
         }
     };
 
@@ -257,33 +259,33 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 />
             )}
             
-            <Modal isOpen={!!reassignInvoiceJob} onClose={() => setReassignInvoiceJob(null)} title="Reassign Invoice">
+            <Modal isOpen={!!reassignInvoiceJob} onClose={() => setReassignInvoiceJob(null)} title={t("Reassign Invoice")}>
                 <div className="space-y-4">
-                    <p className="text-sm text-slate-500">Select a new customer to map this invoice to. This will also update the associated job record.</p>
+                    <p className="text-sm text-slate-500">{t("Select a new customer to map this invoice to. This will also update the associated job record.")}</p>
                     <Select value={newInvoiceCustomerId} onChange={e => setNewInvoiceCustomerId(e.target.value)}>
-                        <option value="">Select Customer...</option>
+                        <option value="">{t("Select Customer...")}</option>
                         {state.customers?.map((c: any) => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                     </Select>
                     <div className="flex justify-end gap-2">
-                        <Button variant="secondary" onClick={() => setReassignInvoiceJob(null)}>Cancel</Button>
-                        <Button onClick={handleReassignInvoice} disabled={!newInvoiceCustomerId}>Save Assignment</Button>
+                        <Button variant="secondary" onClick={() => setReassignInvoiceJob(null)}>{t("Cancel")}</Button>
+                        <Button onClick={handleReassignInvoice} disabled={!newInvoiceCustomerId}>{t("Save Assignment")}</Button>
                     </div>
                 </div>
             </Modal>
 
-            <Modal isOpen={!!shareModalInvoice} onClose={() => setShareModalInvoice(null)} title={`Share Invoice: ${shareModalInvoice?.customerName}`}>
+            <Modal isOpen={!!shareModalInvoice} onClose={() => setShareModalInvoice(null)} title={`${t("Share Invoice:")} ${shareModalInvoice?.customerName}`}>
                 <div className="space-y-4">
-                    <p className="text-sm text-slate-500">Send this invoice reference to a staff member.</p>
+                    <p className="text-sm text-slate-500">{t("Send this invoice reference to a staff member.")}</p>
                     <select 
-                        aria-label="Select Share Recipient"
-                        title="Select Share Recipient"
+                        aria-label={t("Select Share Recipient")}
+                        title={t("Select Share Recipient")}
                         className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
                         value={shareTargetId}
                         onChange={e => setShareTargetId(e.target.value)}
                     >
-                        <option value="">Select Recipient...</option>
+                        <option value="">{t("Select Recipient...")}</option>
                         {state.users.filter((u: any) => 
                             u.organizationId === state.currentOrganization?.id && 
                             u.id !== state.currentUser?.id && 
@@ -293,14 +295,14 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                         ))}
                     </select>
                     <Textarea 
-                        placeholder="Add an optional message..."
+                        placeholder={t("Add an optional message...")}
                         value={shareMessageText}
                         onChange={e => setShareMessageText(e.target.value)}
                     />
                     <div className="flex justify-end gap-2">
-                        <Button variant="secondary" onClick={() => setShareModalInvoice(null)}>Cancel</Button>
+                        <Button variant="secondary" onClick={() => setShareModalInvoice(null)}>{t("Cancel")}</Button>
                         <Button onClick={handleShareInvoice} disabled={!shareTargetId || isSharing}>
-                            {isSharing ? 'Sending...' : 'Send Message'}
+                            {isSharing ? t("Sending...") : t("Send Message")}
                         </Button>
                     </div>
                 </div>
@@ -311,36 +313,36 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input
                         type="text"
-                        placeholder="Search invoices by #, customer, or amount..."
+                        placeholder={t("Search invoices by #, customer, or amount...")}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900/50 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
                     />
                 </div>
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <h3 className="font-bold text-gray-800 dark:text-white">Accounts Receivable</h3>
+                <h3 className="font-bold text-gray-800 dark:text-white">{t("Accounts Receivable")}</h3>
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2 text-sm">
-                        <label htmlFor="sort-invoices" className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
+                        <label htmlFor="sort-invoices" className="font-medium text-slate-600 dark:text-slate-300">{t("Sort by:")}</label>
                         <select 
                             id="sort-invoices"
-                            aria-label="Sort Invoices"
+                            aria-label={t("Sort Invoices")}
                             className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
                         >
-                            <option value="date_desc">Newest First</option>
-                            <option value="date_asc">Oldest First</option>
-                            <option value="name_asc">Customer (A-Z)</option>
-                            <option value="name_desc">Customer (Z-A)</option>
-                            <option value="amount_desc">Amount (High to Low)</option>
-                            <option value="amount_asc">Amount (Low to High)</option>
-                            <option value="status">Status</option>
+                            <option value="date_desc">{t("Newest First")}</option>
+                            <option value="date_asc">{t("Oldest First")}</option>
+                            <option value="name_asc">{t("Customer (A-Z)")}</option>
+                            <option value="name_desc">{t("Customer (Z-A)")}</option>
+                            <option value="amount_desc">{t("Amount (High to Low)")}</option>
+                            <option value="amount_asc">{t("Amount (Low to High)")}</option>
+                            <option value="status">{t("Status")}</option>
                         </select>
                     </div>
                     <div className="flex gap-2">
                         <Button variant={taxMode ? "primary" : "secondary"} onClick={() => setTaxMode(!taxMode)} className="w-auto text-xs flex items-center gap-2">
-                            <Calculator size={14} /> {taxMode ? 'Exit Tax Prep' : 'Tax Prep Mode'}
+                            <Calculator size={14} /> {taxMode ? t("Exit Tax Prep") : t("Tax Prep Mode")}
                         </Button>
                     </div>
                 </div>
@@ -351,18 +353,18 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-6 mb-6">
                     <div className="flex justify-between items-start mb-4">
                         <div>
-                            <h4 className="font-black text-emerald-900 dark:text-emerald-300 text-lg flex items-center gap-2"><Calculator size={20}/> IRS Income Ledger (Cash Basis)</h4>
-                            <p className="text-sm text-emerald-700 dark:text-emerald-400">Aggregated collected revenue (Paid Invoices) by tax classification.</p>
+                            <h4 className="font-black text-emerald-900 dark:text-emerald-300 text-lg flex items-center gap-2"><Calculator size={20}/> {t("IRS Income Ledger (Cash Basis)")}</h4>
+                            <p className="text-sm text-emerald-700 dark:text-emerald-400">{t("Aggregated collected revenue (Paid Invoices) by tax classification.")}</p>
                         </div>
                         <Button onClick={handleExportTaxCSV} className="text-xs flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-                            <Download size={14} /> Export CSV for CPA
+                            <Download size={14} /> {t("Export CSV for CPA")}
                         </Button>
                     </div>
                     
-                    <Table headers={['Tax Classification', 'Reportable Amount']}>
+                    <Table headers={[t('Tax Classification'), t('Reportable Amount')]}>
                         {taxSummary.map((row, i) => (
                             <tr key={i} className="bg-white dark:bg-slate-900/50">
-                                <td className="px-6 py-3 font-bold text-slate-800 dark:text-slate-200">{row.category}</td>
+                                <td className="px-6 py-3 font-bold text-slate-800 dark:text-slate-200">{t(row.category)}</td>
                                 <td className="px-6 py-3 font-black text-emerald-600 dark:text-emerald-400">${row.amount.toFixed(2)}</td>
                             </tr>
                         ))}
@@ -370,7 +372,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 </div>
             )}
 
-            <Table headers={['Invoice #', 'Customer', 'Date / Sent Date', 'Amount', 'Status', 'Reminders Sent', 'Actions']}>
+            <Table headers={[t('Invoice #'), t('Customer'), t('Date / Sent Date'), t('Amount'), t('Status'), t('Reminders Sent'), t('Actions')]}>
                 {sortedInvoices.map((job: any) => (
                     <tr key={job.id}>
                         <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">{job.invoice.id}</td>
@@ -379,16 +381,29 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                             <div>{new Date(job.appointmentTime).toLocaleDateString()}</div>
                             {job.invoice.sentAt ? (
                                 <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-                                    Sent: {new Date(job.invoice.sentAt).toLocaleDateString()}
+                                    {t("Sent")}: {new Date(job.invoice.sentAt).toLocaleDateString()}
                                 </div>
                             ) : (
-                                <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 italic">Not Sent</div>
+                                <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 italic">{t("Not Sent")}</div>
                             )}
                         </td>
-                        <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">${(Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0).toFixed(2)}</td>
+                        <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
+                            <div>${(Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0).toFixed(2)}</div>
+                            {job.invoice.amountPaid !== undefined && job.invoice.amountPaid > 0 && (
+                                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                                    {t("Paid")}: ${job.invoice.amountPaid.toFixed(2)} | {t("Bal")}: {Math.max(0, ((Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0) - job.invoice.amountPaid)).toFixed(2)}
+                                </div>
+                            )}
+                        </td>
                         <td className="px-6 py-4">
-                            <span className={`px-2 py-1 rounded text-xs font-bold ${job.invoice.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                {job.invoice.status}
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                job.invoice.status === 'Paid' 
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                                : job.invoice.status === 'Partially Paid' 
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                            }`}>
+                                {t(job.invoice.status)}
                             </span>
                         </td>
                         <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400">
@@ -401,17 +416,17 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                     ))}
                                 </div>
                             ) : (
-                                <span className="italic text-slate-400">None</span>
+                                <span className="italic text-slate-400">{t("None")}</span>
                             )}
                         </td>
                         <td className="px-6 py-4">
                             <div className="flex flex-wrap gap-2 items-center">
                                 {job.invoice.status !== 'Paid' && (
-                                    <button aria-label="Send Reminder" title="Send Reminder" onClick={(e) => { e.stopPropagation(); handleSendInvoiceReminder(job); }} className="p-1 text-orange-500 hover:text-orange-700"><Bell size={16}/></button>
+                                    <button aria-label={t("Send Reminder")} title={t("Send Reminder")} onClick={(e) => { e.stopPropagation(); handleSendInvoiceReminder(job); }} className="p-1 text-orange-500 hover:text-orange-700"><Bell size={16}/></button>
                                 )}
-                                <button title="View Invoice" onClick={() => setViewingInvoiceJob(job)} className="text-primary-600 hover:underline text-sm font-bold">View</button>
+                                <button title={t("View Invoice")} onClick={() => setViewingInvoiceJob(job)} className="text-primary-600 hover:underline text-sm font-bold">{t("View")}</button>
                                 <span className="text-slate-300">|</span>
-                                <button title="Manage Invoice" onClick={() => setEditingInvoiceId(job.id)} className="text-primary-600 hover:underline text-sm font-bold">Manage</button>
+                                <button title={t("Manage Invoice")} onClick={() => setEditingInvoiceId(job.id)} className="text-primary-600 hover:underline text-sm font-bold">{t("Manage")}</button>
                                 {job.invoice.status !== 'Paid' && (
                                     <>
                                         <span className="text-slate-300">|</span>
@@ -420,17 +435,17 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                             target="_blank" 
                                             rel="noopener noreferrer" 
                                             className="text-emerald-600 hover:underline text-sm font-bold inline-flex items-center gap-0.5"
-                                            title="Open Public Payment Page"
+                                            title={t("Open Public Payment Page")}
                                             onClick={(e) => e.stopPropagation()}
                                         >
-                                            <CreditCard size={14} /> Pay
+                                            <CreditCard size={14} /> {t("Pay")}
                                         </a>
                                     </>
                                 )}
-                                <button aria-label="Reassign Customer" title="Reassign Customer" onClick={(e) => { e.stopPropagation(); setReassignInvoiceJob(job); setNewInvoiceCustomerId(job.customerId || ''); }} className="p-1 text-slate-400 hover:text-orange-600"><UserPlus size={16}/></button>
-                                <button aria-label="Copy Reference" title="Copy Reference" onClick={(e) => { e.stopPropagation(); handleCopyRef(job.id); }} className="p-1 text-slate-400 hover:text-primary-600"><Copy size={16}/></button>
-                                <button aria-label="Share Invoice" title="Share Invoice" onClick={(e) => { e.stopPropagation(); setShareModalInvoice(job); }} className="p-1 text-slate-400 hover:text-primary-600"><Share2 size={16}/></button>
-                                <button title="Delete Invoice" onClick={() => handleDeleteInvoice(job.id)} className="text-red-600 hover:text-red-800 p-1"><Trash2 size={16}/></button>
+                                <button aria-label={t("Reassign Customer")} title={t("Reassign Customer")} onClick={(e) => { e.stopPropagation(); setReassignInvoiceJob(job); setNewInvoiceCustomerId(job.customerId || ''); }} className="p-1 text-slate-400 hover:text-orange-600"><UserPlus size={16}/></button>
+                                <button aria-label={t("Copy Reference")} title={t("Copy Reference")} onClick={(e) => { e.stopPropagation(); handleCopyRef(job.id); }} className="p-1 text-slate-400 hover:text-primary-600"><Copy size={16}/></button>
+                                <button aria-label={t("Share Invoice")} title={t("Share Invoice")} onClick={(e) => { e.stopPropagation(); setShareModalInvoice(job); }} className="p-1 text-slate-400 hover:text-primary-600"><Share2 size={16}/></button>
+                                <button title={t("Delete Invoice")} onClick={() => handleDeleteInvoice(job.id)} className="text-red-600 hover:text-red-800 p-1"><Trash2 size={16}/></button>
                             </div>
                         </td>
                     </tr>

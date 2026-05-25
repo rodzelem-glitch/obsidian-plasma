@@ -6,6 +6,7 @@ import Textarea from 'components/ui/Textarea';
 import Button from 'components/ui/Button';
 import { Trash2, XCircle, Mail, UserPlus, FileText, Download } from 'lucide-react';
 import type { Applicant } from 'types';
+import { useLanguage } from 'context/LanguageContext';
 
 interface ApplicantDetailModalProps {
     isOpen: boolean;
@@ -22,15 +23,16 @@ interface ApplicantDetailModalProps {
 const ApplicantDetailModal: React.FC<ApplicantDetailModalProps> = ({ 
     isOpen, onClose, applicant, onUpdateStatus, onDelete, onSaveNotes, onOffer, onHire, statusCols
 }) => {
+    const { t } = useLanguage();
     if (!applicant) return null;
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Applicant Details" size="lg">
+        <Modal isOpen={isOpen} onClose={onClose} title={t("Applicant Details")} size="lg">
             <div className="space-y-6">
                 <div className="flex justify-between items-start">
                     <div className="flex-1">
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{applicant.name || `${applicant.firstName} ${applicant.lastName}`}</h2>
-                        <p className="text-primary-600 dark:text-primary-400 font-medium">{applicant.position}</p>
+                        <p className="text-primary-600 dark:text-primary-400 font-medium">{t(applicant.position)}</p>
                         <div className="text-sm text-gray-600 dark:text-gray-400 mt-1 flex gap-4">
                             <a href={`mailto:${applicant.email}`} className="hover:underline">{applicant.email}</a>
                             <a href={`tel:${applicant.phone}`} className="hover:underline">{applicant.phone}</a>
@@ -45,7 +47,7 @@ const ApplicantDetailModal: React.FC<ApplicantDetailModalProps> = ({
                                 className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 text-sm font-bold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
                             >
                                 <FileText size={16} />
-                                <span className="truncate max-w-[200px]">{applicant.resumeFileName || 'View Uploaded Resume'}</span>
+                                <span className="truncate max-w-[200px]">{applicant.resumeFileName || t('View Uploaded Resume')}</span>
                                 <Download size={16} className="ml-1" />
                             </a>
                         )}
@@ -55,15 +57,15 @@ const ApplicantDetailModal: React.FC<ApplicantDetailModalProps> = ({
                         onChange={e => onUpdateStatus(e.target.value as Applicant['status'])} 
                         className="w-40 mb-0"
                     >
-                        {statusCols.map(s => <option key={s} value={s}>{s}</option>)}
+                        {statusCols.map(s => <option key={s} value={s}>{t(s)}</option>)}
                     </Select>
                 </div>
 
                 <div>
-                    <h4 className="font-bold text-sm mb-2 text-gray-800 dark:text-gray-200">Notes</h4>
+                    <h4 className="font-bold text-sm mb-2 text-gray-800 dark:text-gray-200">{t("Notes")}</h4>
                     <Textarea 
                         className="min-h-[120px] bg-white dark:bg-gray-700"
-                        placeholder="Add interview notes, comments, etc..."
+                        placeholder={t("Add interview notes, comments, etc...")}
                         defaultValue={applicant.notes || ''}
                         onBlur={e => onSaveNotes(e.target.value)}
                     />
@@ -74,13 +76,13 @@ const ApplicantDetailModal: React.FC<ApplicantDetailModalProps> = ({
                         <Trash2 size={16}/>
                     </Button>
                     <Button variant="secondary" onClick={() => onUpdateStatus('Declined')}>
-                        <XCircle size={16} className="mr-2"/> Decline
+                        <XCircle size={16} className="mr-2"/> {t("Decline")}
                     </Button>
                     <Button onClick={onOffer}>
-                        <Mail size={16} className="mr-2"/> Offer
+                        <Mail size={16} className="mr-2"/> {t("Offer")}
                     </Button>
                     <Button variant="primary" onClick={onHire}>
-                        <UserPlus size={16} className="mr-2"/> Hire
+                        <UserPlus size={16} className="mr-2"/> {t("Hire")}
                     </Button>
                 </div>
             </div>

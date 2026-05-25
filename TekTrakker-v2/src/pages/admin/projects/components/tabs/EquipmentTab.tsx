@@ -7,6 +7,7 @@ import { useAppContext } from 'context/AppContext';
 import showToast from "lib/toast";
 import { getBaseUrl } from "lib/utils";
 import EquipmentHierarchy from './equipment/EquipmentHierarchy';
+import { useLanguage } from 'context/LanguageContext';
 
 interface EquipmentTabProps {
     project: Project;
@@ -15,11 +16,12 @@ interface EquipmentTabProps {
 
 const EquipmentTab: React.FC<EquipmentTabProps> = ({ project, customer }) => {
     const { state } = useAppContext();
+    const { t } = useLanguage();
 
     if (!customer) {
         return (
             <div className="p-6 text-center text-gray-500 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-                <p>No customer linked to this project or customer not found.</p>
+                <p>{t("No customer linked to this project or customer not found.")}</p>
             </div>
         );
     }
@@ -29,11 +31,11 @@ const EquipmentTab: React.FC<EquipmentTabProps> = ({ project, customer }) => {
         
         let targetEmail = customer.email;
         if (!targetEmail) {
-            const promptedEmail = window.prompt("Customer has no email on file. Enter email address to deliver report to:");
+            const promptedEmail = window.prompt(t("Customer has no email on file. Enter email address to deliver report to:"));
             if (!promptedEmail) return;
             targetEmail = promptedEmail;
         } else {
-            const confirmEmail = window.confirm(`Send equipment health report to ${targetEmail}?`);
+            const confirmEmail = window.confirm(t("Send equipment health report to {email}?", { email: targetEmail }));
             if (!confirmEmail) return;
         }
 
@@ -60,20 +62,20 @@ const EquipmentTab: React.FC<EquipmentTabProps> = ({ project, customer }) => {
                     `
                 }
             });
-            showToast.warn("Report dynamically generated and securely delivered!");
+            showToast.warn(t("Report dynamically generated and securely delivered!"));
         } catch (error) {
             console.error(error);
-            showToast.warn("Failed to send report.");
+            showToast.warn(t("Failed to send report."));
         }
     };
 
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
             <div className="flex justify-between items-center mb-6">
-                <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2"><Box className="text-blue-500" /> Customer Equipment</h3>
+                <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2"><Box className="text-blue-500" /> {t("Customer Equipment")}</h3>
                 <div className="flex gap-2">
-                    <Button onClick={handleSendReport} className="flex items-center gap-2" variant="primary" size="sm"><Mail size={14}/> Email Report</Button>
-                    <Button onClick={() => window.open(`#/report/equipment/${customer.id}`, '_blank')} className="flex items-center gap-2" variant="secondary" size="sm"><Printer size={14}/> View Link</Button>
+                    <Button onClick={handleSendReport} className="flex items-center gap-2" variant="primary" size="sm"><Mail size={14}/> {t("Email Report")}</Button>
+                    <Button onClick={() => window.open(`#/report/equipment/${customer.id}`, '_blank')} className="flex items-center gap-2" variant="secondary" size="sm"><Printer size={14}/> {t("View Link")}</Button>
                 </div>
             </div>
             

@@ -9,6 +9,7 @@ import { db } from 'lib/firebase';
 import type { Project, Customer, User, Subcontractor, BusinessDocument, Message, Expense, Job, EquipmentRental, Permit } from 'types';
 import { FileText, Send, Users, Home } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 
 interface ProjectCloseoutModalProps {
     isOpen: boolean;
@@ -24,6 +25,7 @@ interface ProjectCloseoutModalProps {
 const ProjectCloseoutModal: React.FC<ProjectCloseoutModalProps> = ({ isOpen, onClose, project, financials, rentals, subs, customers, employees }) => {
     const { state, dispatch } = useAppContext();
     const [isGenerating, setIsGenerating] = useState(false);
+    const { t } = useLanguage();
     
     // Sharing specific
     const [selectedEmails, setSelectedEmails] = useState<string>(''); // comma separated
@@ -156,7 +158,7 @@ const ProjectCloseoutModal: React.FC<ProjectCloseoutModalProps> = ({ isOpen, onC
             onClose();
         } catch (error) {
             console.error("Closeout failed:", error);
-            showToast.warn("An error occurred while generating the report. Please try again.");
+            showToast.warn(t("An error occurred while generating the report. Please try again."));
             setIsGenerating(false);
         }
     };
@@ -166,43 +168,43 @@ const ProjectCloseoutModal: React.FC<ProjectCloseoutModalProps> = ({ isOpen, onC
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Project Closeout & Reporting">
+        <Modal isOpen={isOpen} onClose={onClose} title={t("Project Closeout & Reporting")}>
             <div className="space-y-6">
                 <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                    <h3 className="font-bold flex items-center gap-2 mb-2 text-slate-900 dark:text-white"><FileText size={18} /> Report Contents</h3>
+                    <h3 className="font-bold flex items-center gap-2 mb-2 text-slate-900 dark:text-white"><FileText size={18} /> {t("Report Contents")}</h3>
                     <div className="grid grid-cols-2 gap-2 text-sm text-slate-900 dark:text-white">
                         <label className="flex items-center gap-2">
                             <input type="checkbox" checked={includeFinancials} onChange={(e) => setIncludeFinancials(e.target.checked)} className="rounded" />
-                            Financial Summary
+                            {t("Financial Summary")}
                         </label>
                         <label className="flex items-center gap-2">
                             <input type="checkbox" checked={includeTasks} onChange={(e) => setIncludeTasks(e.target.checked)} className="rounded" />
-                            Milestones & Tasks
+                            {t("Milestones & Tasks")}
                         </label>
                         <label className="flex items-center gap-2">
                             <input type="checkbox" checked={includeRentals} onChange={(e) => setIncludeRentals(e.target.checked)} className="rounded" />
-                            Equipment Rentals
+                            {t("Equipment Rentals")}
                         </label>
                         <label className="flex items-center gap-2">
                             <input type="checkbox" checked={includePermits} onChange={(e) => setIncludePermits(e.target.checked)} className="rounded" />
-                            Permits
+                            {t("Permits")}
                         </label>
                     </div>
                     <div className="mt-4">
-                        <Textarea label="Custom Notes (e.g. key takeaways, next steps)" value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} />
+                        <Textarea label={t("Custom Notes (e.g. key takeaways, next steps)")} value={customNotes} onChange={(e) => setCustomNotes(e.target.value)} />
                     </div>
                 </div>
 
                 <div className="bg-blue-50 dark:bg-slate-800/50 p-4 rounded-lg border border-blue-200 dark:border-slate-700">
-                    <h3 className="font-bold flex items-center gap-2 mb-4 text-blue-900 dark:text-blue-100"><Send size={18} /> Delivery & Attachments</h3>
+                    <h3 className="font-bold flex items-center gap-2 mb-4 text-blue-900 dark:text-blue-100"><Send size={18} /> {t("Delivery & Attachments")}</h3>
                     
                     <div className="space-y-4">
                         <div>
-                            <Input label="External Email Addresses (comma separated)" placeholder="architect@company.com, inspector@city.gov" value={selectedEmails} onChange={(e) => setSelectedEmails(e.target.value)} />
+                            <Input label={t("External Email Addresses (comma separated)")} placeholder={t("architect@company.com, inspector@city.gov")} value={selectedEmails} onChange={(e) => setSelectedEmails(e.target.value)} />
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Attach & Notify Customers / Properties</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t("Attach & Notify Customers / Properties")}</label>
                             <div className="max-h-24 overflow-y-auto border rounded p-2 bg-white dark:bg-slate-900 custom-scrollbar">
                                 {customers.map(c => (
                                     <label key={c.id} className="flex items-center gap-2 p-1 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
@@ -214,7 +216,7 @@ const ProjectCloseoutModal: React.FC<ProjectCloseoutModalProps> = ({ isOpen, onC
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Notify Internal Staff / Employees</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t("Notify Internal Staff / Employees")}</label>
                             <div className="max-h-24 overflow-y-auto border rounded p-2 bg-white dark:bg-slate-900 custom-scrollbar">
                                 {employees.map(e => (
                                     <label key={e.id} className="flex items-center gap-2 p-1 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
@@ -226,7 +228,7 @@ const ProjectCloseoutModal: React.FC<ProjectCloseoutModalProps> = ({ isOpen, onC
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Notify Subcontractors</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">{t("Notify Subcontractors")}</label>
                             <div className="max-h-24 overflow-y-auto border rounded p-2 bg-white dark:bg-slate-900 custom-scrollbar">
                                 {subs.map(s => (
                                     <label key={s.id} className="flex items-center gap-2 p-1 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
@@ -240,9 +242,9 @@ const ProjectCloseoutModal: React.FC<ProjectCloseoutModalProps> = ({ isOpen, onC
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="secondary" onClick={onClose} disabled={isGenerating}>Cancel</Button>
+                    <Button variant="secondary" onClick={onClose} disabled={isGenerating}>{t("Cancel")}</Button>
                     <Button onClick={handleExecuteCloseout} disabled={isGenerating}>
-                        {isGenerating ? 'Generating & Sending...' : 'Complete Closeout'}
+                        {isGenerating ? t('Generating & Sending...') : t('Complete Closeout')}
                     </Button>
                 </div>
             </div>

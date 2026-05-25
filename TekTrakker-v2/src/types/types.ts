@@ -1,4 +1,4 @@
-﻿// Consolidated types for the Tektrakker project
+// Consolidated types for the Tektrakker project
 // This file is used as a central hub for all type definitions via the 'types' alias.
 
 // --- Organization & Address ---
@@ -148,6 +148,7 @@ export interface Organization {
     customDiscountPct?: number;
     quickbooksConnected?: boolean;
     aiPricebookEnabled?: boolean;
+    allowPartialPayments?: boolean;
     invoicePrefix?: string;
     invoiceStartNumber?: number;
     nextInvoiceNum?: number;
@@ -155,6 +156,7 @@ export interface Organization {
     proposalStartNumber?: number;
     nextProposalNum?: number;
     virtualWorkerEnabled?: boolean;
+    virtualWorkerBillingType?: 'monthly' | 'lifetime';
     salesRepId?: string;
     settings?: OrganizationSettings; 
     isVerified?: boolean; 
@@ -290,6 +292,10 @@ export interface User {
   w4OtherIncome?: number;
   w4Deductions?: number;
   w4ExtraWithholding?: number;
+  weeklyStandardHours?: number;
+  geofenceLatitude?: number | null;
+  geofenceLongitude?: number | null;
+  geofenceRadius?: number | null;
   commissionRate?: number; 
   customCommissionSettings?: CommissionSettings;
   hasAppAccess?: boolean;
@@ -531,9 +537,10 @@ export interface InvoiceDetails {
     totalAmount: number;
     paymentProofUrl?: string;
     paymentProofDate?: string; 
-    status: 'Paid' | 'Unpaid' | 'Pending';
+    status: 'Paid' | 'Unpaid' | 'Pending' | 'Partially Paid';
     dueDate?: string | null;
     notes?: string | null;
+    amountPaid?: number;
     amount: number; 
     paidDate?: string | null;
     billToName?: string;
@@ -940,10 +947,14 @@ export interface PlatformSettings {
         [key: string]: PlatformSettingsPlan;
     };
     excessUserFee: number;
+    subscriptionFee?: number;
+    virtualWorkerFee?: number;
+    virtualWorkerLifetimeFee?: number;
     updatedAt: string;
     franchiseFeePct?: number;
     franchiseBaseFee?: number;
     franchiseSetupFee?: number;
+    franchiseLifetimeFee?: number;
     franchiseRevSharePerUser?: number;
     franchiseRevSharePerVirtualWorker?: number;
     franchiseDiscountCodes?: { code: string; discountPct: number; active: boolean }[];

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import { DocumentTextIcon, BadgeIcon } from '@constants';
@@ -20,6 +21,7 @@ const HRResources: React.FC = () => {
     const location = useLocation();
     const [view, setView] = useState<'menu' | 'handbook' | 'safety' | 'certs' | 'onboarding'>('menu');
     const { currentUser: user } = state;
+    const { t } = useLanguage();
 
     useEffect(() => {
         const params = new URLSearchParams(location.search);
@@ -135,8 +137,8 @@ const HRResources: React.FC = () => {
             {view === 'menu' ? (
                 <>
                     <header className="mb-8">
-                        <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">HR & Safety Resources</h1>
-                        <p className="text-slate-500 mt-2">Select a category below to access policies, report incidents, or manage your certifications.</p>
+                        <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{t("HR & Safety Resources")}</h1>
+                        <p className="text-slate-500 mt-2">{t("Select a category below to access policies, report incidents, or manage your certifications.")}</p>
                     </header>
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -144,10 +146,10 @@ const HRResources: React.FC = () => {
                             <div className="w-14 h-14 bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <BookOpen size={28} />
                             </div>
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Company Handbook</h2>
-                            <p className="text-slate-500 text-sm mb-6 flex-1">Read official company policies, standard operating procedures, and HR guidelines.</p>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t("Company Handbook")}</h2>
+                            <p className="text-slate-500 text-sm mb-6 flex-1">{t("Read official company policies, standard operating procedures, and HR guidelines.")}</p>
                             <div className="flex items-center text-primary-600 font-bold text-sm">
-                                Open Handbook <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
+                                {t("Open Handbook")} <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
                             </div>
                         </button>
 
@@ -155,10 +157,10 @@ const HRResources: React.FC = () => {
                             <div className="w-14 h-14 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <ShieldAlert size={28} />
                             </div>
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Safety & Incidents</h2>
-                            <p className="text-slate-500 text-sm mb-6 flex-1">Report workplace injuries, vehicle accidents, or property damage and view past reports.</p>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t("Safety & Incidents")}</h2>
+                            <p className="text-slate-500 text-sm mb-6 flex-1">{t("Report workplace injuries, vehicle accidents, or property damage and view past reports.")}</p>
                             <div className="flex items-center text-red-600 font-bold text-sm">
-                                Access Safety <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
+                                {t("Access Safety")} <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
                             </div>
                         </button>
 
@@ -166,20 +168,20 @@ const HRResources: React.FC = () => {
                             <div className="w-14 h-14 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <Award size={28} />
                             </div>
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">My Certifications</h2>
-                            <p className="text-slate-500 text-sm mb-6 flex-1">View your active credentials, EPA licenses, and upload new certifications for approval.</p>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t("My Certifications")}</h2>
+                            <p className="text-slate-500 text-sm mb-6 flex-1">{t("View your active credentials, EPA licenses, and upload new certifications for approval.")}</p>
                             <div className="flex items-center text-green-600 font-bold text-sm">
-                                Manage Certs <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
+                                {t("Manage Certs")} <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
                             </div>
                         </button>
                         <button onClick={() => setView('onboarding')} className="group flex flex-col items-start p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-slate-800 hover:border-blue-500 transition-all hover:-translate-y-1 text-left">
                             <div className="w-14 h-14 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                                 <ClipboardList size={28} />
                             </div>
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Hiring Packet</h2>
-                            <p className="text-slate-500 text-sm mb-6 flex-1">Complete your new hire onboarding packet, including W-4, direct deposit, and policy signatures.</p>
+                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t("Hiring Packet")}</h2>
+                            <p className="text-slate-500 text-sm mb-6 flex-1">{t("Complete your new hire onboarding packet, including W-4, direct deposit, and policy signatures.")}</p>
                             <div className="flex items-center text-blue-600 font-bold text-sm">
-                                View Packet <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
+                                {t("View Packet")} <ChevronRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform"/>
                             </div>
                         </button>
                     </div>
@@ -187,14 +189,14 @@ const HRResources: React.FC = () => {
             ) : (
                 <div className="mb-6">
                     <button onClick={() => setView('menu')} className="flex items-center text-sm font-bold text-slate-500 hover:text-primary-600 transition-colors mb-6">
-                        <ArrowLeft size={16} className="mr-2"/> Back to Resources
+                        <ArrowLeft size={16} className="mr-2"/> {t("Back to Resources")}
                     </button>
                     <header className="mb-6">
                         <h1 className="text-2xl font-black text-slate-900 dark:text-white">
-                            {view === 'handbook' && 'Company Handbook & Policies'}
-                            {view === 'safety' && 'Safety & Incident Reporting'}
-                            {view === 'certs' && 'My Certifications'}
-                            {view === 'onboarding' && 'Hiring & Onboarding Packet'}
+                            {view === 'handbook' && t('Company Handbook & Policies')}
+                            {view === 'safety' && t('Safety & Incident Reporting')}
+                            {view === 'certs' && t('My Certifications')}
+                            {view === 'onboarding' && t('Hiring & Onboarding Packet')}
                         </h1>
                     </header>
                 </div>
@@ -207,11 +209,11 @@ const HRResources: React.FC = () => {
                             <DocumentTextIcon className="w-8 h-8 text-gray-400 mb-4" />
                             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{doc.title}</h3>
                             <div className="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 mb-4" dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(doc.content)}} />
-                            <Button variant="secondary" className="text-xs">Read Full Policy</Button>
+                            <Button variant="secondary" className="text-xs">{t("Read Full Policy")}</Button>
                         </Card>
                     )) : (
                         <div className="col-span-full text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700">
-                            <p className="text-gray-500">No policies or handbook documents available yet.</p>
+                            <p className="text-gray-500">{t("No policies or handbook documents available yet.")}</p>
                         </div>
                     )}
                 </div>
@@ -220,34 +222,34 @@ const HRResources: React.FC = () => {
             {view === 'safety' && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <Card>
-                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-4">Report an Incident</h3>
+                        <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-4">{t("Report an Incident")}</h3>
                         <form onSubmit={handleSafetySubmit} className="space-y-4">
-                            <Select label="Type" value={incidentType} onChange={e => setIncidentType(e.target.value as any)}>
-                                <option value="Injury">Personal Injury</option>
-                                <option value="Vehicle">Vehicle Accident</option>
-                                <option value="Hazmat">Chemical / Hazmat</option>
-                                <option value="Property Damage">Property Damage</option>
-                                <option value="Other">Other</option>
+                            <Select label={t("Type")} value={incidentType} onChange={e => setIncidentType(e.target.value as any)}>
+                                <option value="Injury">{t("Personal Injury")}</option>
+                                <option value="Vehicle">{t("Vehicle Accident")}</option>
+                                <option value="Hazmat">{t("Chemical / Hazmat")}</option>
+                                <option value="Property Damage">{t("Property Damage")}</option>
+                                <option value="Other">{t("Other")}</option>
                             </Select>
                             <Textarea 
-                                label="Description" 
+                                label={t("Description")} 
                                 rows={5} 
                                 value={incidentDesc} 
                                 onChange={e => setIncidentDesc(e.target.value)} 
-                                placeholder="Describe exactly what happened..." 
+                                placeholder={t("Describe exactly what happened...")} 
                                 required 
                             />
 
                             <div className="space-y-2">
-                                <label className="block text-sm font-black uppercase text-slate-400">Documentation / Photos</label>
+                                <label className="block text-sm font-black uppercase text-slate-400">{t("Documentation / Photos")}</label>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                     {incidentAttachments.map((url, idx) => (
                                         <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
                                             <img src={url} alt="Incident Attachment" className="w-full h-full object-cover" />
                                             <button 
                                                 type="button"
-                                                title="Delete Attachment"
-                                                aria-label="Delete Attachment"
+                                                title={t("Delete Attachment")}
+                                                aria-label={t("Delete Attachment")}
                                                 onClick={() => setIncidentAttachments(prev => prev.filter((_, i) => i !== idx))}
                                                 className="absolute top-1 right-1 bg-red-600 text-white p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                                             >
@@ -257,29 +259,29 @@ const HRResources: React.FC = () => {
                                     ))}
                                     <label className="flex flex-col items-center justify-center aspect-square border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">
                                         <Camera className="text-slate-400 mb-1" size={24} />
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase">Add Photo</span>
-                                        <input type="file" accept="image/*" onChange={handleIncidentFileUpload} className="hidden" title="Add Photo" aria-label="Add Photo" />
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase">{t("Add Photo")}</span>
+                                        <input type="file" accept="image/*" onChange={handleIncidentFileUpload} className="hidden" title={t("Add Photo")} aria-label={t("Add Photo")} />
                                     </label>
                                 </div>
                             </div>
 
                             <Button type="submit" disabled={isSubmitting || isUploading} className="w-full bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20 py-4 text-sm">
-                                {isSubmitting ? 'Submitting Report...' : 'Submit Official Incident Report'}
+                                {isSubmitting ? t('Submitting Report...') : t('Submit Official Incident Report')}
                             </Button>
                         </form>
                     </Card>
                     <Card>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">My Reports History</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t("My Reports History")}</h3>
                         <div className="space-y-4">
                             {myIncidents.length > 0 ? myIncidents.map(inc => (
                                 <div key={inc.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded border border-gray-200 dark:border-gray-700">
                                     <div className="flex justify-between items-start mb-2">
-                                        <span className="font-bold text-red-600 dark:text-red-400 uppercase text-xs tracking-wider">{inc.type}</span>
+                                        <span className="font-bold text-red-600 dark:text-red-400 uppercase text-xs tracking-wider">{t(inc.type)}</span>
                                         <span className="text-xs text-gray-500">{new Date(inc.date).toLocaleDateString()}</span>
                                     </div>
                                     <p className="text-sm text-gray-800 dark:text-gray-200 mb-2">{inc.description}</p>
                                     <div className="text-xs font-medium">
-                                        Status: <span className={inc.status === 'Resolved' ? 'text-green-600' : 'text-yellow-600'}>{inc.status}</span>
+                                        {t("Status")}: <span className={inc.status === 'Resolved' ? 'text-green-600' : 'text-yellow-600'}>{t(inc.status)}</span>
                                     </div>
                                     {inc.attachmentUrls && inc.attachmentUrls.length > 0 && (
                                         <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
@@ -294,9 +296,9 @@ const HRResources: React.FC = () => {
                                             ))}
                                         </div>
                                     )}
-                                    {inc.resolutionNotes && <p className="text-xs text-gray-500 mt-1 italic">Resolution: {inc.resolutionNotes}</p>}
+                                    {inc.resolutionNotes && <p className="text-xs text-gray-500 mt-1 italic">{t("Resolution")}: {inc.resolutionNotes}</p>}
                                 </div>
-                            )) : <p className="text-gray-500 text-sm">No incidents reported.</p>}
+                            )) : <p className="text-gray-500 text-sm">{t("No incidents reported.")}</p>}
                         </div>
                     </Card>
                 </div>
@@ -304,7 +306,7 @@ const HRResources: React.FC = () => {
 
             {view === 'certs' && (
                 <Card>
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Active Certifications</h3>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t("Active Certifications")}</h3>
                     <div className="space-y-4">
                         {user?.certifications && user.certifications.length > 0 ? user.certifications.map((cert, i) => (
                             <div key={i} className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
@@ -312,7 +314,7 @@ const HRResources: React.FC = () => {
                                     <BadgeIcon className="w-6 h-6 text-green-600 dark:text-green-400" />
                                     <div>
                                         <p className="font-bold text-gray-900 dark:text-white">{cert.name}</p>
-                                        <p className="text-xs text-gray-500">Expires: {cert.expiryDate ? new Date(cert.expiryDate).toLocaleDateString() : 'N/A'}</p>
+                                        <p className="text-xs text-gray-500">{t("Expires:")} {cert.expiryDate ? new Date(cert.expiryDate).toLocaleDateString() : t('N/A')}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -320,34 +322,34 @@ const HRResources: React.FC = () => {
                                         <button 
                                             onClick={() => window.open(cert.fileUrl, '_blank')}
                                             className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                                            title="View Certificate"
+                                            title={t("View Certificate")}
                                         >
                                             <FileText size={18} />
                                         </button>
                                     )}
                                     <span className="bg-white dark:bg-gray-800 text-green-700 dark:text-green-400 text-xs font-bold px-3 py-1 rounded-full shadow-sm flex items-center gap-1">
-                                        <CheckCircle2 size={12} /> Active
+                                        <CheckCircle2 size={12} /> {t("Active")}
                                     </span>
                                 </div>
                             </div>
                         )) : (
-                            <p className="text-gray-500">No certifications recorded on profile.</p>
+                            <p className="text-gray-500">{t("No certifications recorded on profile.")}</p>
                         )}
                         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 space-y-4">
-                            <h4 className="font-black text-xs uppercase text-slate-400 tracking-wider">Upload New Certification</h4>
+                            <h4 className="font-black text-xs uppercase text-slate-400 tracking-wider">{t("Upload New Certification")}</h4>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Input 
-                                    label="Certification Name" 
+                                    label={t("Certification Name")} 
                                     placeholder="e.g. EPA Section 608" 
                                     value={certName}
                                     onChange={e => setCertName(e.target.value)}
                                 />
                                 <div className="flex flex-col gap-1">
-                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">File / Photo</label>
+                                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t("File / Photo")}</label>
                                     <input 
                                         type="file" 
-                                        title="Certification File Upload"
-                                        aria-label="Certification File Upload"
+                                        title={t("Certification File Upload")}
+                                        aria-label={t("Certification File Upload")}
                                         onChange={e => setCertFile(e.target.files?.[0] || null)}
                                         className="text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100" 
                                     />
@@ -358,7 +360,7 @@ const HRResources: React.FC = () => {
                                 disabled={isUploading || !certFile || !certName} 
                                 className="w-full bg-primary-600 hover:bg-primary-700 text-white shadow-lg shadow-primary-500/20 py-4 text-sm"
                             >
-                                {isUploading ? 'Uploading...' : 'Register Certification'}
+                                {isUploading ? t('Uploading...') : t('Register Certification')}
                             </Button>
                         </div>
                     </div>
@@ -370,15 +372,15 @@ const HRResources: React.FC = () => {
                     <Card>
                         <div className="flex justify-between items-center mb-6">
                             <div>
-                                <h3 className="text-xl font-bold text-gray-900 dark:text-white">New Hire Packet</h3>
-                                <p className="text-gray-500 mt-1">Please complete all required steps to finalize your onboarding.</p>
+                                <h3 className="text-xl font-bold text-gray-900 dark:text-white">{t("New Hire Packet")}</h3>
+                                <p className="text-gray-500 mt-1">{t("Please complete all required steps to finalize your onboarding.")}</p>
                             </div>
                             <div className="text-right">
                                 <span className="text-3xl font-black text-primary-600">
                                     {[user?.hiringPacketStatus?.w4Completed, user?.hiringPacketStatus?.i9Completed, user?.hiringPacketStatus?.directDepositCompleted, user?.hiringPacketStatus?.handbookSigned, user?.hiringPacketStatus?.idUploaded].filter(Boolean).length}
                                 </span>
                                 <span className="text-slate-400 font-bold"> / 5</span>
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Completed</p>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">{t("Completed")}</p>
                             </div>
                         </div>
 
@@ -396,13 +398,13 @@ const HRResources: React.FC = () => {
                                             {step.status ? <CheckCircle2 size={20} /> : <div className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-600" />}
                                         </div>
                                         <div>
-                                            <h4 className={`font-bold text-lg ${step.status ? 'text-green-900 dark:text-green-400' : 'text-slate-900 dark:text-white'}`}>{step.title}</h4>
-                                            <p className={`text-sm ${step.status ? 'text-green-700 dark:text-green-600' : 'text-slate-500'}`}>{step.desc}</p>
+                                            <h4 className={`font-bold text-lg ${step.status ? 'text-green-900 dark:text-green-400' : 'text-slate-900 dark:text-white'}`}>{t(step.title)}</h4>
+                                            <p className={`text-sm ${step.status ? 'text-green-700 dark:text-green-600' : 'text-slate-500'}`}>{t(step.desc)}</p>
                                         </div>
                                     </div>
                                     <div className="w-full sm:w-auto flex-shrink-0">
                                         <Button variant={step.status ? 'secondary' : 'primary'} className="w-full sm:w-auto">
-                                            {step.status ? 'Review' : 'Start'}
+                                            {step.status ? t('Review') : t('Start')}
                                         </Button>
                                     </div>
                                 </div>
@@ -414,9 +416,9 @@ const HRResources: React.FC = () => {
                                 className="w-full py-4 text-lg shadow-lg shadow-primary-500/20"
                                 disabled={!user?.hiringPacketStatus?.w4Completed || !user?.hiringPacketStatus?.i9Completed || !user?.hiringPacketStatus?.directDepositCompleted || !user?.hiringPacketStatus?.handbookSigned || !user?.hiringPacketStatus?.idUploaded}
                             >
-                                Submit Final Hiring Packet
+                                {t("Submit Final Hiring Packet")}
                             </Button>
-                            <p className="text-center text-xs text-slate-500 mt-4">You must complete all steps before final submission to HR.</p>
+                            <p className="text-center text-xs text-slate-500 mt-4">{t("You must complete all steps before final submission to HR.")}</p>
                         </div>
                     </Card>
                 </div>

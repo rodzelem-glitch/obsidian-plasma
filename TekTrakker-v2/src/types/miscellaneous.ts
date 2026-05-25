@@ -415,10 +415,14 @@ export interface PlatformSettings {
         [key: string]: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
     };
     excessUserFee: number;
+    subscriptionFee?: number;
+    virtualWorkerFee?: number;
+    virtualWorkerLifetimeFee?: number;
     updatedAt: string;
     franchiseFeePct?: number;
     franchiseBaseFee?: number;
     franchiseSetupFee?: number;
+    franchiseLifetimeFee?: number;
     franchiseRevSharePerUser?: number;
     franchiseRevSharePerVirtualWorker?: number;
     franchiseDiscountCodes?: { code: string; discountPct: number; active: boolean }[];

@@ -296,11 +296,11 @@ const DocumentCreator: React.FC = () => {
             
             const wrapper = document.createElement('div');
             wrapper.innerHTML = DOMPurify.sanitize(doc.content);
-            wrapper.style.padding = '40px';
+            wrapper.style.padding = '24px'; // 0.25in padding for professional margin spacing inside PDF
             wrapper.style.fontFamily = 'system-ui, -apple-system, sans-serif';
             wrapper.style.color = '#000';
             wrapper.style.lineHeight = '1.6';
-            wrapper.style.width = '800px';
+            wrapper.style.width = '720px'; // Exact printable width in pixels for Letter page (7.5 inches at 96 DPI)
             wrapper.style.height = 'auto';
             wrapper.style.overflow = 'visible';
             
@@ -329,7 +329,7 @@ const DocumentCreator: React.FC = () => {
                 margin:       0.5,
                 filename:     `${doc.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 800 },
+                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 720 },
                 jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
             };
 

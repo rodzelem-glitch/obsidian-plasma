@@ -306,8 +306,8 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
             const clone = printRef.current.cloneNode(true) as HTMLElement;
             clone.style.boxShadow = 'none';
             clone.style.margin = '0';
-            clone.style.padding = '40px'; // Consistent padding for PDF
-            clone.style.width = '800px'; // Fixed width for A4/Letter
+            clone.style.padding = '24px'; // 0.25in padding for professional margin spacing inside PDF
+            clone.style.width = '720px'; // Exact printable width in pixels for Letter page (7.5 inches at 96 DPI)
             clone.style.height = 'auto';
             clone.style.overflow = 'visible'; // Ensure nothing is cut off
             
@@ -325,7 +325,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                 margin:       0.5,
                 filename:     fileName,
                 image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 800 },
+                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 720 },
                 jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
             };
             

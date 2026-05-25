@@ -126,7 +126,8 @@ const VirtualWorkerMarketing: React.FC = () => {
                             <h3 className="text-2xl font-black text-white mb-2 relative z-10">Virtual Worker Add-On</h3>
                             <p className="text-slate-400 text-sm mb-6 flex-1 relative z-10">Unlocks the autonomous AI agent on your dashboard. Includes all routing, routing access, and contextual system memory.</p>
                             <div className="mt-auto relative z-10">
-                                <p className="text-5xl font-black text-indigo-400 mb-2">$199<span className="text-xl text-slate-500">/mo</span></p>
+                                <p className="text-4xl font-black text-indigo-400 mb-1">$49.99<span className="text-lg text-slate-500">/mo</span></p>
+                                <p className="text-sm text-slate-400 mb-3">or <span className="font-bold text-white">$1,999</span> one-time lifetime license</p>
                                 <p className="text-emerald-400 text-sm font-bold flex items-center gap-1"><CheckCircle size={14}/> Base Capability</p>
                             </div>
                         </div>

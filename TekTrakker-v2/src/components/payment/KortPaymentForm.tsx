@@ -55,6 +55,7 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
 
     const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY;
     const activeAccountId = accountId || import.meta.env.VITE_KORT_ACCOUNT_ID;
+    const isSandbox = !publishableKey || !publishableKey.startsWith('pk_rYhq');
 
     useEffect(() => {
         if (!publishableKey || !activeAccountId) {
@@ -76,7 +77,7 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
         const initForm = async () => {
             try {
                 // Initialize Kort Payments SDK
-                const payments = new Payments(publishableKey, activeAccountId, { sandbox: true });
+                const payments = new Payments(publishableKey, activeAccountId, { sandbox: isSandbox });
                 setPaymentsInstance(payments);
 
 

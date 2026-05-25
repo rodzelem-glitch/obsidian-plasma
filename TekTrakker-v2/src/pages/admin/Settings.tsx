@@ -3,6 +3,7 @@ import { getBaseUrl } from "lib/utils";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import Button from 'components/ui/Button';
 import { db, functions } from 'lib/firebase';
 import {
@@ -37,6 +38,7 @@ const DEFAULT_GOOGLE_CLIENT_ID = "655867451194-3p9dkm7tjb15a2njggqa2jcc64i4vibh.
 
 const Settings: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState<'profile' | 'social' | 'operations' | 'legal' | 'integrations' | 'branding' | 'subscription' | 'data' | 'capabilities'>('profile');
     const location = useLocation();
 
@@ -82,6 +84,7 @@ const Settings: React.FC = () => {
     const [invoiceStartNumber, setInvoiceStartNumber] = useState('1000');
     const [proposalPrefix, setProposalPrefix] = useState('PROP-');
     const [proposalStartNumber, setProposalStartNumber] = useState('1000');
+    const [allowPartialPayments, setAllowPartialPayments] = useState(false);
     const [cardProcessingFeeEnabled, setCardProcessingFeeEnabled] = useState(false);
     const [cardProcessingFeePercent, setCardProcessingFeePercent] = useState('2.9');
     const [cardProcessingFeeFlat, setCardProcessingFeeFlat] = useState('0.30');
@@ -266,6 +269,7 @@ const Settings: React.FC = () => {
             setMarketMultiplier(org.marketMultiplier?.toString() || '1.0');
             setAiPricebookEnabled(org.aiPricebookEnabled !== false);
             setVirtualWorkerEnabled(org.virtualWorkerEnabled || false);
+            setAllowPartialPayments(org.allowPartialPayments || false);
             setCardProcessingFeeEnabled(org.cardProcessingFeeEnabled || false);
             setCardProcessingFeePercent(org.cardProcessingFeePercent?.toString() ?? '2.9');
             setCardProcessingFeeFlat(org.cardProcessingFeeFlat?.toString() ?? '0.30');
@@ -384,7 +388,7 @@ const Settings: React.FC = () => {
         const activeUsers = state.users.filter(u => u.organizationId === org.id && u.status !== 'archived' && u.hasAppAccess !== false).length;
         
         // Sync fallbacks with MasterBilling values (99, 249, 499)
-        const baseMonthlyCost = planConfig?.monthly || (currentPlan === 'enterprise' ? 499 : currentPlan === 'growth' ? 249 : currentPlan === 'payments_only' ? 20 : 99);
+        const baseMonthlyCost = planConfig?.monthly || (currentPlan === 'enterprise' ? 499 : currentPlan === 'growth' ? 249 : currentPlan === 'payments_only' ? 10 : 99);
         const userFee = state.platformSettings?.excessUserFee ?? 25;
         const additionalSlotsCost = (org.additionalUserSlots || 0) * userFee;
         
@@ -445,6 +449,7 @@ const Settings: React.FC = () => {
             proposalPrefix,
             proposalStartNumber: newProposalStart,
             quickbooksConnected,
+            allowPartialPayments,
             settings: {
                 ...(state.currentOrganization.settings || {}),
                 publicProfile: publicProfileEnabled,
@@ -808,10 +813,10 @@ const Settings: React.FC = () => {
                     </div>
                     <div>
                         <h1 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                            Unsaved Changes Warning
+                            {t("Unsaved Changes Warning")}
                         </h1>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                            You must click <strong className="text-amber-600 dark:text-amber-400">Commit All Settings</strong> to save any changes made across all tabs. Navigating away or changing tabs without committing will result in loss of changes.
+                            {t("You must click")} <strong className="text-amber-600 dark:text-amber-400">{t("Commit All Settings")}</strong> {t("to save any changes made across all tabs. Navigating away or changing tabs without committing will result in loss of changes.")}
                         </p>
                     </div>
                 </div>
@@ -825,23 +830,23 @@ const Settings: React.FC = () => {
                         '!bg-gradient-to-r !from-amber-500 !to-orange-500 hover:!from-amber-600 hover:!to-orange-600 !text-white animate-pulse'
                     }`}
                 >
-                    {saveStatus === 'success' ? '✓ SETTINGS SAVED' :
-                        saveStatus === 'error' ? 'ERROR SAVING' :
-                            isSaving ? 'SAVING...' : 'COMMIT ALL SETTINGS'}
+                    {saveStatus === 'success' ? `✓ ${t('SETTINGS SAVED')}` :
+                        saveStatus === 'error' ? t('ERROR SAVING') :
+                            isSaving ? t('SAVING...') : t('Commit All Settings')}
                 </Button>
             </header>
 
             <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 mb-6">
                 {[
-                    { id: 'profile', label: 'Identity', icon: Building },
-                    { id: 'social', label: 'Social & Reviews', icon: Globe },
-                    { id: 'operations', label: 'Operations', icon: Activity },
-                    { id: 'capabilities', label: 'Capabilities', icon: Wrench },
-                    { id: 'legal', label: 'Legal/Docs', icon: Scale },
-                    { id: 'integrations', label: 'Integrations', icon: CreditCard },
-                    { id: 'branding', label: 'Branding', icon: Palette },
-                    { id: 'subscription', label: 'Plan & Billing', icon: Zap },
-                    { id: 'data', label: 'Data Mgmt', icon: Database },
+                    { id: 'profile', label: t('Identity'), icon: Building },
+                    { id: 'social', label: t('Social & Reviews'), icon: Globe },
+                    { id: 'operations', label: t('Operations'), icon: Activity },
+                    { id: 'capabilities', label: t('Capabilities'), icon: Wrench },
+                    { id: 'legal', label: t('Legal/Docs'), icon: Scale },
+                    { id: 'integrations', label: t('Integrations'), icon: CreditCard },
+                    { id: 'branding', label: t('Branding'), icon: Palette },
+                    { id: 'subscription', label: t('Plan & Billing'), icon: Zap },
+                    { id: 'data', label: t('Data Mgmt'), icon: Database },
                 ].map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 px-5 py-3 text-[10px] font-black uppercase tracking-widest whitespace-nowrap rounded-t-xl transition-all ${activeTab === tab.id ? 'bg-white dark:bg-gray-800 text-primary-600 dark:text-primary-400 border border-b-0 border-gray-200 dark:border-gray-700 translate-y-[1px]' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
                         <tab.icon size={14} /> {tab.label}
@@ -852,7 +857,7 @@ const Settings: React.FC = () => {
             <div className="animate-fade-in">
                 {activeTab === 'profile' && <ProfileTab {...{ orgName, setOrgName, email, setEmail, phone, setPhone, website, setWebsite, notificationEmails, setNotificationEmails, industry, setIndustry, supportedTrades, handleTradeToggle, allIndustries: ALL_INDUSTRIES }} />}
                 {activeTab === 'social' && <SocialTab {...{ socialLinks, setSocialLinks, reviewLinks, setReviewLinks }} />}
-                {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled, cardProcessingFeeEnabled, setCardProcessingFeeEnabled, cardProcessingFeePercent, setCardProcessingFeePercent, cardProcessingFeeFlat, setCardProcessingFeeFlat, achProcessingFeeEnabled, setAchProcessingFeeEnabled, achProcessingFeePercent, setAchProcessingFeePercent, achProcessingFeeFlat, setAchProcessingFeeFlat, invoicePrefix, setInvoicePrefix, invoiceStartNumber, setInvoiceStartNumber, proposalPrefix, setProposalPrefix, proposalStartNumber, setProposalStartNumber }} />}
+                {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled, cardProcessingFeeEnabled, setCardProcessingFeeEnabled, cardProcessingFeePercent, setCardProcessingFeePercent, cardProcessingFeeFlat, setCardProcessingFeeFlat, achProcessingFeeEnabled, setAchProcessingFeeEnabled, achProcessingFeePercent, setAchProcessingFeePercent, achProcessingFeeFlat, setAchProcessingFeeFlat, invoicePrefix, setInvoicePrefix, invoiceStartNumber, setInvoiceStartNumber, proposalPrefix, setProposalPrefix, proposalStartNumber, setProposalStartNumber, allowPartialPayments, setAllowPartialPayments }} />}
                 {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
                 {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, customerTerms, setCustomerTerms, proposalTerms, setProposalTerms, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths }} />}
                 {activeTab === 'integrations' && <IntegrationsTab {...{ stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, kortAccountId, setKortAccountId, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, ringCentralLoginFlow, setRingCentralLoginFlow, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
@@ -871,10 +876,13 @@ const Settings: React.FC = () => {
                         timeTracking: 'Time Tracking', inventory: 'Inventory', salesCrm: 'Sales CRM',
                         hrDocuments: 'HR & Docs', careerPage: 'Recruiting', ai: 'AI Features',
                         quickbooks: 'QuickBooks', subcontractors: 'Subcontractors', '1099': '1099 Tax',
-                        api: 'API Access', branding: 'Custom Branding'
+                        api: 'API Access', branding: 'Custom Branding',
+                        whiteboard: 'Collaborative Whiteboard',
+                        customizations: 'Layout Customizations',
+                        technicianTools: 'Custom Technician Tools'
                     };
                     const planOptions: { key: 'payments_only' | 'starter' | 'growth' | 'enterprise'; label: string; price: number; annual: number; users: number; features: string[]; ribbon: string }[] = [
-                        { key: 'payments_only', label: 'Payments Only', price: ps?.payments_only?.monthly ?? 20, annual: ps?.payments_only?.annual ?? 199, users: ps?.payments_only?.unlimitedUsers ? 999999 : (ps?.payments_only?.maxUsers ?? 1), features: ps?.payments_only?.features || [], ribbon: ps?.payments_only?.ribbonText || '' },
+                        { key: 'payments_only', label: 'Payments Only', price: ps?.payments_only?.monthly ?? 10, annual: ps?.payments_only?.annual ?? 199, users: ps?.payments_only?.unlimitedUsers ? 999999 : (ps?.payments_only?.maxUsers ?? 1), features: ps?.payments_only?.features || [], ribbon: ps?.payments_only?.ribbonText || '' },
                         { key: 'starter', label: 'Starter', price: ps?.starter?.monthly ?? 99, annual: ps?.starter?.annual ?? 999, users: ps?.starter?.maxUsers ?? 3, features: ps?.starter?.features || [], ribbon: ps?.starter?.ribbonText || '' },
                         { key: 'growth', label: 'Growth', price: ps?.growth?.monthly ?? 249, annual: ps?.growth?.annual ?? 2499, users: ps?.growth?.maxUsers ?? 10, features: ps?.growth?.features || [], ribbon: ps?.growth?.ribbonText || '' },
                         { key: 'enterprise', label: 'Enterprise', price: ps?.enterprise?.monthly ?? 499, annual: ps?.enterprise?.annual ?? 4999, users: ps?.enterprise?.maxUsers ?? 50, features: ps?.enterprise?.features || [], ribbon: ps?.enterprise?.ribbonText || '' },

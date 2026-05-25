@@ -41,6 +41,13 @@ const params_1 = require("firebase-functions/params");
 const kortSecretKey = (0, params_1.defineSecret)('KORT_SECRET_KEY');
 const kortAccountId = (0, params_1.defineSecret)('KORT_ACCOUNT_ID');
 const kortWebhookSecret = (0, params_1.defineSecret)('KORT_WEBHOOK_SECRET');
+const getTilledApiUrl = () => {
+    const secretKey = kortSecretKey.value();
+    if (secretKey && secretKey.startsWith('sk_o5oQ')) {
+        return 'https://api.tilled.com';
+    }
+    return 'https://sandbox-api.tilled.com';
+};
 exports.createKortPaymentIntent = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, _context) => {
     const { amount, currency, organizationId, metadata } = data;
     if (!amount) {
@@ -85,7 +92,7 @@ exports.createKortPaymentIntent = functions.runWith({ secrets: [kortSecretKey, k
         if (data.platformFeeAmount !== undefined && data.platformFeeAmount > 0) {
             payload.platform_fee_amount = Math.round(data.platformFeeAmount * 100);
         }
-        const response = await fetch('https://sandbox-api.tilled.com/v1/payment-intents', {
+        const response = await fetch(`${getTilledApiUrl()}/v1/payment-intents`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -131,10 +138,10 @@ exports.generateKortOnboardingLink = functions.runWith({ secrets: [kortSecretKey
         const merchantName = orgData.name || 'TekTrakker Merchant';
         let newAccountId = orgData.kortAccountId;
         let tilledUserId = orgData.tilledUserId;
-        let targetRedirectUrl = `https://tektrakker.sandbox-paymentsonline.io/onboarding/?account_id=${newAccountId}`;
+        const isProd = secretKey && secretKey.startsWith('sk_o5oQ');
         if (!newAccountId) {
             // Step 1: Create a connected account (merchant) under your platform
-            const createMerchantRes = await fetch('https://sandbox-api.tilled.com/v1/accounts/connected', {
+            const createMerchantRes = await fetch(`${getTilledApiUrl()}/v1/accounts/connected`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -143,7 +150,8 @@ exports.generateKortOnboardingLink = functions.runWith({ secrets: [kortSecretKey
                 },
                 body: JSON.stringify({
                     name: merchantName,
-                    email: merchantEmail
+                    email: merchantEmail,
+                    product_code_ids: isProd ? ["pc_BnBsxNGDLFDVJ0T1yaF0S"] : ["pc_ilm9LRx4kc7KMJ5HZZuHn", "pc_C2gdfg7NVUmFEfPuszbsd"]
                 })
             });
             if (!createMerchantRes.ok) {
@@ -153,14 +161,19 @@ exports.generateKortOnboardingLink = functions.runWith({ secrets: [kortSecretKey
             const accountData = await createMerchantRes.json();
             newAccountId = accountData.id;
             // Immediate partial save
-            await db.collection('organizations').doc(organizationId).update({ kortAccountId: newAccountId });
+            // Force a new user creation for the new account by clearing the old user ID!
+            tilledUserId = null;
+            await db.collection('organizations').doc(organizationId).update({
+                kortAccountId: newAccountId,
+                tilledUserId: null
+            });
         }
         if (!tilledUserId) {
-            // Ensure unique email for user to prevent 403 "This email already exists" across Sandbox testing
-            const uniqueUserEmail = `${merchantEmail.split('@')[0]}+${organizationId.substring(0, 6)}@${merchantEmail.split('@')[1] || 'tektrakker.com'}`;
             // Step 2: Create a user attached to this new merchant account
+            // Try using the actual email address first to prevent "weird email" logins.
+            // Only fall back to a +orgId suffix if Tilled returns an email-already-exists error.
             const randomPassword = Math.random().toString(36).slice(-8) + 'A1!'; // meets complexity reqs
-            const createUserRes = await fetch('https://sandbox-api.tilled.com/v1/users', {
+            let createUserRes = await fetch(`${getTilledApiUrl()}/v1/users`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -168,12 +181,35 @@ exports.generateKortOnboardingLink = functions.runWith({ secrets: [kortSecretKey
                     'tilled-account': newAccountId
                 },
                 body: JSON.stringify({
-                    email: uniqueUserEmail,
+                    email: merchantEmail,
                     name: merchantName,
                     password: randomPassword,
                     role: 'merchant_owner'
                 })
             });
+            if (!createUserRes.ok) {
+                const cloneRes = createUserRes.clone();
+                const errData = await cloneRes.json();
+                const errMessage = errData.message || '';
+                if (errMessage.includes('already exists') || createUserRes.status === 409 || createUserRes.status === 403 || createUserRes.status === 400) {
+                    functions.logger.info(`Email ${merchantEmail} already exists in Tilled. Falling back to unique suffix email...`);
+                    const uniqueUserEmail = `${merchantEmail.split('@')[0]}+${organizationId.substring(0, 6)}@${merchantEmail.split('@')[1] || 'tektrakker.com'}`;
+                    createUserRes = await fetch(`${getTilledApiUrl()}/v1/users`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'tilled-api-key': secretKey,
+                            'tilled-account': newAccountId
+                        },
+                        body: JSON.stringify({
+                            email: uniqueUserEmail,
+                            name: merchantName,
+                            password: randomPassword,
+                            role: 'merchant_owner'
+                        })
+                    });
+                }
+            }
             if (!createUserRes.ok) {
                 const errData = await createUserRes.json();
                 throw new Error(`Failed to create merchant user: ${JSON.stringify(errData)}`);
@@ -183,27 +219,13 @@ exports.generateKortOnboardingLink = functions.runWith({ secrets: [kortSecretKey
             // Save the user ID now that it's created
             await db.collection('organizations').doc(organizationId).update({ tilledUserId: tilledUserId });
         }
-        // Fetch account to get exact onboarding url
-        const getAccRes = await fetch(`https://sandbox-api.tilled.com/v1/accounts/connected/${newAccountId}`, {
-            headers: {
-                'tilled-api-key': secretKey,
-                'tilled-account': partnerAccountId
-            }
-        });
-        if (getAccRes.ok) {
-            const acc = await getAccRes.json();
-            if (acc.capabilities && acc.capabilities.length > 0 && acc.capabilities[0].onboarding_application_url) {
-                targetRedirectUrl = acc.capabilities[0].onboarding_application_url;
-            }
-        }
-        // Step 3: Generate an Auth Link for the user, targeting the onboarding page
-        const fallbackRedirect = `/onboarding/?account_id=${newAccountId}`;
-        const finalRedirectUrl = targetRedirectUrl && targetRedirectUrl !== `https://tektrakker.sandbox-paymentsonline.io/onboarding/?account_id=undefined`
-            ? targetRedirectUrl
-            : fallbackRedirect;
-        // Ensure we don't prepend the domain if Tilled already prepends it
-        const cleanRedirectUrl = finalRedirectUrl.startsWith('http') ? new URL(finalRedirectUrl).pathname + new URL(finalRedirectUrl).search : finalRedirectUrl;
-        const appRes = await fetch('https://sandbox-api.tilled.com/v1/auth-links', {
+        // The actual onboarding form is located at `/onboarding/application`.
+        // Passing query parameters (such as `?account_id=...`) to Tilled's `redirect_url` in the auth-link payload
+        // causes Tilled to URL-encode the `?` and `=` as `%3F` and `%3D` in the final redirect path, triggering a 404 error.
+        // Since the user session is fully authenticated by the auth-link token, the account ID is already known
+        // by the secure portal, and query parameters are completely redundant. We redirect cleanly to `/onboarding/application`.
+        const cleanRedirectUrl = '/onboarding/application';
+        let appRes = await fetch(`${getTilledApiUrl()}/v1/auth-links`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -218,7 +240,78 @@ exports.generateKortOnboardingLink = functions.runWith({ secrets: [kortSecretKey
         });
         if (!appRes.ok) {
             const errData = await appRes.json();
-            throw new Error(`Failed to generate auth link: ${JSON.stringify(errData)}`);
+            const errMessage = errData.message || '';
+            const isUserError = errMessage.includes('user does not exist') ||
+                errMessage.includes('not found') ||
+                errMessage.includes('invalid') ||
+                appRes.status === 400 ||
+                appRes.status === 404;
+            if (isUserError) {
+                functions.logger.warn(`Stale or invalid user ID ${tilledUserId} detected for account ${newAccountId}. Re-creating user...`);
+                // Re-create user
+                const randomPassword = Math.random().toString(36).slice(-8) + 'A1!';
+                let createUserRes = await fetch(`${getTilledApiUrl()}/v1/users`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'tilled-api-key': secretKey,
+                        'tilled-account': newAccountId
+                    },
+                    body: JSON.stringify({
+                        email: merchantEmail,
+                        name: merchantName,
+                        password: randomPassword,
+                        role: 'merchant_owner'
+                    })
+                });
+                if (!createUserRes.ok) {
+                    const cloneRes = createUserRes.clone();
+                    const errData = await cloneRes.json();
+                    const errMessage = errData.message || '';
+                    if (errMessage.includes('already exists') || createUserRes.status === 409 || createUserRes.status === 403 || createUserRes.status === 400) {
+                        const uniqueUserEmail = `${merchantEmail.split('@')[0]}+${organizationId.substring(0, 6)}@${merchantEmail.split('@')[1] || 'tektrakker.com'}`;
+                        createUserRes = await fetch(`${getTilledApiUrl()}/v1/users`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'tilled-api-key': secretKey,
+                                'tilled-account': newAccountId
+                            },
+                            body: JSON.stringify({
+                                email: uniqueUserEmail,
+                                name: merchantName,
+                                password: randomPassword,
+                                role: 'merchant_owner'
+                            })
+                        });
+                    }
+                }
+                if (createUserRes.ok) {
+                    const userData = await createUserRes.json();
+                    if (userData && userData.id) {
+                        tilledUserId = userData.id;
+                        await db.collection('organizations').doc(organizationId).update({ tilledUserId: tilledUserId });
+                        // Retry generating the auth link
+                        appRes = await fetch(`${getTilledApiUrl()}/v1/auth-links`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'tilled-api-key': secretKey,
+                                'tilled-account': newAccountId
+                            },
+                            body: JSON.stringify({
+                                user_id: tilledUserId,
+                                expiration: '30d',
+                                redirect_url: cleanRedirectUrl
+                            })
+                        });
+                    }
+                }
+            }
+            if (!appRes.ok) {
+                const finalErrData = appRes.bodyUsed ? errData : await appRes.json();
+                throw new Error(`Failed to generate auth link: ${JSON.stringify(finalErrData)}`);
+            }
         }
         const appData = await appRes.json();
         return {
@@ -244,7 +337,7 @@ const getOrCreateKortCustomerHelper = async (organizationId, db, secretKey, part
         return orgData.platformCustomerId;
     }
     // Create Customer in Tilled on the Platform Account
-    const createCustomerRes = await fetch('https://sandbox-api.tilled.com/v1/customers', {
+    const createCustomerRes = await fetch(`${getTilledApiUrl()}/v1/customers`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -294,7 +387,7 @@ exports.attachKortPaymentMethod = functions.runWith({ secrets: [kortSecretKey, k
             if (!achDetails.accountNumber || !achDetails.routingNumber) {
                 throw new Error('Missing bank account or routing number for ACH payment method creation.');
             }
-            const pmResponse = await fetch('https://sandbox-api.tilled.com/v1/payment-methods', {
+            const pmResponse = await fetch(`${getTilledApiUrl()}/v1/payment-methods`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -330,7 +423,7 @@ exports.attachKortPaymentMethod = functions.runWith({ secrets: [kortSecretKey, k
         if (!resolvedPaymentMethodId) {
             throw new Error('Failed to resolve paymentMethodId.');
         }
-        const response = await fetch(`https://sandbox-api.tilled.com/v1/payment-methods/${resolvedPaymentMethodId}/attach`, {
+        const response = await fetch(`${getTilledApiUrl()}/v1/payment-methods/${resolvedPaymentMethodId}/attach`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -418,7 +511,7 @@ exports.tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhook
                 const secretKey = kortSecretKey.value();
                 if (secretKey) {
                     try {
-                        const piRes = await fetch(`https://sandbox-api.tilled.com/v1/payment-intents/${eventData.payment_intent_id}`, {
+                        const piRes = await fetch(`${getTilledApiUrl()}/v1/payment-intents/${eventData.payment_intent_id}`, {
                             headers: {
                                 'tilled-api-key': secretKey,
                                 'tilled-account': accountId
@@ -456,7 +549,7 @@ exports.tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhook
                 const secretKey = kortSecretKey.value();
                 if (secretKey) {
                     try {
-                        const piRes = await fetch(`https://sandbox-api.tilled.com/v1/payment-intents/${eventData.payment_intent_id}`, {
+                        const piRes = await fetch(`${getTilledApiUrl()}/v1/payment-intents/${eventData.payment_intent_id}`, {
                             headers: {
                                 'tilled-api-key': secretKey,
                                 'tilled-account': accountId
@@ -494,7 +587,7 @@ exports.tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhook
                 const secretKey = kortSecretKey.value();
                 if (secretKey) {
                     try {
-                        const chargeRes = await fetch(`https://sandbox-api.tilled.com/v1/charges/${eventData.charge_id}`, {
+                        const chargeRes = await fetch(`${getTilledApiUrl()}/v1/charges/${eventData.charge_id}`, {
                             headers: {
                                 'tilled-api-key': secretKey,
                                 'tilled-account': accountId
@@ -503,7 +596,7 @@ exports.tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhook
                         if (chargeRes.ok) {
                             const chargeData = await chargeRes.json();
                             if (chargeData.payment_intent_id) {
-                                const piRes = await fetch(`https://sandbox-api.tilled.com/v1/payment-intents/${chargeData.payment_intent_id}`, {
+                                const piRes = await fetch(`${getTilledApiUrl()}/v1/payment-intents/${chargeData.payment_intent_id}`, {
                                     headers: {
                                         'tilled-api-key': secretKey,
                                         'tilled-account': accountId
@@ -613,7 +706,7 @@ exports.refundKortPayment = functions.runWith({ secrets: [kortSecretKey, kortAcc
         if (amount) {
             refundBody.amount = Math.round(amount * 100);
         }
-        const response = await fetch('https://sandbox-api.tilled.com/v1/refunds', {
+        const response = await fetch(`${getTilledApiUrl()}/v1/refunds`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -656,7 +749,7 @@ exports.submitDisputeEvidence = functions.runWith({ secrets: [kortSecretKey, kor
             throw new Error("Organization does not have a Kort account.");
         // NOTE: The exact Tilled endpoint might vary. We will attempt to update the dispute 
         // with evidence text, and then submit it if required.
-        const response = await fetch(`https://sandbox-api.tilled.com/v1/disputes/${disputeId}`, {
+        const response = await fetch(`${getTilledApiUrl()}/v1/disputes/${disputeId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -698,10 +791,10 @@ exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, k
     const today = new Date();
     try {
         // Fetch platform settings to determine prices
-        const settingsDocs = await db.collection('platformSettings').limit(1).get();
-        const platformSettings = settingsDocs.docs[0]?.data();
+        const settingsDoc = await db.collection('platformSettings').doc('global').get();
+        const platformSettings = settingsDoc.exists ? settingsDoc.data() : undefined;
         const monthlyFee = platformSettings?.subscriptionFee || 7.00; // default 7$
-        const aiWorkerFee = platformSettings?.virtualWorkerFee || 10.00; // default 10$
+        const aiWorkerFee = platformSettings?.virtualWorkerFee || 49.99; // default 49.99$
         // Find orgs that are due for billing and have a vaulted payment method
         const orgsSnap = await db.collection('organizations')
             .where('platformVaultedPaymentMethodId', '!=', null)
@@ -721,7 +814,10 @@ exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, k
             const orgData = doc.data();
             // Calculate amount
             let totalAmount = monthlyFee;
-            if (orgData.virtualWorkerEnabled) {
+            if (orgData.plan && ['starter', 'growth', 'enterprise'].includes(orgData.plan) && orgData.subscriptionStatus === 'active') {
+                totalAmount = 0;
+            }
+            if (orgData.virtualWorkerEnabled && orgData.virtualWorkerBillingType !== 'lifetime') {
                 totalAmount += aiWorkerFee;
             }
             const totalAmountCents = Math.round(totalAmount * 100);
@@ -740,7 +836,7 @@ exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, k
             };
             try {
                 const orgMerchantId = orgData.kortAccountId || 'acct_zDruOrRgOZVtafF9TPC2J';
-                const response = await fetch('https://sandbox-api.tilled.com/v1/payment-intents', {
+                const response = await fetch(`${getTilledApiUrl()}/v1/payment-intents`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -833,7 +929,7 @@ exports.confirmKortACHPayment = functions.runWith({ secrets: [kortSecretKey, kor
             'tilled-account': accountId,
         };
         // 1. Create the ACH payment method server-side
-        const pmResponse = await fetch('https://sandbox-api.tilled.com/v1/payment-methods', {
+        const pmResponse = await fetch(`${getTilledApiUrl()}/v1/payment-methods`, {
             method: 'POST',
             headers,
             body: JSON.stringify({
@@ -863,7 +959,7 @@ exports.confirmKortACHPayment = functions.runWith({ secrets: [kortSecretKey, kor
         const paymentMethodId = pmData.id;
         // 2. Confirm the payment intent with this payment method
         const paymentIntentId = clientSecret.split('_secret_')[0];
-        const confirmResponse = await fetch(`https://sandbox-api.tilled.com/v1/payment-intents/${paymentIntentId}/confirm`, {
+        const confirmResponse = await fetch(`${getTilledApiUrl()}/v1/payment-intents/${paymentIntentId}/confirm`, {
             method: 'POST',
             headers,
             body: JSON.stringify({
@@ -909,13 +1005,16 @@ exports.testKortSubscriptionPayment = functions.runWith({ secrets: [kortSecretKe
             throw new Error('No vaulted payment method found for this organization.');
         }
         // Fetch platform settings to determine prices
-        const settingsDocs = await db.collection('platformSettings').limit(1).get();
-        const platformSettings = settingsDocs.docs[0]?.data();
+        const settingsDoc = await db.collection('platformSettings').doc('global').get();
+        const platformSettings = settingsDoc.exists ? settingsDoc.data() : undefined;
         const monthlyFee = platformSettings?.subscriptionFee !== undefined ? platformSettings.subscriptionFee : 7.00;
-        const aiWorkerFee = platformSettings?.virtualWorkerFee !== undefined ? platformSettings.virtualWorkerFee : 10.00;
+        const aiWorkerFee = platformSettings?.virtualWorkerFee !== undefined ? platformSettings.virtualWorkerFee : 49.99;
         // Calculate amount
         let totalAmount = monthlyFee;
-        if (virtualWorkerEnabled) {
+        if (orgData.plan && ['starter', 'growth', 'enterprise'].includes(orgData.plan) && orgData.subscriptionStatus === 'active') {
+            totalAmount = 0;
+        }
+        if (virtualWorkerEnabled && orgData.virtualWorkerBillingType !== 'lifetime') {
             totalAmount += aiWorkerFee;
         }
         const totalAmountCents = Math.round(totalAmount * 100);
@@ -933,7 +1032,7 @@ exports.testKortSubscriptionPayment = functions.runWith({ secrets: [kortSecretKe
             }
         };
         const orgMerchantId = orgData.kortAccountId || 'acct_zDruOrRgOZVtafF9TPC2J';
-        const response = await fetch('https://sandbox-api.tilled.com/v1/payment-intents', {
+        const response = await fetch(`${getTilledApiUrl()}/v1/payment-intents`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

@@ -5,6 +5,7 @@ import Select from 'components/ui/Select';
 import Button from 'components/ui/Button';
 import type { ProjectTask, User, Project, Sprint } from 'types';
 import { Plus, X, MessageSquare, CheckSquare, Tag, Clock } from 'lucide-react';
+import { useLanguage } from 'context/LanguageContext';
 
 interface TaskModalProps {
     isOpen: boolean;
@@ -22,6 +23,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
     const [newLabel, setNewLabel] = useState('');
     const [newCriteria, setNewCriteria] = useState('');
     const [activeSection, setActiveSection] = useState<'details' | 'agile' | 'criteria'>('details');
+    const { t } = useLanguage();
 
     const handleSave = () => {
         onSave({
@@ -58,14 +60,14 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
     const activeSprints = project?.sprints?.filter(s => s.status === 'Planning' || s.status === 'Active') || [];
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={taskForm.id ? 'Edit Task' : 'Create Task'}>
+        <Modal isOpen={isOpen} onClose={onClose} title={taskForm.id ? t('Edit Task') : t('Create Task')}>
             <div className="space-y-4">
                 {/* Section Tabs */}
                 <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
                     {[
-                        { id: 'details' as const, label: 'Details', icon: Clock },
-                        { id: 'agile' as const, label: 'Agile', icon: Tag },
-                        { id: 'criteria' as const, label: 'Acceptance', icon: CheckSquare },
+                        { id: 'details' as const, label: t('Details'), icon: Clock },
+                        { id: 'agile' as const, label: t('Agile'), icon: Tag },
+                        { id: 'criteria' as const, label: t('Acceptance'), icon: CheckSquare },
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -84,19 +86,19 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
 
                 {activeSection === 'details' && (
                     <>
-                        <Input label="Task Description" value={taskForm.description || ''} onChange={e => setTaskForm({...taskForm, description: e.target.value})} placeholder="What needs to be done?" />
+                        <Input label={t("Task Description")} value={taskForm.description || ''} onChange={e => setTaskForm({...taskForm, description: e.target.value})} placeholder={t("What needs to be done?")} />
                         
                         {/* WBS Placement */}
                         {project && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-y border-slate-100 dark:border-slate-800 py-3">
-                                <Select label="Phase" value={taskForm.phaseId || ''} onChange={e => {
+                                <Select label={t("Phase")} value={taskForm.phaseId || ''} onChange={e => {
                                     setTaskForm({...taskForm, phaseId: e.target.value, deliverableId: '', workPackageId: ''});
                                 }}>
-                                    <option value="">-- Project Level --</option>
+                                    <option value="">-- {t("Project Level")} --</option>
                                     {project.phases?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                 </Select>
                                 
-                                <Select label="Deliverable" value={taskForm.deliverableId || ''} onChange={e => {
+                                <Select label={t("Deliverable")} value={taskForm.deliverableId || ''} onChange={e => {
                                     const deliverableId = e.target.value;
                                     let phaseId = taskForm.phaseId;
                                     if (deliverableId && !phaseId) {
@@ -105,14 +107,14 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
                                     }
                                     setTaskForm({...taskForm, phaseId, deliverableId, workPackageId: ''});
                                 }}>
-                                    <option value="">-- Phase Level --</option>
+                                    <option value="">-- {t("Phase Level")} --</option>
                                     {(taskForm.phaseId 
                                         ? project.phases?.filter(p => p.id === taskForm.phaseId) 
                                         : project.phases || []
                                     )?.flatMap(p => p.deliverables || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                 </Select>
                                 
-                                <Select label="Work Package" value={taskForm.workPackageId || ''} onChange={e => {
+                                <Select label={t("Work Package")} value={taskForm.workPackageId || ''} onChange={e => {
                                     const workPackageId = e.target.value;
                                     let phaseId = taskForm.phaseId;
                                     let deliverableId = taskForm.deliverableId;
@@ -130,7 +132,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
                                     }
                                     setTaskForm({...taskForm, phaseId, deliverableId, workPackageId});
                                 }}>
-                                    <option value="">-- Deliverable Level --</option>
+                                    <option value="">-- {t("Deliverable Level")} --</option>
                                     {(taskForm.deliverableId 
                                         ? project.phases?.flatMap(p => p.deliverables || []).filter(d => d.id === taskForm.deliverableId)
                                         : taskForm.phaseId 
@@ -142,37 +144,37 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
                         )}
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Select label="Status" value={taskForm.status || 'Pending'} onChange={e => setTaskForm({...taskForm, status: e.target.value as any})}>
-                                <option value="Pending">📋 Pending</option>
-                                <option value="In Progress">🔄 In Progress</option>
-                                <option value="Blocked">🚫 Blocked</option>
-                                <option value="Review">👀 Review</option>
-                                <option value="Completed">✅ Completed</option>
+                            <Select label={t("Status")} value={taskForm.status || 'Pending'} onChange={e => setTaskForm({...taskForm, status: e.target.value as any})}>
+                                <option value="Pending">📋 {t("Pending")}</option>
+                                <option value="In Progress">🔄 {t("In Progress")}</option>
+                                <option value="Blocked">🚫 {t("Blocked")}</option>
+                                <option value="Review">👀 {t("Review")}</option>
+                                <option value="Completed">✅ {t("Completed")}</option>
                             </Select>
-                            <Select label="Priority" value={taskForm.priority || ''} onChange={e => setTaskForm({...taskForm, priority: e.target.value as any})}>
-                                <option value="">-- None --</option>
-                                <option value="Low">🟢 Low</option>
-                                <option value="Medium">🟡 Medium</option>
-                                <option value="High">🟠 High</option>
-                                <option value="Critical">🔴 Critical</option>
+                            <Select label={t("Priority")} value={taskForm.priority || ''} onChange={e => setTaskForm({...taskForm, priority: e.target.value as any})}>
+                                <option value="">-- {t("None")} --</option>
+                                <option value="Low">🟢 {t("Low")}</option>
+                                <option value="Medium">🟡 {t("Medium")}</option>
+                                <option value="High">🟠 {t("High")}</option>
+                                <option value="Critical">🔴 {t("Critical")}</option>
                             </Select>
                         </div>
 
                         {taskForm.status === 'Blocked' && (
-                            <Input label="Blocked Reason" value={taskForm.blockedReason || ''} onChange={e => setTaskForm({...taskForm, blockedReason: e.target.value})} placeholder="Why is this blocked?" />
+                            <Input label={t("Blocked Reason")} value={taskForm.blockedReason || ''} onChange={e => setTaskForm({...taskForm, blockedReason: e.target.value})} placeholder={t("Why is this blocked?")} />
                         )}
 
                         <div className="grid grid-cols-2 gap-3">
-                            <Input label="Due Date" type="date" value={taskForm.dueDate || ''} onChange={e => setTaskForm({...taskForm, dueDate: e.target.value})} />
-                            <Select label="Assigned To" value={taskForm.assignedTo || ''} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})}>
-                                <option value="">-- Unassigned --</option>
+                            <Input label={t("Due Date")} type="date" value={taskForm.dueDate || ''} onChange={e => setTaskForm({...taskForm, dueDate: e.target.value})} />
+                            <Select label={t("Assigned To")} value={taskForm.assignedTo || ''} onChange={e => setTaskForm({...taskForm, assignedTo: e.target.value})}>
+                                <option value="">-- {t("Unassigned")} --</option>
                                 {employees.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
                             </Select>
                         </div>
 
                         <label className="flex items-center gap-2">
                             <input type="checkbox" checked={taskForm.isBenchmark || false} onChange={e => setTaskForm({...taskForm, isBenchmark: e.target.checked})} className="rounded border-slate-300" />
-                            <span className="text-sm text-slate-700 dark:text-slate-300">🏁 Milestone / Benchmark</span>
+                            <span className="text-sm text-slate-700 dark:text-slate-300">🏁 {t("Milestone / Benchmark")}</span>
                         </label>
                     </>
                 )}
@@ -181,7 +183,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
                     <>
                         <div className="grid grid-cols-3 gap-3">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Story Points</label>
+                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t("Story Points")}</label>
                                 <div className="flex flex-wrap gap-1.5">
                                     {STORY_POINT_OPTIONS.map(sp => (
                                         <button
@@ -198,16 +200,16 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
                                     ))}
                                 </div>
                             </div>
-                            <Input label="Est. Hours" type="number" value={taskForm.estimatedHours?.toString() || ''} onChange={e => setTaskForm({...taskForm, estimatedHours: parseFloat(e.target.value) || undefined})} placeholder="0" />
-                            <Input label="Actual Hours" type="number" value={taskForm.actualHours?.toString() || ''} onChange={e => setTaskForm({...taskForm, actualHours: parseFloat(e.target.value) || undefined})} placeholder="0" />
+                            <Input label={t("Est. Hours")} type="number" value={taskForm.estimatedHours?.toString() || ''} onChange={e => setTaskForm({...taskForm, estimatedHours: parseFloat(e.target.value) || undefined})} placeholder="0" />
+                            <Input label={t("Actual Hours")} type="number" value={taskForm.actualHours?.toString() || ''} onChange={e => setTaskForm({...taskForm, actualHours: parseFloat(e.target.value) || undefined})} placeholder="0" />
                         </div>
 
                         {activeSprints.length > 0 && (
-                            <Select label="Sprint" value={taskForm.sprintId || ''} onChange={e => setTaskForm({...taskForm, sprintId: e.target.value || undefined})}>
-                                <option value="">-- Backlog (No Sprint) --</option>
+                            <Select label={t("Sprint")} value={taskForm.sprintId || ''} onChange={e => setTaskForm({...taskForm, sprintId: e.target.value || undefined})}>
+                                <option value="">-- {t("Backlog (No Sprint)")} --</option>
                                 {activeSprints.map(s => (
                                     <option key={s.id} value={s.id}>
-                                        {s.name} ({s.status === 'Active' ? '🟢 Active' : '📋 Planning'})
+                                        {s.name} ({s.status === 'Active' ? '🟢 ' + t('Active') : '📋 ' + t('Planning')})
                                     </option>
                                 ))}
                             </Select>
@@ -215,11 +217,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
 
                         {/* Labels */}
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Labels / Tags</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">{t("Labels / Tags")}</label>
                             <div className="flex flex-wrap gap-1.5 mb-2">
                                 {(taskForm.labels || []).map((label, idx) => (
                                     <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 rounded-full text-xs font-medium">
-                                        {label}
+                                        {t(label)}
                                         <button onClick={() => removeLabel(idx)} className="hover:text-red-600" aria-label="Remove label"><X size={12} /></button>
                                     </span>
                                 ))}
@@ -229,7 +231,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
                                     value={newLabel}
                                     onChange={e => setNewLabel(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addLabel())}
-                                    placeholder="Add a label..."
+                                    placeholder={t("Add a label...")}
                                     className="flex-1 px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                                 />
                                 <Button onClick={addLabel} variant="secondary" className="text-xs h-8 px-3"><Plus size={14} /></Button>
@@ -243,7 +245,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
                         <div>
                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
                                 <CheckSquare size={14} className="inline mr-1" />
-                                Acceptance Criteria (Definition of Done)
+                                {t("Acceptance Criteria (Definition of Done)")}
                             </label>
                             <div className="space-y-2 mb-3">
                                 {(taskForm.acceptanceCriteria || []).map((criteria, idx) => (
@@ -254,7 +256,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
                                     </div>
                                 ))}
                                 {(taskForm.acceptanceCriteria || []).length === 0 && (
-                                    <p className="text-sm text-slate-400 italic p-3 text-center bg-slate-50 dark:bg-slate-800 rounded-lg">No acceptance criteria defined yet.</p>
+                                    <p className="text-sm text-slate-400 italic p-3 text-center bg-slate-50 dark:bg-slate-800 rounded-lg">{t("No acceptance criteria defined yet.")}</p>
                                 )}
                             </div>
                             <div className="flex gap-2">
@@ -262,19 +264,19 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, taskForm
                                     value={newCriteria}
                                     onChange={e => setNewCriteria(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCriteria())}
-                                    placeholder="e.g., All wiring passes inspection..."
+                                    placeholder={t("e.g., All wiring passes inspection...")}
                                     className="flex-1 px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                                 />
-                                <Button onClick={addCriteria} variant="secondary" className="text-xs h-8 px-3"><Plus size={14} /> Add</Button>
+                                <Button onClick={addCriteria} variant="secondary" className="text-xs h-8 px-3"><Plus size={14} /> {t("Add")}</Button>
                             </div>
                         </div>
                     </>
                 )}
 
                 <div className="flex justify-end gap-2 pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <Button onClick={onClose} variant="secondary">Cancel</Button>
+                    <Button onClick={onClose} variant="secondary">{t("Cancel")}</Button>
                     <Button onClick={handleSave}>
-                        {taskForm.id ? 'Update Task' : 'Create Task'}
+                        {taskForm.id ? t('Update Task') : t('Create Task')}
                     </Button>
                 </div>
             </div>

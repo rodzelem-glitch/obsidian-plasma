@@ -3,6 +3,7 @@ import Card from '../../../../../components/ui/Card';
 import Button from '../../../../../components/ui/Button';
 import type { Project, ProjectTask, User, Sprint } from '../../../../../types';
 import { Clock, CheckCircle, Circle, AlertOctagon, Eye, GripVertical, User as UserIcon, Zap, Target, ChevronDown, ChevronUp } from 'lucide-react';
+import { useLanguage } from 'context/LanguageContext';
 
 type BoardColumn = 'Pending' | 'In Progress' | 'Blocked' | 'Review' | 'Completed';
 
@@ -39,6 +40,7 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
     const [draggedTask, setDraggedTask] = useState<string | null>(null);
     const [dragOverColumn, setDragOverColumn] = useState<BoardColumn | null>(null);
     const [showBacklog, setShowBacklog] = useState(true);
+    const { t } = useLanguage();
 
     // Collect ALL tasks from the project (flat + WBS)
     const allTasks = useMemo(() => {
@@ -139,19 +141,19 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                     <div className="flex items-center gap-3">
                         <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                             <Zap size={20} className="text-blue-500" />
-                            Sprint Board
+                            {t("Sprint Board")}
                         </h2>
                         {activeSprint && (
                             <span className="text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full font-bold">
-                                {activeSprint.status === 'Active' ? '🟢 Active' : '📋 Planning'}
+                                {activeSprint.status === 'Active' ? '🟢 ' + t('Active') : '📋 ' + t('Planning')}
                             </span>
                         )}
                     </div>
                     <div className="flex items-center gap-2">
                         {canSeeAllTasks && (
                             <>
-                                <Button variant="secondary" onClick={onSprintCreate} className="text-xs h-8">+ Sprint</Button>
-                                <Button onClick={onTaskAdd} className="text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white">+ Task</Button>
+                                <Button variant="secondary" onClick={onSprintCreate} className="text-xs h-8">+ {t("Sprint")}</Button>
+                                <Button onClick={onTaskAdd} className="text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white">+ {t("Task")}</Button>
                             </>
                         )}
                     </div>
@@ -162,12 +164,12 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                     <div className="flex items-center gap-2">
                         {project.sprints && project.sprints.length > 0 ? (
                             <select
-                                aria-label="Select Sprint"
+                                aria-label={t("Select Sprint")}
                                 value={activeSprint?.id || ''}
                                 onChange={e => setSelectedSprintId(e.target.value || null)}
                                 className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-white font-medium"
                             >
-                                <option value="">All Tasks (No Sprint Filter)</option>
+                                <option value="">{t("All Tasks (No Sprint Filter)")}</option>
                                 {project.sprints.map(s => (
                                     <option key={s.id} value={s.id}>
                                         {s.name} {s.status === 'Active' ? '🟢' : s.status === 'Completed' ? '✅' : ''}
@@ -175,7 +177,7 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                                 ))}
                             </select>
                         ) : (
-                            <span className="text-sm text-slate-500 italic">No sprints created yet</span>
+                            <span className="text-sm text-slate-500 italic">{t("No sprints created yet")}</span>
                         )}
                         {activeSprint?.goal && (
                             <span className="text-xs text-slate-500 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center gap-1">
@@ -187,11 +189,11 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                     {/* Velocity Metrics */}
                     <div className="flex items-center gap-4 text-xs">
                         <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                            <span className="text-slate-500">Tasks:</span>
+                            <span className="text-slate-500">{t("Tasks:")}</span>
                             <span className="font-bold text-slate-800 dark:text-white">{sprintTasks.length}</span>
                         </div>
                         <div className="flex items-center gap-1.5 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                            <span className="text-slate-500">Points:</span>
+                            <span className="text-slate-500">{t("Points:")}</span>
                             <span className="font-bold text-blue-600">{sprintVelocity}</span>
                             <span className="text-slate-400">/ {totalPoints}</span>
                         </div>
@@ -225,7 +227,7 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                             <div className={`p-3 border-b ${col.bgClass} flex items-center justify-between sticky top-0`}>
                                 <div className="flex items-center gap-2">
                                     <col.icon size={14} className={col.color} />
-                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">{col.label}</span>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">{t(col.label)}</span>
                                 </div>
                                 <span className="text-xs bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 w-5 h-5 rounded-full flex items-center justify-center font-bold">
                                     {tasks.length}
@@ -248,15 +250,15 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                                         <div className="flex items-center gap-1 mb-1.5 flex-wrap">
                                             {task.priority && (
                                                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${PRIORITY_COLORS[task.priority] || ''}`}>
-                                                    {task.priority}
+                                                    {t(task.priority)}
                                                 </span>
                                             )}
                                             {task.isBenchmark && (
-                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 font-bold">🏁 Milestone</span>
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 font-bold">🏁 {t("Milestone")}</span>
                                             )}
                                             {(task.labels || []).slice(0, 2).map((label, i) => (
                                                 <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
-                                                    {label}
+                                                    {t(label)}
                                                 </span>
                                             ))}
                                         </div>
@@ -267,7 +269,7 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                                         {/* Blocked Reason */}
                                         {task.status === 'Blocked' && task.blockedReason && (
                                             <div className="text-[10px] text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded mb-2">
-                                                🚫 {task.blockedReason}
+                                                🚫 {t(task.blockedReason)}
                                             </div>
                                         )}
 
@@ -303,7 +305,7 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                                 ))}
                                 {tasks.length === 0 && (
                                     <div className="text-center py-8 text-slate-400 text-xs">
-                                        <p>Drop tasks here</p>
+                                        <p>{t("Drop tasks here")}</p>
                                     </div>
                                 )}
                             </div>
@@ -319,7 +321,7 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                         onClick={() => setShowBacklog(!showBacklog)}
                         className="w-full flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm font-medium text-slate-600 dark:text-slate-400"
                     >
-                        <span>📋 Backlog ({backlogTasks.length} unassigned tasks)</span>
+                        <span>📋 {t("Backlog")} ({backlogTasks.length} {t("unassigned tasks")})</span>
                         {showBacklog ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </button>
                     {showBacklog && (
@@ -336,7 +338,7 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
                                             <span className="text-[10px] bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-bold">{task.storyPoints}pt</span>
                                         )}
                                         {task.priority && (
-                                            <span className={`text-[10px] px-1 py-0.5 rounded font-bold ${PRIORITY_COLORS[task.priority]}`}>{task.priority}</span>
+                                            <span className={`text-[10px] px-1 py-0.5 rounded font-bold ${PRIORITY_COLORS[task.priority]}`}>{t(task.priority)}</span>
                                         )}
                                     </div>
                                 </div>

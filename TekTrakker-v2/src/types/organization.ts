@@ -120,6 +120,7 @@ export interface Organization {
     promoCode?: string | null;
     measureQuickApiKey?: string;
     virtualWorkerEnabled?: boolean;
+    virtualWorkerBillingType?: 'monthly' | 'lifetime';
     franchiseId?: string;
     profileSlug?: string;
     gclid?: string;

@@ -94,6 +94,8 @@ export const KortPlayground: React.FC = () => {
         }
     };
     const kortAccountId = activeOrg?.kortAccountId || '';
+    const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY;
+    const isSandbox = !publishableKey || !publishableKey.startsWith('pk_rYhq');
     const user = state.currentUser;
     const isKortTester = user?.email === 'integrations@kortpayments.com' || (user?.role as string) === 'kort_tester';
     const isUnlocked = isKortTester && typeof window !== 'undefined' && localStorage.getItem('kort_tester_unlocked') === 'true';
@@ -211,7 +213,7 @@ export const KortPlayground: React.FC = () => {
                             <ShieldCheck size={14} /> Environment Secured
                         </div>
                         <div>SDK: Payments.js v2</div>
-                        <div>Gateway: Kort Sandbox</div>
+                        <div>Gateway: {isSandbox ? 'Kort Sandbox' : 'Kort Live Production'}</div>
                     </div>
                 </div>
             </div>
@@ -229,7 +231,7 @@ export const KortPlayground: React.FC = () => {
                                 <UserCheck className="text-indigo-500" size={20} /> 1. Merchant Onboarding & API Credentials
                             </h2>
                             <p className="text-slate-500 dark:text-slate-400 text-xs mb-6">
-                                Connect this tenant to the Kort sandbox merchant registry. Launching onboarding generates a mock merchant profile so your account is fully authorized to receive charges.
+                                Connect this tenant to the {isSandbox ? 'Kort sandbox' : 'Kort live production'} merchant registry. Launching onboarding generates a {isSandbox ? 'mock merchant profile so your account is fully authorized to receive charges.' : 'live merchant application so you can process credit cards.'}
                             </p>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center bg-slate-50 dark:bg-slate-900/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800/50">
@@ -383,7 +385,7 @@ export const KortPlayground: React.FC = () => {
                                 <Zap className="text-indigo-500" size={20} /> 4. Platform Subscription Billing Simulator
                             </h2>
                             <p className="text-slate-500 dark:text-slate-400 text-xs mb-4">
-                                Simulate recurring off-session charges using your securely vaulted credit card or bank account. The system calculates active subscription rates ($7/mo standard, or $17/mo with Virtual Worker enabled) and confirms the sandbox payment intent automatically.
+                                Simulate recurring off-session charges using your securely vaulted credit card or bank account. The system calculates active subscription rates ($7/mo standard, or $56.99/mo with Virtual Worker enabled) and confirms the sandbox payment intent automatically.
                             </p>
 
                             {activeOrg?.platformVaultedPaymentMethodId ? (
@@ -531,7 +533,7 @@ export const KortPlayground: React.FC = () => {
                             
                             <div className="space-y-4">
                                 <div className="bg-slate-900 text-slate-300 p-3 rounded-lg font-mono text-[10.5px] border border-slate-800 break-all select-all">
-                                    https://us-central1-tektrakker.cloudfunctions.net/kortWebhook
+                                    https://us-central1-tektrakker.cloudfunctions.net/tilledWebhook
                                 </div>
                                 <p className="text-[11px] text-slate-500 leading-relaxed">
                                     In your **Kort Sandbox Portal**, navigate to **Developers → Webhooks** and add the URL above. This enables instant webhook push alerts for transaction finalization.

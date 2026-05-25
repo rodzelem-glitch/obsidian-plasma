@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import Modal from 'components/ui/Modal';
 import { Users, HardHat, MapPin, TrendingUp, Clock, Calendar } from 'lucide-react';
 import EmployeeManagement from 'pages/admin/EmployeeManagement';
@@ -14,6 +15,7 @@ import type { ShiftLog } from 'types';
 const WorkforceView: React.FC = () => {
     const { state } = useAppContext();
     const { currentUser } = state;
+    const { t } = useLanguage();
 
     const [isRosterOpen, setIsRosterOpen] = useState(false);
     const [isSubcontractorsOpen, setIsSubcontractorsOpen] = useState(false);
@@ -74,20 +76,20 @@ const WorkforceView: React.FC = () => {
                         <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg group-hover:scale-110 transition-transform">
                             <Users size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Team Roster</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("Team Roster")}</h3>
                     </div>
                     <div className="space-y-3 flex-1 text-sm">
                         <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-blue-500 flex justify-between items-center group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-colors">
-                            <span className="text-gray-600 dark:text-gray-400 font-medium">Total Employees</span>
+                            <span className="text-gray-600 dark:text-gray-400 font-medium">{t("Total Employees")}</span>
                             <span className="font-bold text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded text-xs">{orgUsers.length}</span>
                         </div>
                         <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-indigo-500 flex justify-between items-center group-hover:bg-indigo-50 dark:group-hover:bg-indigo-900/20 transition-colors">
-                            <span className="text-gray-600 dark:text-gray-400 font-medium">Field Techs</span>
+                            <span className="text-gray-600 dark:text-gray-400 font-medium">{t("Field Techs")}</span>
                             <span className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/30 px-2 py-1 rounded text-xs">{activeTechs.length}</span>
                         </div>
                     </div>
                     <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
-                        Manage Employees
+                        {t("Manage Employees")}
                     </div>
                 </div>
 
@@ -103,7 +105,7 @@ const WorkforceView: React.FC = () => {
                         <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg group-hover:scale-110 transition-transform">
                             <MapPin size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white drop-shadow-sm">GPS Tracking</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white drop-shadow-sm">{t("GPS Tracking")}</h3>
                     </div>
                     <div className="flex-1 rounded-lg overflow-hidden relative min-h-[120px] bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 group-hover:shadow-[inset_0_0_20px_rgba(16,185,129,0.1)] transition-shadow">
                         {/* Minimal Map Preview Simulation using abstract CSS grid and dots for real locations if accessible */}
@@ -117,20 +119,20 @@ const WorkforceView: React.FC = () => {
                                      e.style.top = `${20 + (i * 15 % 60)}%`; // Simplified pseudo-random mapping
                                      e.style.left = `${30 + (i * 25 % 50)}%`;
                                  }
-                             }}></div>
+                              }}></div>
                         ))}
                         {activeTechs.filter(t => t.location).length === 0 && (
                             <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-500 uppercase tracking-widest">
-                                Loading Radar...
+                                {t("Loading Radar...")}
                             </div>
                         )}
                         <div className="absolute bottom-2 left-2 right-2 bg-white/90 dark:bg-gray-900/90 backdrop-blur pb-0 p-2 rounded-md shadow flex items-center justify-between z-10 border border-gray-100 dark:border-gray-700">
-                            <span className="text-xs font-bold text-gray-600 dark:text-gray-300">Live Active Techs</span>
-                            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-1 rounded-full uppercase tracking-wider">{activeTechs.filter(t => t.location).length} Tracked</span>
+                            <span className="text-xs font-bold text-gray-600 dark:text-gray-300">{t("Live Active Techs")}</span>
+                            <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-1 rounded-full uppercase tracking-wider">{activeTechs.filter(t => t.location).length} {t("Tracked")}</span>
                         </div>
                     </div>
                     <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
-                        Open Full Map
+                        {t("Open Full Map")}
                     </div>
                 </div>
 
@@ -146,17 +148,17 @@ const WorkforceView: React.FC = () => {
                         <div className="p-3 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-lg group-hover:scale-110 transition-transform">
                             <HardHat size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Subcontractors</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("Subcontractors")}</h3>
                     </div>
                     <div className="flex-1 flex flex-col justify-center items-center py-4 relative bg-gray-50 dark:bg-gray-900/30 rounded-lg border border-gray-100 dark:border-gray-800 group-hover:bg-amber-50 dark:group-hover:bg-amber-900/10 transition-colors">
                          <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] dark:opacity-[0.02]">
                              <HardHat size={120} />
                          </div>
                          <span className="text-5xl font-black text-amber-600 dark:text-amber-400 mb-2 relative z-10 drop-shadow-sm">{subcontractorsCount}</span>
-                         <span className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold tracking-widest relative z-10">Active Subs</span>
+                         <span className="text-xs text-gray-500 dark:text-gray-400 uppercase font-bold tracking-widest relative z-10">{t("Active Subs")}</span>
                     </div>
                     <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
-                        Manage Subcontractors
+                        {t("Manage Subcontractors")}
                     </div>
                 </div>
 
@@ -172,13 +174,13 @@ const WorkforceView: React.FC = () => {
                         <div className="p-3 bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-600 dark:text-fuchsia-400 rounded-lg group-hover:scale-110 transition-transform">
                             <Calendar size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Scheduling</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("Scheduling")}</h3>
                     </div>
                     <div className="flex-1 flex flex-col gap-2 relative">
                          {/* Mini Schedule Strip */}
                          <div className="flex items-center justify-between p-3 rounded-lg bg-fuchsia-50 dark:bg-fuchsia-900/10 border border-fuchsia-100 dark:border-fuchsia-900/30 group-hover:border-fuchsia-200 dark:group-hover:border-fuchsia-800 transition-colors">
                              <div className="flex flex-col">
-                                 <span className="text-xs font-bold text-gray-900 dark:text-white">Morning Shift</span>
+                                 <span className="text-xs font-bold text-gray-900 dark:text-white">{t("Morning Shift")}</span>
                                  <span className="text-[10px] text-gray-500 font-medium">8:00 AM - 4:00 PM</span>
                              </div>
                              <div className="flex -space-x-2">
@@ -189,7 +191,7 @@ const WorkforceView: React.FC = () => {
                          </div>
                          <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 group-hover:bg-gray-100 dark:group-hover:bg-gray-800/80 transition-colors">
                              <div className="flex flex-col">
-                                 <span className="text-xs font-bold text-gray-900 dark:text-white">Evening On-Call</span>
+                                 <span className="text-xs font-bold text-gray-900 dark:text-white">{t("Evening On-Call")}</span>
                                  <span className="text-[10px] text-gray-500 font-medium">4:00 PM - 12:00 AM</span>
                              </div>
                              <div className="flex -space-x-2">
@@ -200,12 +202,12 @@ const WorkforceView: React.FC = () => {
                          </div>
                          {(state.schedules?.length || 0) === 0 && (
                              <div className="absolute inset-0 bg-white/50 dark:bg-gray-800/50 backdrop-blur-[1px] flex flex-col items-center justify-center rounded-lg">
-                                 <span className="text-xs font-bold text-gray-500 uppercase tracking-widest bg-white dark:bg-gray-900 px-3 py-1 rounded shadow-sm">Agenda Empty</span>
+                                 <span className="text-xs font-bold text-gray-500 uppercase tracking-widest bg-white dark:bg-gray-900 px-3 py-1 rounded shadow-sm">{t("Agenda Empty")}</span>
                              </div>
                          )}
                     </div>
                     <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
-                        View Schedule
+                        {t("View Schedule")}
                     </div>
                 </div>
 
@@ -221,20 +223,20 @@ const WorkforceView: React.FC = () => {
                         <div className="p-3 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-lg group-hover:scale-110 transition-transform">
                             <Clock size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Time Sheets</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("Time Sheets")}</h3>
                     </div>
                     <div className="space-y-3 flex-1 text-sm pt-2">
                         <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-orange-500 flex justify-between items-center group-hover:bg-orange-50 dark:group-hover:bg-orange-900/20 transition-colors">
-                            <span className="text-gray-600 dark:text-gray-400 font-medium">Currently On Clock</span>
+                            <span className="text-gray-600 dark:text-gray-400 font-medium">{t("Currently On Clock")}</span>
                             <span className="font-bold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded text-xs tracking-wide">{activeShifts} Techs</span>
                         </div>
                         <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-red-500 flex justify-between items-center group-hover:bg-red-50 dark:group-hover:bg-red-900/20 transition-colors">
-                            <span className="text-gray-600 dark:text-gray-400 font-medium">Pending Approval</span>
+                            <span className="text-gray-600 dark:text-gray-400 font-medium">{t("Pending Approval")}</span>
                             <span className="font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 px-2 py-1 rounded text-xs tracking-wide">{pendingTimesheets} Sheets</span>
                         </div>
                     </div>
                     <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
-                        Review Timesheets
+                        {t("Review Timesheets")}
                     </div>
                 </div>
 
@@ -250,7 +252,7 @@ const WorkforceView: React.FC = () => {
                         <div className="p-3 bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 rounded-lg group-hover:scale-110 transition-transform">
                             <TrendingUp size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Performance</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("Performance")}</h3>
                     </div>
                     <div className="flex-1 flex flex-col justify-center gap-2 px-2">
                         {topPerformingTech ? (
@@ -259,7 +261,7 @@ const WorkforceView: React.FC = () => {
                                 <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-pink-600/10 rounded-full blur-xl"></div>
                                 
                                 <div className="text-[10px] font-black text-pink-600 dark:text-pink-400 uppercase tracking-widest mb-2 relative z-10 flex items-center gap-1">
-                                    <TrendingUp size={12} /> Top Performer
+                                    <TrendingUp size={12} /> {t("Top Performer")}
                                 </div>
                                 <div className="w-12 h-12 rounded-full bg-pink-200 dark:bg-pink-800/80 text-pink-700 dark:text-white flex items-center justify-center font-black text-xl mb-2 shadow-inner border-2 border-white dark:border-gray-800 relative z-10">
                                     {topPerformingTech.firstName?.[0] || '?'}
@@ -269,39 +271,39 @@ const WorkforceView: React.FC = () => {
                             </div>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center text-[10px] text-gray-400 font-bold uppercase tracking-widest bg-gray-50 dark:bg-gray-900/30 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-800">
-                                No Performance Data
+                                {t("No Performance Data")}
                             </div>
                         )}
                     </div>
                     <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
-                        View Analytics
+                        {t("View Analytics")}
                     </div>
                 </div>
 
             </div>
 
             {/* Modals */}
-            <Modal isOpen={isRosterOpen} onClose={() => setIsRosterOpen(false)} title="Team Roster" size="full">
+            <Modal isOpen={isRosterOpen} onClose={() => setIsRosterOpen(false)} title={t("Team Roster")} size="full">
                 <EmployeeManagement />
             </Modal>
             
-            <Modal isOpen={isTrackingOpen} onClose={() => setIsTrackingOpen(false)} title="Live Tracking Map" size="full">
+            <Modal isOpen={isTrackingOpen} onClose={() => setIsTrackingOpen(false)} title={t("Live Tracking Map")} size="full">
                 <TechTracking />
             </Modal>
 
-            <Modal isOpen={isSubcontractorsOpen} onClose={() => setIsSubcontractorsOpen(false)} title="Subcontractors Directory" size="full">
+            <Modal isOpen={isSubcontractorsOpen} onClose={() => setIsSubcontractorsOpen(false)} title={t("Subcontractors Directory")} size="full">
                 <SubcontractorsTab />
             </Modal>
 
-            <Modal isOpen={isScheduleOpen} onClose={() => setIsScheduleOpen(false)} title="Employee Scheduling" size="full">
+            <Modal isOpen={isScheduleOpen} onClose={() => setIsScheduleOpen(false)} title={t("Employee Scheduling")} size="full">
                 <EmployeeScheduling />
             </Modal>
 
-            <Modal isOpen={isTimesheetsOpen} onClose={() => setIsTimesheetsOpen(false)} title="Time Sheet Review" size="full">
+            <Modal isOpen={isTimesheetsOpen} onClose={() => setIsTimesheetsOpen(false)} title={t("Time Sheet Review")} size="full">
                 <TimeSheetReview />
             </Modal>
 
-            <Modal isOpen={isPerformanceOpen} onClose={() => setIsPerformanceOpen(false)} title="Tech Performance" size="full">
+            <Modal isOpen={isPerformanceOpen} onClose={() => setIsPerformanceOpen(false)} title={t("Tech Performance")} size="full">
                 <TechPerformance />
             </Modal>
         </div>

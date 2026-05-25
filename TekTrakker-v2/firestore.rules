@@ -223,6 +223,12 @@ service cloud.firestore {
       allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || isCustomerOwner(request.resource.data);
     }
 
+    match /events/{eventId} {
+      allow read: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
     match /jobs/{jobId} {
       allow get: if true;
       allow list: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isAssignedPartner(resource.data) || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);

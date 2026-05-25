@@ -46,7 +46,7 @@ const FEATURES = [
 ];
 
 const COMPARISON = [
-    { feature: 'Monthly Platform Fee', tektrakker: '$20/mo', competitors: '$0–$99/mo' },
+    { feature: 'Monthly Platform Fee', tektrakker: '$10/mo', competitors: '$0–$99/mo' },
     { feature: 'Processing Rate', tektrakker: '2.79%', competitors: '2.9%–3.5%' },
     { feature: 'Per-Transaction Fee', tektrakker: '$0.25', competitors: '$0.10–$0.49' },
     { feature: 'Invoicing', tektrakker: true, competitors: 'Extra cost' },
@@ -65,7 +65,7 @@ const STEPS = [
 export default function PaymentProcessingSignup() {
     return (
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-emerald-500/30">
-            <LandingHeader ctaUrl={SIGNUP_URL} ctaLabel="Get Started — $20/mo" />
+            <LandingHeader ctaUrl={SIGNUP_URL} ctaLabel="Get Started — $10/mo" />
 
             <main>
                 {/* Hero Section */}
@@ -75,7 +75,7 @@ export default function PaymentProcessingSignup() {
                     
                     <div className="relative max-w-5xl mx-auto px-4 text-center">
                         <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-8 border border-emerald-500/20 backdrop-blur-sm">
-                            <DollarSign size={14} /> Payment Processing Only — $20/month
+                            <DollarSign size={14} /> Payment Processing Only — $10/month
                         </div>
 
                         <h1 className="text-5xl md:text-7xl font-black tracking-tight mb-6 leading-[1.1] text-white">
@@ -95,7 +95,7 @@ export default function PaymentProcessingSignup() {
                                 href={SIGNUP_URL}
                                 className="group inline-flex items-center gap-3 px-10 py-5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-xl rounded-2xl shadow-[0_0_40px_rgba(16,185,129,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98]"
                             >
-                                Get Started for $20/mo
+                                Get Started for $10/mo
                                 <ArrowRight size={22} className="transition-transform group-hover:translate-x-1" />
                             </Link>
                         </div>
@@ -103,7 +103,7 @@ export default function PaymentProcessingSignup() {
                         {/* Price Highlight */}
                         <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-6">
                             <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl px-8 py-5 text-center">
-                                <div className="text-4xl font-black text-white">$20</div>
+                                <div className="text-4xl font-black text-white">$10</div>
                                 <div className="text-sm text-slate-400">per month, flat</div>
                             </div>
                             <div className="text-2xl text-slate-600 font-bold">+</div>
@@ -244,7 +244,7 @@ export default function PaymentProcessingSignup() {
                             Ready to Simplify<br />Your Payments?
                         </h2>
                         <p className="text-lg text-slate-300 mb-10 max-w-xl mx-auto">
-                            $20/month. Unlimited users. Professional invoicing and the best processing rates in the industry.
+                            $10/month. Unlimited users. Professional invoicing and the best processing rates in the industry.
                         </p>
                         <Link 
                             href={SIGNUP_URL}

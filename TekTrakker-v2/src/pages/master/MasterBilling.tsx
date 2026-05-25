@@ -60,7 +60,7 @@ const MasterBilling: React.FC = () => {
                 maxUsers: 15
             },
             payments_only: {
-                monthly: 20,
+                monthly: 10,
                 annual: 199,
                 maxUsers: 999999,
                 unlimitedUsers: true,
@@ -69,6 +69,10 @@ const MasterBilling: React.FC = () => {
             }
         },
         excessUserFee: 25,
+        subscriptionFee: 7,
+        virtualWorkerFee: 49.99,
+        virtualWorkerLifetimeFee: 1999,
+        franchiseLifetimeFee: 25000,
         updatedAt: new Date().toISOString()
     });
     
@@ -144,6 +148,8 @@ const MasterBilling: React.FC = () => {
     const [unlockAllFeatures, setUnlockAllFeatures] = useState(false);
     const [customDiscountPct, setCustomDiscountPct] = useState(0);
     const [notes, setNotes] = useState('');
+    const [virtualWorkerEnabled, setVirtualWorkerEnabled] = useState(false);
+    const [virtualWorkerBillingType, setVirtualWorkerBillingType] = useState<'monthly' | 'lifetime'>('monthly');
 
     const getBasePrice = (plan: string) => {
         if (!config?.plans) return 99;
@@ -194,6 +200,8 @@ const MasterBilling: React.FC = () => {
         setIsFreeAccess(org.isFreeAccess || false);
         setUnlockAllFeatures(org.unlockAllFeatures || false);
         setCustomDiscountPct(org.customDiscountPct || 0);
+        setVirtualWorkerEnabled(org.virtualWorkerEnabled || false);
+        setVirtualWorkerBillingType((org as any).virtualWorkerBillingType || 'monthly');
         setNotes('');
         setIsManageModalOpen(true);
     };
@@ -215,7 +223,21 @@ const MasterBilling: React.FC = () => {
 
         const basePrice = isFreeAccess ? 0 : getBasePrice(upgradePlan || 'starter');
         const userCosts = isFreeAccess ? 0 : (additionalUsers * getUserFee());
-        const grossSubtotal = basePrice + userCosts + customCharge;
+        
+        let virtualWorkerCost = 0;
+        if (virtualWorkerEnabled && !isFreeAccess) {
+            if (virtualWorkerBillingType === 'lifetime') {
+                if (!selectedOrg.virtualWorkerEnabled || (selectedOrg as any).virtualWorkerBillingType !== 'lifetime') {
+                    virtualWorkerCost = config.virtualWorkerLifetimeFee ?? 1999;
+                }
+            } else {
+                if (!selectedOrg.virtualWorkerEnabled || (selectedOrg as any).virtualWorkerBillingType !== 'monthly') {
+                    virtualWorkerCost = config.virtualWorkerFee ?? 49.99;
+                }
+            }
+        }
+
+        const grossSubtotal = basePrice + userCosts + virtualWorkerCost + customCharge;
         const discountAmount = isFreeAccess ? 0 : (grossSubtotal * (customDiscountPct / 100));
         const netBeforeTax = Math.max(0, grossSubtotal - discountAmount);
 
@@ -231,6 +253,17 @@ const MasterBilling: React.FC = () => {
 
         if (userCosts > 0) {
             items.push({ id: 'item-users', description: `Additional User Slots (${additionalUsers})`, quantity: 1, unitPrice: userCosts, total: userCosts, type: 'Fee' });
+        }
+
+        if (virtualWorkerCost > 0) {
+            items.push({
+                id: 'item-vw',
+                description: `Virtual Worker AI Access (${virtualWorkerBillingType === 'lifetime' ? 'Lifetime Access' : 'First Month subscription'})`,
+                quantity: 1,
+                unitPrice: virtualWorkerCost,
+                total: virtualWorkerCost,
+                type: 'Fee'
+            });
         }
 
         if (customCharge !== 0) {
@@ -269,7 +302,15 @@ const MasterBilling: React.FC = () => {
 
         try {
             await db.collection('jobs').doc(jobId).set(invoiceData);
-            await db.collection('organizations').doc(selectedOrg.id).update({ plan: upgradePlan, isFreeAccess: isFreeAccess, unlockAllFeatures: unlockAllFeatures, customDiscountPct: customDiscountPct, additionalUserSlots: additionalUsers });
+            await db.collection('organizations').doc(selectedOrg.id).update({ 
+                plan: upgradePlan, 
+                isFreeAccess: isFreeAccess, 
+                unlockAllFeatures: unlockAllFeatures, 
+                customDiscountPct: customDiscountPct, 
+                additionalUserSlots: additionalUsers,
+                virtualWorkerEnabled: virtualWorkerEnabled,
+                virtualWorkerBillingType: virtualWorkerBillingType
+            });
             showToast.warn(`Upgrade processed. Total: ${formatCurrency(finalTotal)}`);
             setIsManageModalOpen(false);
         } catch (e) {
@@ -438,9 +479,13 @@ const MasterBilling: React.FC = () => {
 
                         <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-3xl border border-blue-100 dark:border-blue-800">
                             <h4 className="font-black text-sm uppercase text-blue-600 tracking-widest mb-4 flex items-center gap-2"><CreditCard size={18}/> Platform Fees Configuration</h4>
-                            <div className="mt-4 max-w-xs">
-                                <Input label="Excess User Fee ($/mo)" type="number" value={config.excessUserFee} onChange={e => setConfig({...config, excessUserFee: parseFloat(e.target.value)})} />
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-4">
+                                <Input label="Excess User Fee ($/mo)" type="number" value={config.excessUserFee} onChange={e => setConfig({...config, excessUserFee: parseFloat(e.target.value) || 0})} />
+                                <Input label="Standard Per-User Fee ($/mo)" type="number" value={config.subscriptionFee ?? 7} onChange={e => setConfig({...config, subscriptionFee: parseFloat(e.target.value) || 0})} />
+                                <Input label="Virtual Worker Fee ($/mo)" type="number" value={config.virtualWorkerFee ?? 49.99} onChange={e => setConfig({...config, virtualWorkerFee: parseFloat(e.target.value) || 0})} />
+                                <Input label="Virtual Worker Lifetime Fee ($)" type="number" value={config.virtualWorkerLifetimeFee ?? 1999} onChange={e => setConfig({...config, virtualWorkerLifetimeFee: parseFloat(e.target.value) || 0})} />
                             </div>
+                        </div>
 
                         <div className="p-6 bg-purple-50 dark:bg-purple-900/20 rounded-3xl border border-purple-100 dark:border-purple-800">
                             <h4 className="font-black text-sm uppercase text-purple-600 tracking-widest mb-4 flex items-center gap-2"><Building2 size={18}/> Franchise Operations & Fees</h4>
@@ -500,6 +545,14 @@ const MasterBilling: React.FC = () => {
                                                 onChange={e => setConfig({...config, franchiseRevSharePerVirtualWorker: parseFloat(e.target.value) || 0})} 
                                             />
                                         </div>
+                                        <div>
+                                            <Input 
+                                                label="Franchise Lifetime Access Fee ($)" 
+                                                type="number" 
+                                                value={config.franchiseLifetimeFee ?? 25000} 
+                                                onChange={e => setConfig({...config, franchiseLifetimeFee: parseFloat(e.target.value) || 0})} 
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                                 
@@ -541,7 +594,6 @@ const MasterBilling: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-                        </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -585,7 +637,10 @@ const MasterBilling: React.FC = () => {
                                                     { id: 'careerPage', name: 'Recruiting Portal' }, { id: 'ai', name: 'AI Features' },
                                                     { id: 'quickbooks', name: 'QuickBooks Sync' }, { id: 'subcontractors', name: 'Subcontractors' },
                                                     { id: '1099', name: 'Tax 1099 Generation' }, { id: 'api', name: 'API & Webhooks' },
-                                                    { id: 'branding', name: 'Custom Branding' }
+                                                    { id: 'branding', name: 'Custom Branding' },
+                                                    { id: 'whiteboard', name: 'Collaborative Whiteboard' },
+                                                    { id: 'customizations', name: 'Layout Customizations' },
+                                                    { id: 'technicianTools', name: 'Custom Technician Tools' }
                                                 ].map(ft => {
                                                     const isEnabled = (config.plans[pKey].features || []).includes(ft.id);
                                                     return (
@@ -651,7 +706,7 @@ const MasterBilling: React.FC = () => {
                                 <option value="starter">Starter</option>
                                 <option value="growth">Growth</option>
                                 <option value="enterprise">Enterprise</option>
-                                <option value="payments_only">Payments Only ($20/mo)</option>
+                                <option value="payments_only">Payments Only ($10/mo)</option>
                             </Select>
                             <Input label="Additional User Slots" type="number" value={additionalUsers} onChange={e => setAdditionalUsers(parseInt(e.target.value) || 0)} />
                         </div>
@@ -664,10 +719,48 @@ const MasterBilling: React.FC = () => {
                                 <Input label="Special Discount (%)" type="number" value={customDiscountPct} onChange={e => setCustomDiscountPct(parseFloat(e.target.value) || 0)} />
                             </div>
                         </div>
+                        <div className="p-5 bg-sky-50 dark:bg-sky-900/10 rounded-2xl border flex flex-col md:flex-row gap-6 items-start md:items-center p-6 mt-4">
+                            <div className="flex-1">
+                                <Toggle label="Virtual Worker AI" enabled={virtualWorkerEnabled} onChange={setVirtualWorkerEnabled} />
+                            </div>
+                            {virtualWorkerEnabled && (
+                                <div className="flex-1 w-full">
+                                    <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Virtual Worker Billing</label>
+                                    <select
+                                        value={virtualWorkerBillingType}
+                                        onChange={e => setVirtualWorkerBillingType(e.target.value as any)}
+                                        className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-800 dark:text-white"
+                                        title="Virtual Worker Billing Type"
+                                    >
+                                        <option value="monthly">Monthly Subscription</option>
+                                        <option value="lifetime">Lifetime Access</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
                         <div className="p-4 md:p-8 bg-slate-900 text-white rounded-3xl text-center border-4 border-sky-500/30">
                             <p className="text-xs font-black text-sky-400 uppercase tracking-widest mb-2">Calculated Subscription Upgrade</p>
                             <div className="text-5xl font-black">
-                                {isFreeAccess ? <span className="text-emerald-400">Complimentary</span> : formatCurrency((getBasePrice(upgradePlan || 'starter') + (additionalUsers * getUserFee())) * (1 - (customDiscountPct / 100)))}
+                                {isFreeAccess ? (
+                                    <span className="text-emerald-400">Complimentary</span>
+                                ) : (
+                                    (() => {
+                                        let vwCost = 0;
+                                        if (virtualWorkerEnabled) {
+                                            if (virtualWorkerBillingType === 'lifetime') {
+                                                if (!selectedOrg.virtualWorkerEnabled || (selectedOrg as any).virtualWorkerBillingType !== 'lifetime') {
+                                                    vwCost = config.virtualWorkerLifetimeFee ?? 1999;
+                                                }
+                                            } else {
+                                                if (!selectedOrg.virtualWorkerEnabled || (selectedOrg as any).virtualWorkerBillingType !== 'monthly') {
+                                                    vwCost = config.virtualWorkerFee ?? 49.99;
+                                                }
+                                            }
+                                        }
+                                        const subTotal = (getBasePrice(upgradePlan || 'starter') + (additionalUsers * getUserFee()) + vwCost) * (1 - (customDiscountPct / 100));
+                                        return formatCurrency(subTotal);
+                                    })()
+                                )}
                             </div>
                         </div>
                         <div className="flex gap-3 pt-4">

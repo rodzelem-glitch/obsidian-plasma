@@ -48,6 +48,7 @@ const MasterOrganizations: React.FC = () => {
         isVerified: false,
         isLeadingPro: false,
         virtualWorkerEnabled: false,
+        virtualWorkerBillingType: 'monthly' as 'monthly' | 'lifetime',
         customDiscountPct: 0,
         subscriptionExpiryDate: ''
     });
@@ -68,6 +69,8 @@ const MasterOrganizations: React.FC = () => {
                 plan: orgForm.plan,
                 subscriptionStatus: orgForm.subscriptionStatus,
                 isVerified: false,
+                virtualWorkerEnabled: orgForm.virtualWorkerEnabled,
+                virtualWorkerBillingType: orgForm.virtualWorkerBillingType,
                 address: {
                     street: orgForm.address || '',
                     city: orgForm.city || '',
@@ -118,7 +121,7 @@ const MasterOrganizations: React.FC = () => {
             setOrgForm({
                 name: '', email: '', phone: '', plan: 'starter', subscriptionStatus: 'active',
                 address: '', city: '', state: '', zip: '', adminPassword: '',
-                isFreeAccess: false, isVerified: false, isLeadingPro: false, virtualWorkerEnabled: false, customDiscountPct: 0, subscriptionExpiryDate: ''
+                isFreeAccess: false, isVerified: false, isLeadingPro: false, virtualWorkerEnabled: false, virtualWorkerBillingType: 'monthly', customDiscountPct: 0, subscriptionExpiryDate: ''
             });
         } catch (error: any) {
             console.error("Create Org Error:", error);
@@ -161,6 +164,7 @@ const MasterOrganizations: React.FC = () => {
             isVerified: !!org.isVerified,
             isLeadingPro: !!org.isLeadingPro,
             virtualWorkerEnabled: !!org.virtualWorkerEnabled,
+            virtualWorkerBillingType: (org as any).virtualWorkerBillingType || 'monthly',
             customDiscountPct: org.customDiscountPct || 0,
             subscriptionExpiryDate: org.subscriptionExpiryDate || ''
         });
@@ -187,6 +191,7 @@ const MasterOrganizations: React.FC = () => {
                 isVerified: orgForm.isVerified,
                 isLeadingPro: orgForm.isLeadingPro,
                 virtualWorkerEnabled: orgForm.virtualWorkerEnabled,
+                virtualWorkerBillingType: orgForm.virtualWorkerBillingType,
                 customDiscountPct: Number(orgForm.customDiscountPct) || 0,
                 subscriptionExpiryDate: orgForm.subscriptionExpiryDate || null
             });
@@ -290,8 +295,13 @@ const MasterOrganizations: React.FC = () => {
                                 <div className="mt-2 text-xs">
                                      <Toggle label="Leading Pro" enabled={!!org.isLeadingPro} onChange={() => handleToggleLeadingPro(org)} />
                                 </div>
-                                <div className="mt-2 text-xs">
+                                <div className="mt-2 text-xs flex flex-col gap-1">
                                      <Toggle label="Virtual Worker AI" enabled={!!org.virtualWorkerEnabled} onChange={() => handleToggleVirtualWorker(org)} />
+                                     {!!org.virtualWorkerEnabled && (
+                                         <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 capitalize bg-sky-50 dark:bg-sky-950/30 px-2 py-0.5 rounded w-max">
+                                             {(org as any).virtualWorkerBillingType || 'monthly'}
+                                         </span>
+                                     )}
                                 </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -357,7 +367,23 @@ const MasterOrganizations: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
                         <Toggle label="Verified" enabled={orgForm.isVerified} onChange={() => setOrgForm({...orgForm, isVerified: !orgForm.isVerified})} />
                         <Toggle label="Leading Pro" enabled={orgForm.isLeadingPro} onChange={() => setOrgForm({...orgForm, isLeadingPro: !orgForm.isLeadingPro})} />
-                        <Toggle label="Virtual Worker AI" enabled={orgForm.virtualWorkerEnabled} onChange={() => setOrgForm({...orgForm, virtualWorkerEnabled: !orgForm.virtualWorkerEnabled})} />
+                        <div className="space-y-2">
+                            <Toggle label="Virtual Worker AI" enabled={orgForm.virtualWorkerEnabled} onChange={() => setOrgForm({...orgForm, virtualWorkerEnabled: !orgForm.virtualWorkerEnabled})} />
+                            {orgForm.virtualWorkerEnabled && (
+                                <div className="mt-2">
+                                    <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Virtual Worker Billing</label>
+                                    <select
+                                        value={orgForm.virtualWorkerBillingType || 'monthly'}
+                                        onChange={e => setOrgForm({...orgForm, virtualWorkerBillingType: e.target.value as any})}
+                                        className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 text-sm"
+                                        title="Virtual Worker Billing Type"
+                                    >
+                                        <option value="monthly">Monthly Subscription</option>
+                                        <option value="lifetime">Lifetime Access</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div className="flex justify-end pt-4">

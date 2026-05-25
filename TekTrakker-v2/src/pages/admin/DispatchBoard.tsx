@@ -1,6 +1,7 @@
 import showToast from "lib/toast";
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import type { Job, User } from '../../types';
@@ -11,6 +12,7 @@ import JobDetailModal from '../../components/modals/JobDetailModal';
 
 const DispatchBoard: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [draggedJobId, setDraggedJobId] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA')); // YYYY-MM-DD
     const [viewMode, setViewMode] = useState<'1day' | '3day'>('1day');
@@ -305,33 +307,33 @@ const DispatchBoard: React.FC = () => {
                         <Users size={20} />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">Dispatch Board</h2>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t("Dispatch Board")}</h2>
                         <div className="flex gap-2 mt-1 text-[10px] uppercase font-bold text-gray-500 overflow-x-auto whitespace-nowrap scrollbar-hide pb-1">
-                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div> Install</span>
-                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-500"></div> Repair</span>
-                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-cyan-500"></div> Maint</span>
-                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Partner</span>
+                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div> {t("Install")}</span>
+                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-500"></div> {t("Repair")}</span>
+                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-cyan-500"></div> {t("Maint")}</span>
+                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> {t("Partner")}</span>
                         </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-between bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded-xl border border-gray-100 dark:border-gray-800">
                     <div className="hidden md:flex bg-gray-200 dark:bg-gray-800 rounded-lg p-0.5 mr-2">
-                        <button onClick={() => setViewMode('1day')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === '1day' ? 'bg-white dark:bg-gray-600 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>1 Day</button>
-                        <button onClick={() => setViewMode('3day')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === '3day' ? 'bg-white dark:bg-gray-600 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>3 Days</button>
+                        <button onClick={() => setViewMode('1day')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === '1day' ? 'bg-white dark:bg-gray-600 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>{t("1 Day")}</button>
+                        <button onClick={() => setViewMode('3day')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === '3day' ? 'bg-white dark:bg-gray-600 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>{t("3 Days")}</button>
                     </div>
-                    <button aria-label="Previous day" title="Previous day" onClick={() => changeDay(-1)} className="p-2 rounded-lg hover:bg-white dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-all shadow-sm">
+                    <button aria-label={t("Previous day")} title={t("Previous day")} onClick={() => changeDay(-1)} className="p-2 rounded-lg hover:bg-white dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-all shadow-sm">
                         <ChevronLeftIcon className="w-5 h-5" />
                     </button>
                     <input
                         type="date"
-                        title="Select Dispatch Date"
-                        aria-label="Dispatch Date"
+                        title={t("Select Dispatch Date")}
+                        aria-label={t("Dispatch Date")}
                         placeholder="YYYY-MM-DD"
                         value={selectedDate}
                         onChange={(e) => setSelectedDate(e.target.value)}
                         className="bg-transparent text-gray-900 dark:text-white border-none rounded px-3 py-1.5 text-sm font-bold focus:ring-0 text-center"
                     />
-                    <button aria-label="Next day" title="Next day" onClick={() => changeDay(1)} className="p-2 rounded-lg hover:bg-white dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-all shadow-sm">
+                    <button aria-label={t("Next day")} title={t("Next day")} onClick={() => changeDay(1)} className="p-2 rounded-lg hover:bg-white dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-all shadow-sm">
                         <ChevronRightIcon className="w-5 h-5" />
                     </button>
                 </div>
@@ -351,7 +353,7 @@ const DispatchBoard: React.FC = () => {
                             <h3 className={`font-black text-sm uppercase flex items-center gap-1 ${severeWeatherAlert.type === 'heat' ? 'text-red-800 dark:text-red-400' : 'text-amber-800 dark:text-amber-400'
                                 }`}>
                                 <AlertTriangle size={14} />
-                                System Alert: {severeWeatherAlert.type === 'heat' ? 'Extreme Heat Warning' : 'Severe Weather Warning'}
+                                {severeWeatherAlert.type === 'heat' ? t('System Alert: Extreme Heat Warning') : t('System Alert: Severe Weather Warning')}
                             </h3>
                             <p className={`text-xs font-medium mt-1 ${severeWeatherAlert.type === 'heat' ? 'text-red-600 dark:text-red-300' : 'text-amber-700 dark:text-amber-300'}`}>
                                 {severeWeatherAlert.desc}
@@ -367,7 +369,7 @@ const DispatchBoard: React.FC = () => {
                                 : 'border-amber-200 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-800'
                             } uppercase tracking-widest font-black`}
                     >
-                        {isRescheduling ? 'Rescheduling...' : 'Auto-Reschedule Exterior Jobs'}
+                        {isRescheduling ? t('Rescheduling...') : t('Auto-Reschedule Exterior Jobs')}
                     </Button>
                 </div>
             )}
@@ -396,13 +398,13 @@ const DispatchBoard: React.FC = () => {
                 <Card className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900/30 border-none shadow-none p-0">
                     <div className="space-y-3 p-1">
                         <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest px-3 mb-2">
-                            {activeTech ? `${activeTech.firstName}'s Schedule` : 'Select a Technician'}
-                            <span className="ml-2 bg-gray-200 dark:bg-gray-700 text-gray-600 px-1.5 py-0.5 rounded-full text-[10px] lowercase">{activeTechJobs.length} jobs</span>
+                            {activeTech ? `${activeTech.firstName} - ${t("Schedule")}` : t('Select a Technician')}
+                            <span className="ml-2 bg-gray-200 dark:bg-gray-700 text-gray-600 px-1.5 py-0.5 rounded-full text-[10px] lowercase">{activeTechJobs.length} {t("jobs")}</span>
                         </h3>
 
                         {activeTechJobs.length === 0 ? (
                             <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl text-center border border-dashed border-gray-300 dark:border-gray-700 mx-3">
-                                <p className="text-sm text-gray-500">No jobs scheduled for this technician today.</p>
+                                <p className="text-sm text-gray-500">{t("No jobs scheduled for this technician today.")}</p>
                             </div>
                         ) : (
                             activeTechJobs.sort((a, b) => new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime()).map(job => (
@@ -419,7 +421,7 @@ const DispatchBoard: React.FC = () => {
                                     <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">{job.tasks[0]}</p>
                                     <div className="flex justify-between items-center text-[10px] text-gray-500 bg-gray-50 dark:bg-gray-700/50 -mx-4 -mb-4 p-3 rounded-b-2xl border-t border-gray-100 dark:border-gray-800">
                                         <span className="truncate max-w-[200px]">{job.address}</span>
-                                        <button onClick={() => setViewingJob(job)} className="text-primary-600 font-bold">Details &rsaquo;</button>
+                                        <button onClick={() => setViewingJob(job)} className="text-primary-600 font-bold">{t("Details")} &rsaquo;</button>
                                     </div>
                                 </div>
                             ))
@@ -458,7 +460,7 @@ const DispatchBoard: React.FC = () => {
                                 <div key={tech.id} className="flex min-h-[90px] relative hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
                                     <div className="w-40 p-3 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-10 flex flex-col justify-center sticky left-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                         <p className="font-bold text-gray-900 dark:text-white truncate text-sm">{tech.firstName} {tech.lastName}</p>
-                                        <p className="text-[10px] text-gray-500 uppercase font-black">{tech.role.replace('_', ' ')}</p>
+                                        <p className="text-[10px] text-gray-500 uppercase font-black">{t(tech.role.replace('_', ' '))}</p>
                                     </div>
 
                                     <div className={`flex-1 relative bg-grid-pattern ${numDays === 3 ? 'bg-[length:calc(100%/96)_100%]' : 'bg-[length:calc(100%/32)_100%]'}`} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, tech.id)}>
@@ -485,7 +487,7 @@ const DispatchBoard: React.FC = () => {
                                                 <div className="font-bold truncate drop-shadow-md">{job.customerName}</div>
                                                 <div className="truncate opacity-90">{job.tasks[0]}</div>
                                                 {job.assignedPartnerId === state.currentOrganization?.id && (
-                                                    <div className="text-[8px] uppercase font-black bg-white/20 px-1 rounded mt-1 inline-block">Partner Job</div>
+                                                    <div className="text-[8px] uppercase font-black bg-white/20 px-1 rounded mt-1 inline-block">{t("Partner Job")}</div>
                                                 )}
                                                 {job.assistants && job.assistants.length > 0 && (
                                                     <div className="absolute bottom-1 right-1 flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-bold">

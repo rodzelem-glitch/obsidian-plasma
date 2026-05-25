@@ -60,7 +60,7 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
             starter: cfg?.plans?.starter?.monthly || 49,
             growth: cfg?.plans?.growth?.monthly || 149,
             enterprise: cfg?.plans?.enterprise?.monthly || 299,
-            payments_only: cfg?.plans?.payments_only?.monthly || 20,
+            payments_only: cfg?.plans?.payments_only?.monthly || 10,
             starterUsers: cfg?.plans?.starter?.unlimitedUsers ? 'Unlimited' : `Up to ${cfg?.plans?.starter?.maxUsers || 5}`,
             growthUsers: cfg?.plans?.growth?.unlimitedUsers ? 'Unlimited' : `Up to ${cfg?.plans?.growth?.maxUsers || 15}`,
             enterpriseUsers: cfg?.plans?.enterprise?.unlimitedUsers ? 'Unlimited' : `Up to ${cfg?.plans?.enterprise?.maxUsers || 15}`,
@@ -171,7 +171,7 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                             <CreditCard className="text-blue-400 mt-1" size={20} />
                             <div>
                                 <p className="text-xs font-bold text-blue-300">Secure Payment Method</p>
-                                <p className="text-[10px] text-slate-400 mt-1">{isPaymentsOnly ? 'Your card will be charged $20 today to activate your account.' : 'Your card will not be charged until your 30-day trial ends. We verify validity with a $0 authorization.'}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">{isPaymentsOnly ? 'Your card will be charged $10 today to activate your account.' : 'Your card will not be charged until your 30-day trial ends. We verify validity with a $0 authorization.'}</p>
                             </div>
                         </div>
                         

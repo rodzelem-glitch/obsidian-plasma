@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import Card from 'components/ui/Card';
 import { 
     ClipboardList, CheckSquare, Play, MapPinIcon, CalendarDays
@@ -14,6 +15,7 @@ import ProjectTaskWorkflowModal from './briefing/components/ProjectTaskWorkflowM
 import JobWorkflowModal from './briefing/components/JobWorkflowModal';
 
 const JobCard: React.FC<{ job: Job; users: any[]; onOpen: () => void }> = ({ job, users, onOpen }) => {
+    const { t } = useLanguage();
     const timeStr = job.appointmentTime ? new Date(job.appointmentTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
     return (
     <button className="w-full text-left mb-3 overflow-hidden border border-slate-200 dark:border-slate-700/60 shadow-sm cursor-pointer hover:border-primary-400 active:scale-[0.99] transition-all group rounded-xl bg-white dark:bg-slate-800" onClick={onOpen}>
@@ -30,10 +32,10 @@ const JobCard: React.FC<{ job: Job; users: any[]; onOpen: () => void }> = ({ job
                         job.jobStatus === 'Completed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 
                         job.jobStatus === 'In Progress' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                     }`}>
-                        {job.jobStatus}
+                        {t(job.jobStatus || '')}
                     </span>
                     {job.assignedPartnerId && (
-                        <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 rounded border border-indigo-100">Partner</span>
+                        <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1.5 rounded border border-indigo-100">{t("Partner")}</span>
                     )}
                 </h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-1 truncate">
@@ -42,12 +44,12 @@ const JobCard: React.FC<{ job: Job; users: any[]; onOpen: () => void }> = ({ job
                 <div className="flex gap-1.5 mt-2 flex-wrap">
                      {job.tasks.map((t, i) => <span key={i} className="text-[10px] bg-slate-100 dark:bg-slate-700/60 px-2 py-0.5 rounded-md text-slate-600 dark:text-slate-300 font-semibold">{t}</span>)}
                      {(job.assistants || []).length > 0 && (
-                         <span className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md text-indigo-600 dark:text-indigo-400 font-semibold">
-                            Crew: {(job.assistants || []).map(id => {
+                          <span className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md text-indigo-600 dark:text-indigo-400 font-semibold">
+                            {t("Crew")}: {(job.assistants || []).map(id => {
                                 const u = users.find(user => user.id === id);
                                 return u ? `${u.firstName} ${u.lastName}` : 'Unknown';
                             }).join(', ')}
-                         </span>
+                          </span>
                      )}
                 </div>
             </div>
@@ -61,6 +63,7 @@ const JobCard: React.FC<{ job: Job; users: any[]; onOpen: () => void }> = ({ job
 
 const DailyBriefing: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const { currentUser, jobs, externalJobs, projects, activeJobIdForWorkflow } = state;
     const navigate = useNavigate();
     const [selectedTaskData, setSelectedTaskData] = useState<{task: ProjectTask, project: Project} | null>(null);
@@ -149,7 +152,7 @@ const DailyBriefing: React.FC = () => {
     }, [projects, currentUser]);
 
     const hour = new Date().getHours();
-    const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    const greeting = hour < 12 ? t('Good morning') : hour < 17 ? t('Good afternoon') : t('Good evening');
     
     const totalJobs = groupedJobs.today.length + groupedJobs.tomorrow.length + groupedJobs.upcoming.length;
 
@@ -159,7 +162,7 @@ const DailyBriefing: React.FC = () => {
                 <div>
                     <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">{greeting}, {currentUser?.firstName}</h1>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                        {totalJobs > 0 ? `${totalJobs} job${totalJobs > 1 ? 's' : ''} on your schedule this week` : 'No jobs scheduled — you\'re clear'}
+                        {totalJobs > 0 ? `${totalJobs} ${totalJobs > 1 ? t('jobs') : t('job')} ${t('on your schedule this week')}` : t("No jobs scheduled — you're clear")}
                     </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -175,20 +178,20 @@ const DailyBriefing: React.FC = () => {
                   className="col-span-2 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors text-emerald-700 dark:text-emerald-400 font-bold shadow-sm"
                 >
                     <CalendarDays className="w-5 h-5 flex-shrink-0" />
-                    View My Full Schedule
+                    {t("View My Full Schedule")}
                 </button>
             </div>
 
             {myTasks.length > 0 && (
                 <Card className="mb-6 border-l-4 border-purple-500">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                        <ClipboardList size={20} className="text-purple-600"/> Assigned Project Tasks
+                        <ClipboardList size={20} className="text-purple-600"/> {t("Assigned Project Tasks")}
                     </h3>
                     <div className="space-y-3">
                         {myTasks.map(({task, project}) => (
                             <button key={task.id} onClick={() => setSelectedTaskData({task, project})} className="w-full text-left p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-purple-400 transition-colors flex justify-between items-center group">
                                 <div><p className="font-bold text-slate-800 dark:text-white">{task.description}</p><p className="text-xs text-slate-500">{project.name}</p></div>
-                                <div className="text-xs font-bold text-purple-600 bg-purple-50 px-3 py-1 rounded-full group-hover:bg-purple-600 group-hover:text-white transition-colors">Update</div>
+                                <div className="text-xs font-bold text-purple-600 bg-purple-50 px-3 py-1 rounded-full group-hover:bg-purple-600 group-hover:text-white transition-colors">{t("Update")}</div>
                             </button>
                         ))}
                     </div>
@@ -201,34 +204,34 @@ const DailyBriefing: React.FC = () => {
                   className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center justify-center gap-2 hover:bg-red-100 transition-colors text-red-700 dark:text-red-400 font-bold shadow-sm"
                 >
                     <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-                    Report Incident
+                    {t("Report Incident")}
                 </button>
                 <button 
                   onClick={() => navigate('/briefing/hr')}
                   className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors text-blue-700 dark:text-blue-400 font-bold shadow-sm"
                 >
                     <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                    HR & Handbooks
+                    {t("HR & Handbooks")}
                 </button>
             </div>
 
             <div className="space-y-6">
                 <div>
-                    <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-4"><CheckSquare size={20} className="text-blue-500" /> Today's Schedule</h2>
+                    <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-4"><CheckSquare size={20} className="text-blue-500" /> {t("Today's Schedule")}</h2>
                     {groupedJobs.today.length > 0 ? (
                         groupedJobs.today.map(job => (
                             <JobCard key={job.id} job={job} users={state.users} onOpen={() => setActiveJob(job)} />
                         ))
                     ) : (
                         <div className="text-center py-8 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-600">
-                            <p className="text-slate-500 dark:text-slate-400 font-medium">No jobs scheduled for today.</p>
+                            <p className="text-slate-500 dark:text-slate-400 font-medium">{t("No jobs scheduled for today.")}</p>
                         </div>
                     )}
                 </div>
 
                 {groupedJobs.tomorrow.length > 0 && (
                     <div>
-                        <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-4"><CalendarDays size={20} className="text-emerald-500"/> Tomorrow</h2>
+                        <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-4"><CalendarDays size={20} className="text-emerald-500"/> {t("Tomorrow")}</h2>
                         {groupedJobs.tomorrow.map(job => (
                             <JobCard key={job.id} job={job} users={state.users} onOpen={() => setActiveJob(job)} />
                         ))}
@@ -237,7 +240,7 @@ const DailyBriefing: React.FC = () => {
 
                 {groupedJobs.upcoming.length > 0 && (
                     <div>
-                        <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-4"><CalendarDays size={20} className="text-slate-400"/> Later This Week</h2>
+                        <h2 className="text-lg font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-4"><CalendarDays size={20} className="text-slate-400"/> {t("Later This Week")}</h2>
                         {groupedJobs.upcoming.map(job => {
                             const dayName = new Date(job.appointmentTime).toLocaleDateString(undefined, { weekday: 'long' });
                             return (
@@ -255,7 +258,7 @@ const DailyBriefing: React.FC = () => {
                         <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
                             <CheckSquare size={28} className="text-slate-400" />
                         </div>
-                        <p className="text-slate-600 dark:text-slate-300 font-semibold">All clear for the week!</p>
+                        <p className="text-slate-600 dark:text-slate-300 font-semibold">{t("All clear for the week!")}</p>
                     </div>
                 )}
             </div>

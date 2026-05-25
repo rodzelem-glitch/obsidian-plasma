@@ -359,7 +359,7 @@ export default function PaymentProcessing() {
                     </Link>
                     <div className="mt-6">
                         <Link href="/payment-processing-signup" className="inline-flex items-center gap-2 text-sm font-bold text-white/80 hover:text-white border border-white/20 hover:border-white/40 px-6 py-3 rounded-xl transition-all backdrop-blur-sm">
-                            <CreditCard size={16} /> Just need payments? Start at $20/mo <ArrowRight size={14} />
+                            <CreditCard size={16} /> Just need payments? Start at $10/mo <ArrowRight size={14} />
                         </Link>
                     </div>
                     <div className="flex items-center justify-center gap-6 mt-6 text-sm text-primary-300">

@@ -2,23 +2,52 @@
 import React, { useMemo } from 'react';
 import { FinancialIcon, UsersIcon, TimeLogIcon, AlertTriangle } from '../../constants/constants';
 import { useAppContext } from '../../context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import type { Job, User, Appointment } from '../../types/types';
 import { db } from '../../lib/firebase';
 import { getNextInvoiceNumber } from 'lib/numbering';
 import MetricCard from './dashboard/components/MetricCard';
 import PendingAppointments from './dashboard/components/PendingAppointments';
 import LiveOperations from './dashboard/components/LiveOperations';
-import { ShoppingCart, Bot, ArrowRight, Wrench, ShieldCheck, CreditCard, Presentation, Sparkles } from 'lucide-react';
+import { ShoppingCart, Bot, ArrowRight, Wrench, ShieldCheck, CreditCard, Presentation, Sparkles, Calendar } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
 import OnboardingTour, { useOnboardingTour } from '../../components/ui/OnboardingTour';
 
 const AdminDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const currentUser = state.currentUser;
     const isPaymentsOnly = state.currentOrganization?.plan === 'payments_only';
     
     const [whiteboardStats, setWhiteboardStats] = React.useState({ tasks: 0, stickies: 0, photos: 0 });
+    const [eventsCount, setEventsCount] = React.useState(0);
+    React.useEffect(() => {
+        if (isPaymentsOnly) return;
+        const targetOrgId = state.currentOrganization?.id || currentUser?.organizationId;
+        if (!targetOrgId) return;
+        
+        if (state.isDemoMode) {
+            const localData = localStorage.getItem(`company_events_${targetOrgId}`);
+            if (localData) {
+                try {
+                    setEventsCount(JSON.parse(localData).length);
+                } catch {
+                    setEventsCount(4);
+                }
+            } else {
+                setEventsCount(4);
+            }
+        } else {
+            const unsub = db.collection('events')
+                .where('organizationId', '==', targetOrgId)
+                .onSnapshot(s => {
+                    setEventsCount(s.size);
+                }, () => {});
+            return () => unsub();
+        }
+    }, [state.currentOrganization?.id, currentUser?.organizationId, state.isDemoMode, isPaymentsOnly]);
+
     React.useEffect(() => {
         if (!state.currentOrganization?.id) return;
         const unsub = db.collection('whiteboards').doc(state.currentOrganization.id)
@@ -287,14 +316,14 @@ const AdminDashboard: React.FC = () => {
             <header className="order-1 flex flex-col md:flex-row justify-between items-start md:items-end gap-3">
                 <div>
                     <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                        {(() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; })()}, {currentUser?.firstName}
+                        {(() => { const h = new Date().getHours(); return h < 12 ? t('Good morning') : h < 17 ? t('Good afternoon') : t('Good evening'); })()}, {currentUser?.firstName}
                     </h2>
-                    <p className="text-slate-500 dark:text-slate-400 font-medium mt-0.5">Operations hub for {orgName}</p>
+                    <p className="text-slate-500 dark:text-slate-400 font-medium mt-0.5">{t('Operations hub for')} {orgName}</p>
                 </div>
                 <div className="flex gap-3 items-center">
                     <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-3 py-1.5 rounded-lg font-semibold text-sm border border-emerald-200 dark:border-emerald-800">
                         <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        Live
+                        {t('Live')}
                     </div>
                 </div>
             </header>
@@ -334,6 +363,7 @@ const AdminDashboard: React.FC = () => {
             <div data-tour="dashboard-metrics" className="order-3 lg:order-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
                 <MetricCard title="Jobs Active" value={jobsInProgress} path={isPaymentsOnly ? undefined : "/admin/operations?tab=jobs"} icon={TimeLogIcon} color="bg-blue-500" />
                 <MetricCard title="Team Online" value={activeTechnicians} path={isPaymentsOnly ? undefined : "/admin/workforce"} icon={UsersIcon} color="bg-purple-500" />
+                <MetricCard title="Company Events" value={eventsCount} path={isPaymentsOnly ? undefined : "/admin/calendar"} icon={Calendar} color="bg-indigo-600" />
                 
                 {currentUser?.role !== 'supervisor' && (
                     <>

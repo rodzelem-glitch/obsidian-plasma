@@ -6,6 +6,7 @@ import { Loader2, Bot, AlertTriangle, CheckCircle, Search, Calendar, Undo2, Spar
 import Input from 'components/ui/Input';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
+import { useLanguage } from 'context/LanguageContext';
 
 interface AiLog {
     id: string;
@@ -24,6 +25,7 @@ interface AiLog {
 
 const AiAuditTab: React.FC = () => {
     const { state } = useAppContext();
+    const { t } = useLanguage();
     const isMasterAdmin = state.currentUser?.role === 'master_admin' || state.currentUser?.email === 'rodzelem@gmail.com';
     const [logs, setLogs] = useState<AiLog[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -158,19 +160,19 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
 
     const handleConfirmRollout = async () => {
         if (!rolloutToolName.trim()) {
-            showToast.error("Please enter a tool name.");
+            showToast.error(t("Please enter a tool name."));
             return;
         }
         const cleanName = rolloutToolName.trim().replace(/[^a-zA-Z0-9]/g, '');
         if (cleanName !== rolloutToolName) {
-            showToast.error("Tool name must be alphanumeric camelCase (no spaces).");
+            showToast.error(t("Tool name must be alphanumeric camelCase (no spaces)."));
             return;
         }
 
         try {
             JSON.parse(rolloutInputParams);
         } catch (e) {
-            showToast.error("Input parameters must be a valid JSON.");
+            showToast.error(t("Input parameters must be a valid JSON."));
             return;
         }
 
@@ -195,7 +197,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
                 toolsList = toolsList.filter((t: any) => t.toolName !== cleanName);
                 toolsList.push({ id: `synth-${Date.now()}`, ...toolData });
                 localStorage.setItem(`demo-technician-tools`, JSON.stringify(toolsList));
-                showToast.success(isMasterAdmin ? "Successfully promoted to global tool in demo mode!" : "Successfully promoted to organization tools in demo mode!");
+                showToast.success(isMasterAdmin ? t("Successfully promoted to global tool in demo mode!") : t("Successfully promoted to organization tools in demo mode!"));
             } else {
                 await db.collection('organizations').doc(orgId).collection('synthesizedTools').doc(cleanName).set(toolData);
                 if (isMasterAdmin) {
@@ -223,13 +225,13 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
                     }
                 });
                 showToast.success(isMasterAdmin 
-                    ? "Successfully promoted to global tool & audit report dispatched!" 
-                    : "Successfully promoted to organization tools & audit report dispatched!");
+                    ? t("Successfully promoted to global tool & audit report dispatched!") 
+                    : t("Successfully promoted to organization tools & audit report dispatched!"));
             }
             setIsRolloutModalOpen(false);
         } catch (err: any) {
             console.error("Rollout failed:", err);
-            showToast.error("Failed to rollout tool: " + err.message);
+            showToast.error(t("Failed to rollout tool: ") + err.message);
         }
     };
 
@@ -242,15 +244,15 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const recommendedLogs = logs.filter(isHighlyRecommended);
 
     const handleUndo = async (log: AiLog) => {
-        if (!window.confirm("Are you sure you want to securely reverse this AI database transaction?")) return;
+        if (!window.confirm(t("Are you sure you want to securely reverse this AI database transaction?"))) return;
         
         try {
             const undoFn = functions.httpsCallable('undoAiAction');
             await undoFn({ logId: log.id });
             
-            setLogs(prev => prev.map(l => l.id === log.id ? { ...l, status: 'Undone', statusMessage: 'Action securely reversed by administrator.' } : l));
+            setLogs(prev => prev.map(l => l.id === log.id ? { ...l, status: 'Undone', statusMessage: t('Action securely reversed by administrator.') } : l));
         } catch (e: any) {
-            showToast.warn(`Failed to undo action: ${e.message}`);
+            showToast.warn(`${t("Failed to undo action:")} ${e.message}`);
         }
     };
 

@@ -51,7 +51,7 @@ export const ConfirmProvider: React.FC<{ children: ReactNode }> = ({ children })
     return (
         <ConfirmContext.Provider value={{ confirm }}>
             {children}
-            <Modal isOpen={isOpen} onClose={handleCancel} title={title}>
+            <Modal isOpen={isOpen} onClose={handleCancel} title={title} zIndex="z-[11000]">
                 <div className="p-4 pt-1">
                     <p className="text-gray-700 dark:text-gray-300 mb-6 whitespace-pre-wrap">{message}</p>
                     <div className="flex justify-end gap-3">

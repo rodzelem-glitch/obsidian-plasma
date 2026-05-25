@@ -26,6 +26,8 @@ const CustomerPayment: React.FC = () => {
   const [paymentRecipient, setPaymentRecipient] = useState<'owner' | 'partner'>('owner');
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'square' | 'kort'>('stripe');
   const [finished, setFinished] = useState(false);
+  const [paymentOption, setPaymentOption] = useState<'full' | 'custom'>('full');
+  const [customAmount, setCustomAmount] = useState('');
   
   // Removed unused stripe state variables to fix build errors if not used
   // const [stripePromise, setStripePromise] = useState<Promise<any> | null>(null);
@@ -101,11 +103,17 @@ const CustomerPayment: React.FC = () => {
       }
   }, [organization, partnerOrganization, paymentRecipient, job]);
 
-  const markJobPaid = async (paymentIntentId?: string) => {
+  const markJobPaid = async (paymentIntentId?: string, paymentAmount?: number) => {
       if (!job || !jobId) return;
       try {
+          const paidThisTime = paymentAmount !== undefined ? paymentAmount : balanceDue;
+          const newAmountPaid = (job.invoice.amountPaid || 0) + paidThisTime;
+          const isFullyPaid = newAmountPaid >= safeTotal - 0.01;
+          const newStatus = isFullyPaid ? 'Paid' : 'Partially Paid';
+
           const updateData: any = { 
-              'invoice.status': 'Paid', 
+              'invoice.status': newStatus, 
+              'invoice.amountPaid': newAmountPaid,
               'invoice.paidDate': new Date().toISOString(),
               'invoice.paidTo': paymentRecipient === 'partner' ? partnerOrganization?.id : organization?.id,
               'invoice.paymentRecipientName': paymentRecipient === 'partner' ? partnerOrganization?.name : organization?.name
@@ -114,28 +122,32 @@ const CustomerPayment: React.FC = () => {
               updateData['invoice.paymentIntentId'] = paymentIntentId;
           }
           await db.collection('jobs').doc(jobId).update(updateData);
-          if (job.source === 'PlatformAdmin' && job.customerId) await db.collection('organizations').doc(job.customerId).update({ subscriptionStatus: 'active' });
+          if (isFullyPaid && job.source === 'PlatformAdmin' && job.customerId) await db.collection('organizations').doc(job.customerId).update({ subscriptionStatus: 'active' });
           
           try {
               const { sendNotification, notifyAdmins } = await import('lib/notificationService');
-              const notificationContent = `💰 Payment received for Invoice #${job.invoice.id || job.id.substring(0,8)} from ${job.customerName}. Amount: $${(typeof job.invoice.totalAmount === 'number' ? job.invoice.totalAmount : (job.invoice.amount || 0)).toFixed(2)}.`;
+              const notificationContent = isFullyPaid 
+                  ? `💰 Payment received for Invoice #${job.invoice.id || job.id.substring(0,8)} from ${job.customerName}. Amount: $${paidThisTime.toFixed(2)} (Full payment).`
+                  : `💰 Partial payment received for Invoice #${job.invoice.id || job.id.substring(0,8)} from ${job.customerName}. Amount: $${paidThisTime.toFixed(2)}. Remaining Balance: $${(safeTotal - newAmountPaid).toFixed(2)}.`;
               
               const recipientId = job.assignedTechnicianId;
               if (recipientId) {
-                  await sendNotification(recipientId, { title: 'Invoice Paid!', body: notificationContent, type: 'invoice_paid' }, job.organizationId);
+                  await sendNotification(recipientId, { title: isFullyPaid ? 'Invoice Paid!' : 'Partial Payment Received', body: notificationContent, type: 'invoice_paid' }, job.organizationId);
               }
-              await notifyAdmins(job.organizationId, { title: 'Invoice Paid!', body: notificationContent, type: 'invoice_paid' });
+              await notifyAdmins(job.organizationId, { title: isFullyPaid ? 'Invoice Paid!' : 'Partial Payment Received', body: notificationContent, type: 'invoice_paid' });
           } catch(e) { console.error('Failed to send notifications', e); }
 
-          setJob({ ...job, invoice: { ...job.invoice, status: 'Paid' } });
+          setJob({ ...job, invoice: { ...job.invoice, status: newStatus, amountPaid: newAmountPaid } });
           setSuccess(true);
           
-          // Post-payment reminder if not signed
-          if (!job.invoiceSignature) {
+          // Post-payment reminder if not signed and fully paid
+          if (isFullyPaid && !job.invoiceSignature) {
               showToast.info("Payment received! Please don't forget to sign the authorization below.");
               setTimeout(() => {
                   document.getElementById('signature-section')?.scrollIntoView({ behavior: 'smooth' });
               }, 1500);
+          } else if (!isFullyPaid) {
+              showToast.success(`Partial payment of $${paidThisTime.toFixed(2)} successful!`);
           }
       } catch { showToast.warn("Failed to update status."); }
   };
@@ -189,7 +201,10 @@ const CustomerPayment: React.FC = () => {
   const currentActiveOrg = paymentRecipient === 'partner' ? partnerOrganization : organization;
   
   const safeTotal = job ? (typeof job.invoice.totalAmount === 'number' ? job.invoice.totalAmount : (job.invoice.amount || 0)) : 0;
-  const isPaid = job?.invoice.status === 'Paid' || success;
+  const amountPaid = job?.invoice.amountPaid || 0;
+  const balanceDue = Math.max(0, safeTotal - amountPaid);
+  const isPaid = job?.invoice.status === 'Paid' || balanceDue <= 0 || success;
+  const amountToPay = !organization?.allowPartialPayments || paymentOption === 'full' ? balanceDue : (parseFloat(customAmount) || 0);
 
   if (loading) return <div className="p-4 md:p-10 text-center">Loading Invoice...</div>;
   if (error) return <div className="p-4 md:p-10 text-center text-red-500">{error}</div>;
@@ -321,19 +336,38 @@ const CustomerPayment: React.FC = () => {
                     </div>
                 )}
                 
-                <div className="pt-6 border-t border-slate-200 flex justify-between items-end">
-                    <div>
-                        <p className="text-[10px] font-black uppercase text-slate-400">Total Amount Due</p>
-                        <p className="text-4xl font-black text-[#0284c7] tracking-tighter">${safeTotal.toFixed(2)}</p>
-                    </div>
-                    {isPaid && (
-                        <div className="flex flex-col items-end">
-                            <div className="flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase mb-1">
-                                <CheckCircle size={12}/> Paid
-                            </div>
-                            <span className="text-[8px] text-slate-400 font-bold uppercase">To: {job?.invoice.paymentRecipientName || organization?.name}</span>
+                <div className="pt-6 border-t border-slate-200 space-y-2">
+                    {amountPaid > 0 && (
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-wider">
+                            <span>Total Invoice:</span>
+                            <span className="font-black text-slate-700">${safeTotal.toFixed(2)}</span>
                         </div>
                     )}
+                    {amountPaid > 0 && (
+                        <div className="flex justify-between items-center text-xs font-bold text-emerald-600 uppercase tracking-wider">
+                            <span>Total Paid:</span>
+                            <span className="font-black">${amountPaid.toFixed(2)}</span>
+                        </div>
+                    )}
+                    <div className="flex justify-between items-end pt-2 border-t border-dashed border-slate-200">
+                        <div>
+                            <p className="text-[10px] font-black uppercase text-slate-400">{amountPaid > 0 ? 'Remaining Balance Due' : 'Total Amount Due'}</p>
+                            <p className="text-4xl font-black text-[#0284c7] tracking-tighter">${balanceDue.toFixed(2)}</p>
+                        </div>
+                        {isPaid && (
+                            <div className="flex flex-col items-end">
+                                <div className="flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase mb-1">
+                                    <CheckCircle size={12}/> Paid
+                                </div>
+                                <span className="text-[8px] text-slate-400 font-bold uppercase">To: {job?.invoice.paymentRecipientName || organization?.name}</span>
+                            </div>
+                        )}
+                        {!isPaid && amountPaid > 0 && (
+                            <div className="flex items-center gap-2 px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-black uppercase mb-1">
+                                Partially Paid
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -353,7 +387,7 @@ const CustomerPayment: React.FC = () => {
                     </div>
                 ) : (
                     <div className="space-y-6">
-                        {safeTotal === 0 ? (
+                        {balanceDue === 0 ? (
                             <div className="text-center space-y-4">
                                 <div className="p-4 bg-blue-50 text-blue-700 rounded-xl text-sm font-medium">
                                     This invoice has a $0.00 balance and requires confirmation to close.
@@ -364,51 +398,135 @@ const CustomerPayment: React.FC = () => {
                             </div>
                         ) : (
                             <>
+                                {/* Interactive Partial Payment Selector */}
+                                {!isPaid && organization?.allowPartialPayments && (
+                                    <div className="p-6 border rounded-2xl bg-white mb-6 shadow-sm border-slate-100">
+                                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3 text-center">Select Payment Amount</p>
+                                        <div className="grid grid-cols-2 gap-3 mb-4">
+                                            <button
+                                                type="button"
+                                                onClick={() => setPaymentOption('full')}
+                                                className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all ${
+                                                    paymentOption === 'full' 
+                                                    ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' 
+                                                    : 'bg-transparent border-slate-200 text-slate-500 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                <span className="text-[10px] font-bold uppercase">Pay Remaining Balance</span>
+                                                <span className="text-base font-black mt-1">${balanceDue.toFixed(2)}</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setPaymentOption('custom');
+                                                    if (!customAmount) setCustomAmount((balanceDue / 2).toFixed(2));
+                                                }}
+                                                className={`flex flex-col items-center justify-center p-3 rounded-2xl border-2 transition-all ${
+                                                    paymentOption === 'custom' 
+                                                    ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' 
+                                                    : 'bg-transparent border-slate-200 text-slate-500 hover:bg-slate-50'
+                                                }`}
+                                            >
+                                                <span className="text-[10px] font-bold uppercase">Pay Other Amount</span>
+                                                <span className="text-base font-black mt-1">Custom Amount</span>
+                                            </button>
+                                        </div>
+
+                                        {paymentOption === 'custom' && (
+                                            <div className="animate-fade-in space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                                <label htmlFor="custom-pay-amount" className="block text-xs font-black uppercase text-slate-500 tracking-wider">Enter Amount to Pay ($)</label>
+                                                <div className="relative">
+                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-lg">$</span>
+                                                    <input
+                                                        id="custom-pay-amount"
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="1.00"
+                                                        max={balanceDue}
+                                                        value={customAmount}
+                                                        onChange={e => setCustomAmount(e.target.value)}
+                                                        className="w-full pl-8 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                                    />
+                                                </div>
+                                                
+                                                <div className="flex gap-2 justify-center">
+                                                    {[0.25, 0.5, 0.75].map(pct => (
+                                                        <button
+                                                            key={pct}
+                                                            type="button"
+                                                            onClick={() => setCustomAmount((balanceDue * pct).toFixed(2))}
+                                                            className="text-[9px] font-black uppercase tracking-wider bg-white hover:bg-slate-100 border border-slate-200 px-2 py-1.5 rounded-lg text-slate-500 transition-colors"
+                                                        >
+                                                            {pct * 100}% (${(balanceDue * pct).toFixed(2)})
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                {amountToPay <= 0 ? (
+                                                    <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest text-center">Please enter a valid amount.</p>
+                                                ) : amountToPay < 1.00 ? (
+                                                    <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest text-center">Minimum payment is $1.00.</p>
+                                                ) : amountToPay > balanceDue + 0.01 ? (
+                                                    <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest text-center">Payment cannot exceed remaining balance of ${balanceDue.toFixed(2)}.</p>
+                                                ) : (
+                                                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest text-center">Amount authorized to charge: ${amountToPay.toFixed(2)}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div className="space-y-3">
                                     <p className="text-[10px] font-black uppercase text-slate-400 text-center tracking-widest">Pay Securely via Credit Card</p>
 
-                                    {paymentMethod === 'square' && currentActiveOrg?.squareApplicationId && currentActiveOrg?.squareLocationId && (
-                                        <div className="relative z-10">
-                                            <SquarePaymentForm 
-                                                applicationId={currentActiveOrg.squareApplicationId}
-                                                locationId={currentActiveOrg.squareLocationId}
-                                                amount={safeTotal}
-                                                organizationId={currentActiveOrg.id}
-                                                jobId={jobId}
-                                                customerEmail={job?.customerEmail || ''}
-                                                onSuccess={async (_paymentId) => {
-                                                    await markJobPaid(_paymentId);
-                                                    showToast.success("Payment Successful via Square");
-                                                }}
-                                                onError={(err) => {
-                                                    setError(err);
-                                                    showToast.error(err);
-                                                }}
-                                            />
+                                    {amountToPay >= 1.00 && amountToPay <= balanceDue + 0.01 ? (
+                                        <>
+                                            {paymentMethod === 'square' && currentActiveOrg?.squareApplicationId && currentActiveOrg?.squareLocationId && (
+                                                <div className="relative z-10">
+                                                    <SquarePaymentForm 
+                                                        applicationId={currentActiveOrg.squareApplicationId}
+                                                        locationId={currentActiveOrg.squareLocationId}
+                                                        amount={amountToPay}
+                                                        organizationId={currentActiveOrg.id}
+                                                        jobId={jobId}
+                                                        customerEmail={job?.customerEmail || ''}
+                                                        onSuccess={async (_paymentId) => {
+                                                            await markJobPaid(_paymentId, amountToPay);
+                                                            showToast.success("Payment Successful via Square");
+                                                        }}
+                                                        onError={(err) => {
+                                                            setError(err);
+                                                            showToast.error(err);
+                                                        }}
+                                                    />
+                                                </div>
+                                            )}
+                                            
+                                            {paymentMethod === 'kort' && (currentActiveOrg?.kortAccountId || currentActiveOrg?.name?.trim().toLowerCase() === 'tektestsub') && (
+                                                <div className="relative z-10 flex justify-center w-full">
+                                                    <KortPaymentForm 
+                                                        amount={amountToPay}
+                                                        jobId={jobId}
+                                                        accountId={currentActiveOrg?.kortAccountId}
+                                                        organizationId={currentActiveOrg?.id}
+                                                        organization={currentActiveOrg}
+                                                        onSuccess={async (_paymentId) => {
+                                                            await markJobPaid(_paymentId, amountToPay);
+                                                            showToast.success("Payment Successful via Kort");
+                                                        }}
+                                                        onError={(err) => {
+                                                            setError(err);
+                                                            showToast.error(err);
+                                                        }}
+                                                    />
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="p-4 text-center bg-slate-50 border rounded-2xl border-slate-100">
+                                            <p className="text-xs text-slate-500 font-bold uppercase">Enter a valid custom payment amount to authorize payment</p>
                                         </div>
                                     )}
-                                    
-                                    {paymentMethod === 'kort' && (currentActiveOrg?.kortAccountId || currentActiveOrg?.name?.trim().toLowerCase() === 'tektestsub') && (
-                                        <div className="relative z-10 flex justify-center w-full">
-                                            <KortPaymentForm 
-                                                amount={safeTotal}
-                                                jobId={jobId}
-                                                accountId={currentActiveOrg?.kortAccountId}
-                                                organizationId={currentActiveOrg?.id}
-                                                organization={currentActiveOrg}
-                                                onSuccess={async (_paymentId) => {
-                                                    await markJobPaid(_paymentId);
-                                                    showToast.success("Payment Successful via Kort");
-                                                }}
-                                                onError={(err) => {
-                                                    setError(err);
-                                                    showToast.error(err);
-                                                }}
-                                            />
-                                        </div>
-                                    )}
-                                    
-
 
                                     {paymentMethod === 'stripe' && (
                                         <div className="p-4 md:p-8 text-center border-2 border-dashed border-slate-200 rounded-[1.5rem] bg-slate-50">

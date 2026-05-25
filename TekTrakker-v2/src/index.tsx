@@ -6,6 +6,7 @@ import App from './App';
 import { AppProvider } from './context/AppContext';
 import { ConfirmProvider } from './context/ConfirmContext';
 import { FranchiseProvider } from './context/FranchiseContext';
+import { LanguageProvider } from './context/LanguageContext';
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
 import './styles/index.css';
 import { registerSW } from 'virtual:pwa-register';
@@ -183,9 +184,11 @@ root.render(
       <FranchiseProvider>
         <HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
           <AppProvider>
-            <ConfirmProvider>
-              <App />
-            </ConfirmProvider>
+            <LanguageProvider>
+              <ConfirmProvider>
+                <App />
+              </ConfirmProvider>
+            </LanguageProvider>
           </AppProvider>
         </HashRouter>
       </FranchiseProvider>

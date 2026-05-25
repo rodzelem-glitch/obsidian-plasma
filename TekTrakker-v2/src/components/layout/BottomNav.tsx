@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { BriefingIcon, TimeLogIcon, CalculatorIcon, WrenchScrewdriverIcon, ChatBubbleLeftRightIcon, PaymentsIcon } from '@constants';
 import { Capacitor } from '@capacitor/core';
 import { triggerHapticFeedback } from '../../lib/haptics';
+import { useLanguage } from 'context/LanguageContext';
 
 const navItems = [
   { path: '/briefing/', label: 'Briefing', icon: BriefingIcon, tourKey: 'briefing' },
@@ -17,6 +18,7 @@ const navItems = [
 const BottomNav: React.FC = () => {
   const location = useLocation();
   const isIOS = Capacitor.getPlatform() === 'ios';
+  const { t } = useLanguage();
 
   return (
     <nav className={`fixed bottom-0 left-0 right-0 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-50 pb-[env(safe-area-inset-bottom,0px)] ${isIOS ? 'bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl border-slate-200/50 dark:border-slate-700/50' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
@@ -38,7 +40,7 @@ const BottomNav: React.FC = () => {
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] rounded-full bg-primary-500" />
                 )}
                 <item.icon className={`w-6 h-6 mb-1 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
-                <span className="truncate w-full text-center leading-tight">{item.label}</span>
+                <span className="truncate w-full text-center leading-tight">{t(item.label)}</span>
               </Link>
             );
           })}

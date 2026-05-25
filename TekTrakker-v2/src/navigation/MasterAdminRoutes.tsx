@@ -25,7 +25,7 @@ import Messages from '../pages/Messages';
 import AiUsageMaster from '../pages/admin/AiUsageMaster';
 import StorageUsageMaster from '../pages/admin/StorageUsageMaster';
 import VirtualWorkerReports from '../pages/admin/VirtualWorkerReports';
-import CampaignManager from '../pages/sales/CampaignManager';
+
 import Financials from '../pages/admin/Financials';
 import MobileDevConsole from '../pages/master/MobileDevConsole';
 
@@ -52,7 +52,7 @@ const MasterAdminRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({
           <Route path="campaigns" element={<PlatformCampaignStudio />} />
           <Route path="ai-reports" element={<VirtualWorkerReports />} />
           <Route path="integration-requests" element={<MasterIntegrationRequests />} />
-          <Route path="drip-campaigns" element={<CampaignManager />} />
+          <Route path="drip-campaigns" element={<PlatformCampaignStudio />} />
           
           {/* Franchise Admin Only Routes */}
           {!isPlatformOwner && isAllowed && (

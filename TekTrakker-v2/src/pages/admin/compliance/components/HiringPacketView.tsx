@@ -13,6 +13,7 @@ import DOMPurify from 'dompurify';
 import SignaturePad from 'components/ui/SignaturePad';
 import { notifyAdmins } from 'lib/notificationService';
 import { uploadFileToStorage } from 'lib/storageService';
+import { useLanguage } from 'context/LanguageContext';
 
 const FEDERAL_FORMS = [
     {
@@ -38,6 +39,7 @@ interface HiringPacketViewProps {
 
 const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf }) => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     
     const packets = useMemo(() => 
         state.documents.filter(d => d.type === 'Hiring Packet'),
@@ -59,7 +61,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
         if (!file || !employee) return;
         
         if (file.size > 10 * 1024 * 1024) {
-            showToast.warn("Image must be less than 10MB");
+            showToast.warn(t("Image must be less than 10MB"));
             return;
         }
 
@@ -71,10 +73,10 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
             
             const url = await uploadFileToStorage(path, file);
             setFormResponses(prev => ({...prev, [itemId]: url}));
-            showToast.success("Photo uploaded successfully");
+            showToast.success(t("Photo uploaded successfully"));
         } catch (error) {
             console.error("Failed to upload photo:", error);
-            showToast.error("Failed to upload photo");
+            showToast.error(t("Failed to upload photo"));
         } finally {
             setUploadingItemId(null);
         }
@@ -85,7 +87,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
         if (!file || !employee) return;
 
         if (file.size > 25 * 1024 * 1024) {
-            showToast.warn('File must be less than 25MB');
+            showToast.warn(t('File must be less than 25MB'));
             return;
         }
 
@@ -117,10 +119,10 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                 });
             }
 
-            showToast.success('Form uploaded successfully!');
+            showToast.success(t('Form uploaded successfully!'));
         } catch (error) {
             console.error('Failed to upload federal form:', error);
-            showToast.error('Failed to upload form.');
+            showToast.error(t('Failed to upload form.'));
         } finally {
             setUploadingFederalId(null);
         }
@@ -159,11 +161,11 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                 });
             }
             
-            showToast.success('Packet Acknowledged.');
+            showToast.success(t('Packet Acknowledged.'));
             setViewDoc(null);
             setSignatureName('');
         } catch {
-            showToast.warn("Failed to save signature.");
+            showToast.warn(t("Failed to save signature."));
         }
     };
 
@@ -174,7 +176,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
         if (viewForm) {
             for (const item of viewForm.items) {
                 if (item.required && !formResponses[item.id]) {
-                    showToast.warn(`Please complete required field: ${item.label}`);
+                    showToast.warn(t("Please complete required field:") + " " + t(item.label));
                     return;
                 }
             }
@@ -208,10 +210,10 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                 });
             }
             
-            showToast.success('Form Submitted Successfully.');
+            showToast.success(t('Form Submitted Successfully.'));
             setViewForm(null);
         } catch {
-            showToast.warn("Failed to save form submission.");
+            showToast.warn(t("Failed to save form submission."));
         }
     };
 
@@ -223,13 +225,13 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                         <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded border border-gray-200 dark:border-gray-700 max-h-[60vh] overflow-y-auto">
                             {viewDoc.context ? (
                                 <div className="text-center">
-                                    <p className="mb-4">This document is a file upload.</p>
+                                    <p className="mb-4">{t("This document is a file upload.")}</p>
                                     <button 
                                         type="button"
                                         onClick={(e) => { e.preventDefault(); import('lib/downloadHelper').then(m => m.downloadFile(viewDoc.context!, viewDoc.title)); }} 
                                         className="text-blue-600 hover:underline font-bold"
                                     >
-                                        Open/Download to Read
+                                        {t("Open/Download to Read")}
                                     </button>
                                 </div>
                             ) : (
@@ -239,27 +241,27 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                         
                         {!employee?.signedPolicies?.[viewDoc.id] && isSelf && (
                             <div className="border-t pt-4">
-                                <p className="text-sm font-bold mb-2">I have read and agree to this document.</p>
+                                <p className="text-sm font-bold mb-2">{t("I have read and agree to this document.")}</p>
                                 <div className="flex flex-col gap-4">
                                     <SignaturePad onEnd={(dataUrl) => setSignatureName(dataUrl)} />
-                                    <Button type="button" onClick={() => handleSign(viewDoc.id)} disabled={!signatureName}>Sign & Accept</Button>
+                                    <Button type="button" onClick={() => handleSign(viewDoc.id)} disabled={!signatureName}>{t("Sign & Accept")}</Button>
                                 </div>
                             </div>
                         )}
                         {!employee?.signedPolicies?.[viewDoc.id] && !isSelf && (
                             <div className="border-t pt-4">
-                                <p className="text-red-600 font-bold flex items-center gap-2">Employee has not signed this document yet.</p>
+                                <p className="text-red-600 font-bold flex items-center gap-2">{t("Employee has not signed this document yet.")}</p>
                             </div>
                         )}
                         {employee?.signedPolicies?.[viewDoc.id] && (
                             <div className="space-y-4">
                                 <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded flex items-center gap-2 text-green-700 dark:text-green-400">
                                     <CheckCircle size={20} />
-                                    <span>Signed on {new Date(employee.signedPolicies[viewDoc.id]).toLocaleDateString()}</span>
+                                    <span>{t("Signed on")} {new Date(employee.signedPolicies[viewDoc.id]).toLocaleDateString()}</span>
                                 </div>
                                 {employee?.policySignatures?.[viewDoc.id] && (
                                     <div className="p-4 border rounded bg-white">
-                                        <p className="text-xs text-slate-500 mb-2">Signature:</p>
+                                        <p className="text-xs text-slate-500 mb-2">{t("Signature:")}</p>
                                         <img src={employee.policySignatures[viewDoc.id]} alt="Signature" className="h-20" />
                                     </div>
                                 )}
@@ -276,14 +278,14 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                             {viewForm.items?.map((item, idx) => (
                                 <div key={item.id} className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                                        {idx + 1}. {item.label} {item.required && <span className="text-red-500">*</span>}
+                                        {idx + 1}. {t(item.label)} {item.required && <span className="text-red-500">*</span>}
                                     </label>
                                     
                                     {item.type === 'Text' && (
                                         <Input 
                                             value={formResponses[item.id] || ''}
                                             onChange={e => setFormResponses(prev => ({...prev, [item.id]: e.target.value}))}
-                                            placeholder="Enter answer..."
+                                            placeholder={t("Enter answer...")}
                                             disabled={!!employee?.formSubmissions?.[viewForm.id] || !isSelf}
                                         />
                                     )}
@@ -291,7 +293,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                         <Textarea 
                                             value={formResponses[item.id] || ''}
                                             onChange={e => setFormResponses(prev => ({...prev, [item.id]: e.target.value}))}
-                                            placeholder="Enter detailed answer..."
+                                            placeholder={t("Enter detailed answer...")}
                                             rows={3}
                                             disabled={!!employee?.formSubmissions?.[viewForm.id] || !isSelf}
                                         />
@@ -306,7 +308,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                     onChange={() => setFormResponses(prev => ({...prev, [item.id]: 'Pass'}))}
                                                     disabled={!!employee?.formSubmissions?.[viewForm.id] || !isSelf}
                                                     className="text-primary-500 focus:ring-primary-500"
-                                                /> Yes/Pass
+                                                /> {t("Yes/Pass")}
                                             </label>
                                             <label className="flex items-center gap-2">
                                                 <input 
@@ -316,7 +318,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                     onChange={() => setFormResponses(prev => ({...prev, [item.id]: 'Fail'}))}
                                                     disabled={!!employee?.formSubmissions?.[viewForm.id] || !isSelf}
                                                     className="text-primary-500 focus:ring-primary-500"
-                                                /> No/Fail
+                                                /> {t("No/Fail")}
                                             </label>
                                         </div>
                                     )}
@@ -327,7 +329,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                     <img src={formResponses[item.id]} alt="Uploaded" className="max-h-32 mx-auto rounded" />
                                                     {!employee?.formSubmissions?.[viewForm.id] && isSelf && (
                                                         <label className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded">
-                                                            <span>Change Photo</span>
+                                                            <span>{t("Change Photo")}</span>
                                                             <input 
                                                                 type="file" 
                                                                 accept="image/*" 
@@ -345,7 +347,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                     ) : (
                                                         <Camera size={24} className={(!isSelf || employee?.formSubmissions?.[viewForm.id]) ? 'text-slate-300' : 'text-slate-400'} />
                                                     )}
-                                                    <p>{uploadingItemId === item.id ? 'Uploading...' : 'Click to upload photo'}</p>
+                                                    <p>{uploadingItemId === item.id ? t('Uploading...') : t('Click to upload photo')}</p>
                                                     <input 
                                                         type="file" 
                                                         accept="image/*" 
@@ -367,7 +369,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                     onChange={() => setFormResponses(prev => ({...prev, [item.id]: 'Yes'}))}
                                                     disabled={!!employee?.formSubmissions?.[viewForm.id] || !isSelf}
                                                     className="text-primary-500 focus:ring-primary-500"
-                                                /> Yes
+                                                /> {t("Yes")}
                                             </label>
                                             <label className="flex items-center gap-2">
                                                 <input 
@@ -377,7 +379,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                     onChange={() => setFormResponses(prev => ({...prev, [item.id]: 'No'}))}
                                                     disabled={!!employee?.formSubmissions?.[viewForm.id] || !isSelf}
                                                     className="text-primary-500 focus:ring-primary-500"
-                                                /> No
+                                                /> {t("No")}
                                             </label>
                                         </div>
                                     )}
@@ -390,7 +392,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                 disabled={!!employee?.formSubmissions?.[viewForm.id] || !isSelf}
                                                 className="rounded w-4 h-4 text-primary-500"
                                             />
-                                            <span className="text-sm text-slate-600 dark:text-slate-300">I confirm / agree</span>
+                                            <span className="text-sm text-slate-600 dark:text-slate-300">{t("I confirm / agree")}</span>
                                         </label>
                                     )}
                                     {item.type === 'CheckboxGroup' && (
@@ -412,7 +414,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                             disabled={!!employee?.formSubmissions?.[viewForm.id] || !isSelf}
                                                             className="rounded w-4 h-4 text-primary-500"
                                                         />
-                                                        <span className="text-sm text-slate-700 dark:text-slate-300">{opt}</span>
+                                                        <span className="text-sm text-slate-700 dark:text-slate-300">{t(opt)}</span>
                                                     </label>
                                                 );
                                             })}
@@ -430,14 +432,14 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                         <div>
                                             {formResponses[item.id] ? (
                                                 <div className="border rounded p-3 bg-white dark:bg-slate-900">
-                                                    <p className="text-xs text-slate-500 mb-1">Signature:</p>
+                                                    <p className="text-xs text-slate-500 mb-1">{t("Signature:")}</p>
                                                     <img src={formResponses[item.id]} alt="Signature" className="h-20 mx-auto" />
                                                     {!employee?.formSubmissions?.[viewForm.id] && isSelf && (
                                                         <button 
                                                             type="button"
                                                             onClick={() => setFormResponses(prev => ({...prev, [item.id]: ''}))}
                                                             className="text-xs text-primary-600 hover:underline mt-2"
-                                                        >Re-sign</button>
+                                                        >{t("Re-sign")}</button>
                                                     )}
                                                 </div>
                                             ) : (
@@ -453,18 +455,18 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                         
                         {!employee?.formSubmissions?.[viewForm.id] && isSelf && (
                             <div className="border-t pt-4 flex justify-end">
-                                <Button type="button" onClick={() => handleSaveForm(viewForm.id)}>Submit Form</Button>
+                                <Button type="button" onClick={() => handleSaveForm(viewForm.id)}>{t("Submit Form")}</Button>
                             </div>
                         )}
                         {!employee?.formSubmissions?.[viewForm.id] && !isSelf && (
                             <div className="border-t pt-4">
-                                <p className="text-red-600 font-bold flex items-center gap-2">Employee has not submitted this form yet.</p>
+                                <p className="text-red-600 font-bold flex items-center gap-2">{t("Employee has not submitted this form yet.")}</p>
                             </div>
                         )}
                         {employee?.formSubmissions?.[viewForm.id] && (
                             <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded flex items-center gap-2 text-green-700 dark:text-green-400">
                                 <CheckCircle size={20} />
-                                <span>Submitted on {new Date(employee.formSubmissions[viewForm.id].timestamp).toLocaleDateString()}</span>
+                                <span>{t("Submitted on")} {new Date(employee.formSubmissions[viewForm.id].timestamp).toLocaleDateString()}</span>
                             </div>
                         )}
                     </div>
@@ -473,8 +475,8 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
 
             {/* Federal Forms Section */}
             <div>
-                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-1"><ShieldCheck size={16}/> Required Federal Forms</h4>
-                <p className="text-[11px] text-slate-500 mb-4">Download the official form, complete it, then upload the filled-out version.</p>
+                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-1"><ShieldCheck size={16}/> {t("Required Federal Forms")}</h4>
+                <p className="text-[11px] text-slate-500 mb-4">{t("Download the official form, complete it, then upload the filled-out version.")}</p>
                 <div className="flex flex-col gap-3">
                     {FEDERAL_FORMS.map(form => {
                         const submission = employee?.formSubmissions?.[form.id];
@@ -485,13 +487,13 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                     <div className="flex items-start gap-3 flex-1 min-w-0 w-full">
                                         <ShieldCheck className={isUploaded ? 'text-green-500 mt-0.5 shrink-0' : 'text-blue-500 mt-0.5 shrink-0'} size={20} />
                                         <div className="min-w-0">
-                                            <h4 className="font-bold text-sm text-slate-900 dark:text-white">{form.name}</h4>
-                                            <p className="text-[11px] text-slate-500 leading-snug">{form.description}</p>
+                                            <h4 className="font-bold text-sm text-slate-900 dark:text-white">{t(form.name)}</h4>
+                                            <p className="text-[11px] text-slate-500 leading-snug">{t(form.description)}</p>
                                             {isUploaded && (
                                                 <div className="flex items-center gap-1.5 mt-1.5">
                                                     <CheckCircle size={12} className="text-green-500" />
                                                     <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">
-                                                        Uploaded on {new Date(submission.timestamp).toLocaleDateString()}
+                                                        {t("Uploaded on")} {new Date(submission.timestamp).toLocaleDateString()}
                                                     </span>
                                                 </div>
                                             )}
@@ -503,7 +505,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                             onClick={(e) => { e.preventDefault(); import('lib/downloadHelper').then(m => m.downloadFile(form.url, form.name + '.pdf')); }}
                                             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 transition-colors"
                                         >
-                                            <Download size={13} /> Download
+                                            <Download size={13} /> {t("Download")}
                                         </button>
                                         {isSelf && (
                                             <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors cursor-pointer ${
@@ -514,11 +516,11 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                         : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800'
                                             }`}>
                                                 {uploadingFederalId === form.id ? (
-                                                    <><div className="animate-spin rounded-full h-3 w-3 border-2 border-current border-t-transparent" /> Uploading...</>
+                                                    <><div className="animate-spin rounded-full h-3 w-3 border-2 border-current border-t-transparent" /> {t("Uploading...")}</>
                                                 ) : isUploaded ? (
-                                                    <><Upload size={13} /> Re-upload</>
+                                                    <><Upload size={13} /> {t("Re-upload")}</>
                                                 ) : (
-                                                    <><Upload size={13} /> Upload Completed</>
+                                                    <><Upload size={13} /> {t("Upload Completed")}</>
                                                 )}
                                                 <input
                                                     type="file"
@@ -536,7 +538,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                 rel="noreferrer"
                                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors"
                                             >
-                                                <ExternalLink size={13} /> View Upload
+                                                <ExternalLink size={13} /> {t("View Upload")}
                                             </a>
                                         )}
                                     </div>
@@ -549,7 +551,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
 
             {/* Organization Hiring Packets */}
             <div>
-                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-4"><FileText size={16}/> Organization Hiring Packets</h4>
+                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-4"><FileText size={16}/> {t("Organization Hiring Packets")}</h4>
                 <div className="flex flex-col gap-3">
                     {packets.map(doc => {
                         const isSigned = !!employee?.signedPolicies?.[doc.id];
@@ -559,22 +561,22 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                     <FileText className={isSigned ? "text-green-500 shrink-0" : "text-slate-400 shrink-0"} size={20} />
                                     <div>
                                         <h4 className="font-bold text-sm text-slate-900 dark:text-white">{doc.title}</h4>
-                                        <p className="text-[10px] text-slate-500">Updated: {new Date(doc.createdAt).toLocaleDateString()}</p>
+                                        <p className="text-[10px] text-slate-500">{t("Updated:")} {new Date(doc.createdAt).toLocaleDateString()}</p>
                                     </div>
                                 </div>
                                 <Button type="button" onClick={() => setViewDoc(doc)} variant="secondary" className="text-xs w-full sm:w-auto shrink-0" size="sm">
-                                    {isSigned ? 'View' : (isSelf ? 'Read & Sign' : 'View Document')}
+                                    {isSigned ? t('View') : (isSelf ? t('Read & Sign') : t('View Document'))}
                                 </Button>
                             </div>
                         );
                     })}
-                    {packets.length === 0 && <p className="text-slate-500 text-xs italic py-2">No hiring packets assigned.</p>}
+                    {packets.length === 0 && <p className="text-slate-500 text-xs italic py-2">{t("No hiring packets assigned.")}</p>}
                 </div>
             </div>
 
             {hiringForms.length > 0 && (
                 <div>
-                    <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-4"><CheckSquare size={16}/> Hiring Forms & Questionnaires</h4>
+                    <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-4"><CheckSquare size={16}/> {t("Hiring Forms & Questionnaires")}</h4>
                     <div className="flex flex-col gap-3">
                         {hiringForms.map(form => {
                             const isSubmitted = !!employee?.formSubmissions?.[form.id];
@@ -584,7 +586,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                         <CheckSquare className={isSubmitted ? "text-green-500 shrink-0" : "text-slate-400 shrink-0"} size={20} />
                                         <div>
                                             <h4 className="font-bold text-sm text-slate-900 dark:text-white">{form.name}</h4>
-                                            <p className="text-[10px] text-slate-500">Items: {form.items?.length || 0}</p>
+                                            <p className="text-[10px] text-slate-500">{t("Items:")} {form.items?.length || 0}</p>
                                         </div>
                                     </div>
                                     <Button type="button" onClick={() => {
@@ -595,7 +597,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                         }
                                         setViewForm(form);
                                     }} variant="secondary" className="text-xs w-full sm:w-auto shrink-0" size="sm">
-                                        {isSubmitted ? 'View Submission' : (isSelf ? 'Fill Out Form' : 'View Form')}
+                                        {isSubmitted ? t('View Submission') : (isSelf ? t('Fill Out Form') : t('View Form'))}
                                     </Button>
                                 </div>
                             );

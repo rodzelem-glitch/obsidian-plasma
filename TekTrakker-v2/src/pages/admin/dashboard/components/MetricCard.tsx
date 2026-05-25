@@ -2,9 +2,11 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Card from '../../../../components/ui/Card';
+import { useLanguage } from 'context/LanguageContext';
 
 const MetricCard: React.FC<{ title: string; value: string | number; path?: string; icon: any; color: string }> = ({ title, value, path, icon: Icon, color }) => {
     const navigate = useNavigate();
+    const { t } = useLanguage();
     return (
         <Card 
             className={`flex flex-col items-center justify-center text-center transition-all group border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 ${path ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700' : 'opacity-80 cursor-default'}`}
@@ -14,7 +16,7 @@ const MetricCard: React.FC<{ title: string; value: string | number; path?: strin
                 <Icon size={20} className={color.replace('bg-', 'text-')} />
             </div>
             <p className={`text-3xl font-black text-gray-900 dark:text-white transition-transform duration-200 ${path ? 'group-hover:scale-110' : ''}`}>{value}</p>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mt-1">{title}</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mt-1">{t(title)}</p>
         </Card>
     );
 }

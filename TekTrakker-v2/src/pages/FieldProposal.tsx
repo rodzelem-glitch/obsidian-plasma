@@ -3,6 +3,7 @@ import { getBaseUrl } from "lib/utils";
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
@@ -31,6 +32,7 @@ type InternalProposalItem = Omit<ProposalItem, 'price'> & { unitPrice: number, i
 
 const FieldProposal: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const jobIdRef = useRef<string | null>(searchParams.get('jobId'));
@@ -376,11 +378,11 @@ const FieldProposal: React.FC = () => {
             organizationId: state.currentOrganization?.id || '',
             technicianId: state.currentUser?.id || '',
             createdAt: state.proposals.find(p => p.id === editProposalId)?.createdAt || new Date().toISOString(),
-            sentAt: action === 'send' ? new Date().toISOString() : (state.proposals.find(p => p.id === editProposalId)?.sentAt || undefined),
+            sentAt: action === 'send' ? new Date().toISOString() : (state.proposals.find(p => p.id === editProposalId)?.sentAt || null),
             remindersSent: state.proposals.find(p => p.id === editProposalId)?.remindersSent || [],
             customerName: customer.name,
             customerId: customer.id,
-            customerEmail: customer.email,
+            customerEmail: customer.email || null,
             items: itemsToSave, 
             status,
             signatureDataUrl,
@@ -535,7 +537,7 @@ const FieldProposal: React.FC = () => {
                     onClick={() => { window.history.length > 2 ? navigate(-1) : navigate('/admin/dashboard'); }}
                     className="flex items-center gap-2 py-2 px-4 rounded-xl bg-slate-200 dark:bg-slate-800 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
                 >
-                    &larr; Exit Proposal Editor
+                    &larr; {t("Exit Proposal Editor")}
                 </button>
             </div>
 
@@ -549,24 +551,24 @@ const FieldProposal: React.FC = () => {
 
             {step === 1 && (
                 <Card className="p-4 md:p-10 max-w-2xl mx-auto shadow-2xl rounded-3xl border-2 border-primary-50 bg-white dark:bg-slate-900">
-                    <h2 className="text-3xl font-black mb-8 text-slate-900 dark:text-white">New Proposal</h2>
+                    <h2 className="text-3xl font-black mb-8 text-slate-900 dark:text-white">{t("New Proposal")}</h2>
                     <div className="mb-4 space-y-4">
                         <Input 
-                            label="Search Customers" 
-                            placeholder="Type a name to filter..." 
+                            label={t("Search Customers")} 
+                            placeholder={t("Type a name to filter...")} 
                             value={customerSearch} 
                             onChange={(e) => setCustomerSearch(e.target.value)} 
                         />
-                        <Select label={customerSearch ? `Filtered Results (${state.customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).length})` : "Select Customer"} value={customerId} onChange={e => setCustomerId(e.target.value)} className="h-14 text-lg">
-                            <option value="">-- Choose Customer --</option>
+                        <Select label={customerSearch ? `${t("Filtered Results")} (${state.customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).length})` : t("Select Customer")} value={customerId} onChange={e => setCustomerId(e.target.value)} className="h-14 text-lg">
+                            <option value="">{t("-- Choose Customer --")}</option>
                             {state.customers
                                 .filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()))
                                 .map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </Select>
                     </div>
                     <div className="flex gap-4 mt-8">
-                         <Button onClick={() => navigate(-1)} variant="secondary" className="h-14 px-4 md:px-8 text-xl font-bold">Cancel</Button>
-                         <Button onClick={() => setStep(2)} disabled={!customerId} className="flex-1 h-14 text-xl font-bold">Start Building &rarr;</Button>
+                         <Button onClick={() => navigate(-1)} variant="secondary" className="h-14 px-4 md:px-8 text-xl font-bold">{t("Cancel")}</Button>
+                         <Button onClick={() => setStep(2)} disabled={!customerId} className="flex-1 h-14 text-xl font-bold">{t("Start Building")} &rarr;</Button>
                     </div>
                 </Card>
             )}
@@ -588,16 +590,16 @@ const FieldProposal: React.FC = () => {
                                 }}
                                 className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${activeTier === tier ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-white shadow-xl' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'} cursor-pointer`}
                             >
-                                {tier}
+                                {t(tier)}
                             </div>
                         ))}
                     </div>
 
                     <Card className="p-4 md:p-8 border-2 border-slate-200 dark:border-slate-700 shadow-xl rounded-3xl bg-white dark:bg-slate-900">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 bg-slate-100 dark:bg-slate-800 p-2 rounded-2xl">
-                            <button onClick={() => setActiveTool('ai')} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTool === 'ai' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}><Sparkles size={16}/> AI Generator</button>
-                            <button onClick={() => setIsPricebookOpen(true)} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300`}><Book size={16}/> Pricebook</button>
-                            <button onClick={() => setActiveTool('manual')} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTool === 'manual' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}><Edit2 size={16}/> Manual Entry</button>
+                            <button onClick={() => setActiveTool('ai')} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTool === 'ai' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}><Sparkles size={16}/> {t("AI Generator")}</button>
+                            <button onClick={() => setIsPricebookOpen(true)} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300`}><Book size={16}/> {t("Pricebook")}</button>
+                            <button onClick={() => setActiveTool('manual')} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTool === 'manual' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}><Edit2 size={16}/> {t("Manual Entry")}</button>
                         </div>
 
                         {activeTool === 'ai' && <AIGenerator onSuggestions={setAiSuggestions} />}
@@ -609,15 +611,15 @@ const FieldProposal: React.FC = () => {
                         {/* Additional Fees & Discounts */}
                         <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
                             <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
-                                🏷️ Global Fees & Discounts
+                                🏷️ {t("Global Fees & Discounts")}
                             </h4>
-                            <p className="text-[10px] text-slate-500 mb-4 uppercase font-bold tracking-widest">Apply a percentage fee (e.g., Processing Fee = 3) or discount (e.g., Seasonal Discount = -10)</p>
+                            <p className="text-[10px] text-slate-500 mb-4 uppercase font-bold tracking-widest">{t("Apply a percentage fee (e.g., Processing Fee = 3) or discount (e.g., Seasonal Discount = -10)")}</p>
                             <div className="flex gap-4 items-center">
                                 <div className="flex-1">
-                                    <Input label="Adjustment Name" value={additionalFeeName} onChange={e => setAdditionalFeeName(e.target.value)} placeholder="e.g. Processing Fee or Fall Discount" />
+                                    <Input label={t("Adjustment Name")} value={additionalFeeName} onChange={e => setAdditionalFeeName(e.target.value)} placeholder={t("e.g. Processing Fee or Fall Discount")} />
                                 </div>
                                 <div className="flex-1">
-                                    <Input label="Percentage (%)" type="number" value={additionalFeePercent} onChange={e => setAdditionalFeePercent(parseFloat(e.target.value) || 0)} />
+                                    <Input label={t("Percentage (%)")} type="number" value={additionalFeePercent} onChange={e => setAdditionalFeePercent(parseFloat(e.target.value) || 0)} />
                                 </div>
                             </div>
                         </div>
@@ -625,32 +627,32 @@ const FieldProposal: React.FC = () => {
                         {/* Technician Recommendations */}
                         <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
                             <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                                💡 Technician Recommendations
+                                💡 {t("Technician Recommendations")}
                             </h4>
-                            <p className="text-[10px] text-slate-500 mb-3 uppercase font-bold tracking-widest">Provide proactive service advice to the customer</p>
+                            <p className="text-[10px] text-slate-500 mb-3 uppercase font-bold tracking-widest">{t("Provide proactive service advice to the customer")}</p>
                             <textarea
                                 className="w-full min-h-[80px] p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 text-sm focus:ring-2 focus:ring-primary-500 transition-all resize-none text-slate-700 dark:text-slate-200"
                                 value={recommendations}
                                 onChange={e => setRecommendations(e.target.value)}
-                                placeholder="e.g. Recommend replacing the capacitor within the next 6 months..."
+                                placeholder={t("e.g. Recommend replacing the capacitor within the next 6 months...")}
                             />
                         </div>
 
                         <div className="mt-12 flex justify-between items-end border-t border-slate-200 dark:border-slate-700 pt-8">
                             <div className="text-right flex-1">
-                                <p className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase mb-1">{activeTier} Option Total</p>
+                                <p className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase mb-1">{t(activeTier)} {t("Option Total")}</p>
                                 <div className="text-5xl font-black text-primary-600 dark:text-primary-400 tracking-tighter">${calculateTierTotal(activeTier).total.toLocaleString(undefined, {maximumFractionDigits: 2})}</div>
                             </div>
                         </div>
 
                         <div className="flex gap-4 mt-12 pt-8 border-t border-slate-100 dark:border-slate-800">
                             <Button variant="secondary" onClick={handleBack} className="px-4 md:px-8 font-bold">
-                                {editProposalId || source === 'workflow' ? 'Cancel' : 'Back'}
+                                {editProposalId || source === 'workflow' ? t('Cancel') : t('Back')}
                             </Button>
                             <Button variant="outline" onClick={() => handleSaveProposal('saveDraft')} disabled={isSaving} className="px-4 md:px-8 font-bold flex items-center gap-2">
-                                <Save size={16} /> {isSaving ? 'Saving...' : 'Save Draft'}
+                                <Save size={16} /> {isSaving ? t('Saving...') : t('Save Draft')}
                             </Button>
-                            <Button onClick={() => setStep(3)} disabled={items.length === 0} className="flex-1 h-14 text-xl font-black shadow-xl shadow-primary-500/30">Review & Present &rarr;</Button>
+                            <Button onClick={() => setStep(3)} disabled={items.length === 0} className="flex-1 h-14 text-xl font-black shadow-xl shadow-primary-500/30">{t("Review & Present")} &rarr;</Button>
                         </div>
                     </Card>
                 </div>
@@ -677,12 +679,12 @@ const FieldProposal: React.FC = () => {
                                     }}
                                     className={`relative p-4 md:p-10 rounded-[2.5rem] border-4 cursor-pointer transition-all duration-500 ${isSelected ? 'border-primary-600 bg-primary-50 dark:bg-primary-900/20 shadow-2xl scale-105' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'}`}
                                 >
-                                    <h3 className={`text-center font-black text-2xl uppercase mb-8 ${isSelected ? 'text-primary-700 dark:text-white' : 'text-slate-900 dark:text-slate-200'}`}>{tier}</h3>
+                                    <h3 className={`text-center font-black text-2xl uppercase mb-8 ${isSelected ? 'text-primary-700 dark:text-white' : 'text-slate-900 dark:text-slate-200'}`}>{t(tier)}</h3>
                                     <div className="text-center mb-10">
                                         <div className={`text-6xl font-black tracking-tighter ${isSelected ? 'text-primary-700 dark:text-white' : 'text-slate-900 dark:text-white'}`}>${total.toLocaleString(undefined, {maximumFractionDigits: 0})}</div>
                                         {!!additionalFeeAmount && (
                                             <div className={`text-sm font-bold mt-2 ${additionalFeeAmount < 0 ? 'text-emerald-500' : 'text-slate-500'}`}>
-                                                Includes {additionalFeePercent}% {additionalFeeName || 'Adjustment'}
+                                                {t("Includes")} {additionalFeePercent}% {additionalFeeName || t('Adjustment')}
                                             </div>
                                         )}
                                     </div>
@@ -707,15 +709,15 @@ const FieldProposal: React.FC = () => {
                     
                     <Card className="p-4 md:p-10 border-2 border-slate-200 dark:border-slate-700 shadow-2xl rounded-[2.5rem] bg-white dark:bg-slate-900">
                         <div className="flex justify-between items-center mb-8">
-                            <h3 className="text-2xl font-black text-slate-900 dark:text-white">Customer Authorization</h3>
-                            <Button onClick={() => setIsPreviewOpen(true)} variant="secondary" className="w-auto flex items-center gap-2 text-xs font-black"><Eye size={16}/> Preview</Button>
+                            <h3 className="text-2xl font-black text-slate-900 dark:text-white">{t("Customer Authorization")}</h3>
+                            <Button onClick={() => setIsPreviewOpen(true)} variant="secondary" className="w-auto flex items-center gap-2 text-xs font-black"><Eye size={16}/> {t("Preview")}</Button>
                         </div>
                         <SignaturePad ref={sigPadRef} className="h-44 shadow-inner mb-8 bg-slate-50 dark:bg-slate-800 rounded-xl" />
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <Button variant="secondary" onClick={() => setStep(2)} className="h-16 font-bold text-sm md:text-base">Modify</Button>
-                            <Button onClick={() => handleSaveProposal('send')} disabled={isSaving} className="h-16 font-black bg-indigo-600 hover:bg-indigo-700 text-sm md:text-base"><Mail size={18} className="hidden md:block"/> Email</Button>
-                            <Button onClick={() => { if(window.confirm('Are you sure the customer has verbally agreed to this proposal?')) handleSaveProposal('verbalAccept'); }} disabled={!selectedOption || isSaving} className="h-16 font-black bg-amber-500 hover:bg-amber-600 text-white shadow-xl text-sm md:text-base leading-tight">Verbal<br/>Accept</Button>
-                            <Button onClick={() => handleSaveProposal('accept')} disabled={!selectedOption || isSaving} className="h-16 font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl text-sm md:text-base leading-tight flex items-center justify-center gap-1 md:gap-2"><CheckCircle size={18} className="hidden md:block"/> Sign &<br className="md:hidden"/> Accept</Button>
+                            <Button variant="secondary" onClick={() => setStep(2)} className="h-16 font-bold text-sm md:text-base">{t("Modify")}</Button>
+                            <Button onClick={() => handleSaveProposal('send')} disabled={isSaving} className="h-16 font-black bg-indigo-600 hover:bg-indigo-700 text-sm md:text-base"><Mail size={18} className="hidden md:block"/> {t("Email")}</Button>
+                            <Button onClick={() => { if(window.confirm(t('Are you sure the customer has verbally agreed to this proposal?'))) handleSaveProposal('verbalAccept'); }} disabled={!selectedOption || isSaving} className="h-16 font-black bg-amber-500 hover:bg-amber-600 text-white shadow-xl text-sm md:text-base leading-tight">{t("Verbal")}<br/>{t("Accept")}</Button>
+                            <Button onClick={() => handleSaveProposal('accept')} disabled={!selectedOption || isSaving} className="h-16 font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl text-sm md:text-base leading-tight flex items-center justify-center gap-1 md:gap-2"><CheckCircle size={18} className="hidden md:block"/> {t("Sign &")}<br className="md:hidden"/> {t("Accept")}</Button>
                         </div>
                     </Card>
                 </div>

@@ -133,9 +133,9 @@ const LoginPage: React.FC = () => {
 
       // 2. Fetch platform settings for public pages
       if (!state.platformSettings) {
-          db.collection('platformSettings').limit(1).get().then(snapshot => {
-              if (!snapshot.empty) {
-                  const settings = {id: snapshot.docs[0].id, ...snapshot.docs[0].data()} as PlatformSettings;
+          db.collection('platformSettings').doc('global').get().then(docSnapshot => {
+              if (docSnapshot.exists) {
+                  const settings = {id: docSnapshot.id, ...docSnapshot.data()} as PlatformSettings;
                   dispatch({ type: 'SET_PLATFORM_SETTINGS', payload: settings });
               }
           }).catch(console.error);

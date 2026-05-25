@@ -4,6 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import { Camera, XCircle } from 'lucide-react';
+import { useLanguage } from 'context/LanguageContext';
 
 interface BarcodeScannerModalProps {
     isOpen: boolean;
@@ -12,6 +13,7 @@ interface BarcodeScannerModalProps {
 }
 
 const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClose, onScan }) => {
+    const { t } = useLanguage();
     const [error, setError] = useState<string | null>(null);
     const [isScannerStarted, setIsScannerStarted] = useState(false);
     const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
@@ -66,7 +68,7 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
     }, [isOpen]);
 
     return (
-        <Modal isOpen={isOpen} onClose={() => { stopScanner().then(() => onClose()); }} title="Scan Barcode / Part">
+        <Modal isOpen={isOpen} onClose={() => { stopScanner().then(() => onClose()); }} title={t("Scan Barcode / Part")}>
             <div className="space-y-4">
                 <div className="relative w-full aspect-square md:aspect-video bg-black rounded-lg overflow-hidden shadow-inner flex items-center justify-center">
                     <div id="reader" className="w-full h-full"></div>
@@ -74,28 +76,27 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({ isOpen, onClo
                     {!isScannerStarted && !error && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-slate-900/50">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mb-2"></div>
-                            <p className="text-xs font-bold uppercase tracking-widest">Initializing Camera...</p>
+                            <p className="text-xs font-bold uppercase tracking-widest">{t("Initializing Camera...")}</p>
                         </div>
                     )}
 
                     {error && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-900">
                             <XCircle className="text-red-500 mb-2" size={48} />
-                            <p className="text-white text-sm font-bold mb-4">{error}</p>
-                            <Button onClick={() => window.location.href = window.location.pathname + window.location.search} className="bg-primary-600">Retry Permissions</Button>
+                            <p className="text-white text-sm font-bold mb-4">{t(error)}</p>
+                            <Button onClick={() => window.location.href = window.location.pathname + window.location.search} className="bg-primary-600">{t("Retry Permissions")}</Button>
                         </div>
                     )}
                 </div>
                 
                 <div className="text-center p-2">
                     <p className="text-xs font-bold text-slate-500 mb-4 uppercase tracking-widest flex items-center justify-center gap-2">
-                        <Camera size={14}/> Align barcode within frame
+                        <Camera size={14}/> {t("Align barcode within frame")}
                     </p>
-                    <Button variant="secondary" onClick={() => { stopScanner().then(() => onClose()); }} className="w-full">Cancel Scanner</Button>
+                    <Button variant="secondary" onClick={() => { stopScanner().then(() => onClose()); }} className="w-full">{t("Cancel Scanner")}</Button>
                 </div>
             </div>
         </Modal>
     );
 };
-
 export default BarcodeScannerModal;

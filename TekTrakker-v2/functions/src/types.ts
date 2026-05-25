@@ -104,6 +104,7 @@ export interface Organization {
     quickbooksConnected?: boolean;
     aiPricebookEnabled?: boolean;
     virtualWorkerEnabled?: boolean;
+    virtualWorkerBillingType?: 'monthly' | 'lifetime';
     revenuecatId?: string;
     salesRepId?: string;
     settings?: any; 
@@ -136,6 +137,10 @@ export interface PlatformSettings {
         enterprise: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
     };
     excessUserFee: number;
+    subscriptionFee?: number;
+    virtualWorkerFee?: number;
+    virtualWorkerLifetimeFee?: number;
+    franchiseLifetimeFee?: number;
     updatedAt: string;
 }
 

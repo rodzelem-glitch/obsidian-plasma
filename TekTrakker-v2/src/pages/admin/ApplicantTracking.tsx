@@ -11,6 +11,7 @@ import ListView from './ats/ListView';
 import ApplicantDetailModal from './ats/ApplicantDetailModal';
 import OfferModal, { OfferDetails } from './ats/OfferModal';
 import { globalConfirm } from "lib/globalConfirm";
+import { useLanguage } from 'context/LanguageContext';
 
 const STATUS_COLS = ['New', 'Screening', 'Interview', 'Offer Sent', 'Hired', 'Declined'];
 const STATUS_COLORS: Record<string, string> = {
@@ -40,6 +41,7 @@ const INDUSTRY_ROLES: Record<string, string[]> = {
 
 const ApplicantTracking: React.FC = () => {
     const { state } = useAppContext();
+    const { t } = useLanguage();
     const [applicants, setApplicants] = useState<Applicant[]>([]);
     const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
     const [search, setSearch] = useState('');
@@ -92,16 +94,16 @@ const ApplicantTracking: React.FC = () => {
     const handleUpdateStatus = async (status: Applicant['status']) => {
         if (!selectedApplicant) return;
         updateApplicant(selectedApplicant.id, { status });
-        if (state.isDemoMode) return showToast.warn('Demo: Status updated!');
+        if (state.isDemoMode) return showToast.warn(t('Demo: Status updated!'));
         await db.collection('applicants').doc(selectedApplicant.id).update({ status });
     };
 
     const handleDelete = async () => {
         if (!selectedApplicant) return;
-        if (!await globalConfirm(`Delete ${selectedApplicant.name}?`)) return;
+        if (!await globalConfirm(t("Delete {name}?", { name: selectedApplicant.name || `${selectedApplicant.firstName} ${selectedApplicant.lastName}` }))) return;
         setApplicants(prev => prev.filter(a => a.id !== selectedApplicant.id));
         setIsDetailModalOpen(false);
-        if (state.isDemoMode) return showToast.warn('Demo: Applicant deleted!');
+        if (state.isDemoMode) return showToast.warn(t('Demo: Applicant deleted!'));
         await db.collection('applicants').doc(selectedApplicant.id).delete();
     };
 
@@ -116,7 +118,7 @@ const ApplicantTracking: React.FC = () => {
         if (!selectedApplicant) return;
         console.log('Offer Details:', details);
         handleUpdateStatus('Offer Sent');
-        if (state.isDemoMode) return showToast.warn('Demo: Offer sent!');
+        if (state.isDemoMode) return showToast.warn(t('Demo: Offer sent!'));
         // In live mode, you would also generate and send an email
         // await db.collection('mail').add({ ... });
     };
@@ -125,7 +127,7 @@ const ApplicantTracking: React.FC = () => {
         if (!selectedApplicant) return;
         handleUpdateStatus('Hired');
         setIsDetailModalOpen(false);
-        if (state.isDemoMode) return showToast.warn('Demo: Applicant hired!');
+        if (state.isDemoMode) return showToast.warn(t('Demo: Applicant hired!'));
         // In live mode, create a new user/employee record
         // await db.collection('users').add({ ... });
     };

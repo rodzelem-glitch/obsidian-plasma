@@ -44,6 +44,7 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
     const rawAccountId = state.currentOrganization?.kortAccountId || import.meta.env.VITE_KORT_ACCOUNT_ID;
     // Fallback to active sandbox connected merchant account if the account is the partner account (which has Card/ACH disabled)
     const activeAccountId = (rawAccountId === 'acct_AJdH2w6qvR8UAFn7KxIwc') ? 'acct_zDruOrRgOZVtafF9TPC2J' : rawAccountId;
+    const isSandbox = !publishableKey || !publishableKey.startsWith('pk_rYhq');
 
     useEffect(() => {
         if (!publishableKey || !activeAccountId) {
@@ -69,7 +70,7 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
                 }
 
                 // Initialize Kort Payments SDK for the platform account
-                const payments = new Payments(publishableKey, activeAccountId, { sandbox: true });
+                const payments = new Payments(publishableKey, activeAccountId, { sandbox: isSandbox });
                 setPaymentsInstance(payments);
 
                 // Create the form asynchronously based on selected payment method

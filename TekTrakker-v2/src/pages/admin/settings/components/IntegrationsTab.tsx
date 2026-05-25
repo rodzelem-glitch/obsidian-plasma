@@ -1,13 +1,13 @@
 import showToast from "lib/toast";
 // import { getFunctions, httpsCallable } from "firebase/functions";
-import { db } from "lib/firebase";
+import { db, functions } from "lib/firebase";
 import React, { useState } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import Input from 'components/ui/Input';
 import Button from 'components/ui/Button';
 import Toggle from 'components/ui/Toggle';
-import { CreditCard, Mail, Code, Copy, ChevronDown, MonitorUp, Thermometer, Wrench, Package, Square, Coins, Workflow, MessageSquare, Cpu, Home, Leaf, Truck, DollarSign, Fingerprint, PhoneCall, Database, FileText, CloudSun, CheckCircle, RefreshCw, ArrowRight, Sparkles, AlertCircle, Shield, ExternalLink } from 'lucide-react';
+import { CreditCard, Mail, Users, Handshake, Code, Copy, ChevronDown, MonitorUp, Thermometer, Wrench, Package, Square, Coins, Workflow, MessageSquare, Cpu, Home, Leaf, Truck, DollarSign, Fingerprint, PhoneCall, Database, FileText, CloudSun, CheckCircle, RefreshCw, ArrowRight, Sparkles, AlertCircle, Shield, ExternalLink } from 'lucide-react';
 
 
 interface IntegrationsTabProps {
@@ -197,18 +197,15 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
 }) => {
     const [expandedGridId, setExpandedGridId] = useState<string | null>(null);
     const [onboardingUrl, setOnboardingUrl] = useState<string | null>(null);
-    // const [generatingOnboardingUrl, setGeneratingOnboardingUrl] = useState(false);
     const navigate = useNavigate();
     const { state, dispatch } = useAppContext();
-    // const isTestOrg = orgId === 'tektestsub' || state.allOrganizations?.find(o => o.id === orgId)?.name?.toLowerCase().includes('tektest');
     const mqWebhookUrl = `https://us-central1-tektrakker.cloudfunctions.net/measureQuickWebhook?orgId=${orgId || 'ERROR_NO_ORG'}`;
+    const [generatingOnboardingUrl, setGeneratingOnboardingUrl] = useState(false);
 
-    /*
     const handleGenerateOnboardingLink = async () => {
         try {
             setGeneratingOnboardingUrl(true);
-            const functions = getFunctions();
-            const generateKortOnboardingLink = httpsCallable(functions, 'generateKortOnboardingLink');
+            const generateKortOnboardingLink = functions.httpsCallable('generateKortOnboardingLink');
             
             const result = await generateKortOnboardingLink({
                 organizationId: orgId,
@@ -218,10 +215,16 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
             const data = result.data as { success?: boolean; onboardingUrl?: string; accountId?: string };
             if (data.success && data.onboardingUrl) {
                 setOnboardingUrl(data.onboardingUrl);
-                // We don't save kortAccountId here yet. We wait for them to finish.
-                // Alternatively, we save it immediately but it's pending.
+                window.open(data.onboardingUrl, '_blank');
                 if (data.accountId) {
                     setKortAccountId(data.accountId);
+                    await db.collection('organizations').doc(orgId).update({ kortAccountId: data.accountId });
+                    if (state.currentOrganization) {
+                        dispatch({
+                            type: 'UPDATE_ORGANIZATION',
+                            payload: { ...state.currentOrganization, kortAccountId: data.accountId }
+                        });
+                    }
                 }
             }
         } catch (error) {
@@ -231,7 +234,6 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
             setGeneratingOnboardingUrl(false);
         }
     };
-    */
 
     return (
         <form onSubmit={e => e.preventDefault()} className="space-y-8">
@@ -325,21 +327,33 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                     >
                         <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Connect TekTrakker Payments to process credit cards natively within your platform. Enjoy deep integration with no setup fees.</p>
                         
-                        <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40 rounded-lg">
-                            <h5 className="text-xs font-bold text-emerald-800 dark:text-emerald-400 mb-1">Simple Processing Fees</h5>
-                            <ul className="text-xs text-emerald-700 dark:text-emerald-300 space-y-1">
-                                <li>• <strong>$15</strong> monthly platform fee</li>
-                                <li>• <strong>2.7% + $0.25</strong> per successful transaction</li>
-                            </ul>
+                        <div className="mb-4 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/40 rounded-xl space-y-3">
+                            <h5 className="text-xs font-bold text-emerald-800 dark:text-emerald-400">Merchant Processing Fees</h5>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                                <div>
+                                    <h6 className="font-bold text-emerald-950 dark:text-emerald-300 mb-1">Credit/Debit Cards</h6>
+                                    <ul className="text-emerald-700 dark:text-emerald-400 space-y-1">
+                                        <li>• <strong>2.7% + $0.25</strong> per transaction</li>
+                                        <li>• <strong>$10.00</strong> monthly minimum</li>
+                                    </ul>
+                                </div>
+                                <div className="border-t md:border-t-0 md:border-l border-emerald-200/50 dark:border-emerald-800/50 pt-3 md:pt-0 md:pl-4">
+                                    <h6 className="font-bold text-emerald-950 dark:text-emerald-300 mb-1">ACH / Bank Transfers</h6>
+                                    <ul className="text-emerald-700 dark:text-emerald-400 space-y-1">
+                                        <li>• <strong>$1.25 flat</strong> per transaction</li>
+                                        <li>• <strong>$15.00</strong> monthly minimum</li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
                         
                         {!kortAccountId && !onboardingUrl ? (
                             <div className="space-y-4">
                                 <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-xl text-center">
                                     <h4 className="font-bold text-sm text-slate-800 dark:text-white mb-2">Embedded Merchant Onboarding</h4>
-                                    <p className="text-xs text-slate-500 mb-4">We are currently finalizing our production payment processing infrastructure. Live onboarding will be available shortly.</p>
-                                    <Button disabled className="w-full text-xs font-bold uppercase tracking-wide opacity-50 cursor-not-allowed">
-                                        Coming Soon
+                                    <p className="text-xs text-slate-500 mb-4">Complete the white-labeled merchant application directly within the app securely.</p>
+                                    <Button onClick={handleGenerateOnboardingLink} disabled={generatingOnboardingUrl} className="w-full text-xs font-bold uppercase tracking-wide">
+                                        {generatingOnboardingUrl ? 'Generating...' : 'Start In-App Application'}
                                     </Button>
                                 </div>
                                 <div className="relative flex items-center py-2">
@@ -351,16 +365,21 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                             </div>
                         ) : onboardingUrl ? (
                             <div className="space-y-4">
-                                <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded-xl h-[600px] w-full relative overflow-hidden">
-                                    <iframe 
-                                        src={onboardingUrl} 
-                                        className="w-full h-full border-0 rounded-lg"
-                                        title="Secure Merchant Application"
-                                        allow="camera; microphone; geolocation"
-                                    />
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button variant="secondary" onClick={() => setOnboardingUrl(null)} className="w-full">Close Application</Button>
+                                <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-xl text-center">
+                                    <CheckCircle className="w-10 h-10 mx-auto text-emerald-500 mb-3" />
+                                    <h4 className="font-bold text-sm text-slate-800 dark:text-white mb-2">Application Opened in New Tab</h4>
+                                    <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                                        For security reasons, the merchant application must be completed in a separate window.<br/><br/>
+                                        Your Account ID has been pre-filled. Please finish the application in the new tab.
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <Button onClick={() => window.open(onboardingUrl, '_blank')} className="w-full text-xs font-bold uppercase tracking-wide">
+                                            Re-open Application
+                                        </Button>
+                                        <Button variant="secondary" onClick={() => setOnboardingUrl(null)} className="w-full">
+                                            Close Panel
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         ) : (
@@ -371,6 +390,33 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                                         <h4 className="font-bold text-sm text-emerald-800 dark:text-emerald-400">Account Connected</h4>
                                     </div>
                                     <Input label="Merchant Account ID" value={kortAccountId} onChange={e => setKortAccountId(e.target.value)} placeholder="acct_..." />
+                                </div>
+                                <div className="flex gap-2">
+                                    <Button onClick={handleGenerateOnboardingLink} disabled={generatingOnboardingUrl} className="w-full text-xs font-bold uppercase tracking-wide">
+                                        {generatingOnboardingUrl ? 'Generating...' : 'Resume Merchant Application'}
+                                    </Button>
+                                    <Button 
+                                        variant="secondary" 
+                                        onClick={async () => {
+                                            if (!window.confirm("Are you sure you want to disconnect this merchant account? This will stop native payment processing.")) return;
+                                            try {
+                                                setKortAccountId('');
+                                                await db.collection('organizations').doc(orgId).update({ kortAccountId: null });
+                                                if (state.currentOrganization) {
+                                                    dispatch({
+                                                        type: 'UPDATE_ORGANIZATION',
+                                                        payload: { ...state.currentOrganization, kortAccountId: undefined }
+                                                    });
+                                                }
+                                                showToast.success("Kort Merchant Account disconnected.");
+                                            } catch (e) {
+                                                showToast.error("Failed to disconnect account.");
+                                            }
+                                        }}
+                                        className="w-full text-xs font-bold uppercase tracking-wide text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100"
+                                    >
+                                        Disconnect Account
+                                    </Button>
                                 </div>
                             </div>
                         )}
@@ -415,6 +461,47 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
 
                 </div>
             </div>
+
+            {!!state.currentOrganization?.gustoCompanyUuid && (
+            <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
+                <h3 className="text-lg font-black mb-4 flex items-center gap-2 text-slate-800 dark:text-white"><Users size={20}/> HR & Payroll</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+                    <IntegrationModule 
+                        id="gusto" 
+                        title="Gusto Payroll" 
+                        category="HR & Payroll" 
+                        icon={Users}
+                        iconColor="text-orange-500"
+                        isConnected={!!state.currentOrganization?.gustoCompanyUuid}
+                        expandedId={expandedGridId} setExpandedId={setExpandedGridId}
+                    >
+                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Sync employee profiles, push hours, and run payroll using Gusto. Managed via your Bring-Your-Own-Key developer credentials.</p>
+                        <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-xl">
+                            <div>
+                                <span className="font-bold block text-sm text-slate-800 dark:text-white">Gusto Connected</span>
+                                <span className="text-xs text-slate-500">BYO Credentials Flow</span>
+                            </div>
+                            <Button 
+                                onClick={async () => {
+                                    if (!window.confirm("Disconnect Gusto? Syncing will stop.")) return;
+                                    try {
+                                        await db.collection('organizations').doc(orgId).update({ gustoCompanyUuid: null, gustoOnboardingUrl: null });
+                                        dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...state.currentOrganization, gustoCompanyUuid: undefined, gustoOnboardingUrl: undefined } });
+                                        showToast.success("Gusto disconnected successfully.");
+                                    } catch (e) {
+                                        showToast.error("Failed to disconnect Gusto.");
+                                    }
+                                }} 
+                                variant="secondary" 
+                                className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-100"
+                            >
+                                Disconnect
+                            </Button>
+                        </div>
+                    </IntegrationModule>
+                </div>
+            </div>
+            )}
 
             {!!quickbooksConnected && (
             <div className="border-t border-slate-200 dark:border-slate-800 pt-8">

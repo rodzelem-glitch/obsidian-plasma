@@ -4,6 +4,7 @@ import Card from '../../../../components/ui/Card';
 import Button from '../../../../components/ui/Button';
 import Textarea from '../../../../components/ui/Textarea';
 import { VoiceInput } from '../../../../components/ui/VoiceInput';
+import { useLanguage } from 'context/LanguageContext';
 
 interface ChecklistItem {
     id: string;
@@ -43,32 +44,34 @@ const QualityStep: React.FC<QualityStepProps> = ({
     setMembershipOffered,
     hidden
 }) => {
+    const { t } = useLanguage();
+
     if (hidden) return null;
     return (
         <div className="space-y-6 text-center">
             <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <ShieldCheck size={48} className="text-slate-400"/>
             </div>
-            <h3 className="text-xl font-bold">Quality Check</h3>
+            <h3 className="text-xl font-bold">{t("Quality Check")}</h3>
             <Button onClick={() => setIsQCOpen(true)} className="w-full h-14 text-lg bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center gap-2 mb-4">
-                <Camera size={20}/> Launch AI Inspector (Optional)
+                <Camera size={20}/> {t("Launch AI Inspector (Optional)")}
             </Button>
             
             <Card className="text-left">
                 <div className="flex justify-between items-center mb-4">
                     <h4 className="font-bold flex items-center gap-2">
-                        <ClipboardList size={18} className="text-primary-600"/> Quality Checklist
+                        <ClipboardList size={18} className="text-primary-600"/> {t("Quality Checklist")}
                     </h4>
                     <div className="flex items-center gap-2">
                         {toggleAllChecklistVisibility && checklists.length > 0 && (
                             <>
-                                <button onClick={() => toggleAllChecklistVisibility(false)} className="text-[10px] uppercase font-black text-primary-600 hover:underline">Show All</button>
+                                <button onClick={() => toggleAllChecklistVisibility(false)} className="text-[10px] uppercase font-black text-primary-600 hover:underline">{t("Show All")}</button>
                                 <span className="text-slate-300">|</span>
-                                <button onClick={() => toggleAllChecklistVisibility(true)} className="text-[10px] uppercase font-black text-slate-400 hover:underline">Hide All</button>
+                                <button onClick={() => toggleAllChecklistVisibility(true)} className="text-[10px] uppercase font-black text-slate-400 hover:underline">{t("Hide All")}</button>
                             </>
                         )}
                         <Button variant="secondary" size="sm" onClick={() => setIsImportModalOpen(true)} className="text-xs flex items-center gap-1 ml-2">
-                            <Import size={14}/> Import
+                            <Import size={14}/> {t("Import")}
                         </Button>
                     </div>
                 </div>
@@ -91,9 +94,9 @@ const QualityStep: React.FC<QualityStepProps> = ({
                                     <button 
                                         onClick={() => toggleChecklistVisibility(item.id)}
                                         className={`ml-2 text-[10px] font-bold px-2 py-1 rounded transition-colors shrink-0 ${item.hiddenFromCustomer ? 'bg-slate-200 text-slate-500 line-through dark:bg-slate-700 dark:text-slate-400' : 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 border border-primary-200 dark:border-primary-800'}`}
-                                        title={item.hiddenFromCustomer ? "Hidden from Customer Portal" : "Visible in Customer Portal"}
+                                        title={item.hiddenFromCustomer ? t("Hidden from Customer Portal") : t("Visible in Customer Portal")}
                                     >
-                                        {item.hiddenFromCustomer ? 'Hidden' : 'Visible'}
+                                        {item.hiddenFromCustomer ? t("Hidden") : t("Visible")}
                                     </button>
                                 )}
                             </div>
@@ -101,29 +104,29 @@ const QualityStep: React.FC<QualityStepProps> = ({
                     </div>
                 ) : (
                     <div className="text-center py-6 border-2 border-dashed rounded-lg bg-slate-50">
-                        <p className="text-xs text-slate-400">No checklist items yet. Import from documents.</p>
+                        <p className="text-xs text-slate-400">{t("No checklist items yet. Import from documents.")}</p>
                     </div>
                 )}
             </Card>
 
             <Card className="text-left">
                 <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold">Job Completion Notes</h4>
+                    <h4 className="font-bold">{t("Job Completion Notes")}</h4>
                     <VoiceInput onResult={(text) => setCompletionNotes(completionNotes + ' ' + text)} />
                 </div>
                 <Textarea 
                     rows={3} 
                     value={completionNotes} 
                     onChange={e => setCompletionNotes(e.target.value)} 
-                    placeholder="Summary for invoice..." 
+                    placeholder={t("Summary for invoice...")} 
                 />
             </Card>
 
             <Card className="text-left bg-purple-50 border-purple-200">
                 <h4 className="font-bold mb-2 text-purple-700 flex items-center gap-2">
-                    <span className="sparkles-icon">✨</span> Membership Reminder
+                    <span className="sparkles-icon">✨</span> {t("Membership Reminder")}
                 </h4>
-                <p className="text-xs text-purple-600 mb-2">Did you offer the customer a membership plan to save money on today's visit?</p>
+                <p className="text-xs text-purple-600 mb-2">{t("Did you offer the customer a membership plan to save money on today's visit?")}</p>
                 <label className="flex items-center gap-3 p-2 bg-white rounded border border-purple-200 cursor-pointer mt-2">
                     <input 
                         type="checkbox" 
@@ -132,21 +135,21 @@ const QualityStep: React.FC<QualityStepProps> = ({
                         className="w-5 h-5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
                     />
                     <span className="text-sm font-semibold text-purple-800">
-                        Yes, I discussed a membership plan with the customer
+                        {t("Yes, I discussed a membership plan with the customer")}
                     </span>
                 </label>
             </Card>
 
             <Card className="text-left">
                 <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold">Customer Feedback</h4>
+                    <h4 className="font-bold">{t("Customer Feedback")}</h4>
                     <VoiceInput onResult={(text) => setCustomerFeedback(customerFeedback + ' ' + text)} />
                 </div>
                 <Textarea 
                     rows={2} 
                     value={customerFeedback} 
                     onChange={e => setCustomerFeedback(e.target.value)} 
-                    placeholder="Customer comments..." 
+                    placeholder={t("Customer comments...")} 
                 />
             </Card>
         </div>

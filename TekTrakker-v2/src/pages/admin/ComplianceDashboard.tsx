@@ -13,6 +13,7 @@ import { CheckCircle, AlertTriangle, Wrench, Shield, Users, Printer, Flag, Trash
 import { globalConfirm } from 'lib/globalConfirm';
 import showToast from 'lib/toast';
 import { getBaseUrl } from 'lib/utils';
+import { useLanguage } from 'context/LanguageContext';
 
 import ToolsTab from './compliance/components/ToolsTab';
 import CertsTab from './compliance/components/CertsTab';
@@ -24,6 +25,7 @@ import { Bot } from 'lucide-react';
 
 const ComplianceDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [searchParams] = useSearchParams();
     const industry = state.currentOrganization?.industry || 'HVAC';
     const { currentUser } = state;
@@ -108,11 +110,11 @@ const ComplianceDashboard: React.FC = () => {
     };
 
     const handleDeleteCylinder = async (id: string) => {
-        if (!await globalConfirm("Permanently remove this cylinder from inventory?")) return;
+        if (!await globalConfirm(t("Permanently remove this cylinder from inventory?"))) return;
         try {
             await db.collection('refrigerantCylinders').doc(id).delete();
             dispatch({ type: 'DELETE_CYLINDER', payload: id });
-        } catch (e) { showToast.error("Delete failed."); }
+        } catch (e) { showToast.error(t("Delete failed.")); }
     };
 
     const handleLogMaintenance = async () => {
@@ -146,7 +148,7 @@ const ComplianceDashboard: React.FC = () => {
             const updatedCerts = [...(selectedUserForCert.certifications || []), newCert];
             await db.collection('users').doc(selectedUserForCert.id).update({ certifications: updatedCerts });
             setIsCertUploadOpen(false);
-        } catch (e) { showToast.error("Failed to upload certification."); } finally { setIsUploadingCert(false); }
+        } catch (e) { showToast.error(t("Failed to upload certification.")); } finally { setIsUploadingCert(false); }
     };
 
     const generateReport = () => {
@@ -167,10 +169,10 @@ const ComplianceDashboard: React.FC = () => {
             <header className="flex justify-between items-center">
                 <div className="flex gap-2">
                     <Button onClick={generateVerificationLink} className="w-auto flex items-center gap-2">
-                        <Shield size={16}/> A2P 10DLC Verification Link
+                        <Shield size={16}/> {t("A2P 10DLC Verification Link")}
                     </Button>
                     <Button onClick={() => setIsReportOpen(true)} variant="secondary" className="w-auto flex items-center gap-2">
-                        <Printer size={16}/> Generate Report
+                        <Printer size={16}/> {t("Generate Report")}
                     </Button>
                 </div>
             </header>
@@ -178,12 +180,12 @@ const ComplianceDashboard: React.FC = () => {
             {isLinkGenerated && (
                 <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
                     <div>
-                        <h4 className="font-bold text-blue-800 text-sm">Provider Verification Link Active</h4>
-                        <p className="text-xs text-blue-600">Share this secure link with RingCentral or your carrier to prove consent collection.</p>
+                        <h4 className="font-bold text-blue-800 text-sm">{t("Provider Verification Link Active")}</h4>
+                        <p className="text-xs text-blue-600">{t("Share this secure link with RingCentral or your carrier to prove consent collection.")}</p>
                     </div>
                     <div className="flex gap-2 w-full md:w-auto">
-                        <input readOnly value={verificationLink} className="flex-1 text-xs p-2 rounded border bg-white min-w-[300px]" title="Verification Link" aria-label="Verification Link" />
-                        <Button onClick={() => window.open(verificationLink, '_blank')} className="text-xs">View</Button>
+                        <input readOnly value={verificationLink} className="flex-1 text-xs p-2 rounded border bg-white min-w-[300px]" title={t("Verification Link")} aria-label={t("Verification Link")} />
+                        <Button onClick={() => window.open(verificationLink, '_blank')} className="text-xs">{t("View")}</Button>
                     </div>
                 </div>
             )}
@@ -198,22 +200,22 @@ const ComplianceDashboard: React.FC = () => {
                         <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg">
                             <Wrench size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Tools & Maintenance</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("Tools & Maintenance")}</h3>
                     </div>
                     {toolLogs.length === 0 ? (
-                        <p className="text-sm text-gray-500 italic mt-auto">No tools logged.</p>
+                        <p className="text-sm text-gray-500 italic mt-auto">{t("No tools logged.")}</p>
                     ) : (
                         <div className="space-y-2 flex-1">
                             {toolLogs.slice(0, 3).map(log => (
                                 <div key={log.id} className="flex justify-between items-center text-sm p-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
-                                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{log.toolType}</span>
-                                    <span className={`text-xs px-2 py-1 rounded-full ${log.result === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{log.result}</span>
+                                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{t(log.toolType)}</span>
+                                    <span className={`text-xs px-2 py-1 rounded-full ${log.result === 'Pass' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{t(log.result)}</span>
                                 </div>
                             ))}
                         </div>
                     )}
                     <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
-                        View All {toolLogs.length} Tools
+                        {t("View All")} {toolLogs.length} {t("Tools")}
                     </button>
                 </div>
 
@@ -227,20 +229,20 @@ const ComplianceDashboard: React.FC = () => {
                             <div className="p-3 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-lg">
                                 <CheckCircle size={24} />
                             </div>
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Requirements</h3>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("Requirements")}</h3>
                         </div>
                         <div className="space-y-3 flex-1">
                             <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-purple-500">
-                                <p className="text-xs font-bold text-gray-500 uppercase">Policy Tracking</p>
-                                <p className="text-sm text-gray-800 dark:text-gray-200">{policies.length} Active Policies</p>
+                                <p className="text-xs font-bold text-gray-500 uppercase">{t("Policy Tracking")}</p>
+                                <p className="text-sm text-gray-800 dark:text-gray-200">{policies.length} {t("Active Policies")}</p>
                             </div>
                             <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-l-4 border-indigo-500">
-                                <p className="text-xs font-bold text-gray-500 uppercase">Certifications</p>
-                                <p className="text-sm text-gray-800 dark:text-gray-200">{employees.length} Tracked Employees</p>
+                                <p className="text-xs font-bold text-gray-500 uppercase">{t("Certifications")}</p>
+                                <p className="text-sm text-gray-800 dark:text-gray-200">{employees.length} {t("Tracked Employees")}</p>
                             </div>
                         </div>
                         <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
-                            Manage Trackers
+                            {t("Manage Trackers")}
                         </button>
                     </div>
                 )}
@@ -254,22 +256,22 @@ const ComplianceDashboard: React.FC = () => {
                         <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg">
                             <Flag size={24} />
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">Hazards & Incidents</h3>
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("Hazards & Incidents")}</h3>
                     </div>
                     {(!state.incidentReports || state.incidentReports.length === 0) ? (
-                        <p className="text-sm text-gray-500 italic mt-auto">No incidents reported.</p>
+                        <p className="text-sm text-gray-500 italic mt-auto">{t("No incidents reported.")}</p>
                     ) : (
                         <div className="space-y-2 flex-1">
                             {state.incidentReports.slice(0, 3).map(incident => (
                                 <div key={incident.id} className="flex justify-between items-center text-sm p-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
-                                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{incident.type || 'Hazard'}</span>
+                                    <span className="font-medium text-gray-800 dark:text-gray-200 truncate">{t(incident.type || 'Hazard')}</span>
                                     <span className="text-xs text-gray-500">{new Date(incident.date).toLocaleDateString()}</span>
                                 </div>
                             ))}
                         </div>
                     )}
                     <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
-                        View All {state.incidentReports?.length || 0} Reports
+                        {t("View All")} {state.incidentReports?.length || 0} {t("Reports")}
                     </button>
                 </div>
 
@@ -283,24 +285,24 @@ const ComplianceDashboard: React.FC = () => {
                             <div className="p-3 bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-lg">
                                 <Bot size={24} />
                             </div>
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">AI Operations</h3>
+                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("AI Operations")}</h3>
                         </div>
                         <div className="space-y-2 flex-1">
-                            <p className="text-sm text-gray-500">Track and audit actions completed by the Virtual AI Worker.</p>
+                            <p className="text-sm text-gray-500">{t("Track and audit actions completed by the Virtual AI Worker.")}</p>
                         </div>
                         <button className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex items-center gap-1 w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3">
-                            View Audit Ledger
+                            {t("View Audit Ledger")}
                         </button>
                     </div>
                 )}
             </div>
 
             {/* Expansive Modals */}
-            <Modal isOpen={isToolsModalOpen} onClose={() => setIsToolsModalOpen(false)} title="Tools & Maintenance" size="full">
+            <Modal isOpen={isToolsModalOpen} onClose={() => setIsToolsModalOpen(false)} title={t("Tools & Maintenance")} size="full">
                 <ToolsTab {...{ toolLogs, setIsLogMaintenanceOpen }} />
             </Modal>
 
-            <Modal isOpen={isRequirementsModalOpen} onClose={() => setIsRequirementsModalOpen(false)} title="Requirement Tracking" size="full">
+            <Modal isOpen={isRequirementsModalOpen} onClose={() => setIsRequirementsModalOpen(false)} title={t("Requirement Tracking")} size="full">
                 <div className="space-y-12 pb-12">
                     <div>
                         <CertsTab {...{ employees, requiredCerts, setSelectedUserForCert, setIsCertUploadOpen }} />
@@ -311,77 +313,77 @@ const ComplianceDashboard: React.FC = () => {
                 </div>
             </Modal>
 
-            <Modal isOpen={isIncidentsModalOpen} onClose={() => setIsIncidentsModalOpen(false)} title="Hazards & Incidents" size="full">
+            <Modal isOpen={isIncidentsModalOpen} onClose={() => setIsIncidentsModalOpen(false)} title={t("Hazards & Incidents")} size="full">
                 <IncidentsTab incidents={state.incidentReports || []} />
             </Modal>
 
-            <Modal isOpen={isAiAuditModalOpen} onClose={() => setIsAiAuditModalOpen(false)} title="AI Operations Ledger" size="full">
+            <Modal isOpen={isAiAuditModalOpen} onClose={() => setIsAiAuditModalOpen(false)} title={t("AI Operations Ledger")} size="full">
                 <AiAuditTab />
             </Modal>
 
-            <Modal isOpen={isAddCylinderOpen} onClose={() => setIsAddCylinderOpen(false)} title="Manage Tank">
+            <Modal isOpen={isAddCylinderOpen} onClose={() => setIsAddCylinderOpen(false)} title={t("Manage Tank")}>
                 <div className="space-y-4">
-                    <Input label="Tag #" value={newCylinder.tag || ''} onChange={e => setNewCylinder({...newCylinder, tag: e.target.value})} />
+                    <Input label={t("Tag #")} value={newCylinder.tag || ''} onChange={e => setNewCylinder({...newCylinder, tag: e.target.value})} />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Select label="Type" value={newCylinder.type || 'R410A'} onChange={e => setNewCylinder({...newCylinder, type: e.target.value})}>
+                        <Select label={t("Type")} value={newCylinder.type || 'R410A'} onChange={e => setNewCylinder({...newCylinder, type: e.target.value})}>
                             <option value="R410A">R410A</option>
                             <option value="R22">R22</option>
                             <option value="R404A">R404A</option>
                         </Select>
-                        <Input label="Total Weight (lbs)" type="number" value={newCylinder.totalWeight || 0} onChange={e => setNewCylinder({...newCylinder, totalWeight: Number(e.target.value)})} />
+                        <Input label={t("Total Weight (lbs)")} type="number" value={newCylinder.totalWeight || 0} onChange={e => setNewCylinder({...newCylinder, totalWeight: Number(e.target.value)})} />
                     </div>
-                    <Button onClick={handleSaveCylinder}>Save Cylinder</Button>
+                    <Button onClick={handleSaveCylinder}>{t("Save Cylinder")}</Button>
                 </div>
             </Modal>
 
-            <Modal isOpen={isLogMaintenanceOpen} onClose={() => setIsLogMaintenanceOpen(false)} title="Log Tool Maint">
+            <Modal isOpen={isLogMaintenanceOpen} onClose={() => setIsLogMaintenanceOpen(false)} title={t("Log Tool Maint")}>
                 <div className="space-y-4">
-                    <Input label="Tool" value={maintenanceLog.toolType || ''} onChange={e => setMaintenanceLog({...maintenanceLog, toolType: e.target.value})} />
-                    <Input label="Serial Number" value={maintenanceLog.serialNumber || ''} onChange={e => setMaintenanceLog({...maintenanceLog, serialNumber: e.target.value})} />
+                    <Input label={t("Tool")} value={maintenanceLog.toolType || ''} onChange={e => setMaintenanceLog({...maintenanceLog, toolType: e.target.value})} />
+                    <Input label={t("Serial Number")} value={maintenanceLog.serialNumber || ''} onChange={e => setMaintenanceLog({...maintenanceLog, serialNumber: e.target.value})} />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Select label="Action" value={maintenanceLog.action || 'Inspection'} onChange={e => setMaintenanceLog({...maintenanceLog, action: e.target.value as any})}>
-                            <option value="Inspection">Inspection</option>
-                            <option value="Calibration">Calibration</option>
-                            <option value="Repair">Repair</option>
+                        <Select label={t("Action")} value={maintenanceLog.action || 'Inspection'} onChange={e => setMaintenanceLog({...maintenanceLog, action: e.target.value as any})}>
+                            <option value="Inspection">{t("Inspection")}</option>
+                            <option value="Calibration">{t("Calibration")}</option>
+                            <option value="Repair">{t("Repair")}</option>
                         </Select>
-                        <Select label="Result" value={maintenanceLog.result || 'Pass'} onChange={e => setMaintenanceLog({...maintenanceLog, result: e.target.value as any})}>
-                            <option value="Pass">Pass</option>
-                            <option value="Fail">Fail</option>
+                        <Select label={t("Result")} value={maintenanceLog.result || 'Pass'} onChange={e => setMaintenanceLog({...maintenanceLog, result: e.target.value as any})}>
+                            <option value="Pass">{t("Pass")}</option>
+                            <option value="Fail">{t("Fail")}</option>
                         </Select>
                     </div>
-                    <Input label="Next Due Date" type="date" value={maintenanceLog.nextDueDate || ''} onChange={e => setMaintenanceLog({...maintenanceLog, nextDueDate: e.target.value})} />
-                    <Button onClick={handleLogMaintenance}>Save Tool Log</Button>
+                    <Input label={t("Next Due Date")} type="date" value={maintenanceLog.nextDueDate || ''} onChange={e => setMaintenanceLog({...maintenanceLog, nextDueDate: e.target.value})} />
+                    <Button onClick={handleLogMaintenance}>{t("Save Tool Log")}</Button>
                 </div>
             </Modal>
             
-            <Modal isOpen={isCertUploadOpen} onClose={() => setIsCertUploadOpen(false)} title={`Upload Certification: ${selectedUserForCert?.firstName}`}>
+            <Modal isOpen={isCertUploadOpen} onClose={() => setIsCertUploadOpen(false)} title={`${t("Upload Certification:")} ${selectedUserForCert?.firstName}`}>
                 <div className="space-y-4">
-                    <Input label="Certification Name" value={certName} onChange={e => setCertName(e.target.value)} placeholder="e.g. EPA Universal" />
-                    <Input label="Expiry Date (Optional)" type="date" value={certExpiry} onChange={e => setCertExpiry(e.target.value)} />
+                    <Input label={t("Certification Name")} value={certName} onChange={e => setCertName(e.target.value)} placeholder={t("e.g. EPA Universal")} />
+                    <Input label={t("Expiry Date (Optional)")} type="date" value={certExpiry} onChange={e => setCertExpiry(e.target.value)} />
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Document Image/PDF</label>
-                        <input type="file" title="Upload certification document" accept="image/*,.pdf" onChange={e => setCertFile(e.target.files?.[0] || null)} className="text-sm text-gray-500" />
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t("Document Image/PDF")}</label>
+                        <input type="file" title={t("Upload certification document")} accept="image/*,.pdf" onChange={e => setCertFile(e.target.files?.[0] || null)} className="text-sm text-gray-500" />
                     </div>
                     <div className="flex justify-end gap-2 pt-4">
-                        <Button variant="secondary" onClick={() => setIsCertUploadOpen(false)}>Cancel</Button>
-                        <Button onClick={handleUploadCert} disabled={isUploadingCert || !certFile || !certName}>{isUploadingCert ? 'Uploading...' : 'Save Certification'}</Button>
+                        <Button variant="secondary" onClick={() => setIsCertUploadOpen(false)}>{t("Cancel")}</Button>
+                        <Button onClick={handleUploadCert} disabled={isUploadingCert || !certFile || !certName}>{isUploadingCert ? t('Uploading...') : t('Save Certification')}</Button>
                     </div>
                 </div>
             </Modal>
 
-            <Modal isOpen={isReportOpen} onClose={() => setIsReportOpen(false)} title="Generate Compliance Report">
+            <Modal isOpen={isReportOpen} onClose={() => setIsReportOpen(false)} title={t("Generate Compliance Report")}>
                 <div className="space-y-4">
-                    <Select label="Report Type" value={reportConfig.type} onChange={e => setReportConfig({...reportConfig, type: e.target.value})}>
-                        <option value="Refrigerant">EPA Refrigerant Inventory</option>
-                        <option value="Tools">Tool Maintenance Summary</option>
+                    <Select label={t("Report Type")} value={reportConfig.type} onChange={e => setReportConfig({...reportConfig, type: e.target.value})}>
+                        <option value="Refrigerant">{t("EPA Refrigerant Inventory")}</option>
+                        <option value="Tools">{t("Tool Maintenance Summary")}</option>
                     </Select>
-                    <Select label="Time Range" value={reportConfig.range} onChange={e => setReportConfig({...reportConfig, range: e.target.value})}>
-                        <option value="Yearly">Current Fiscal Year</option>
-                        <option value="All">All Records</option>
+                    <Select label={t("Time Range")} value={reportConfig.range} onChange={e => setReportConfig({...reportConfig, range: e.target.value})}>
+                        <option value="Yearly">{t("Current Fiscal Year")}</option>
+                        <option value="All">{t("All Records")}</option>
                     </Select>
                     <div className="flex justify-end gap-2 pt-4">
-                        <Button variant="secondary" onClick={() => setIsReportOpen(false)}>Cancel</Button>
-                        <Button onClick={generateReport}>Preview & Print</Button>
+                        <Button variant="secondary" onClick={() => setIsReportOpen(false)}>{t("Cancel")}</Button>
+                        <Button onClick={generateReport}>{t("Preview & Print")}</Button>
                     </div>
                 </div>
             </Modal>

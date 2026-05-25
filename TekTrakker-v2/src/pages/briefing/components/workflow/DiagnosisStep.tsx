@@ -4,6 +4,7 @@ import Button from '../../../../components/ui/Button';
 import Textarea from '../../../../components/ui/Textarea';
 import { VoiceInput } from '../../../../components/ui/VoiceInput';
 import { StoredFile, Proposal } from '../../../../types';
+import { useLanguage } from 'context/LanguageContext';
 
 interface ChecklistItem {
     id: string;
@@ -101,6 +102,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
     onOpenIndustryTools,
     hidden
 }) => {
+    const { t } = useLanguage();
     const [expandedSections, setExpandedSections] = React.useState<Record<string, boolean>>({
         actions: true,
         proposals: linkedProposals.length > 0,
@@ -118,29 +120,29 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
 
     return (
         <div className="space-y-4">
-            <AccordionSection id="actions" title="Quick Actions & Integrations" icon={Sparkles} isOpen={expandedSections['actions']} toggleSection={toggleSection}>
+            <AccordionSection id="actions" title={t("Quick Actions & Integrations")} icon={Sparkles} isOpen={expandedSections['actions']} toggleSection={toggleSection}>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <Button variant="secondary" onClick={() => setIsWaiverOpen(true)} className="flex items-center justify-center gap-2">
-                    <FileSignature size={16}/> Sign Waivers
+                    <FileSignature size={16}/> {t("Sign Waivers")}
                 </Button>
                 <Button onClick={buildProposal} className="bg-purple-600 hover:bg-purple-700 flex items-center justify-center gap-2">
-                    <Sparkles size={16}/> Build Proposal
+                    <Sparkles size={16}/> {t("Build Proposal")}
                 </Button>
                 <Button variant="outline" onClick={onOpenProposalSelector} className="flex items-center justify-center gap-2 border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100">
-                    <Import size={16}/> Load Proposal
+                    <Import size={16}/> {t("Load Proposal")}
                 </Button>
                 <Button variant="secondary" onClick={() => setIsToolModalOpen(true)} className="flex items-center justify-center gap-2 border-primary-200 text-primary-600">
-                    <ClipboardList size={16}/> Ext. Tool
+                    <ClipboardList size={16}/> {t("Ext. Tool")}
                 </Button>
                 {onOpenIndustryTools && (
                     <Button variant="secondary" onClick={onOpenIndustryTools} className="flex items-center justify-center gap-2 border-indigo-200 text-indigo-600">
-                        <Sparkles size={16} /> App Tools
+                        <Sparkles size={16} /> {t("App Tools")}
                     </Button>
                 )}
             </div>
             </AccordionSection>
 
-            <AccordionSection id="proposals" title="Linked Proposals" icon={FileSignature} badge={linkedProposals.length} isOpen={expandedSections['proposals']} toggleSection={toggleSection}>
+            <AccordionSection id="proposals" title={t("Linked Proposals")} icon={FileSignature} badge={linkedProposals.length} isOpen={expandedSections['proposals']} toggleSection={toggleSection}>
                 {linkedProposals.length > 0 ? (
                     <div className="space-y-2">
                         {linkedProposals.map(p => (
@@ -160,13 +162,13 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                     </div>
                 ) : (
                     <div className="text-center py-8 border-2 border-dashed rounded-xl bg-slate-50 text-slate-400">
-                        <p className="text-sm font-medium">No active proposals linked to this job.</p>
-                        <p className="text-xs mt-1">Use the Quick Actions to build or load one.</p>
+                        <p className="text-sm font-medium">{t("No active proposals linked to this job.")}</p>
+                        <p className="text-xs mt-1">{t("Use the Quick Actions to build or load one.")}</p>
                     </div>
                 )}
             </AccordionSection>
             
-            <AccordionSection id="readings" title="Diagnostic Tools" icon={ClipboardList} badge={toolReadings.length} isOpen={expandedSections['readings']} toggleSection={toggleSection}>
+            <AccordionSection id="readings" title={t("Diagnostic Tools")} icon={ClipboardList} badge={toolReadings.length} isOpen={expandedSections['readings']} toggleSection={toggleSection}>
                 {toolReadings.length > 0 ? (
                     <div className="space-y-2">
                         {toolReadings.map(t => (
@@ -185,22 +187,22 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                     </div>
                 ) : (
                     <div className="text-center py-6 border-2 border-dashed rounded-xl bg-slate-50 text-slate-400">
-                        <p className="text-sm font-medium">No tool readings captured.</p>
+                        <p className="text-sm font-medium">{t("No tool readings captured.")}</p>
                     </div>
                 )}
             </AccordionSection>
             
-            <AccordionSection id="checklist" title="Diagnosis Checklist" icon={ClipboardList} badge={checklists.filter(c => c.completed).length + '/' + checklists.length} isOpen={expandedSections['checklist']} toggleSection={toggleSection}>
+            <AccordionSection id="checklist" title={t("Diagnosis Checklist")} icon={ClipboardList} badge={checklists.filter(c => c.completed).length + '/' + checklists.length} isOpen={expandedSections['checklist']} toggleSection={toggleSection}>
                 <div className="flex justify-end items-center mb-4 gap-2">
                     {toggleAllChecklistVisibility && checklists.length > 0 && (
                         <div className="flex items-center gap-2 mr-auto">
-                            <button onClick={() => toggleAllChecklistVisibility(false)} className="text-[10px] uppercase font-black text-primary-600 hover:underline">Show All</button>
+                            <button onClick={() => toggleAllChecklistVisibility(false)} className="text-[10px] uppercase font-black text-primary-600 hover:underline">{t("Show All")}</button>
                             <span className="text-slate-300">|</span>
-                            <button onClick={() => toggleAllChecklistVisibility(true)} className="text-[10px] uppercase font-black text-slate-400 hover:underline">Hide All</button>
+                            <button onClick={() => toggleAllChecklistVisibility(true)} className="text-[10px] uppercase font-black text-slate-400 hover:underline">{t("Hide All")}</button>
                         </div>
                     )}
                     <Button variant="secondary" size="sm" onClick={() => setIsImportModalOpen(true)} className="text-xs flex items-center gap-1 bg-white shadow-sm hover:shadow">
-                        <Import size={14}/> Import Templates
+                        <Import size={14}/> {t("Import Templates")}
                     </Button>
                 </div>
                 {checklists.length > 0 ? (
@@ -222,9 +224,9 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                                     <button 
                                         onClick={() => toggleChecklistVisibility(item.id)}
                                         className={`ml-2 text-[10px] font-bold px-2 py-1 rounded transition-colors shrink-0 ${item.hiddenFromCustomer ? 'bg-slate-200 text-slate-500 line-through dark:bg-slate-700 dark:text-slate-400' : 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 border border-primary-200 dark:border-primary-800'}`}
-                                        title={item.hiddenFromCustomer ? "Hidden from Customer Portal" : "Visible in Customer Portal"}
+                                        title={item.hiddenFromCustomer ? t("Hidden from Customer Portal") : t("Visible in Customer Portal")}
                                     >
-                                        {item.hiddenFromCustomer ? 'Hidden' : 'Visible'}
+                                        {item.hiddenFromCustomer ? t("Hidden") : t("Visible")}
                                     </button>
                                 )}
                             </div>
@@ -232,41 +234,41 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                     </div>
                 ) : (
                     <div className="text-center py-8 border-2 border-dashed rounded-xl bg-slate-50">
-                        <p className="text-sm font-medium text-slate-500">No checklist items yet.</p>
-                        <p className="text-xs text-slate-400 mt-1">Import from your organization's templates.</p>
+                        <p className="text-sm font-medium text-slate-500">{t("No checklist items yet.")}</p>
+                        <p className="text-xs text-slate-400 mt-1">{t("Import from your organization's templates.")}</p>
                     </div>
                 )}
             </AccordionSection>
 
-            <AccordionSection id="findings" title="Pre-Work Findings" icon={Edit3} isOpen={expandedSections['findings']} toggleSection={toggleSection}>
+            <AccordionSection id="findings" title={t("Pre-Work Findings")} icon={Edit3} isOpen={expandedSections['findings']} toggleSection={toggleSection}>
                 <div className="flex justify-between items-center mb-3">
-                    <p className="text-sm font-bold text-slate-600">Document the diagnosis</p>
+                    <p className="text-sm font-bold text-slate-600">{t("Document the diagnosis")}</p>
                     <VoiceInput onResult={(text) => setNotes(notes ? notes + '\n' + text : text)} />
                 </div>
                 <Textarea 
                     rows={5} 
-                    placeholder="Describe the issue found, diagnostic steps, and recommendations..." 
+                    placeholder={t("Describe the issue found, diagnostic steps, and recommendations...")} 
                     value={notes} 
                     onChange={e => setNotes(e.target.value)}
                     className="bg-slate-50"
                 />
             </AccordionSection>
 
-            <AccordionSection id="photos" title="Job Photos" icon={Camera} badge={files.filter(f => (f.metadata?.label || f.label) === 'Pre-Work').length} isOpen={expandedSections['photos']} toggleSection={toggleSection}>
+            <AccordionSection id="photos" title={t("Job Photos")} icon={Camera} badge={files.filter(f => (f.metadata?.label || f.label) === 'Pre-Work').length} isOpen={expandedSections['photos']} toggleSection={toggleSection}>
                 <div className="flex flex-col md:flex-row gap-6">
                     <div className="flex gap-3 w-full md:w-auto h-24">
                         <button 
                             type="button"
                             onClick={takeNativePhoto}
                             className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors bg-white w-24 h-24 shadow-sm"
-                            title="Camera"
+                            title={t("Camera")}
                         >
                             <Camera size={24} className="text-slate-400 mb-2"/>
-                            <span className="text-xs font-bold text-slate-500">Camera</span>
+                            <span className="text-xs font-bold text-slate-500">{t("Camera")}</span>
                         </button>
                         <label htmlFor="prework-gallery" className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors w-24 h-24 shadow-sm">
                             <ImageIcon size={24} className="text-slate-400 mb-2"/>
-                            <span className="text-xs font-bold text-slate-500">Gallery</span>
+                            <span className="text-xs font-bold text-slate-500">{t("Gallery")}</span>
                             <input id="prework-gallery" type="file" multiple accept="image/*" onChange={(e) => handlePhotoUpload(e, 'Pre-Work')} className="hidden" />
                         </label>
                     </div>
@@ -300,7 +302,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                         ))}
                         {files.filter(f => (f.metadata?.label || f.label) === 'Pre-Work').length === 0 && (
                             <div className="flex-1 border-2 border-dashed rounded-xl border-slate-200 flex items-center justify-center text-slate-400 text-xs font-medium h-24 min-w-[200px]">
-                                No pre-work photos uploaded.
+                                {t("No pre-work photos uploaded.")}
                             </div>
                         )}
                     </div>

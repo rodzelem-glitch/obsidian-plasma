@@ -85,6 +85,10 @@ export interface User {
   w4OtherIncome?: number;
   w4Deductions?: number;
   w4ExtraWithholding?: number;
+  weeklyStandardHours?: number;
+  geofenceLatitude?: number | null;
+  geofenceLongitude?: number | null;
+  geofenceRadius?: number | null;
   squareTeamMemberId?: string | null;
   gustoEmployeeId?: string | null;
   hasAppAccess?: boolean;

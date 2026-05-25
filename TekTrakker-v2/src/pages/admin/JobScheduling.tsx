@@ -8,6 +8,7 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Textarea from '../../components/ui/Textarea';
 import { useAppContext } from '../../context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import { db } from '../../lib/firebase';
 import { Trash2, MessageSquare, CheckCircle, Globe, Users, Clock, MapPin, FileText, Edit, Share2, Copy, Calendar, AlignLeft } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
@@ -15,6 +16,7 @@ import JobAppointmentModal from 'components/modals/JobAppointmentModal';
 
 const JobScheduling: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [isSmsModalOpen, setIsSmsModalOpen] = useState(false);
     const [smsJob, setSmsJob] = useState<Job | null>(null);
     const [smsMessage, setSmsMessage] = useState('');
@@ -311,10 +313,10 @@ const JobScheduling: React.FC = () => {
     return (
         <div className="space-y-6">
              <JobAppointmentModal isOpen={!!editingFullJob} onClose={() => setEditingFullJob(null)} jobToEdit={editingFullJob} />
-             <Modal isOpen={!!editingCrewJob} onClose={() => setEditingCrewJob(null)} title="Manage Job Crew">
+             <Modal isOpen={!!editingCrewJob} onClose={() => setEditingCrewJob(null)} title={t("Manage Job Crew")}>
                  {editingCrewJob && (
                      <div className="space-y-4">
-                          <p className="text-sm text-gray-500">Select additional technicians assisting on this job.</p>
+                          <p className="text-sm text-gray-500">{t("Select additional technicians assisting on this job.")}</p>
                           <div className="max-h-60 overflow-y-auto border p-2 rounded">
                              {employees.filter(u => u.id !== editingCrewJob.assignedTechnicianId).map(u => (
                                  <label key={u.id} className="flex items-center gap-2 p-2 hover:bg-gray-100 cursor-pointer">
@@ -324,27 +326,27 @@ const JobScheduling: React.FC = () => {
                              ))}
                           </div>
                           <div className="flex justify-end gap-2">
-                              <Button variant="secondary" onClick={() => setEditingCrewJob(null)}>Cancel</Button>
+                              <Button variant="secondary" onClick={() => setEditingCrewJob(null)}>{t("Cancel")}</Button>
                               <Button onClick={async () => {
                                   await db.collection('jobs').doc(editingCrewJob.id).update({ assistants: crewSelection });
                                   dispatch({ type: 'UPDATE_JOB', payload: { ...editingCrewJob, assistants: crewSelection } });
                                   setEditingCrewJob(null);
-                              }}>Save Crew</Button>
+                              }}>{t("Save Crew")}</Button>
                           </div>
                      </div>
                  )}
              </Modal>
 
-             <Modal isOpen={isSmsModalOpen} onClose={() => setIsSmsModalOpen(false)} title={`Text Customer: ${smsJob?.customerName}`}>
+             <Modal isOpen={isSmsModalOpen} onClose={() => setIsSmsModalOpen(false)} title={`${t("Text Customer:")} ${smsJob?.customerName}`}>
                  <div className="space-y-4">
                      <Textarea 
-                        label="SMS Message"
+                        label={t("SMS Message")}
                         value={smsMessage} 
                         onChange={e => setSmsMessage(e.target.value)} 
                         rows={4}
                      />
                      <div className="flex justify-end gap-2">
-                         <Button variant="secondary" onClick={() => setIsSmsModalOpen(false)}>Cancel</Button>
+                         <Button variant="secondary" onClick={() => setIsSmsModalOpen(false)}>{t("Cancel")}</Button>
                          <Button disabled={isSending} onClick={async () => {
                              setIsSending(true);
                              try {
@@ -354,123 +356,123 @@ const JobScheduling: React.FC = () => {
                              } finally {
                                  setIsSending(false);
                              }
-                         }}>{isSending ? 'Sending...' : 'Send Text'}</Button>
+                         }}>{isSending ? t('Sending...') : t('Send Text')}</Button>
                      </div>
                  </div>
              </Modal>
 
-             <Modal isOpen={!!editingDocsJob} onClose={() => setEditingDocsJob(null)} title="Required Job Documents">
+             <Modal isOpen={!!editingDocsJob} onClose={() => setEditingDocsJob(null)} title={t("Required Job Documents")}>
                 {editingDocsJob && (
                     <div className="space-y-6">
                         <div>
-                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">Required Waivers</h4>
+                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">{t("Required Waivers")}</h4>
                             <div className="max-h-32 overflow-y-auto border p-2 rounded bg-slate-50 dark:bg-slate-700 dark:border-slate-600">
-                                {waiverTemplates.map(t => (
-                                    <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
-                                        <input type="checkbox" checked={selectedWaivers.includes(t.id)} onChange={() => setSelectedWaivers(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} className="rounded text-primary-600"/>
-                                        <span className="text-sm dark:text-slate-100">{t.title}</span>
+                                {waiverTemplates.map(tOption => (
+                                    <label key={tOption.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
+                                        <input type="checkbox" checked={selectedWaivers.includes(tOption.id)} onChange={() => setSelectedWaivers(prev => prev.includes(tOption.id) ? prev.filter(id => id !== tOption.id) : [...prev, tOption.id])} className="rounded text-primary-600"/>
+                                        <span className="text-sm dark:text-slate-100">{tOption.title}</span>
                                     </label>
                                 ))}
                             </div>
                         </div>
 
                         <div>
-                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">Step 2: Diagnosis Checklists</h4>
+                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">{t("Step 2: Diagnosis Checklists")}</h4>
                             <div className="max-h-32 overflow-y-auto border p-2 rounded bg-slate-50 dark:bg-slate-700 dark:border-slate-600">
-                                {checklistTemplates.map(t => (
-                                    <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
-                                        <input type="checkbox" checked={selectedDiagChecklists.includes(t.id)} onChange={() => setSelectedDiagChecklists(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} className="rounded text-blue-600"/>
-                                        <span className="text-sm dark:text-slate-100">{t.name}</span>
+                                {checklistTemplates.map(tOption => (
+                                    <label key={tOption.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
+                                        <input type="checkbox" checked={selectedDiagChecklists.includes(tOption.id)} onChange={() => setSelectedDiagChecklists(prev => prev.includes(tOption.id) ? prev.filter(id => id !== tOption.id) : [...prev, tOption.id])} className="rounded text-blue-600"/>
+                                        <span className="text-sm dark:text-slate-100">{tOption.name}</span>
                                     </label>
                                 ))}
                             </div>
                         </div>
 
                         <div>
-                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">Step 4: Quality Checklists</h4>
+                            <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-2">{t("Step 4: Quality Checklists")}</h4>
                             <div className="max-h-32 overflow-y-auto border p-2 rounded bg-slate-50 dark:bg-slate-700 dark:border-slate-600">
-                                {checklistTemplates.map(t => (
-                                    <label key={t.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
-                                        <input type="checkbox" checked={selectedQualChecklists.includes(t.id)} onChange={() => setSelectedQualChecklists(prev => prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id])} className="rounded text-green-600"/>
-                                        <span className="text-sm dark:text-slate-100">{t.name}</span>
+                                {checklistTemplates.map(tOption => (
+                                    <label key={tOption.id} className="flex items-center gap-2 p-2 hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer">
+                                        <input type="checkbox" checked={selectedQualChecklists.includes(tOption.id)} onChange={() => setSelectedQualChecklists(prev => prev.includes(tOption.id) ? prev.filter(id => id !== tOption.id) : [...prev, tOption.id])} className="rounded text-green-600"/>
+                                        <span className="text-sm dark:text-slate-100">{tOption.name}</span>
                                     </label>
                                 ))}
                             </div>
                         </div>
 
                         <div className="flex justify-end gap-2 pt-2 border-t">
-                            <Button variant="secondary" onClick={() => setEditingDocsJob(null)}>Cancel</Button>
-                            <Button onClick={saveDocs}>Save Requirements</Button>
+                            <Button variant="secondary" onClick={() => setEditingDocsJob(null)}>{t("Cancel")}</Button>
+                            <Button onClick={saveDocs}>{t("Save Requirements")}</Button>
                         </div>
                     </div>
                 )}
              </Modal>
 
-             <Modal isOpen={!!editingNotesJob} onClose={() => setEditingNotesJob(null)} title="Internal Job Notes">
+             <Modal isOpen={!!editingNotesJob} onClose={() => setEditingNotesJob(null)} title={t("Internal Job Notes")}>
                  <div className="space-y-4">
                      <Textarea 
-                        label="Office/Dispatch Notes (Visible to Techs)"
+                        label={t("Office/Dispatch Notes (Visible to Techs)")}
                         value={internalNotes} 
                         onChange={e => setInternalNotes(e.target.value)} 
                         rows={6}
-                        placeholder="Enter specific instructions, gate codes, or internal reminders..."
+                        placeholder={t("Enter specific instructions, gate codes, or internal reminders...")}
                      />
                      <div className="flex justify-end gap-2">
-                         <Button variant="secondary" onClick={() => setEditingNotesJob(null)}>Cancel</Button>
-                         <Button onClick={saveNotes}>Save Notes</Button>
+                         <Button variant="secondary" onClick={() => setEditingNotesJob(null)}>{t("Cancel")}</Button>
+                         <Button onClick={saveNotes}>{t("Save Notes")}</Button>
                      </div>
                  </div>
              </Modal>
 
-             <Modal isOpen={!!shareModalJob} onClose={() => setShareModalJob(null)} title={`Share Job: ${shareModalJob?.customerName}`}>
+             <Modal isOpen={!!shareModalJob} onClose={() => setShareModalJob(null)} title={`${t("Share Job:")} ${shareModalJob?.customerName}`}>
                  <div className="space-y-4">
-                     <p className="text-sm text-slate-500">Send this job to a supervisor or admin in your organization.</p>
+                     <p className="text-sm text-slate-500">{t("Send this job to a supervisor or admin in your organization.")}</p>
                      <select 
-                         aria-label="Select Share Recipient"
-                         title="Select Share Recipient"
+                         aria-label={t("Select Share Recipient")}
+                         title={t("Select Share Recipient")}
                         className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
                          value={shareTargetId}
                          onChange={e => setShareTargetId(e.target.value)}
                      >
-                         <option value="">Select Recipient...</option>
+                         <option value="">{t("Select Recipient...")}</option>
                          {state.users.filter((u: User) => 
                              u.organizationId === state.currentOrganization?.id && 
                              u.id !== state.currentUser?.id && 
                              u.role !== 'customer'
                          ).map((u: User) => (
-                             <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role})</option>
+                             <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.role ? t(u.role) : ''})</option>
                          ))}
                      </select>
                      <Textarea 
-                         placeholder="Add an optional message..."
+                         placeholder={t("Add an optional message...")}
                          value={shareMessageText}
                          onChange={e => setShareMessageText(e.target.value)}
                      />
                      <div className="flex justify-end gap-2">
-                         <Button variant="secondary" onClick={() => setShareModalJob(null)}>Cancel</Button>
+                         <Button variant="secondary" onClick={() => setShareModalJob(null)}>{t("Cancel")}</Button>
                          <Button onClick={handleShareJob} disabled={!shareTargetId || isSending}>
-                             {isSending ? 'Sending...' : 'Send Message'}
+                             {isSending ? t('Sending...') : t('Send Message')}
                          </Button>
                      </div>
                  </div>
              </Modal>
 
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4 px-1">
-                <h3 className="font-bold text-gray-800 dark:text-white">Active Jobs</h3>
+                <h3 className="font-bold text-gray-800 dark:text-white">{t("Active Jobs")}</h3>
                 <div className="flex items-center gap-2 text-sm">
-                    <label className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
+                    <label className="font-medium text-slate-600 dark:text-slate-300">{t("Sort by:")}</label>
                     <select 
-                        aria-label="Sort Jobs"
+                        aria-label={t("Sort Jobs")}
                         className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value)}
                     >
-                        <option value="date_desc">Newest First</option>
-                        <option value="date_asc">Oldest First</option>
-                        <option value="name_asc">Customer (A-Z)</option>
-                        <option value="name_desc">Customer (Z-A)</option>
-                        <option value="status">Status</option>
-                        <option value="tech_asc">Technician (A-Z)</option>
+                        <option value="date_desc">{t("Newest First")}</option>
+                        <option value="date_asc">{t("Oldest First")}</option>
+                        <option value="name_asc">{t("Customer (A-Z)")}</option>
+                        <option value="name_desc">{t("Customer (Z-A)")}</option>
+                        <option value="status">{t("Status")}</option>
+                        <option value="tech_asc">{t("Technician (A-Z)")}</option>
                     </select>
                 </div>
             </div>
@@ -481,8 +483,8 @@ const JobScheduling: React.FC = () => {
                         <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-full mb-3">
                             <Calendar size={24} className="text-gray-400" />
                         </div>
-                        <h3 className="font-bold text-gray-900 dark:text-white mb-1">No Active Jobs</h3>
-                        <p className="text-[11px] text-gray-500">There are no upcoming jobs right now.</p>
+                        <h3 className="font-bold text-gray-900 dark:text-white mb-1">{t("No Active Jobs")}</h3>
+                        <p className="text-[11px] text-gray-500">{t("There are no upcoming jobs right now.")}</p>
                     </div>
                 ) : (
                     (allJobs as Job[]).map((job: Job) => (
@@ -492,7 +494,7 @@ const JobScheduling: React.FC = () => {
                                 <h3 className="font-bold text-gray-900 dark:text-white">{job.customerName}</h3>
                                 {job.proposalId && (
                                     <div className="flex items-center gap-1 text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tighter">
-                                        <FileText size={10} /> Linked Proposal
+                                        <FileText size={10} /> {t("Linked Proposal")}
                                     </div>
                                 )}
                                 <p className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5"><MapPin size={10}/> {formatAddress(job.address)}</p>
@@ -506,11 +508,11 @@ const JobScheduling: React.FC = () => {
 
                         <div className="grid grid-cols-2 gap-3 mb-4">
                             <div className="space-y-1">
-                                <label className="text-[9px] uppercase font-black text-gray-400">Unit/System</label>
+                                <label className="text-[9px] uppercase font-black text-gray-400">{t("Unit/System")}</label>
                                 <p className="text-xs font-bold text-blue-600 truncate">{job.hvacBrand || '---'}</p>
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[9px] uppercase font-black text-gray-400">Time</label>
+                                <label className="text-[9px] uppercase font-black text-gray-400">{t("Time")}</label>
                                 <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
                                     {new Date(job.appointmentTime).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                 </p>
@@ -519,44 +521,44 @@ const JobScheduling: React.FC = () => {
 
                         <div className="flex flex-wrap gap-2 items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700">
                             <div className="flex gap-2">
-                                <button onClick={() => setEditingFullJob(job)} className="text-emerald-600 p-1 bg-slate-50 dark:bg-slate-700 rounded rounded-l-none" aria-label="Edit Appointment Details" title="Edit Appointment Details"><Edit size={16}/></button>
-                                <button onClick={() => openSmsModal(job)} className="text-blue-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="SMS Customer" title="SMS Customer"><MessageSquare size={16}/></button>
-                                <button onClick={() => openNotesModal(job)} className="text-amber-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="Internal Notes" title="Internal Notes"><AlignLeft size={16}/></button>
-                                <button onClick={() => openDocsModal(job)} className="text-slate-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="Documents and Checklists" title="Documents and Checklists"><FileText size={16}/></button>
-                                <button onClick={() => handleCopyRef(job.id)} className="text-emerald-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="Copy Job Link" title="Copy Job Link"><Copy size={16}/></button>
-                                <button onClick={() => setShareModalJob(job)} className="text-primary-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label="Share with Staff" title="Share with Staff"><Share2 size={16}/></button>
+                                <button onClick={() => setEditingFullJob(job)} className="text-emerald-600 p-1 bg-slate-50 dark:bg-slate-700 rounded rounded-l-none" aria-label={t("Edit Appointment Details")} title={t("Edit Appointment Details")}><Edit size={16}/></button>
+                                <button onClick={() => openSmsModal(job)} className="text-blue-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label={t("SMS Customer")} title={t("SMS Customer")}><MessageSquare size={16}/></button>
+                                <button onClick={() => openNotesModal(job)} className="text-amber-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label={t("Internal Notes")} title={t("Internal Notes")}><AlignLeft size={16}/></button>
+                                <button onClick={() => openDocsModal(job)} className="text-slate-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label={t("Documents and Checklists")} title={t("Documents and Checklists")}><FileText size={16}/></button>
+                                <button onClick={() => handleCopyRef(job.id)} className="text-emerald-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label={t("Copy Job Link")} title={t("Copy Job Link")}><Copy size={16}/></button>
+                                <button onClick={() => setShareModalJob(job)} className="text-primary-500 p-1 bg-slate-50 dark:bg-slate-700 rounded" aria-label={t("Share with Staff")} title={t("Share with Staff")}><Share2 size={16}/></button>
                             </div>
                             <div className="flex gap-2">
                                 <select 
-                                    aria-label="Update Job Status"
-                                    title="Update Job Status"
+                                    aria-label={t("Update Job Status")}
+                                    title={t("Update Job Status")}
                                     value={job.jobStatus} 
                                     onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)} 
                                     className="text-[10px] border rounded p-1 bg-gray-50 font-bold"
                                 >
-                                    <option value="Scheduled">Scheduled</option>
-                                    <option value="In Progress">In Progress</option>
-                                    <option value="Completed">Completed</option>
-                                    <option value="Cancelled">Cancelled</option>
+                                    <option value="Scheduled">{t("Scheduled")}</option>
+                                    <option value="In Progress">{t("In Progress")}</option>
+                                    <option value="Completed">{t("Completed")}</option>
+                                    <option value="Cancelled">{t("Cancelled")}</option>
                                 </select>
-                                <button onClick={() => handleDeleteJob(job.id)} aria-label="Delete Job" title="Delete Job" className="text-red-500 p-1 ml-1"><Trash2 size={18}/></button>
+                                <button onClick={() => handleDeleteJob(job.id)} aria-label={t("Delete Job")} title={t("Delete Job")} className="text-red-500 p-1 ml-1"><Trash2 size={18}/></button>
                             </div>
                         </div>
                         
                         <div className="mt-3">
                             <select 
-                                aria-label="Assign Technician"
-                                title="Assign Technician"
+                                aria-label={t("Assign Technician")}
+                                title={t("Assign Technician")}
                                 value={job.assignedTechnicianId || (job.assignedPartnerId && job.assignedPartnerId !== state.currentOrganization?.id ? `partner:${job.assignedPartnerId}` : '')} 
                                 onChange={(e) => handleAssignmentChange(job, e.target.value)} 
                                 className="w-full text-xs border rounded-lg p-2 bg-gray-50 dark:bg-gray-700 font-medium"
                             >
-                                <option value="">Assign Technician...</option>
-                                <optgroup label="Internal Technicians">
+                                <option value="">{t("Assign Technician...")}</option>
+                                <optgroup label={t("Internal Technicians")}>
                                     {employees.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName} {tech.lastName}</option>)}
                                 </optgroup>
                                 {linkedPartners.length > 0 && (
-                                    <optgroup label="Partner Network">
+                                    <optgroup label={t("Partner Network")}>
                                         {linkedPartners.map(p => <option key={p.id} value={`partner:${p.linkedOrgId}`}>{p.companyName}</option>)}
                                     </optgroup>
                                 )}
@@ -571,11 +573,11 @@ const JobScheduling: React.FC = () => {
                 {allJobs.length === 0 ? (
                     <div className="p-12 flex flex-col items-center justify-center text-center bg-gray-50/50 dark:bg-gray-800/50 rounded-lg">
                         <Calendar size={32} className="text-gray-300 mb-4" />
-                        <h3 className="font-bold text-gray-700 dark:text-gray-200">No Active Jobs</h3>
-                        <p className="text-sm text-gray-500">Your dispatch board is clear. Time to book some calls!</p>
+                        <h3 className="font-bold text-gray-700 dark:text-gray-200">{t("No Active Jobs")}</h3>
+                        <p className="text-sm text-gray-500">{t("Your dispatch board is clear. Time to book some calls!")}</p>
                     </div>
                 ) : (
-                    <Table headers={['Customer', 'Unit/System', 'Appointment Time', 'Invoice Status', 'Job Status', 'Assigned Tech / Partner', 'Crew', 'Actions']}>
+                    <Table headers={[t('Customer'), t('Unit/System'), t('Appointment Time'), t('Invoice Status'), t('Job Status'), t('Assigned Tech / Partner'), t('Crew'), t('Actions')]}>
                         {(allJobs as Job[]).map((job: Job) => (
                             <tr id={`job-card-${job.id}`} key={job.id} className={`${job.assignedPartnerId === state.currentOrganization?.id ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                                 <td className="px-6 py-4 whitespace-nowrap font-bold text-sm">
@@ -583,54 +585,54 @@ const JobScheduling: React.FC = () => {
                                         <span>{job.customerName}</span>
                                         {job.proposalId && (
                                             <div className="flex items-center gap-1 text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-tighter mt-0.5">
-                                                <FileText size={10} /> Linked Proposal
+                                                <FileText size={10} /> {t("Linked Proposal")}
                                             </div>
                                         )}
                                     </div>
-                                    {job.assignedPartnerId === state.currentOrganization?.id && <span className="ml-2 text-[10px] text-blue-600 border border-blue-200 px-1 rounded bg-white">Assigned to You</span>}
+                                    {job.assignedPartnerId === state.currentOrganization?.id && <span className="ml-2 text-[10px] text-blue-600 border border-blue-200 px-1 rounded bg-white">{t("Assigned to You")}</span>}
                                     <div className="text-[10px] text-gray-400 font-normal">{formatAddress(job.address)}</div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-xs text-blue-600 font-bold">{job.hvacBrand || '---'}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                    <input type="datetime-local" aria-label="Appointment Time" title="Appointment Time" value={formatDateTimeForInput(job.appointmentTime)} onChange={(e) => handleJobUpdate(job.id, 'appointmentTime', new Date(e.target.value).toISOString())} className="bg-white dark:bg-gray-700 border text-xs rounded p-1"/>
+                                    <input type="datetime-local" aria-label={t("Appointment Time")} title={t("Appointment Time")} value={formatDateTimeForInput(job.appointmentTime)} onChange={(e) => handleJobUpdate(job.id, 'appointmentTime', new Date(e.target.value).toISOString())} className="bg-white dark:bg-gray-700 border text-xs rounded p-1"/>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap"><span className="px-2 py-1 text-[10px] rounded-full bg-slate-100 font-bold">{job.invoice?.status}</span></td>
                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <select aria-label="Update Job Status" title="Update Job Status" value={job.jobStatus} onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)} className="text-xs border rounded p-1">
-                                        <option value="Scheduled">Scheduled</option>
-                                        <option value="In Progress">In Progress</option>
-                                        <option value="Completed">Completed</option>
-                                        <option value="Cancelled">Cancelled</option>
+                                    <select aria-label={t("Update Job Status")} title={t("Update Job Status")} value={job.jobStatus} onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)} className="text-xs border rounded p-1">
+                                        <option value="Scheduled">{t("Scheduled")}</option>
+                                        <option value="In Progress">{t("In Progress")}</option>
+                                        <option value="Completed">{t("Completed")}</option>
+                                        <option value="Cancelled">{t("Cancelled")}</option>
                                     </select>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <select 
-                                        aria-label="Assign Technician"
-                                        title="Assign Technician"
+                                        aria-label={t("Assign Technician")}
+                                        title={t("Assign Technician")}
                                         value={job.assignedTechnicianId || (job.assignedPartnerId && job.assignedPartnerId !== state.currentOrganization?.id ? `partner:${job.assignedPartnerId}` : '')} 
                                         onChange={(e) => handleAssignmentChange(job, e.target.value)} 
                                         className="text-xs border rounded p-1 max-w-[150px]"
                                     >
-                                        <option value="">Unassigned</option>
-                                        <optgroup label="Internal Technicians">
+                                        <option value="">{t("Unassigned")}</option>
+                                        <optgroup label={t("Internal Technicians")}>
                                             {employees.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName} {tech.lastName}</option>)}
                                         </optgroup>
                                         {linkedPartners.length > 0 && (
-                                            <optgroup label="Partner Network">
+                                            <optgroup label={t("Partner Network")}>
                                                 {linkedPartners.map(p => <option key={p.id} value={`partner:${p.linkedOrgId}`}>{p.companyName}</option>)}
                                             </optgroup>
                                         )}
                                     </select>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap"><button onClick={() => openCrewModal(job)} className="text-[10px] bg-slate-100 px-2 py-1 rounded">Crew ({job.assistants?.length || 0})</button></td>
+                                <td className="px-6 py-4 whitespace-nowrap"><button onClick={() => openCrewModal(job)} className="text-[10px] bg-slate-100 px-2 py-1 rounded">{t("Crew")} ({job.assistants?.length || 0})</button></td>
                                 <td className="px-6 py-4 whitespace-nowrap flex gap-1.5 flex-wrap">
-                                    <button onClick={() => setEditingFullJob(job)} className="text-emerald-600 p-1 hover:bg-black/5 rounded" title="Edit Appointment Details"><Edit size={16}/></button>
-                                    <button onClick={() => openSmsModal(job)} className="text-blue-600 p-1 hover:bg-black/5 rounded" title="SMS Customer"><MessageSquare size={16}/></button>
-                                    <button onClick={() => openNotesModal(job)} className="text-amber-600 p-1 hover:bg-black/5 rounded" title="Internal Notes"><AlignLeft size={16}/></button>
-                                    <button onClick={() => openDocsModal(job)} className="text-slate-600 p-1 hover:bg-black/5 rounded" title="Documents & Checklists"><FileText size={16}/></button>
-                                    <button onClick={() => handleCopyRef(job.id)} className="text-emerald-600 p-1 hover:bg-black/5 rounded" title="Copy Reference"><Copy size={16}/></button>
-                                    <button onClick={() => setShareModalJob(job)} className="text-primary-600 p-1 hover:bg-black/5 rounded" title="Share Job"><Share2 size={16}/></button>
-                                    <button onClick={() => handleDeleteJob(job.id)} className="text-red-600 p-1 hover:bg-black/5 rounded" title="Delete Job"><Trash2 size={16}/></button>
+                                    <button onClick={() => setEditingFullJob(job)} className="text-emerald-600 p-1 hover:bg-black/5 rounded" title={t("Edit Appointment Details")}><Edit size={16}/></button>
+                                    <button onClick={() => openSmsModal(job)} className="text-blue-600 p-1 hover:bg-black/5 rounded" title={t("SMS Customer")}><MessageSquare size={16}/></button>
+                                    <button onClick={() => openNotesModal(job)} className="text-amber-600 p-1 hover:bg-black/5 rounded" title={t("Internal Notes")}><AlignLeft size={16}/></button>
+                                    <button onClick={() => openDocsModal(job)} className="text-slate-600 p-1 hover:bg-black/5 rounded" title={t("Documents & Checklists")}><FileText size={16}/></button>
+                                    <button onClick={() => handleCopyRef(job.id)} className="text-emerald-600 p-1 hover:bg-black/5 rounded" title={t("Copy Reference")}><Copy size={16}/></button>
+                                    <button onClick={() => setShareModalJob(job)} className="text-primary-600 p-1 hover:bg-black/5 rounded" title={t("Share Job")}><Share2 size={16}/></button>
+                                    <button onClick={() => handleDeleteJob(job.id)} className="text-red-600 p-1 hover:bg-black/5 rounded" title={t("Delete Job")}><Trash2 size={16}/></button>
                                 </td>
                             </tr>
                         ))}

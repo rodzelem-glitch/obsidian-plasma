@@ -5,6 +5,7 @@ import { BrainCircuit } from 'lucide-react';
 import Input from 'components/ui/Input';
 import Button from 'components/ui/Button';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useLanguage } from 'context/LanguageContext';
 
 interface AISuggestion {
     name: string;
@@ -26,6 +27,7 @@ interface AIGeneratorProps {
 const AIGenerator: React.FC<AIGeneratorProps> = ({ onSuggestions }) => {
     const [problemDesc, setProblemDesc] = useState('');
     const [isThinking, setIsThinking] = useState(false);
+    const { t } = useLanguage();
 
     const handleAIEstimate = async () => {
         if (!problemDesc.trim()) return;
@@ -58,7 +60,7 @@ const AIGenerator: React.FC<AIGeneratorProps> = ({ onSuggestions }) => {
             
         } catch (e) { 
             console.error("AI Estimation Error:", e);
-            showToast.warn("Failed to generate AI suggestions. Please try manual entry.");
+            showToast.warn(t("Failed to generate AI suggestions. Please try manual entry."));
         } finally { 
             setIsThinking(false); 
         }
@@ -67,17 +69,17 @@ const AIGenerator: React.FC<AIGeneratorProps> = ({ onSuggestions }) => {
     return (
         <div className="bg-indigo-50 dark:bg-indigo-900/10 p-6 rounded-2xl border border-indigo-100 dark:border-indigo-800 mb-8 animate-fade-in">
             <h4 className="font-black text-sm uppercase text-indigo-400 mb-3 flex items-center gap-2">
-                <BrainCircuit size={16}/> AI Proposal Engine
+                <BrainCircuit size={16}/> {t("AI Proposal Engine")}
             </h4>
             <div className="flex flex-col md:flex-row gap-4">
                 <Input 
-                    placeholder="Describe the problem to generate options..." 
+                    placeholder={t("Describe the problem to generate options...")} 
                     value={problemDesc} 
                     onChange={e => setProblemDesc(e.target.value)} 
                     className="flex-1 bg-white dark:bg-slate-900 border-indigo-200 focus:ring-indigo-500 text-slate-900 dark:text-white" 
                 />
                 <Button onClick={handleAIEstimate} disabled={isThinking} className="bg-indigo-600 text-white hover:bg-indigo-700 h-11 px-6 font-bold shadow-lg">
-                    {isThinking ? 'Thinking...' : 'Generate Options'}
+                    {isThinking ? t('Thinking...') : t('Generate Options')}
                 </Button>
             </div>
         </div>

@@ -42,7 +42,7 @@ const INTEGRATIONS: Integration[] = [
   { id: 'acumatica', name: 'Acumatica', description: 'Enterprise ERP integration for multi-entity accounting, job costing, and AP/AR automation.', category: 'Accounting', icon: FileText, iconColor: 'text-blue-700', fields: [{ key: 'acumaticaUrl', label: 'Instance URL', placeholder: 'https://yourcompany.acumatica.com' }, { key: 'acumaticaUser', label: 'API Username' }, { key: 'acumaticaPassword', label: 'API Password', type: 'password' }], isStubbed: true },
   { id: 'netsuite', name: 'NetSuite (Oracle)', description: 'Sync financials, customers, and work orders with your Oracle NetSuite ERP.', category: 'Accounting', icon: FileText, iconColor: 'text-red-700', fields: [{ key: 'netsuiteAccountId', label: 'Account ID' }, { key: 'netsuiteConsumerKey', label: 'Consumer Key' }, { key: 'netsuiteConsumerSecret', label: 'Consumer Secret', type: 'password' }, { key: 'netsuiteTokenId', label: 'Token ID' }, { key: 'netsuiteTokenSecret', label: 'Token Secret', type: 'password' }], isStubbed: true },
   // Payment Gateways
-  { id: 'kort', name: 'TekTrakker Payment Processing', description: 'Process credit cards natively within your platform. Enjoy lower rates and deep integration.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-emerald-500', fields: [{ key: 'kortAccountId', label: 'Merchant Account ID', placeholder: 'acct_...' }], isStubbed: true },
+  { id: 'kort', name: 'TekTrakker Payment Processing', description: 'Process credit cards natively within your platform. Enjoy lower rates and deep integration.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-emerald-500', fields: [{ key: 'kortAccountId', label: 'Merchant Account ID', placeholder: 'acct_...' }] },
   { id: 'stripe', name: 'Stripe', description: 'Connect Stripe to process credit card payments natively inside invoices. Accept all major credit cards securely.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-indigo-500', fields: [{ key: 'stripePublicKey', label: 'Publishable Key', placeholder: 'pk_live_...' }] },
   { id: 'square', name: 'Square', description: 'Connect Square to process card payments or sync transactions.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-slate-800 dark:text-slate-200', fields: [{ key: 'squareAppId', label: 'Application ID', placeholder: 'sq0idp-...' }, { key: 'squareLocId', label: 'Location ID', placeholder: 'L...' }, { key: 'squareToken', label: 'Square Personal Access Token', type: 'password', placeholder: 'EAAAE...' }] },
   // Financing
@@ -96,6 +96,7 @@ const INTEGRATIONS: Integration[] = [
   { id: 'thumbtack', name: 'Thumbtack', description: 'Receive homeowner service requests and leads directly from the Thumbtack marketplace.', category: 'Marketing & CRM', icon: Globe, iconColor: 'text-blue-600', fields: [{ key: 'thumbtackWebhookUrl', label: 'Webhook Config URL (Generated)' }, { key: 'thumbtackApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'angi', name: 'Angi (Angie\'s List)', description: 'Import verified homeowner leads from the Angi marketplace into your dispatch board.', category: 'Marketing & CRM', icon: Globe, iconColor: 'text-red-500', fields: [{ key: 'angiAccountId', label: 'Account ID' }, { key: 'angiApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'nextdoor', name: 'Nextdoor for Business', description: 'Neighborhood-level advertising and local recommendations from trusted neighbors.', category: 'Marketing & CRM', icon: Globe, iconColor: 'text-green-500', fields: [{ key: 'nextdoorBusinessId', label: 'Business ID' }, { key: 'nextdoorApiKey', label: 'API Key', type: 'password' }] },
+  { id: 'gusto', name: 'Gusto Payroll', description: 'Sync employee profiles, push hours, and run payroll using Gusto. Supports BYO developer credentials to bypass platform SOC2 requirements.', category: 'HR & Payroll', icon: Users, iconColor: 'text-orange-500', fields: [{ key: 'gustoClientId', label: 'Gusto Client ID' }, { key: 'gustoClientSecret', label: 'Gusto Client Secret', type: 'password' }, { key: 'gustoCompanyUuid', label: 'Gusto Company UUID (Optional)' }] },
   { id: 'adp', name: 'ADP Workforce', description: 'Enterprise payroll processing, tax filing, and HR compliance management.', category: 'HR & Payroll', icon: Users, iconColor: 'text-red-600', fields: [{ key: 'adpClientId', label: 'Client ID' }, { key: 'adpClientSecret', label: 'Client Secret', type: 'password' }], isStubbed: true },
   { id: 'paychex', name: 'Paychex', description: 'Payroll, benefits, and HR services for growing field service companies.', category: 'HR & Payroll', icon: Users, iconColor: 'text-blue-700', fields: [{ key: 'paychexCompanyId', label: 'Company ID' }, { key: 'paychexClientId', label: 'Client ID' }, { key: 'paychexClientSecret', label: 'Client Secret', type: 'password' }], isStubbed: true },
   { id: 'indeed', name: 'Indeed', description: 'Post job listings and receive applicants directly into your hiring pipeline.', category: 'HR & Payroll', icon: Users, iconColor: 'text-blue-500', fields: [{ key: 'indeedEmployerId', label: 'Employer ID' }, { key: 'indeedApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
@@ -129,7 +130,7 @@ const INTEGRATIONS: Integration[] = [
 
 const IntegrationsMarketplace: React.FC = () => {
   const navigate = useNavigate();
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
   const orgId = state.currentUser?.organizationId;
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('All');
@@ -189,7 +190,6 @@ const IntegrationsMarketplace: React.FC = () => {
 
   const filtered = INTEGRATIONS.filter(i => {
     const isTestOrg = orgId === 'tektestsub' || state.allOrganizations?.find(o => o.id === orgId)?.name?.toLowerCase().includes('tektest');
-    if (i.id === 'kort' && !isTestOrg) return false;
     const matchCat = category === 'All' || i.category === category;
     const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase()) || i.description.toLowerCase().includes(search.toLowerCase());
     const matchType = showPlatform || !i.platformLevel;
@@ -288,6 +288,22 @@ const IntegrationsMarketplace: React.FC = () => {
         });
       }
 
+      if (integration.id === 'gusto') {
+        const { gustoCompanyUuid } = fieldValues;
+        await db.collection('organizations').doc(orgId).update({
+            gustoCompanyUuid: gustoCompanyUuid || null,
+            gustoOnboardingUrl: gustoCompanyUuid ? 'https://sandbox.gusto.com' : null
+        });
+        dispatch({
+          type: 'UPDATE_ORGANIZATION',
+          payload: {
+            ...state.currentOrganization,
+            gustoCompanyUuid: gustoCompanyUuid || undefined,
+            gustoOnboardingUrl: gustoCompanyUuid ? 'https://sandbox.gusto.com' : undefined
+          }
+        });
+      }
+
       showToast.success(`${integration.name} has been enabled!`);
     } catch (e: unknown) {
       showToast.warn('Failed to save: ' + (e as Error).message);
@@ -301,6 +317,21 @@ const IntegrationsMarketplace: React.FC = () => {
       delete updated[integrationId];
       await setDoc(doc(db, 'organizations', orgId, 'settings', 'marketplace_integrations'), { integrations: updated }, { merge: true });
       setEnabledIntegrations(updated);
+      if (integrationId === 'gusto') {
+        await db.collection('organizations').doc(orgId).update({
+            gustoCompanyUuid: null,
+            gustoOnboardingUrl: null
+        });
+        dispatch({
+          type: 'UPDATE_ORGANIZATION',
+          payload: {
+            ...state.currentOrganization,
+            gustoCompanyUuid: undefined,
+            gustoOnboardingUrl: undefined
+          }
+        });
+      }
+
       showToast.success(`${name} has been disabled.`);
     } catch (e: unknown) { showToast.warn('Failed: ' + (e as Error).message); }
   };
@@ -514,6 +545,36 @@ const IntegrationsMarketplace: React.FC = () => {
                                           placeholder="acct_..."
                                           className="w-full px-3 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-emerald-950 text-sm focus:ring-2 focus:ring-emerald-500"
                                       />
+                                  </div>
+                                  <div className="flex gap-2">
+                                      <button 
+                                          onClick={handleGenerateOnboardingLink} 
+                                          disabled={generatingOnboardingUrl} 
+                                          className="w-full text-xs font-bold uppercase tracking-wide bg-primary-600 text-white py-2.5 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                                      >
+                                          {generatingOnboardingUrl ? 'Generating...' : 'Resume Merchant Application'}
+                                      </button>
+                                      <button 
+                                          onClick={async () => {
+                                              if (!window.confirm("Are you sure you want to disconnect this merchant account? This will stop native payment processing.")) return;
+                                              try {
+                                                  setFieldValues({ ...fieldValues, kortAccountId: '' });
+                                                  await setDoc(doc(db, 'organizations', orgId), { kortAccountId: null }, { merge: true });
+                                                  if (state.currentOrganization) {
+                                                      dispatch({
+                                                          type: 'UPDATE_ORGANIZATION',
+                                                          payload: { ...state.currentOrganization, kortAccountId: undefined }
+                                                      });
+                                                  }
+                                                  showToast.success("Kort Merchant Account disconnected.");
+                                              } catch (e) {
+                                                  showToast.error("Failed to disconnect account.");
+                                              }
+                                          }}
+                                          className="w-full text-xs font-bold uppercase tracking-wide border border-red-200 dark:border-red-800 text-red-600 hover:text-red-700 hover:bg-red-50 py-2.5 rounded-lg transition-colors"
+                                      >
+                                          Disconnect Account
+                                      </button>
                                   </div>
                               </div>
                           )

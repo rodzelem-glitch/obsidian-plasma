@@ -2,6 +2,7 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import { Wrench, CalendarIcon, FileText, ArrowLeft } from 'lucide-react';
@@ -12,6 +13,7 @@ const AssetLookup: React.FC = () => {
     const assetId = searchParams.get('assetId');
     const { state } = useAppContext();
     const navigate = useNavigate();
+    const { t } = useLanguage();
 
     const customer = useMemo(() => 
         state.customers.find(c => c.id === customerId), 
@@ -31,9 +33,9 @@ const AssetLookup: React.FC = () => {
     if (!customer) {
         return (
             <div className="p-4 md:p-8 text-center">
-                <h2 className="text-xl font-bold text-red-600">Asset Not Found</h2>
-                <p className="text-gray-500">The scanned code does not match a known customer record.</p>
-                <Button onClick={() => window.location.href = '/'} className="mt-4 w-auto">Go Home</Button>
+                <h2 className="text-xl font-bold text-red-600">{t("Asset Not Found")}</h2>
+                <p className="text-gray-500">{t("The scanned code does not match a known customer record.")}</p>
+                <Button onClick={() => window.location.href = '/'} className="mt-4 w-auto">{t("Go Home")}</Button>
             </div>
         );
     }
@@ -41,11 +43,11 @@ const AssetLookup: React.FC = () => {
     return (
         <div className="p-4 max-w-2xl mx-auto space-y-6">
             <header className="flex items-center gap-4">
-                <button onClick={() => navigate(-1)} className="p-2 bg-gray-200 dark:bg-gray-700 rounded-full" title="Go Back" aria-label="Go Back">
+                <button onClick={() => navigate(-1)} className="p-2 bg-gray-200 dark:bg-gray-700 rounded-full" title={t("Go Back")} aria-label={t("Go Back")}>
                     <ArrowLeft size={20} className="text-gray-600 dark:text-gray-300" />
                 </button>
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Asset Details</h1>
+                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t("Asset Details")}</h1>
                     <p className="text-sm text-gray-500">{customer.name}</p>
                 </div>
             </header>
@@ -68,20 +70,20 @@ const AssetLookup: React.FC = () => {
                     </div>
                     {asset.installDate && (
                         <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500">
-                            Installed: {new Date(asset.installDate).toLocaleDateString()}
+                            {t("Installed:")} {new Date(asset.installDate).toLocaleDateString()}
                         </div>
                     )}
                 </Card>
             ) : (
                 <Card className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200">
-                    <p className="text-yellow-800 dark:text-yellow-200 font-medium">Specific asset ID not found.</p>
-                    <p className="text-xs text-yellow-600 dark:text-yellow-400">Showing general customer history.</p>
+                    <p className="text-yellow-800 dark:text-yellow-200 font-medium">{t("Specific asset ID not found.")}</p>
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400">{t("Showing general customer history.")}</p>
                 </Card>
             )}
 
             <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                    <CalendarIcon size={18} /> Service History
+                    <CalendarIcon size={18} /> {t("Service History")}
                 </h3>
                 <div className="space-y-3">
                     {history.length > 0 ? history.map(job => (
@@ -89,11 +91,11 @@ const AssetLookup: React.FC = () => {
                             <div className="flex justify-between items-start mb-2">
                                 <span className="font-bold text-gray-900 dark:text-white">{new Date(job.appointmentTime).toLocaleDateString()}</span>
                                 <span className={`text-xs px-2 py-0.5 rounded font-bold uppercase ${job.jobStatus === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                                    {job.jobStatus}
+                                    {t(job.jobStatus)}
                                 </span>
                             </div>
                             <div className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-                                <span className="font-medium text-gray-800 dark:text-gray-200">Tasks:</span> {job.tasks.join(', ')}
+                                <span className="font-medium text-gray-800 dark:text-gray-200">{t("Tasks:")}</span> {job.tasks.join(', ')}
                             </div>
                             {job.notes?.employeeFeedback && (
                                 <div className="text-xs text-gray-500 bg-gray-50 dark:bg-gray-700/50 p-2 rounded">
@@ -103,7 +105,7 @@ const AssetLookup: React.FC = () => {
                             )}
                         </div>
                     )) : (
-                        <p className="text-gray-500 text-sm italic">No service history recorded.</p>
+                        <p className="text-gray-500 text-sm italic">{t("No service history recorded.")}</p>
                     )}
                 </div>
             </div>

@@ -30,9 +30,11 @@ import ProjectCloseoutModal from './projects/modals/ProjectCloseoutModal';
 import WBSNodeModal, { WBSNodeForm } from './projects/modals/WBSNodeModal';
 import SprintModal from './projects/modals/SprintModal';
 import { globalConfirm } from "lib/globalConfirm";
+import { useLanguage } from 'context/LanguageContext';
 
 const ProjectManagement: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'permits' | 'subs' | 'rentals' | 'financials' | 'equipment'>('overview');
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [projectSearch, setProjectSearch] = useState('');
@@ -100,7 +102,7 @@ const ProjectManagement: React.FC = () => {
 
     // --- HANDLERS ---
     const handleSaveProject = async (form: Partial<Project>) => {
-        if (!form.name || !form.customerId || !state.currentOrganization) { showToast.warn("Project Name and Customer are required."); return; }
+        if (!form.name || !form.customerId || !state.currentOrganization) { showToast.warn(t("Project Name and Customer are required.")); return; }
         const customer = state.customers.find(c => c.id === form.customerId);
         const project: Project = { ...form, organizationId: state.currentOrganization.id, customerName: customer?.name || 'Unknown', id: form.id || `proj-${Date.now()}`, createdAt: form.createdAt || new Date().toISOString() } as Project;
         await db.collection('projects').doc(project.id).set(JSON.parse(JSON.stringify(project)), { merge: true });
@@ -110,7 +112,7 @@ const ProjectManagement: React.FC = () => {
     };
 
     const handleDeleteProject = async () => {
-        if (!selectedProject || !await globalConfirm("Delete this project and all associated data?")) return;
+        if (!selectedProject || !await globalConfirm(t("Delete this project and all associated data?"))) return;
         await db.collection('projects').doc(selectedProject.id).delete();
         dispatch({ type: 'DELETE_PROJECT', payload: selectedProject.id });
         setSelectedProject(null);
@@ -255,7 +257,7 @@ const ProjectManagement: React.FC = () => {
     };
 
     const handleDeleteExpense = async (id: string) => {
-        if (!await globalConfirm("Delete expense?")) return;
+        if (!await globalConfirm(t("Delete expense?"))) return;
         await db.collection('expenses').doc(id).delete();
         dispatch({ type: 'DELETE_EXPENSE', payload: id });
     };
@@ -281,12 +283,12 @@ const ProjectManagement: React.FC = () => {
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 
                 <div className="flex flex-col md:flex-row gap-2 items-stretch md:items-center w-full md:w-auto">
-                    <div className="relative w-full md:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input placeholder="Search Projects..." className="pl-10 w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-800 text-sm" value={projectSearch} onChange={e => setProjectSearch(e.target.value)} /></div>
+                    <div className="relative w-full md:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} /><input placeholder={t("Search Projects...")} className="pl-10 w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-800 text-sm" value={projectSearch} onChange={e => setProjectSearch(e.target.value)} /></div>
                     <Select value={selectedProject?.id || ''} onChange={e => setSelectedProject(state.projects.find(p => p.id === e.target.value) || null)} className="w-full md:w-64 mb-0">
-                        <option value="">-- Select Project --</option>
+                        <option value="">-- {t("Select Project")} --</option>
                         {filteredProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </Select>
-                    <Button onClick={() => { setProjectForm({}); setIsProjectModalOpen(true); }} className="w-auto whitespace-nowrap">+ New Project</Button>
+                    <Button onClick={() => { setProjectForm({}); setIsProjectModalOpen(true); }} className="w-auto whitespace-nowrap">+ {t("New Project")}</Button>
                 </div>
             </header>
 
@@ -294,19 +296,19 @@ const ProjectManagement: React.FC = () => {
                 <>
                     {canSeeAllTasks && (
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                            <Card className="bg-blue-50 border-blue-200"><p className="text-xs font-bold text-blue-700 uppercase">Budget Used</p><div className="mt-2"><p className="text-2xl font-black text-blue-900">${projectFinancials.totalExpenses.toLocaleString()}</p><div className="w-full bg-blue-200 rounded-full h-1.5 mt-2"><div className="bg-blue-600 h-1.5 rounded-full" ref={e => e && (e.style.width = `${Math.min((projectFinancials.totalExpenses / (selectedProject.budget || 1)) * 100, 100)}%`)}></div></div><p className="text-[10px] text-blue-600 mt-1">of ${(selectedProject.budget || 0).toLocaleString()}</p></div></Card>
-                            <Card className="bg-emerald-50 border-emerald-200"><p className="text-xs font-bold text-emerald-700 uppercase">Billed / Paid</p><p className="text-2xl font-black text-emerald-900">${projectFinancials.totalBilled.toLocaleString()}</p><p className="text-[10px] text-emerald-600 mt-1 font-bold">Collected: ${projectFinancials.totalCollected.toLocaleString()}</p></Card>
-                            <Card className="bg-purple-50 border-purple-200"><p className="text-xs font-bold text-purple-700 uppercase">Task Progress</p><div className="mt-2"><p className="text-2xl font-black text-purple-900">{progressStats.percent.toFixed(0)}%</p><div className="w-full bg-purple-200 rounded-full h-1.5 mt-2"><div className="bg-purple-600 h-1.5 rounded-full" ref={e => e && (e.style.width = `${progressStats.percent}%`)}></div></div><p className="text-[10px] text-purple-600 mt-1">{progressStats.completed} / {progressStats.total} Tasks</p></div></Card>
-                            <Card className="bg-gray-50 border-gray-200"><p className="text-xs font-bold text-gray-500 uppercase">Team Members</p><div className="flex -space-x-2 mt-2">{selectedProject.teamIds?.map(uid => { const u = employees.find(e => e.id === uid); return u ? <div key={uid} className="w-8 h-8 rounded-full bg-slate-300 border-2 border-white flex items-center justify-center text-xs font-bold text-slate-700" title={`${u.firstName} ${u.lastName}`}>{u.firstName[0]}</div> : null;})}{(!selectedProject.teamIds || selectedProject.teamIds.length === 0) && <span className="text-sm text-gray-400 italic">None</span>}</div></Card>
+                            <Card className="bg-blue-50 border-blue-200"><p className="text-xs font-bold text-blue-700 uppercase">{t("Budget Used")}</p><div className="mt-2"><p className="text-2xl font-black text-blue-900">${projectFinancials.totalExpenses.toLocaleString()}</p><div className="w-full bg-blue-200 rounded-full h-1.5 mt-2"><div className="bg-blue-600 h-1.5 rounded-full" ref={e => e && (e.style.width = `${Math.min((projectFinancials.totalExpenses / (selectedProject.budget || 1)) * 100, 100)}%`)}></div></div><p className="text-[10px] text-blue-600 mt-1">{t("of")} ${(selectedProject.budget || 0).toLocaleString()}</p></div></Card>
+                            <Card className="bg-emerald-50 border-emerald-200"><p className="text-xs font-bold text-emerald-700 uppercase">{t("Billed / Paid")}</p><p className="text-2xl font-black text-emerald-900">${projectFinancials.totalBilled.toLocaleString()}</p><p className="text-[10px] text-emerald-600 mt-1 font-bold">{t("Collected:")} ${projectFinancials.totalCollected.toLocaleString()}</p></Card>
+                            <Card className="bg-purple-50 border-purple-200"><p className="text-xs font-bold text-purple-700 uppercase">{t("Task Progress")}</p><div className="mt-2"><p className="text-2xl font-black text-purple-900">{progressStats.percent.toFixed(0)}%</p><div className="w-full bg-purple-200 rounded-full h-1.5 mt-2"><div className="bg-purple-600 h-1.5 rounded-full" ref={e => e && (e.style.width = `${progressStats.percent}%`)}></div></div><p className="text-[10px] text-purple-600 mt-1">{progressStats.completed} / {progressStats.total} {t("Tasks")}</p></div></Card>
+                            <Card className="bg-gray-50 border-gray-200"><p className="text-xs font-bold text-gray-500 uppercase">{t("Team Members")}</p><div className="flex -space-x-2 mt-2">{selectedProject.teamIds?.map(uid => { const u = employees.find(e => e.id === uid); return u ? <div key={uid} className="w-8 h-8 rounded-full bg-slate-300 border-2 border-white flex items-center justify-center text-xs font-bold text-slate-700" title={`${u.firstName} ${u.lastName}`}>{u.firstName[0]}</div> : null;})}{(!selectedProject.teamIds || selectedProject.teamIds.length === 0) && <span className="text-sm text-gray-400 italic">{t("None")}</span>}</div></Card>
                         </div>
                     )}
 
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div className="flex flex-wrap gap-2 w-full mb-4">
                             {[
-                                { id: 'overview', label: 'Overview', icon: Briefcase }, { id: 'tasks', label: 'Tasks & Milestones', icon: ClipboardList }, { id: 'financials', label: 'Financials', icon: DollarSign },
-                                { id: 'permits', label: 'Permits', icon: File }, { id: 'subs', label: 'Subcontractors', icon: HardHat }, { id: 'rentals', label: 'Rentals', icon: Truck },
-                                { id: 'equipment', label: 'Equipment', icon: Box },
+                                { id: 'overview', label: t('Overview'), icon: Briefcase }, { id: 'tasks', label: t('Tasks & Milestones'), icon: ClipboardList }, { id: 'financials', label: t('Financials'), icon: DollarSign },
+                                { id: 'permits', label: t('Permits'), icon: File }, { id: 'subs', label: t('Subcontractors'), icon: HardHat }, { id: 'rentals', label: t('Rentals'), icon: Truck },
+                                { id: 'equipment', label: t('Equipment'), icon: Box },
                             ].map(tab => (
                                 <button 
                                     key={tab.id} 
@@ -321,7 +323,7 @@ const ProjectManagement: React.FC = () => {
                                 </button>
                             ))}
                         </div>
-                        {canSeeAllTasks && <div className="flex gap-2"><Button onClick={() => setIsCloseoutModalOpen(true)} className="text-xs h-9 bg-slate-800 hover:bg-slate-700">Closeout Report</Button><Button onClick={() => { setProjectForm(selectedProject); setIsProjectModalOpen(true); }} variant="secondary" className="text-xs h-9">Edit Project</Button><button onClick={handleDeleteProject} className="text-red-500 hover:text-red-700 p-2 bg-red-50 rounded" title="Delete Project" aria-label="Delete Project"><Trash2 size={16} /></button></div>}
+                        {canSeeAllTasks && <div className="flex gap-2"><Button onClick={() => setIsCloseoutModalOpen(true)} className="text-xs h-9 bg-slate-800 hover:bg-slate-700">{t("Closeout Report")}</Button><Button onClick={() => { setProjectForm(selectedProject); setIsProjectModalOpen(true); }} variant="secondary" className="text-xs h-9">{t("Edit Project")}</Button><button onClick={handleDeleteProject} className="text-red-500 hover:text-red-700 p-2 bg-red-50 rounded" title={t("Delete Project")} aria-label={t("Delete Project")}><Trash2 size={16} /></button></div>}
                     </div>
 
                     {activeTab === 'overview' && <OverviewTab project={selectedProject} employees={employees} />}
@@ -337,7 +339,7 @@ const ProjectManagement: React.FC = () => {
                                             : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                                     }`}
                                 >
-                                    <LayoutGrid size={14} /> Sprint Board
+                                    <LayoutGrid size={14} /> {t("Sprint Board")}
                                 </button>
                                 <button
                                     onClick={() => setTaskViewMode('wbs')}
@@ -347,7 +349,7 @@ const ProjectManagement: React.FC = () => {
                                             : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'
                                     }`}
                                 >
-                                    <List size={14} /> WBS Tree
+                                    <List size={14} /> {t("WBS Tree")}
                                 </button>
                             </div>
                             {taskViewMode === 'board' ? (
@@ -373,7 +375,7 @@ const ProjectManagement: React.FC = () => {
                     {activeTab === 'equipment' && <EquipmentTab project={selectedProject} customer={state.customers.find(c => c.id === selectedProject.customerId)} />}
                 </>
             ) : (
-                <div className="p-6 md:p-12 text-center text-slate-400 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-3xl"><Briefcase size={48} className="mx-auto mb-4 text-slate-300" /><p className="font-bold text-lg">No project selected.</p><p className="text-sm">Create a new project or select one from the list to view details.</p></div>
+                <div className="p-6 md:p-12 text-center text-slate-400 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-3xl"><Briefcase size={48} className="mx-auto mb-4 text-slate-300" /><p className="font-bold text-lg">{t("No project selected.")}</p><p className="text-sm">{t("Create a new project or select one from the list to view details.")}</p></div>
             )}
 
             {isProjectModalOpen && <ProjectModal isOpen={isProjectModalOpen} onClose={() => setIsProjectModalOpen(false)} onSave={handleSaveProject} projectForm={projectForm} setProjectForm={setProjectForm} customers={state.customers} employees={employees} />}

@@ -1,6 +1,7 @@
 import showToast from "lib/toast";
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../../context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 import { db } from '../../../lib/firebase';
 import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
@@ -13,6 +14,7 @@ import DOMPurify from 'dompurify';
 
 const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClose: () => void, onSign: (signature: string) => void, job?: Job }) => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const sigCanvas = useRef<React.ElementRef<typeof SignatureCanvas>>(null);
     const [step, setStep] = useState(1); // 1: Selection, 2: Preview & Sign
     const [selectedTemplates, setSelectedTemplates] = useState<string[]>([]);
@@ -102,7 +104,7 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                     }).catch(console.error);
                 } catch (e) {
                     console.error("Error creating waiver file:", e);
-                    showToast.warn("Error saving waiver document. Please try again.");
+                    showToast.warn(t("Error saving waiver document. Please try again."));
                     return;
                 }
             }
@@ -110,7 +112,7 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
             onSign(signature);
             onClose();
         } else {
-            showToast.warn("Please sign before accepting.");
+            showToast.warn(t("Please sign before accepting."));
         }
     };
 
@@ -184,10 +186,10 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                 type: 'WaiverRequest',
                 createdAt: new Date().toISOString()
             });
-            showToast.warn("Sent to customer and added to pending documents!");
+            showToast.warn(t("Sent to customer and added to pending documents!"));
         } catch (e) {
             console.error(e);
-            showToast.warn("Failed to send.");
+            showToast.warn(t("Failed to send."));
         } finally {
             setIsSending(false);
         }
@@ -205,20 +207,20 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
 
     return (
         <>
-            <Modal isOpen={isOpen} onClose={onClose} title={step === 1 ? "Select Required Waivers" : "Review & Sign Agreement"} size="lg">
+            <Modal isOpen={isOpen} onClose={onClose} title={step === 1 ? t("Select Required Waivers") : t("Review & Sign Agreement")} size="lg">
                 <div className="space-y-6">
                     
                     {step === 1 && (
                         <div className="space-y-4">
-                            <p className="text-sm text-gray-500">Select all applicable waivers for this job. They will be combined into a single document for signature.</p>
+                            <p className="text-sm text-gray-500">{t("Select all applicable waivers for this job. They will be combined into a single document for signature.")}</p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
-                                {waiverTemplates.map(t => {
-                                    const isSelected = selectedTemplates.includes(t.id);
+                                {waiverTemplates.map(tTemp => {
+                                    const isSelected = selectedTemplates.includes(tTemp.id);
                                     return (
                                         <button 
                                             type="button"
-                                            key={t.id}
-                                            onClick={() => handleTemplateToggle(t.id)}
+                                            key={tTemp.id}
+                                            onClick={() => handleTemplateToggle(tTemp.id)}
                                             className={`w-full text-left p-4 rounded-lg border-2 cursor-pointer transition-all flex items-start gap-3 ${
                                                 isSelected 
                                                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
@@ -231,17 +233,17 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                                                 {isSelected && <CheckCircle size={14} />}
                                             </div>
                                             <div>
-                                                <h4 className="font-bold text-gray-900 dark:text-white text-sm">{t.title}</h4>
-                                                <p className="text-xs text-gray-500 line-clamp-2 mt-1" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(t.content.substring(0, 100).replace(/<[^>]*>?/gm, '') + '...') }} />
+                                                <h4 className="font-bold text-gray-900 dark:text-white text-sm">{tTemp.title}</h4>
+                                                <p className="text-xs text-gray-500 line-clamp-2 mt-1" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(tTemp.content.substring(0, 100).replace(/<[^>]*>?/gm, '') + '...') }} />
                                             </div>
                                         </button>
                                     );
                                 })}
-                                {waiverTemplates.length === 0 && <p className="col-span-2 text-center py-10 text-gray-400 italic">No waiver templates available.</p>}
+                                {waiverTemplates.length === 0 && <p className="col-span-2 text-center py-10 text-gray-400 italic">{t("No waiver templates available.")}</p>}
                             </div>
                             <div className="flex justify-end pt-4">
                                 <Button onClick={handleGenerate} disabled={selectedTemplates.length === 0} className="flex items-center gap-2">
-                                    Generate Document <ArrowRight size={16} />
+                                    {t("Generate Document")} <ArrowRight size={16} />
                                 </Button>
                             </div>
                         </div>
@@ -251,31 +253,31 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                         <div className="space-y-4">
                             <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 flex justify-between items-center">
                                 <div>
-                                    <h4 className="font-bold text-gray-900 dark:text-white">Waiver Agreement Generated</h4>
-                                    <p className="text-xs text-gray-500">{selectedTemplates.length} sections included.</p>
+                                    <h4 className="font-bold text-gray-900 dark:text-white">{t("Waiver Agreement Generated")}</h4>
+                                    <p className="text-xs text-gray-500">{selectedTemplates.length} {t("sections included.")}</p>
                                 </div>
                                 <div className="flex gap-2">
                                     <Button variant="secondary" onClick={() => setIsPreviewOpen(true)} className="text-xs flex items-center gap-2">
-                                        <Eye size={14}/> View Full Document
+                                        <Eye size={14}/> {t("View Full Document")}
                                     </Button>
                                     <Button variant="secondary" onClick={() => setStep(1)} className="text-xs">
-                                        Edit Selection
+                                        {t("Edit Selection")}
                                     </Button>
                                 </div>
                             </div>
 
                             <div className="h-40 p-4 border rounded bg-white dark:bg-gray-900 text-xs overflow-y-auto shadow-inner text-gray-500">
-                                <p className="italic text-center mt-12">Document ready for signature. Click "View Full Document" to read contents.</p>
+                                <p className="italic text-center mt-12">{t("Document ready for signature. Click \"View Full Document\" to read contents.")}</p>
                             </div>
                             
                             <div className="border rounded-lg overflow-hidden bg-white relative">
-                                <div className="absolute top-2 left-2 text-[10px] font-bold text-gray-400 uppercase pointer-events-none">Customer Signature</div>
+                                <div className="absolute top-2 left-2 text-[10px] font-bold text-gray-400 uppercase pointer-events-none">{t("Customer Signature")}</div>
                                 <SignatureCanvas 
                                     ref={sigCanvas}
                                     penColor='black'
                                     canvasProps={{className: 'w-full h-48 cursor-crosshair'}} 
                                 />
-                                <button onClick={handleClear} className="absolute bottom-2 right-2 text-xs text-red-500 hover:text-red-700 bg-white/80 px-2 py-1 rounded">Clear</button>
+                                <button onClick={handleClear} className="absolute bottom-2 right-2 text-xs text-red-500 hover:text-red-700 bg-white/80 px-2 py-1 rounded">{t("Clear")}</button>
                             </div>
                             
                             <div className="flex justify-between items-center pt-2">
@@ -287,12 +289,12 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                                             disabled={isSending}
                                             className="text-xs"
                                         >
-                                            {isSending ? 'Sending...' : 'Send to Customer Review'}
+                                            {isSending ? t('Sending...') : t('Send to Customer Review')}
                                         </Button>
                                     )}
                                 </div>
                                 <Button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-700 shadow-lg px-4 md:px-8">
-                                    Accept & Sign
+                                    {t("Accept & Sign")}
                                 </Button>
                             </div>
                         </div>

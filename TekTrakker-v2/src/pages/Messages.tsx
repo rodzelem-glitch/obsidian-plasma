@@ -58,6 +58,25 @@ const Messages: React.FC = () => {
         return false;
     };
 
+    const isCustomerMessage = (m: Message) => {
+        if (m.type === 'sms' || m.type === 'email' || m.type === 'customer-log' || m.type === 'alert') return true;
+        
+        // Active lookup against loaded customers
+        const isSenderCustomer = state.customers.some(c => c.id === m.senderId);
+        const isReceiverCustomer = state.customers.some(c => c.id === m.receiverId);
+        if (isSenderCustomer || isReceiverCustomer) return true;
+        
+        const systemSenders = ['system', 'ai', 'ai_agent', 'tektrakker_admin', 'platform'];
+        const senderIdLower = (m.senderId || '').toLowerCase();
+        if (m.senderId && !systemSenders.includes(senderIdLower)) {
+            const isTeam = m.senderId === 'rodzelem@gmail.com' || 
+                           m.senderId === user?.id || 
+                           state.users.some(u => u.id === m.senderId);
+            if (!isTeam) return true;
+        }
+        return false;
+    };
+
     const teamPartners = useMemo(() => {
         const currentOrgId = state.currentOrganization?.id;
         const isSales = user?.role === 'platform_sales';
@@ -203,6 +222,7 @@ const Messages: React.FC = () => {
 
     const broadcastUnreadCount = useMemo(() => {
         const broadcasts = state.messages.filter(m => {
+            if (isCustomerMessage(m)) return false;
             if (user?.role === 'master_admin') {
                 return ['all', 'all_customers', 'all_admins', 'all_sales'].includes(m.receiverId);
             }
@@ -226,12 +246,13 @@ const Messages: React.FC = () => {
         if (!lastSeenBroadcastId) return uniqueBroadcasts.length;
         const lastIndex = uniqueBroadcasts.findIndex(m => m.id === lastSeenBroadcastId);
         return lastIndex === -1 ? uniqueBroadcasts.length : Math.max(0, uniqueBroadcasts.length - 1 - lastIndex);
-    }, [state.messages, user?.id, user?.role, lastSeenBroadcastId]);
+    }, [state.messages, state.customers, user?.id, user?.role, lastSeenBroadcastId]);
 
     const threadMessages = useMemo(() => {
         if (activeTab === 'team') {
             if (selectedPartnerId === 'all') {
                 const allBroadcasts = state.messages.filter(m => {
+                    if (isCustomerMessage(m)) return false;
                     if (user?.role === 'master_admin') {
                         return ['all', 'all_customers', 'all_admins', 'all_sales'].includes(m.receiverId);
                     }
@@ -267,7 +288,7 @@ const Messages: React.FC = () => {
                 (m.type === 'sms' || m.type === 'email' || m.type === 'customer-log')
             ).sort((a, b) => parseTimestamp(a.timestamp) - parseTimestamp(b.timestamp));
         }
-    }, [state.messages, activeTab, selectedPartnerId, selectedCustomerId, user?.id]);
+    }, [state.messages, state.customers, activeTab, selectedPartnerId, selectedCustomerId, user?.id]);
 
     // --- EFFECT: AUTO SCROLL ---
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
+import { useLanguage } from 'context/LanguageContext';
 import { 
     LayoutDashboard, Users, FileText, ClipboardList, TrendingUp, Settings, Route as RouteIcon, Box, 
     ShieldCheck, Video, Calendar, Map, CheckSquare, MessageSquare, Briefcase, Truck, HardDrive, Cpu, 
@@ -9,6 +10,7 @@ import {
 const ROUTE_CONFIG: Record<string, { title: string, subtitle: string, icon: any, bgClass: string }> = {
     // Admin Routes
     '/admin/dashboard': { title: 'Dashboard', subtitle: 'Platform overview and daily operations hub.', icon: LayoutDashboard, bgClass: 'bg-gradient-to-r from-blue-600 to-indigo-600' },
+    '/admin/calendar': { title: 'Company Calendar', subtitle: 'Track team events, office meetings, training days, and milestones.', icon: Calendar, bgClass: 'bg-gradient-to-r from-indigo-500 to-purple-600' },
     '/admin/workforce': { title: 'Workforce', subtitle: 'Manage your entire team footprint and organization chart.', icon: Users, bgClass: 'bg-gradient-to-r from-violet-600 to-indigo-800' },
     '/admin/hr': { title: 'HR Operations', subtitle: 'Payroll staging, benefits tracking, and Gusto integration.', icon: ShieldCheck, bgClass: 'bg-gradient-to-r from-indigo-600 to-purple-600' },
     '/admin/estimator': { title: 'Price Book & Estimator', subtitle: 'Configure high-speed flat rate pricing and AI generation.', icon: Book, bgClass: 'bg-gradient-to-r from-indigo-600 to-cyan-600' },
@@ -51,6 +53,7 @@ const ROUTE_CONFIG: Record<string, { title: string, subtitle: string, icon: any,
 
 const PageHeader: React.FC = () => {
     const location = useLocation();
+    const { t } = useLanguage();
 
     // Skip rendering on the Training Hub since it already has a gigantic native hero section
     if (location.pathname === '/admin/training') return null;
@@ -88,11 +91,11 @@ const PageHeader: React.FC = () => {
                 </div>
                 <div>
                     <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight capitalize">
-                        {config.title}
+                        {t(config.title)}
                     </h1>
                     {config.subtitle && (
                         <p className="text-xs sm:text-sm text-white/70 max-w-xl font-medium mt-0.5 hidden sm:block">
-                            {config.subtitle}
+                            {t(config.subtitle)}
                         </p>
                     )}
                 </div>

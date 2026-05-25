@@ -6,6 +6,7 @@ import { db } from 'lib/firebase';
 import showToast from "lib/toast";
 import { getBaseUrl } from "lib/utils";
 import { Bell } from 'lucide-react';
+import { useLanguage } from 'context/LanguageContext';
 
 interface AgingReportTabProps {
     jobs: any[];
@@ -13,6 +14,7 @@ interface AgingReportTabProps {
 
 const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
     const { state } = useAppContext();
+    const { t } = useLanguage();
     const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
 
     const handleSendInvoiceReminder = async (job: any) => {
@@ -28,7 +30,7 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
         }
 
         if (!email && !phone) {
-            showToast.warn("Customer requires an email or phone number for reminders.");
+            showToast.warn(t("Customer requires an email or phone number for reminders."));
             return;
         }
 
@@ -41,13 +43,13 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                 }
             });
             if (alreadySentToday) {
-                if (!confirm("A reminder has already been sent to this customer today. Are you sure you want to send another one?")) {
+                if (!confirm(t("A reminder has already been sent to this customer today. Are you sure you want to send another one?"))) {
                     return;
                 }
             }
         }
 
-        if (!confirm(`Send payment reminder for invoice #${job.invoice.id} to ${email || 'this customer'}?`)) return;
+        if (!confirm(`${t("Send payment reminder for invoice #")}${job.invoice.id} ${t("to")} ${email || t("this customer")}?`)) return;
 
         try {
             const link = `${getBaseUrl()}/#/invoice/${job.id}`;
@@ -86,10 +88,10 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                 'invoice.remindersSent': newReminders
             });
 
-            showToast.warn(`Reminder sent via ${email ? 'email' : ''} ${email && phone ? 'and ' : ''}${phone ? 'SMS text' : ''}!`);
+            showToast.warn(`${t("Reminder sent via")} ${email ? t("email") : ""} ${email && phone ? t("and") + " " : ""}${phone ? t("SMS text") : ""}!`);
         } catch (e) {
             console.error(e);
-            showToast.warn("Error sending reminder.");
+            showToast.warn(t("Error sending reminder."));
         }
     };
 
@@ -128,35 +130,35 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
     return (
         <Card>
             <div className="mb-6">
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Accounts Receivable Aging Summary</h3>
-                <p className="text-sm text-slate-500">Overview of unpaid invoices categorized by time since creation.</p>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">{t("Accounts Receivable Aging Summary")}</h3>
+                <p className="text-sm text-slate-500">{t("Overview of unpaid invoices categorized by time since creation.")}</p>
             </div>
             
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                    <div className="text-xs font-bold text-slate-500 uppercase">0-30 Days</div>
+                    <div className="text-xs font-bold text-slate-500 uppercase">{t("0-30 Days")}</div>
                     <div className="text-lg font-black text-slate-900 dark:text-white">{fmt(agingData.totals.current)}</div>
                 </div>
                 <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800/30">
-                    <div className="text-xs font-bold text-yellow-600 dark:text-yellow-500 uppercase">31-60 Days</div>
+                    <div className="text-xs font-bold text-yellow-600 dark:text-yellow-500 uppercase">{t("31-60 Days")}</div>
                     <div className="text-lg font-black text-yellow-700 dark:text-yellow-400">{fmt(agingData.totals.days30)}</div>
                 </div>
                 <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800/30">
-                    <div className="text-xs font-bold text-orange-600 dark:text-orange-500 uppercase">61-90 Days</div>
+                    <div className="text-xs font-bold text-orange-600 dark:text-orange-500 uppercase">{t("61-90 Days")}</div>
                     <div className="text-lg font-black text-orange-700 dark:text-orange-400">{fmt(agingData.totals.days60)}</div>
                 </div>
                 <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800/30">
-                    <div className="text-xs font-bold text-red-600 dark:text-red-500 uppercase">90+ Days</div>
+                    <div className="text-xs font-bold text-red-600 dark:text-red-500 uppercase">{t("90+ Days")}</div>
                     <div className="text-lg font-black text-red-700 dark:text-red-400">{fmt(agingData.totals.older)}</div>
                 </div>
                 <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800/30">
-                    <div className="text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase">Total Unpaid</div>
+                    <div className="text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase">{t("Total Unpaid")}</div>
                     <div className="text-lg font-black text-emerald-700 dark:text-emerald-400">{fmt(totalReceivables)}</div>
                 </div>
             </div>
 
-            <h4 className="font-bold text-slate-900 dark:text-white mb-4 mt-8">Aging Details</h4>
-            <Table headers={['Customer', 'Invoice #', 'Date / Sent Date', 'Age (Days)', 'Amount', 'Reminders Sent', 'Actions']}>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-4 mt-8">{t("Aging Details")}</h4>
+            <Table headers={[t('Customer'), t('Invoice #'), t('Date / Sent Date'), t('Age (Days)'), t('Amount'), t('Reminders Sent'), t('Actions')]}>
                 {['current', 'days30', 'days60', 'older'].flatMap((bucketKey) => {
                     return agingData.buckets[bucketKey as keyof typeof agingData.buckets].map((job: any) => {
                         const amt = Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0;
@@ -165,20 +167,20 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                         return (
                             <tr key={job.id} className="bg-white dark:bg-slate-900/50">
                                 <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{job.customerName}</td>
-                                <td className="px-6 py-4 font-mono text-xs text-slate-500 dark:text-slate-400">{job.invoice.id}</td>
-                                <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+                                <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">{job.invoice.id}</td>
+                                <td className="px-6 py-4 text-sm text-slate-500 dark:text-gray-400">
                                     <div>{new Date(job.appointmentTime).toLocaleDateString()}</div>
                                     {job.invoice.sentAt ? (
                                         <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-                                            Sent: {new Date(job.invoice.sentAt).toLocaleDateString()}
+                                            {t("Sent")}: {new Date(job.invoice.sentAt).toLocaleDateString()}
                                         </div>
                                     ) : (
-                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 italic">Not Sent</div>
+                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 italic">{t("Not Sent")}</div>
                                     )}
                                 </td>
-                                <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+                                <td className="px-6 py-4 text-sm text-slate-500 dark:text-gray-400">
                                     <span className={`px-2 py-1 rounded text-xs font-bold ${days > 90 ? 'bg-red-100 text-red-800' : days > 60 ? 'bg-orange-100 text-orange-800' : days > 30 ? 'bg-yellow-100 text-yellow-800' : 'bg-slate-100 text-slate-800'}`}>
-                                        {days} Days
+                                        {days} {t("Days")}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{fmt(amt)}</td>
@@ -192,17 +194,17 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                                             ))}
                                         </div>
                                     ) : (
-                                        <span className="italic text-slate-400">None</span>
+                                        <span className="italic text-slate-400">{t("None")}</span>
                                     )}
                                 </td>
                                 <td className="px-6 py-4 text-sm">
                                     <button 
                                         onClick={() => handleSendInvoiceReminder(job)}
                                         className="inline-flex items-center px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 border border-orange-500/20 hover:border-orange-500/40"
-                                        title="Send Payment Reminder"
+                                        title={t("Send Payment Reminder")}
                                     >
                                         <Bell size={12} className="mr-1.5" />
-                                        Send Reminder
+                                        {t("Send Reminder")}
                                     </button>
                                 </td>
                             </tr>

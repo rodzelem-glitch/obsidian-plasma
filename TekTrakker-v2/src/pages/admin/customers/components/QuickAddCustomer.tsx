@@ -1,10 +1,9 @@
-import showToast from "lib/toast";
-
 import React, { useState } from 'react';
 import Button from '../../../../components/ui/Button';
 import { useAppContext } from '../../../../context/AppContext';
 import { db } from '../../../../lib/firebase';
 import type { Customer } from '../../../../types';
+import { useLanguage } from '../../../../context/LanguageContext';
 
 interface QuickAddCustomerProps {
     onCustomerCreated: (customerId: string) => void;
@@ -12,6 +11,7 @@ interface QuickAddCustomerProps {
 
 const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }) => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
@@ -23,7 +23,7 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
             return;
         }
         if (!name) {
-            showToast.warn("Name is required.");
+            alert(t("Name is required."));
             return;
         }
 
@@ -70,7 +70,7 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
             console.log("Customer creation successful!");
         } catch (error) {
             console.error("Error creating customer:", error);
-            showToast.warn("Failed to create customer. Please check your connection.");
+            alert(t("Failed to create customer. Please check your connection."));
         } finally {
             setIsSaving(false);
         }
@@ -78,32 +78,32 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
 
     return (
         <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Quick Add Customer</h3>
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">{t("Quick Add Customer")}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <input
                     type="text"
-                    placeholder="Name *"
+                    placeholder={t("Name *")}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="p-2 border rounded-md"
                 />
                 <input
                     type="text"
-                    placeholder="Phone"
+                    placeholder={t("Phone")}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className="p-2 border rounded-md"
                 />
                 <input
                     type="email"
-                    placeholder="Email"
+                    placeholder={t("Email")}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="p-2 border rounded-md"
                 />
             </div>
             <Button onClick={handleAddCustomer} disabled={isSaving} className="mt-4">
-                {isSaving ? 'Adding...' : 'Add Customer'}
+                {isSaving ? t('Adding...') : t('Add Customer')}
             </Button>
         </div>
     );

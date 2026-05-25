@@ -11,9 +11,9 @@ import { uploadFileToStorage } from '../../../lib/storageService';
 import { useAppContext } from '../../../context/AppContext';
 import Textarea from '../../../components/ui/Textarea';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from 'context/LanguageContext';
 import InvoiceEditorModal from '../../../components/modals/InvoiceEditorModal';
 import IndustryToolsHub from '../../tools/IndustryToolsHub';
-import AmbientSafetyRibbon from './AmbientSafetyRibbon';
 import Tesseract from 'tesseract.js';
 
 // Sub-components
@@ -56,6 +56,7 @@ interface WorkflowState {
 
 const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => void, onUpdate: (job: Job) => void }> = ({ job, isOpen, onClose, onUpdate }) => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [isSaving, setIsSaving] = useState(false);
@@ -937,11 +938,11 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                     <div className="flex justify-between items-center relative z-10 w-full">
                         {[1, 2, 3, 4, 5].map(s => (
                             <div key={s} className="flex flex-col items-center gap-1 group">
-                                <button onClick={() => handleStepAdvance(s)} title={['Arrival', 'Diagnosis', 'Repair', 'Quality', 'Billing'][s-1]} className={`flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-full text-xs md:text-sm font-bold transition-all shrink-0 cursor-pointer ${s < step ? 'bg-green-500 text-white shadow-sm hover:bg-green-600' : step === s ? 'bg-primary-600 text-white shadow-lg ring-4 ring-primary-100 dark:ring-primary-900/30' : 'bg-white dark:bg-slate-800 text-slate-400 border-2 border-slate-200 dark:border-slate-700 hover:border-primary-300'}`}>
+                                <button onClick={() => handleStepAdvance(s)} title={t(['Arrival', 'Diagnosis', 'Repair', 'Quality', 'Billing'][s-1])} className={`flex items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-full text-xs md:text-sm font-bold transition-all shrink-0 cursor-pointer ${s < step ? 'bg-green-500 text-white shadow-sm hover:bg-green-600' : step === s ? 'bg-primary-600 text-white shadow-lg ring-4 ring-primary-100 dark:ring-primary-900/30' : 'bg-white dark:bg-slate-800 text-slate-400 border-2 border-slate-200 dark:border-slate-700 hover:border-primary-300'}`}>
                                     {s < step ? <Check size={16}/> : s}
                                 </button>
                                 <span className={`text-[10px] font-bold uppercase tracking-wider hidden md:block pt-1 ${step === s ? 'text-primary-700 dark:text-primary-400' : 'text-slate-400'}`}>
-                                    {['Arrive','Diagnose','Repair','Quality','Bill'][s-1]}
+                                    {t(['Arrive','Diagnose','Repair','Quality','Bill'][s-1])}
                                 </span>
                             </div>
                         ))}
@@ -950,7 +951,6 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
             </div>
 
             <div className="flex-1 overflow-y-auto w-full max-w-4xl mx-auto p-4 md:p-6 custom-scrollbar">
-                <AmbientSafetyRibbon job={job} currentUser={state.currentUser} />
                 <ArrivalStep 
                     job={job} 
                     customer={state.customers?.find(c => c.id === job.customerId)}
@@ -1040,14 +1040,14 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
 
             <div className="w-full shrink-0 z-10 p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] safe-bottom">
                 <div className="max-w-4xl mx-auto flex justify-between gap-4">
-                    <Button variant="secondary" onClick={() => setStep(step - 1)} disabled={step === 1} className="w-1/3 py-3 md:py-4 md:text-lg">Back</Button>
+                    <Button variant="secondary" onClick={() => setStep(step - 1)} disabled={step === 1} className="w-1/3 py-3 md:py-4 md:text-lg">{t("Back")}</Button>
                     {step < 5 ? (
                         <Button onClick={() => handleStepAdvance(step + 1)} disabled={isSaving} className="w-2/3 py-3 md:py-4 md:text-lg font-bold flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-700 text-white">
-                            {isSaving ? 'Saving...' : 'Next'} <ArrowRight size={20}/>
+                            {isSaving ? t("Saving...") : t("Next")} <ArrowRight size={20}/>
                         </Button>
                     ) : (
                         <Button onClick={handleLeaveSite} disabled={isSaving} className="w-2/3 py-3 md:py-4 md:text-lg font-bold flex items-center justify-center gap-2 !bg-green-600 hover:!bg-green-700 !text-white">
-                            {isSaving ? 'Saving...' : 'Complete Job'} <Check size={20}/>
+                            {isSaving ? t("Saving...") : t("Complete Job")} <Check size={20}/>
                         </Button>
                     )}
                 </div>
@@ -1056,11 +1056,11 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         </div>
 
         {/* Proposal Selector Modal */}
-        <Modal isOpen={isProposalSelectorOpen} onClose={() => setIsProposalSelectorOpen(false)} title="Select Existing Proposal">
+        <Modal isOpen={isProposalSelectorOpen} onClose={() => setIsProposalSelectorOpen(false)} title={t("Select Existing Proposal")}>
             <div className="space-y-4 max-h-[60vh] overflow-y-auto p-1">
-                <p className="text-sm text-slate-500 mb-4">Select an existing proposal for this customer to import into the workflow.</p>
+                <p className="text-sm text-slate-500 mb-4">{t("Select an existing proposal for this customer to import into the workflow.")}</p>
                 {(!state.proposals || state.proposals.filter(p => p.jobId === job.id || (job.customerId && p.customerId === job.customerId) || (p.customerName && job.customerName && p.customerName.toLowerCase() === job.customerName.toLowerCase())).length === 0) && (
-                    <div className="text-center p-6 text-slate-500 bg-slate-50 rounded-lg border border-dashed">No existing proposals found for this customer.</div>
+                    <div className="text-center p-6 text-slate-500 bg-slate-50 rounded-lg border border-dashed">{t("No existing proposals found for this customer.")}</div>
                 )}
                 {state.proposals?.filter(p => p.jobId === job.id || (job.customerId && p.customerId === job.customerId) || (p.customerName && job.customerName && p.customerName.toLowerCase() === job.customerName.toLowerCase()))
                     .sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime())
@@ -1068,11 +1068,11 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                     <button type="button" key={proposal.id} onClick={() => { setIsProposalSelectorOpen(false); handleViewEditProposal(proposal.id); }} className="w-full text-left border rounded-lg p-4 flex flex-col md:flex-row justify-between md:items-center bg-white cursor-pointer hover:border-purple-400 hover:shadow-md transition-all">
                         <div className="mb-2 md:mb-0">
                             <p className="font-semibold text-slate-900">{proposal.id} - {proposal.customerName}</p>
-                            <p className="text-sm text-slate-500">{new Date(proposal.createdAt).toLocaleDateString()} • {proposal.items?.length || 0} items</p>
+                            <p className="text-sm text-slate-500">{new Date(proposal.createdAt).toLocaleDateString()} • {proposal.items?.length || 0} {proposal.items?.length === 1 ? t("item") : t("items")}</p>
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="font-bold text-green-700">${(proposal.total || 0).toFixed(2)}</span>
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${proposal.status === 'Accepted' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>{proposal.status || 'Draft'}</span>
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${proposal.status === 'Accepted' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>{proposal.status === 'Accepted' ? t('Accepted') : t('Draft')}</span>
                         </div>
                     </button>
                 ))}
@@ -1080,22 +1080,22 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         </Modal>
 
         {/* Invoice Selector Modal */}
-        <Modal isOpen={isInvoiceSelectorOpen} onClose={() => setIsInvoiceSelectorOpen(false)} title="Select Existing Invoice">
+        <Modal isOpen={isInvoiceSelectorOpen} onClose={() => setIsInvoiceSelectorOpen(false)} title={t("Select Existing Invoice")}>
             <div className="space-y-4 max-h-[60vh] overflow-y-auto p-1">
-                <p className="text-sm text-slate-500 mb-4">Select an invoice from another job for this customer to import the line items.</p>
+                <p className="text-sm text-slate-500 mb-4">{t("Select an invoice from another job for this customer to import the line items.")}</p>
                 {(!state.jobs || state.jobs.filter(j => j.invoice && (j.customerId === job.customerId || (j.customerName && j.customerName !== 'Unknown Customer' && job.customerName && j.customerName.toLowerCase() === job.customerName.toLowerCase())) && j.id !== job.id).length === 0) && (
-                    <div className="text-center p-6 text-slate-500 bg-slate-50 rounded-lg border border-dashed">No other invoices found for this customer.</div>
+                    <div className="text-center p-6 text-slate-500 bg-slate-50 rounded-lg border border-dashed">{t("No other invoices found for this customer.")}</div>
                 )}                {state.jobs?.filter(j => j.invoice && (j.customerId === job.customerId || (j.customerName && j.customerName !== 'Unknown Customer' && job.customerName && j.customerName.toLowerCase() === job.customerName.toLowerCase())) && j.id !== job.id)
                     .sort((a,b) => new Date(b.createdAt||0).getTime() - new Date(a.createdAt||0).getTime())
                     .map(j => (
                     <button type="button" key={j.id} onClick={() => { handleImportSelectedInvoice(j.id); }} className="w-full text-left border rounded-lg p-4 flex flex-col md:flex-row justify-between md:items-center bg-white cursor-pointer hover:border-blue-400 hover:shadow-md transition-all">
                         <div className="mb-2 md:mb-0">
                             <p className="font-semibold text-slate-900">INV-{j.invoice?.id || j.id} - {j.customerName}</p>
-                            <p className="text-sm text-slate-500">{new Date(j.createdAt||0).toLocaleDateString()} • {j.invoice?.items?.length || 0} items</p>
+                            <p className="text-sm text-slate-500">{new Date(j.createdAt||0).toLocaleDateString()} • {j.invoice?.items?.length || 0} {j.invoice?.items?.length === 1 ? t("item") : t("items")}</p>
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="font-bold text-green-700">${(Number(j.invoice?.totalAmount || j.invoice?.amount) || 0).toFixed(2)}</span>
-                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${j.invoice?.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'}`}>{j.invoice?.status || 'Pending'}</span>
+                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${j.invoice?.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'}`}>{j.invoice?.status === 'Paid' ? t('Paid') : t('Pending')}</span>
                         </div>
                     </button>
                 ))}
@@ -1103,10 +1103,10 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
         </Modal>
 
         {/* Improved Refrigerant Modal */}
-        <Modal isOpen={isRefrigerantModalOpen} onClose={() => setIsRefrigerantModalOpen(false)} title="Log Refrigerant Usage">
+        <Modal isOpen={isRefrigerantModalOpen} onClose={() => setIsRefrigerantModalOpen(false)} title={t("Log Refrigerant Usage")}>
             <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                    <Select label="Refrigerant Type" value={refrigerantEntry.type} onChange={e => setRefrigerantEntry({...refrigerantEntry, type: e.target.value})}>
+                    <Select label={t("Refrigerant Type")} value={refrigerantEntry.type} onChange={e => setRefrigerantEntry({...refrigerantEntry, type: e.target.value})}>
                         <option>R-410A</option>
                         <option>R-22</option>
                         <option>R-404A</option>
@@ -1114,53 +1114,53 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                         <option>R-32</option>
                         <option>R-438A (MO99)</option>
                     </Select>
-                    <Select label="Action" value={refrigerantEntry.action} onChange={e => setRefrigerantEntry({...refrigerantEntry, action: e.target.value})}>
-                        <option>Added</option>
-                        <option>Recovered</option>
-                        <option>Reclaimed</option>
+                    <Select label={t("Action")} value={refrigerantEntry.action} onChange={e => setRefrigerantEntry({...refrigerantEntry, action: e.target.value})}>
+                        <option value="Added">{t("Added")}</option>
+                        <option value="Recovered">{t("Recovered")}</option>
+                        <option value="Reclaimed">{t("Reclaimed")}</option>
                     </Select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                    <Input label="Amount" type="number" step="0.1" value={refrigerantEntry.amount} onChange={e => setRefrigerantEntry({...refrigerantEntry, amount: e.target.value})} placeholder="e.g. 2.5"/>
-                    <Select label="Unit" value={refrigerantEntry.unit} onChange={e => setRefrigerantEntry({...refrigerantEntry, unit: e.target.value})}>
-                        <option>lbs</option>
-                        <option>oz</option>
-                        <option>kg</option>
+                    <Input label={t("Amount")} type="number" step="0.1" value={refrigerantEntry.amount} onChange={e => setRefrigerantEntry({...refrigerantEntry, amount: e.target.value})} placeholder={t("e.g. 2.5")}/>
+                    <Select label={t("Unit")} value={refrigerantEntry.unit} onChange={e => setRefrigerantEntry({...refrigerantEntry, unit: e.target.value})}>
+                        <option value="lbs">{t("lbs")}</option>
+                        <option value="oz">{t("oz")}</option>
+                        <option value="kg">{t("kg")}</option>
                     </Select>
                 </div>
                 
-                <Select label="Select Container/Cylinder" value={refrigerantEntry.cylinderNumber} onChange={e => setRefrigerantEntry({...refrigerantEntry, cylinderNumber: e.target.value})}>
-                    <option value="">-- Choose Container --</option>
+                <Select label={t("Select Container/Cylinder")} value={refrigerantEntry.cylinderNumber} onChange={e => setRefrigerantEntry({...refrigerantEntry, cylinderNumber: e.target.value})}>
+                    <option value="">{t("-- Choose Container --")}</option>
                     {state.refrigerantCylinders?.map(c => (
-                        <option key={c.id} value={c.id}>{c.type} - {c.tag} ({c.status}) [{c.remainingWeight.toFixed(1)} lbs left]</option>
+                        <option key={c.id} value={c.id}>{c.type} - {c.tag} ({t(c.status)}) [{c.remainingWeight.toFixed(1)} {t("lbs left")}]</option>
                     ))}
-                    <option value="CUSTOM">Manual Entry...</option>
+                    <option value="CUSTOM">{t("Manual Entry...")}</option>
                 </Select>
 
                 {refrigerantEntry.cylinderNumber === 'CUSTOM' && (
                     <div className="flex gap-2 items-end">
                         <div className="flex-1">
-                            <Input label="Manual Cylinder #" placeholder="Enter serial or tracking #" value={customCylString} onChange={e => setCustomCylString(e.target.value)} />
+                            <Input label={t("Manual Cylinder #")} placeholder={t("Enter serial or tracking #")} value={customCylString} onChange={e => setCustomCylString(e.target.value)} />
                         </div>
                         <BarcodeScannerButton onScan={(text) => setCustomCylString(text)} />
                     </div>
                 )}
 
                  <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="secondary" onClick={() => setIsRefrigerantModalOpen(false)}>Cancel</Button>
-                    <Button onClick={handleAddRefrigerant} disabled={!refrigerantEntry.amount || !refrigerantEntry.cylinderNumber}>Log Usage</Button>
+                    <Button variant="secondary" onClick={() => setIsRefrigerantModalOpen(false)}>{t("Cancel")}</Button>
+                    <Button onClick={handleAddRefrigerant} disabled={!refrigerantEntry.amount || !refrigerantEntry.cylinderNumber}>{t("Log Usage")}</Button>
                 </div>
             </div>
         </Modal>
 
         {/* Parts Selection Modal */}
-        <Modal isOpen={isPartModalOpen} onClose={() => setIsPartModalOpen(false)} title="Add Parts from Inventory">
+        <Modal isOpen={isPartModalOpen} onClose={() => setIsPartModalOpen(false)} title={t("Add Parts from Inventory")}>
             <div className="space-y-4">
                 {!selectedPart ? (
                     <>
                         <Input 
-                            label="Search Inventory" 
-                            placeholder="Search by name, SKU or barcode..." 
+                            label={t("Search Inventory")} 
+                            placeholder={t("Search by name, SKU or barcode...")} 
                             value={partSearch} 
                             onChange={e => setPartSearch(e.target.value)}
                         />
@@ -1180,15 +1180,15 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                                 >
                                     <div>
                                         <p className="font-bold text-sm text-slate-800 dark:text-slate-100">{item.name}</p>
-                                        <p className="text-[10px] text-slate-400 uppercase font-black">SKU: {item.sku} • {item.location}</p>
+                                        <p className="text-[10px] text-slate-400 uppercase font-black">SKU: {item.sku} • {t(item.location)}</p>
                                     </div>
                                     <div className="text-right">
                                         <p className="text-xs font-black text-emerald-600">${item.price}</p>
-                                        <p className={`text-[10px] font-bold ${item.quantity <= item.minQuantity ? 'text-red-500' : 'text-slate-500'}`}>Stock: {item.quantity}</p>
+                                        <p className={`text-[10px] font-bold ${item.quantity <= item.minQuantity ? 'text-red-500' : 'text-slate-500'}`}>{t("Stock")}: {item.quantity}</p>
                                     </div>
                                 </button>
                             ))}
-                            {state.inventory.length === 0 && <p className="p-4 text-center text-xs text-slate-400">Inventory is empty.</p>}
+                            {state.inventory.length === 0 && <p className="p-4 text-center text-xs text-slate-400">{t("Inventory is empty.")}</p>}
                         </div>
                         {partSearch && state.inventory.filter(i => i.name.toLowerCase().includes(partSearch.toLowerCase())).length === 0 && (
                             <div className="p-3 bg-white dark:bg-slate-800 text-center border-t border-slate-200 dark:border-slate-700">
@@ -1196,7 +1196,7 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                                     setSelectedPart({ id: 'custom', name: partSearch, sku: '', price: 0, quantity: 999, minQuantity: 0, location: 'Manual Entry' });
                                     setPartPaymentMethod('company'); // Default for off-site procurement
                                 }} className="w-full text-xs font-bold border-dashed border-2 border-primary-300 dark:border-primary-700">
-                                    + Procure "{partSearch}" from Parts House
+                                    {t("+ Procure \"{name}\" from Parts House", { name: partSearch })}
                                 </Button>
                             </div>
                         )}
@@ -1206,54 +1206,54 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                         <div className="flex justify-between items-start mb-4">
                             <div>
                                 <h4 className="font-black text-primary-600 uppercase tracking-tight">{selectedPart.name}</h4>
-                                <p className="text-xs text-slate-500">Inventory SKU: {selectedPart.sku}</p>
+                                <p className="text-xs text-slate-500">{t("Inventory SKU")}: {selectedPart.sku}</p>
                             </div>
-                            <button title="Clear Selection" onClick={() => setSelectedPart(null)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
+                            <button title={t("Clear Selection")} onClick={() => setSelectedPart(null)} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <Input label="Quantity Used" type="number" value={partQuantity} onChange={e => setPartQuantity(Number(e.target.value))} min={1} />
+                            <Input label={t("Quantity Used")} type="number" value={partQuantity} onChange={e => setPartQuantity(Number(e.target.value))} min={1} />
                             {selectedPart.id === 'custom' ? (
-                                <Input label="Est. Price (Each)" type="number" step="0.01" value={selectedPart.price || ''} onChange={e => setSelectedPart({...selectedPart, price: parseFloat(e.target.value) || 0})} />
+                                <Input label={t("Est. Price (Each)")} type="number" step="0.01" value={selectedPart.price || ''} onChange={e => setSelectedPart({...selectedPart, price: parseFloat(e.target.value) || 0})} />
                             ) : (
-                                <Select label="Pulled From" value={partLocation} onChange={e => setPartLocation(e.target.value)}>
-                                    <option>Truck</option>
-                                    <option>Warehouse</option>
-                                    <option>Job Site</option>
+                                <Select label={t("Pulled From")} value={partLocation} onChange={e => setPartLocation(e.target.value)}>
+                                    <option value="Truck">{t("Truck")}</option>
+                                    <option value="Warehouse">{t("Warehouse")}</option>
+                                    <option value="Job Site">{t("Job Site")}</option>
                                 </Select>
                             )}
                             {selectedPart.id === 'custom' && (
-                                <Input label="Part Number / SKU" value={selectedPart.sku || ''} onChange={e => setSelectedPart({...selectedPart, sku: e.target.value})} placeholder="Optional: Manufacturer part #" className="col-span-2" />
+                                <Input label={t("Part Number / SKU")} value={selectedPart.sku || ''} onChange={e => setSelectedPart({...selectedPart, sku: e.target.value})} placeholder={t("Optional: Manufacturer part #")} className="col-span-2" />
                             )}
                         </div>
 
                         <div className="mt-4 pt-4 border-t border-primary-100 dark:border-primary-900/20">
-                            <Select label="Payment / Sourcing Workflow" value={partPaymentMethod} onChange={e => setPartPaymentMethod(e.target.value as any)}>
-                                <option value="inventory">Already in Stock (Inventory)</option>
-                                <option value="company">Bought with Company Card (Parts House)</option>
-                                <option value="personal">Bought with Personal Funds (Reimburse Me)</option>
-                                <option value="other">Other Sourcing Method</option>
+                            <Select label={t("Payment / Sourcing Workflow")} value={partPaymentMethod} onChange={e => setPartPaymentMethod(e.target.value as any)}>
+                                <option value="inventory">{t("Already in Stock (Inventory)")}</option>
+                                <option value="company">{t("Bought with Company Card (Parts House)")}</option>
+                                <option value="personal">{t("Bought with Personal Funds (Reimburse Me)")}</option>
+                                <option value="other">{t("Other Sourcing Method")}</option>
                             </Select>
 
                             {(partPaymentMethod === 'personal' || partPaymentMethod === 'company' || partPaymentMethod === 'other') && (
                                 <div className="mt-4 space-y-4">
                                     {partPaymentMethod === 'other' && (
                                         <Textarea 
-                                            label="Explanation" 
-                                            placeholder="Explain payment method..." 
+                                            label={t("Explanation")} 
+                                            placeholder={t("Explain payment method...")} 
                                             value={(selectedPart as any).explanation || ''} 
                                             onChange={e => setSelectedPart({...selectedPart, explanation: e.target.value} as any)} 
                                         />
                                     )}
                                     <div>
-                                        <p className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Upload Receipt / Invoice</p>
+                                        <p className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">{t("Upload Receipt / Invoice")}</p>
                                         <div className="flex items-center gap-3">
                                             <input type="file" accept="image/*,application/pdf" onChange={handleReceiptUpload} className="hidden" id="part-receipt" />
                                             <label htmlFor="part-receipt" className={`cursor-pointer px-4 py-2 ${partReceipt ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-white dark:bg-slate-800 border border-slate-300'} rounded shadow-sm text-sm font-medium hover:bg-opacity-80 transition-colors`}>
-                                                {partReceipt ? 'Receipt Captured ✓' : 'Take Photo / Upload'}
+                                                {partReceipt ? t("Receipt Captured ✓") : t("Take Photo / Upload")}
                                             </label>
                                         </div>
                                         <p className="text-xs text-gray-500 mt-1 italic">
-                                            {partPaymentMethod === 'personal' ? 'Required for fast reimbursement.' : 'Required for review and compliance.'}
+                                            {partPaymentMethod === 'personal' ? t("Required for fast reimbursement.") : t("Required for review and compliance.")}
                                         </p>
                                     </div>
                                 </div>
@@ -1261,22 +1261,22 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                         </div>
 
                         <div className="mt-4 pt-4 border-t border-primary-100 dark:border-primary-900/20 flex justify-end gap-2">
-                            <Button variant="secondary" onClick={() => setSelectedPart(null)} className="w-auto">Change Part</Button>
-                            <Button onClick={handleAddPart} className="w-auto">Confirm & Add</Button>
+                            <Button variant="secondary" onClick={() => setSelectedPart(null)} className="w-auto">{t("Change Part")}</Button>
+                            <Button onClick={handleAddPart} className="w-auto">{t("Confirm & Add")}</Button>
                         </div>
                     </div>
                 )}
                  <div className="flex justify-end pt-4">
-                    <Button variant="secondary" onClick={() => setIsPartModalOpen(false)} className="w-full">Cancel</Button>
+                    <Button variant="secondary" onClick={() => setIsPartModalOpen(false)} className="w-full">{t("Cancel")}</Button>
                 </div>
             </div>
         </Modal>
 
         {/* Tool Reading Modal */}
-        <Modal isOpen={isToolReadingModalOpen} onClose={() => setIsToolReadingModalOpen(false)} title="Add Tool Reading">
+        <Modal isOpen={isToolReadingModalOpen} onClose={() => setIsToolReadingModalOpen(false)} title={t("Add Tool Reading")}>
             <div className="space-y-4">
-                <Select label="Tool Type" value={newReading.toolType} onChange={e => setNewReading({...newReading, toolType: e.target.value})}>
-                    <option value="">-- Select Tool --</option>
+                <Select label={t("Tool Type")} value={newReading.toolType} onChange={e => setNewReading({...newReading, toolType: e.target.value})}>
+                    <option value="">{t("-- Select Tool --")}</option>
                     <option>Sman Digital Manifold</option>
                     <option>JobLink Probes</option>
                     <option>Scale</option>
@@ -1284,57 +1284,57 @@ const JobWorkflowModal: React.FC<{ job: Job, isOpen: boolean, onClose: () => voi
                     <option>Thermal Camera</option>
                     <option>Vacuum Gauge</option>
                 </Select>
-                <Textarea label="Reading Summary" placeholder="e.g. Low Side: 120 PSI, High Side: 350 PSI, Subcool: 12F" value={newReading.summary} onChange={e => setNewReading({...newReading, summary: e.target.value})} />
+                <Textarea label={t("Reading Summary")} placeholder={t("e.g. Low Side: 120 PSI, High Side: 350 PSI, Subcool: 12F")} value={newReading.summary} onChange={e => setNewReading({...newReading, summary: e.target.value})} />
                 
                 <div className="pt-2">
-                    <p className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">Attach Reading/Diagnostic Screenshot (Optional)</p>
+                    <p className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">{t("Attach Reading/Diagnostic Screenshot (Optional)")}</p>
                     <div className="flex items-center gap-3">
                         <input type="file" accept="image/*,application/pdf" onChange={(e) => handlePhotoUpload(e, 'Diagnostic Reading')} className="hidden" id="reading-upload" />
                         <label htmlFor="reading-upload" className="cursor-pointer px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 rounded shadow-sm text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                            Upload Diagnostic File
+                            {t("Upload Diagnostic File")}
                         </label>
                     </div>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="secondary" onClick={() => setIsToolReadingModalOpen(false)}>Cancel</Button>
-                    <Button onClick={() => { handleAddReading(); setIsToolReadingModalOpen(false); }} disabled={!newReading.toolType || !newReading.summary}>Save Reading</Button>
+                    <Button variant="secondary" onClick={() => setIsToolReadingModalOpen(false)}>{t("Cancel")}</Button>
+                    <Button onClick={() => { handleAddReading(); setIsToolReadingModalOpen(false); }} disabled={!newReading.toolType || !newReading.summary}>{t("Save Reading")}</Button>
                 </div>
             </div>
         </Modal>
 
-        <Modal isOpen={isPayableModalOpen} onClose={() => {setIsPayableModalOpen(false); onClose();}} title="Enter Payable Amount">
+        <Modal isOpen={isPayableModalOpen} onClose={() => {setIsPayableModalOpen(false); onClose();}} title={t("Enter Payable Amount")}>
             <div className="space-y-4">
                 <Input 
-                    label="Payable Amount"
+                    label={t("Payable Amount")}
                     type="number"
                     value={payableAmount}
                     onChange={(e) => setPayableAmount(Number(e.target.value))}
                     required
                 />
                 <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="secondary" onClick={() => {setIsPayableModalOpen(false); onClose();}}>Cancel</Button>
-                    <Button onClick={handlePayableModalSubmit}>Save Payable</Button>
+                    <Button variant="secondary" onClick={() => {setIsPayableModalOpen(false); onClose();}}>{t("Cancel")}</Button>
+                    <Button onClick={handlePayableModalSubmit}>{t("Save Payable")}</Button>
                 </div>
             </div>
         </Modal>
 
-        <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title={`Import ${importTarget} Checklist`}>
+        <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title={t("Import {target} Checklist", { target: t(importTarget.charAt(0).toUpperCase() + importTarget.slice(1)) })}>
             <div className="space-y-4">
                 <div className="max-h-60 overflow-y-auto border rounded divide-y">
-                     {docTemplates.map(t => (
-                        <button key={t.id} onClick={() => {
-                            const items = t.items.map((i: any, idx: number) => ({ id: `imp-${t.id}-${idx}-${Date.now()}`, label: i.label, completed: false }));
+                     {docTemplates.map(tmpl => (
+                        <button key={tmpl.id} onClick={() => {
+                            const items = tmpl.items.map((i: any, idx: number) => ({ id: `imp-${tmpl.id}-${idx}-${Date.now()}`, label: i.label, completed: false }));
                             const listKey = `${importTarget}Checklist` as const;
                             updateWorkflowState(listKey, [...workflowState[listKey], ...items]);
                             setIsImportModalOpen(false);
                         }} className="w-full text-left p-3 hover:bg-slate-50 flex justify-between items-center group">
-                            <div><p className="font-bold text-sm">{t.name}</p><p className="text-xs text-slate-400">{t.items.length} items</p></div>
+                            <div><p className="font-bold text-sm">{tmpl.name}</p><p className="text-xs text-slate-400">{tmpl.items.length} {tmpl.items.length === 1 ? t("item") : t("items")}</p></div>
                             <ArrowRight size={16} className="text-slate-300 group-hover:text-primary-500"/>
                         </button>
                     ))}
                 </div>
-                <Button variant="secondary" onClick={() => setIsImportModalOpen(false)} className="w-full">Cancel</Button>
+                <Button variant="secondary" onClick={() => setIsImportModalOpen(false)} className="w-full">{t("Cancel")}</Button>
             </div>
         </Modal>
         

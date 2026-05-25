@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket, DollarSign, Terminal } from 'lucide-react';
 import type { User } from '../../types';
 import { useAppContext } from '../../context/AppContext';
+import { useLanguage } from 'context/LanguageContext';
 
 interface MasterSidebarProps {
   user: User;
@@ -16,6 +17,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
   const location = useLocation();
   const navigate = useNavigate();
   const { state } = useAppContext();
+  const { t } = useLanguage();
 
 
 
@@ -27,7 +29,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
         { path: '/master/analytics', label: 'Platform Analytics', icon: BarChart2 },
         { path: '/master/integration-requests', label: 'Integration Requests', icon: Network },
         { path: '/master/campaigns', label: 'Campaign Studio', icon: Megaphone },
-        { path: '/master/drip-campaigns', label: 'Drip Sequences', icon: Rocket },
+        
         { path: '/master/ai-usage', label: 'AI Usage Metrics', icon: BrainCircuit },
         { path: '/master/ai-reports', label: 'AI Worker Reports', icon: FileText },
         { path: '/master/storage-usage', label: 'Storage Metrics', icon: Database },
@@ -106,7 +108,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1 custom-scrollbar">
             {filteredNavGroups.map((group, gIdx) => (
                 <div key={gIdx} className="mb-6">
-                    <h3 className="px-4 mb-2 text-xs font-bold text-slate-400 uppercase tracking-widest">{group.group}</h3>
+                    <h3 className="px-4 mb-2 text-xs font-bold text-slate-400 uppercase tracking-widest">{t(group.group)}</h3>
                     <div className="space-y-1">
                         {group.items.map((item) => (
                             <Link
@@ -120,7 +122,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
                                 }`}
                             >
                                 <item.icon className={`mr-3 h-5 w-5 flex-shrink-0 ${location.pathname.startsWith(item.path) ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`} />
-                                {item.label}
+                                {t(item.label)}
                             </Link>
                         ))}
                     </div>
@@ -134,7 +136,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
                     onClick={() => navigate('/sales/dashboard')}
                     className="w-full flex items-center justify-center px-4 py-2 border border-purple-500 text-purple-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-purple-900/30 focus:outline-none transition-colors"
                 >
-                    Switch to Sales View
+                    {t('Switch to Sales View')}
                 </button>
             )}
 
@@ -146,11 +148,11 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
                 </div>
                 <div className="ml-3 overflow-hidden">
                     <p className="text-sm font-medium text-slate-700 dark:text-white truncate">{user.firstName} {user.lastName}</p>
-                    <p className="text-xs text-slate-500 truncate">{isPlatformOwner ? 'Platform Owner' : 'Franchise Partner'}</p>
+                    <p className="text-xs text-slate-500 truncate">{isPlatformOwner ? t('Platform Owner') : t('Franchise Partner')}</p>
                 </div>
             </div>
             <button onClick={onLogout} className="w-full flex items-center justify-center px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 focus:outline-none transition-colors">
-                Log Out
+                {t('Log Out')}
             </button>
         </div>
       </aside>

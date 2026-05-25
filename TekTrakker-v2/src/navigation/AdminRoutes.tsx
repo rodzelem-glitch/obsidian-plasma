@@ -41,6 +41,7 @@ import VirtualWorkerReports from '../pages/admin/VirtualWorkerReports';
 import HROperationsDashboard from '../pages/admin/HROperationsDashboard';
 import WarrantyClaimsDashboard from '../pages/admin/WarrantyClaimsDashboard';
 import Whiteboard from '../pages/admin/Whiteboard';
+import CompanyCalendar from '../pages/admin/CompanyCalendar';
 
 const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: boolean }> = ({ user, handleLogout, isDemoMode }) => {
   const isKortTester = user?.email === 'integrations@kortpayments.com' || (user?.role as string) === 'kort_tester';
@@ -91,6 +92,7 @@ const AdminRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMode: 
           <Route path="contracting" element={<ContractingHub />} />
 
           <Route path="projects" element={<ProjectManagement />} />
+          <Route path="calendar" element={<CompanyCalendar />} />
           <Route path="proposal" element={<FieldProposal />} />
           <Route path="kiosk" element={<KioskMode />} />
           <Route path="training" element={<TrainingHub user={user} />} />

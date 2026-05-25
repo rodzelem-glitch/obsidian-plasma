@@ -231,7 +231,15 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     </div>
                                     <div>
                                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Technician</p>
-                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">{job.assignedTechnicianName || 'Unassigned'}</p>
+                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">
+                                            {(() => {
+                                                if (job.assignedTechnicianId) {
+                                                    const tech = state.users?.find((u: any) => u.id === job.assignedTechnicianId);
+                                                    if (tech) return `${tech.firstName} ${tech.lastName}`;
+                                                }
+                                                return job.assignedTechnicianName || 'Unassigned';
+                                            })()}
+                                        </p>
                                     </div>
                                 </div>
                             </div>

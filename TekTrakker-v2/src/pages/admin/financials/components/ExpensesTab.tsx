@@ -12,6 +12,7 @@ import { useAppContext } from 'context/AppContext';
 import Modal from 'components/ui/Modal';
 import Textarea from 'components/ui/Textarea';
 import { db } from 'lib/firebase';
+import { useLanguage } from 'context/LanguageContext';
 
 interface ExpensesTabProps {
     allExpenses: any[];
@@ -35,14 +36,15 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
     currentUser
 }) => {
     const { state } = useAppContext();
+    const { t } = useLanguage();
     const [shareModalExp, setShareModalExp] = useState<any>(null);
     const [shareTargetId, setShareTargetId] = useState<string>('');
     const [shareMessageText, setShareMessageText] = useState('');
     const [isSharing, setIsSharing] = useState(false);
 
-    const handleCopyRef = (expId: string) => {
-        navigator.clipboard.writeText(`#EXP-${expId}`);
-        showToast.warn("Expense Reference Copied! Paste it anywhere to create a smart link.");
+    const handleCopyRef = (jobId: string) => {
+        navigator.clipboard.writeText(`#EXP-${jobId}`);
+        showToast.warn(t("Expense Reference Copied! Paste it anywhere to create a smart link."));
     };
 
     const handleShareExpense = async () => {
@@ -54,18 +56,18 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                 senderId: state.currentUser?.id,
                 senderName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
                 receiverId: shareTargetId,
-                content: `${shareMessageText ? shareMessageText + '\n\n' : ''}Check out this expense: #EXP-${shareModalExp.id}`,
+                content: `${shareMessageText ? shareMessageText + '\n\n' : ''}${t("Check out this expense:")} #EXP-${shareModalExp.id}`,
                 timestamp: new Date().toISOString(),
                 createdAt: new Date().toISOString(),
                 organizationId: state.currentOrganization?.id,
                 type: 'internal'
             };
             await db.collection('messages').doc(msgObj.id).set(msgObj);
-            showToast.warn("Expense shared successfully!");
+            showToast.warn(t("Expense shared successfully!"));
             setShareModalExp(null);
             setShareMessageText('');
         } catch (e) {
-            showToast.warn("Failed to share.");
+            showToast.warn(t("Failed to share."));
         } finally {
             setIsSharing(false);
         }
@@ -82,13 +84,13 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
             if (image.base64String && (window as any).handleAttachReceipt) {
                 const dataUrl = `data:image/jpeg;base64,${image.base64String}`;
                 (window as any).handleAttachReceipt(targetLogId, 'expense', dataUrl);
-                showToast.warn("Receipt captured and attached!");
+                showToast.warn(t("Receipt captured and attached!"));
             }
         } catch (e: any) {
             console.error("Camera Error:", e);
             // Don't alert on cancel
             if (!e.message?.includes('User cancelled')) {
-                showToast.warn(`Error matching: ${e.message}`);
+                showToast.warn(`${t("Error matching:")} ${e.message}`);
             }
         }
     };
@@ -195,17 +197,17 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
 
     return (
         <Card>
-            <Modal isOpen={!!shareModalExp} onClose={() => setShareModalExp(null)} title={`Share Expense: ${shareModalExp?.vendor}`}>
+            <Modal isOpen={!!shareModalExp} onClose={() => setShareModalExp(null)} title={`${t("Share Expense:")} ${shareModalExp?.vendor}`}>
                  <div className="space-y-4">
-                     <p className="text-sm text-slate-500">Send this expense reference to a staff member.</p>
+                     <p className="text-sm text-slate-500">{t("Send this expense reference to a staff member.")}</p>
                      <select 
-                         aria-label="Select Share Recipient"
-                         title="Select Share Recipient"
+                         aria-label={t("Select Share Recipient")}
+                         title={t("Select Share Recipient")}
                          className="w-full border rounded-lg p-2 text-slate-900 dark:text-white dark:bg-slate-800 dark:border-slate-700 bg-white"
                          value={shareTargetId}
                          onChange={e => setShareTargetId(e.target.value)}
                      >
-                         <option value="">Select Recipient...</option>
+                         <option value="">{t("Select Recipient...")}</option>
                          {state.users.filter((u: any) => 
                              u.organizationId === state.currentOrganization?.id && 
                              u.id !== state.currentUser?.id && 
@@ -215,14 +217,14 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                          ))}
                      </select>
                      <Textarea 
-                         placeholder="Add an optional message..."
+                         placeholder={t("Add an optional message...")}
                          value={shareMessageText}
                          onChange={e => setShareMessageText(e.target.value)}
                      />
                      <div className="flex justify-end gap-2">
-                         <Button variant="secondary" onClick={() => setShareModalExp(null)}>Cancel</Button>
+                         <Button variant="secondary" onClick={() => setShareModalExp(null)}>{t("Cancel")}</Button>
                          <Button onClick={handleShareExpense} disabled={!shareTargetId || isSharing}>
-                             {isSharing ? 'Sending...' : 'Send Message'}
+                             {isSharing ? t("Sending...") : t("Send Message")}
                          </Button>
                      </div>
                  </div>
@@ -232,48 +234,48 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input
                         type="text"
-                        placeholder="Search expenses by vendor, category, or amount..."
+                        placeholder={t("Search expenses by vendor, category, or amount...")}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-900/50 text-slate-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none text-sm"
                     />
                 </div>
                 <div className="flex justify-between items-center flex-wrap gap-4">
-                <h3 className="font-bold text-gray-800 dark:text-white">Accounts Payable & Expenses</h3>
+                <h3 className="font-bold text-gray-800 dark:text-white">{t("Accounts Payable & Expenses")}</h3>
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2 text-sm">
-                        <label htmlFor="sort-expenses" className="font-medium text-slate-600 dark:text-slate-300">Sort by:</label>
+                        <label htmlFor="sort-expenses" className="font-medium text-slate-600 dark:text-slate-300">{t("Sort by:")}</label>
                         <select 
                             id="sort-expenses"
-                            aria-label="Sort Expenses"
+                            aria-label={t("Sort Expenses")}
                             className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
                         >
-                            <option value="date_desc">Newest First</option>
-                            <option value="date_asc">Oldest First</option>
-                            <option value="name_asc">Vendor (A-Z)</option>
-                            <option value="name_desc">Vendor (Z-A)</option>
-                            <option value="amount_desc">Amount (High to Low)</option>
-                            <option value="amount_asc">Amount (Low to High)</option>
+                            <option value="date_desc">{t("Newest First")}</option>
+                            <option value="date_asc">{t("Oldest First")}</option>
+                            <option value="name_asc">{t("Vendor (A-Z)")}</option>
+                            <option value="name_desc">{t("Vendor (Z-A)")}</option>
+                            <option value="amount_desc">{t("Amount (High to Low)")}</option>
+                            <option value="amount_asc">{t("Amount (Low to High)")}</option>
                         </select>
                     </div>
                     <div className="flex gap-2">
                         <Button variant={taxMode ? "primary" : "secondary"} onClick={() => setTaxMode(!taxMode)} className="w-auto text-xs flex items-center gap-2">
-                            <Calculator size={14} /> {taxMode ? 'Exit Tax Prep' : 'Tax Prep Mode'}
+                            <Calculator size={14} /> {taxMode ? t("Exit Tax Prep") : t("Tax Prep Mode")}
                         </Button>
                         <Button onClick={() => { 
                             setNewExpense({date: new Date().toISOString().split('T')[0], category: 'Materials', description: '', amount: 0, vendor: '', paidBy: currentUser?.firstName || 'Admin', projectId: ''}); 
                             setIsExpenseModalOpen(true); 
-                        }} className="w-auto text-xs">+ Add Expense</Button>
+                        }} className="w-auto text-xs">+{t("Add Expense")}</Button>
                     </div>
                 </div>
                 </div>
             </div>
             {reconcileMode && duplicateGroups.length === 0 && (
                 <div className="p-8 text-center text-gray-500 bg-gray-50 dark:bg-slate-800/50 rounded-xl mb-4 border border-dashed border-gray-300 dark:border-slate-700">
-                    <p className="font-bold text-lg mb-2">No Duplicates Found!</p>
-                    <p className="text-sm">We couldn't find any expenses with matching amounts within a 7-day window.</p>
+                    <p className="font-bold text-lg mb-2">{t("No Duplicates Found!")}</p>
+                    <p className="text-sm">{t("We couldn't find any expenses with matching amounts within a 7-day window.")}</p>
                 </div>
             )}
             
@@ -281,12 +283,12 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                 <div className="space-y-4 animate-fade-in">
                     <div className="flex flex-wrap justify-between items-center bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-100 dark:border-indigo-800">
                         <div>
-                            <h4 className="font-bold text-indigo-900 dark:text-indigo-100 flex items-center gap-2"><FileText size={18}/> Schedule C / 1120S Tax Preparation</h4>
-                            <p className="text-xs text-indigo-700 dark:text-indigo-300">Expenditures mapped to IRS tax categories for the selected year.</p>
+                            <h4 className="font-bold text-indigo-900 dark:text-indigo-100 flex items-center gap-2"><FileText size={18}/> {t("Schedule C / 1120S Tax Preparation")}</h4>
+                            <p className="text-xs text-indigo-700 dark:text-indigo-300">{t("Expenditures mapped to IRS tax categories for the selected year.")}</p>
                         </div>
                         <div className="flex gap-3 items-center">
                             <select 
-                                aria-label="Tax Year"
+                                aria-label={t("Tax Year")}
                                 className="border rounded-lg p-1.5 font-bold dark:bg-slate-800 dark:border-slate-600"
                                 value={taxYear}
                                 onChange={(e) => setTaxYear(e.target.value)}
@@ -296,15 +298,15 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                 <option value="2024">2024</option>
                                 <option value="2023">2023</option>
                             </select>
-                            <Button variant="secondary" onClick={handleExportTaxCSV} className="text-xs flex items-center gap-1 bg-white dark:bg-slate-800"><Download size={14}/> Export CSV</Button>
+                            <Button variant="secondary" onClick={handleExportTaxCSV} className="text-xs flex items-center gap-1 bg-white dark:bg-slate-800"><Download size={14}/> {t("Export CSV")}</Button>
                         </div>
                     </div>
                     
-                    <Table headers={['Tax Category', 'Transaction Count', 'Total Spend', 'Deductible Amount']}>
+                    <Table headers={[t('Tax Category'), t('Transaction Count'), t('Total Spend'), t('Deductible Amount')]}>
                         {taxSummary.map(row => (
                             <tr key={row.category} className="hover:bg-slate-50 dark:hover:bg-slate-800">
-                                <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{row.category}</td>
-                                <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{row.count} Receipts</td>
+                                <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{t(row.category)}</td>
+                                <td className="px-6 py-4 text-slate-600 dark:text-slate-400">{row.count} {t("Receipts")}</td>
                                 <td className="px-6 py-4 text-slate-600 dark:text-slate-400">${row.total.toFixed(2)}</td>
                                 <td className="px-6 py-4 font-bold text-emerald-600 dark:text-emerald-400">${row.deductible.toFixed(2)}</td>
                             </tr>
@@ -313,7 +315,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                     
                     <div className="flex justify-end mt-4">
                         <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right">
-                            <div className="text-sm text-emerald-700 dark:text-emerald-300 uppercase tracking-wider font-bold">Estimated Total Deductions</div>
+                            <div className="text-sm text-emerald-700 dark:text-emerald-300 uppercase tracking-wider font-bold">{t("Estimated Total Deductions")}</div>
                             <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
                                 ${taxSummary.reduce((sum, r) => sum + r.deductible, 0).toFixed(2)}
                             </div>
@@ -325,14 +327,14 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                     {duplicateGroups.map((group, gIdx) => (
                         <div key={gIdx} className="border-2 border-amber-200 dark:border-amber-900/40 rounded-xl overflow-hidden bg-amber-50/30 dark:bg-amber-900/10">
                             <div className="bg-amber-100 dark:bg-amber-900/30 p-2 px-4 text-amber-800 dark:text-amber-300 font-bold text-xs flex justify-between items-center">
-                                <span>Possible Duplicate Group {gIdx + 1} (Amount: ${(Number(group[0].amount) || 0).toFixed(2)})</span>
-                                <span className="text-[10px] uppercase font-black tracking-wider bg-amber-200 dark:bg-amber-800/50 px-2 py-0.5 rounded-full">{group.length} Matches</span>
+                                <span>{t("Possible Duplicate Group")} {gIdx + 1} ({t("Amount")}: ${(Number(group[0].amount) || 0).toFixed(2)})</span>
+                                <span className="text-[10px] uppercase font-black tracking-wider bg-amber-200 dark:bg-amber-800/50 px-2 py-0.5 rounded-full">{group.length} {t("Matches")}</span>
                             </div>
-                            <Table headers={['Date', 'Vendor', 'Description', 'Amount', 'Receipt', 'Actions']}>
+                            <Table headers={[t('Date'), t('Vendor'), t('Description'), t('Amount'), t('Receipt'), t('Actions')]}>
                                 {group.map((exp: any) => (
                                     <tr key={exp.id} className="hover:bg-white dark:hover:bg-slate-800">
                                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.date}</td>
-                                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white"><span className="text-xs font-bold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded mr-2">{exp.category}</span>{exp.vendor}</td>
+                                        <td className="px-6 py-4 font-medium text-slate-900 dark:text-white"><span className="text-xs font-bold px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded mr-2">{t(exp.category)}</span>{exp.vendor}</td>
                                         <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.description}</td>
                                         <td className="px-6 py-4 font-bold text-red-600">-${(Number(exp.amount) || 0).toFixed(2)}</td>
                                         <td className="px-6 py-4 text-center">
@@ -341,17 +343,17 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                                 const possibleUrls = exp.receiptUrls && exp.receiptUrls.length > 0 ? exp.receiptUrls : (possibleReceipt ? [possibleReceipt] : []);
                                                 if (possibleUrls.length > 0) {
                                                     return (
-                                                        <button onClick={() => setViewingReceipt(possibleUrls)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
+                                                        <button onClick={() => setViewingReceipt(possibleUrls)} className="text-blue-500 hover:text-blue-700" title={t("View Receipt")}>
                                                             <Paperclip size={18} />
                                                             {possibleUrls.length > 1 && <span className="ml-1 text-[10px] font-bold bg-blue-100 text-blue-800 px-1 rounded-full">{possibleUrls.length}</span>}
                                                         </button>
                                                     )
                                                 }
-                                                return <span className="text-xs text-slate-400">No Receipt</span>;
+                                                return <span className="text-xs text-slate-400">{t("No Receipt")}</span>;
                                             })()}
                                         </td>
                                         <td className="px-6 py-4 flex flex-wrap gap-2 items-center">
-                                            <button onClick={() => handleDeleteExpense(exp.id, exp.type)} className="text-red-500 hover:text-red-700 p-1 flex items-center gap-1 text-xs font-bold" title="Delete Duplicate"><Trash2 size={14}/> Delete</button>
+                                            <button onClick={() => handleDeleteExpense(exp.id, exp.type)} className="text-red-500 hover:text-red-700 p-1 flex items-center gap-1 text-xs font-bold" title={t("Delete Duplicate")}><Trash2 size={14}/> {t("Delete")}</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -360,12 +362,12 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                     ))}
                 </div>
             ) : (
-                <Table headers={['Date', 'Vendor', 'Category', 'Description', 'Amount', 'Receipt', 'Actions']}>
+                <Table headers={[t('Date'), t('Vendor'), t('Category'), t('Description'), t('Amount'), t('Receipt'), t('Actions')]}>
                     {sortedExpenses.map((exp: any) => (
                         <tr key={exp.id} title={`Keys: ${Object.keys(exp).join(', ')}`}>
                             <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.date}</td>
                             <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{exp.vendor}</td>
-                            <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{exp.category}</td>
+                            <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{t(exp.category)}</td>
                             <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.description}</td>
                             <td className="px-6 py-4 font-bold text-red-600">-${(Number(exp.amount) || 0).toFixed(2)}</td>
                             <td className="px-6 py-4 text-center group">
@@ -377,11 +379,11 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                         if (possibleUrls.length > 0) {
                                             return (
                                                 <div className="flex items-center gap-2">
-                                                    <button onClick={() => setViewingReceipt(possibleUrls)} className="text-blue-500 hover:text-blue-700" title="View Receipt">
+                                                    <button onClick={() => setViewingReceipt(possibleUrls)} className="text-blue-500 hover:text-blue-700" title={t("View Receipt")}>
                                                         <Paperclip size={18} />
                                                         {possibleUrls.length > 1 && <span className="ml-1 text-[10px] font-bold bg-blue-100 text-blue-800 px-1 rounded-full">{possibleUrls.length}</span>}
                                                     </button>
-                                                    <button onClick={() => handleDeleteReceipt(exp.id, exp.type)} className="text-red-500 hover:text-red-700" title="Delete Receipt">
+                                                    <button onClick={() => handleDeleteReceipt(exp.id, exp.type)} className="text-red-500 hover:text-red-700" title={t("Delete Receipt")}>
                                                         <Trash2 size={16} />
                                                     </button>
                                                 </div>
@@ -392,7 +394,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                                     <button 
                                                         onClick={() => handleCapture(exp.id, CameraSource.Camera)}
                                                         className="text-slate-400 hover:text-primary-500 transition-colors flex flex-col items-center"
-                                                        title="Take Photo"
+                                                        title={t("Take Photo")}
                                                     >
                                                         <CameraIcon size={18} />
                                                     </button>
@@ -405,7 +407,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                                             }
                                                         }}
                                                         className="text-slate-400 hover:text-primary-500 transition-colors flex flex-col items-center"
-                                                        title="Upload Image"
+                                                        title={t("Upload Image")}
                                                     >
                                                         <ImageIcon size={18} />
                                                     </button>
@@ -414,13 +416,13 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                                         type="file" 
                                                         accept="image/*" 
                                                         className="hidden" 
-                                                        aria-label="Upload Receipt"
-                                                        title="Upload Receipt" 
+                                                        aria-label={t("Upload Receipt")}
+                                                        title={t("Upload Receipt")} 
                                                         onChange={(e) => {
                                                             const file = e.target.files?.[0];
                                                             if (file && (window as any).handleAttachReceipt) {
                                                                 (window as any).handleAttachReceipt(exp.id, exp.type, file);
-                                                                showToast.warn("Receipt uploaded and attached!");
+                                                                showToast.warn(t("Receipt uploaded and attached!"));
                                                             }
                                                         }}
                                                     />
@@ -431,10 +433,10 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                 </div>
                             </td>
                             <td className="px-6 py-4 flex flex-wrap gap-2 items-center">
-                                <button onClick={() => handleEditExpense(exp)} className="text-blue-500 hover:text-blue-700 p-1" title="Edit Expense"><Edit size={16}/></button>
-                                <button aria-label="Copy Reference" title="Copy Reference" onClick={(e) => { e.stopPropagation(); handleCopyRef(exp.id); }} className="p-1 text-slate-400 hover:text-primary-600"><Copy size={16}/></button>
-                                <button aria-label="Share Expense" title="Share Expense" onClick={(e) => { e.stopPropagation(); setShareModalExp(exp); }} className="p-1 text-slate-400 hover:text-primary-600"><Share2 size={16}/></button>
-                                <button onClick={() => handleDeleteExpense(exp.id, exp.type)} className="text-red-500 hover:text-red-700 p-1" title="Delete Expense"><Trash2 size={16}/></button>
+                                <button onClick={() => handleEditExpense(exp)} className="text-blue-500 hover:text-blue-700 p-1" title={t("Edit Expense")}><Edit size={16}/></button>
+                                <button aria-label={t("Copy Reference")} title={t("Copy Reference")} onClick={(e) => { e.stopPropagation(); handleCopyRef(exp.id); }} className="p-1 text-slate-400 hover:text-primary-600"><Copy size={16}/></button>
+                                <button aria-label={t("Share Expense")} title={t("Share Expense")} onClick={(e) => { e.stopPropagation(); setShareModalExp(exp); }} className="p-1 text-slate-400 hover:text-primary-600"><Share2 size={16}/></button>
+                                <button onClick={() => handleDeleteExpense(exp.id, exp.type)} className="text-red-500 hover:text-red-700 p-1" title={t("Delete Expense")}><Trash2 size={16}/></button>
                             </td>
                         </tr>
                     ))}

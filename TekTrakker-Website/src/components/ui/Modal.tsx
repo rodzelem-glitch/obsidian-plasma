@@ -8,9 +8,10 @@ interface ModalProps {
     title: string;
     children: React.ReactNode;
     size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'; 
+    zIndex?: string;
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'lg' }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'lg', zIndex }) => {
     if (!isOpen) return null;
 
     const sizeClasses = {
@@ -21,7 +22,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 
         full: 'max-w-full h-full' 
     };
 
-    const zIndexClass = size === 'full' ? 'z-[200]' : 'z-[250]';
+    const zIndexClass = zIndex || (size === 'full' ? 'z-[200]' : 'z-[250]');
 
     return ReactDOM.createPortal(
         <div 
