@@ -7,6 +7,7 @@ import showToast from "lib/toast";
 import { getBaseUrl } from "lib/utils";
 import { Bell } from 'lucide-react';
 import { useLanguage } from 'context/LanguageContext';
+import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
 
 interface AgingReportTabProps {
     jobs: any[];
@@ -16,22 +17,26 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
     const { state } = useAppContext();
     const { t } = useLanguage();
     const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
+    const [recipientModalConfig, setRecipientModalConfig] = React.useState<{ isOpen: boolean; job: any | null }>({ isOpen: false, job: null });
 
-    const handleSendInvoiceReminder = async (job: any) => {
-        let email = job.customerEmail;
+    const handleSendInvoiceReminder = async (job: any, selectedEmails?: string[]) => {
+        let emails = selectedEmails;
         let phone = job.customerPhone;
         
-        if (!email && job.customerId) {
-            const cust = state.customers.find((c: any) => c.id === job.customerId);
-            if (cust) {
-                email = cust.email;
-                phone = cust.phone || phone;
+        if (!emails) {
+            let email = job.customerEmail;
+            if (!email && job.customerId) {
+                const cust = state.customers.find((c: any) => c.id === job.customerId);
+                if (cust) {
+                    email = cust.email;
+                    phone = cust.phone || phone;
+                }
             }
-        }
-
-        if (!email && !phone) {
-            showToast.warn(t("Customer requires an email or phone number for reminders."));
-            return;
+            if (!email && !phone) {
+                showToast.warn(t("Customer requires an email or phone number for reminders."));
+                return;
+            }
+            emails = email ? [email] : [];
         }
 
         if (job.invoice?.remindersSent) {
@@ -49,20 +54,35 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
             }
         }
 
-        if (!confirm(`${t("Send payment reminder for invoice #")}${job.invoice.id} ${t("to")} ${email || t("this customer")}?`)) return;
+        const msgText = emails.length > 0 ? emails.join(', ') : t("this customer");
+        if (!selectedEmails && !confirm(`${t("Send payment reminder for invoice #")}${job.invoice.id} ${t("to")} ${msgText}?`)) return;
 
         try {
             const link = `${getBaseUrl()}/#/invoice/${job.id}`;
             const orgName = state.currentOrganization?.name || 'Service Provider';
             const invTotal = Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0;
             
-            if (email) {
-                await db.collection('mail').add({
-                    to: [email],
+            const dueDateVal = job.invoice?.dueDate;
+            const isLate = (() => {
+                if (!dueDateVal) return false;
+                const dueDateObj = new Date(dueDateVal);
+                dueDateObj.setHours(0, 0, 0, 0);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                return today.getTime() > dueDateObj.getTime();
+            })();
+
+            const pastDueBanner = isLate ? `<div style="color:#dc2626;font-size:32px;font-weight:bold;margin-bottom:10px;text-align:left;border-bottom:2px solid #dc2626;padding-bottom:10px;">PAST DUE</div>` : '';
+
+            if (emails.length > 0) {
+                await db.collection('mail_queue').add({
+                    to: emails,
+                    replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
                     message: {
-                        subject: `Reminder: Invoice #${job.invoice.id} from ${orgName}`,
-                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;"><h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${job.customerName},</p><p>This is a friendly reminder that your invoice <strong>#${job.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
-                        text: `Reminder: Invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. Pay here: ${link}`
+                        subject: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${job.invoice.id} from ${orgName}`,
+                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;">${pastDueBanner}<h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${job.customerName},</p><p>This is a friendly reminder that your invoice <strong>#${job.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                        text: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. Pay here: ${link}`,
+                        replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com'
                     },
                     organizationId: state.currentOrganization?.id,
                     type: 'InvoiceReminder',
@@ -70,10 +90,10 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                 });
             }
 
-            if (phone) {
+            if (phone && !selectedEmails) {
                 await db.collection('messages').add({
                     to: phone,
-                    body: `Reminder from ${orgName}: Your invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. View and pay securely here: ${link}`,
+                    body: `${isLate ? 'PAST DUE - ' : ''}Reminder from ${orgName}: Your invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. View and pay securely here: ${link}`,
                     organizationId: state.currentOrganization?.id,
                     status: 'pending',
                     type: 'sms',
@@ -88,7 +108,12 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                 'invoice.remindersSent': newReminders
             });
 
-            showToast.warn(`${t("Reminder sent via")} ${email ? t("email") : ""} ${email && phone ? t("and") + " " : ""}${phone ? t("SMS text") : ""}!`);
+            // Update local job state
+            job.invoice.remindersSent = newReminders;
+
+            const sendModeText = emails.length > 0 ? t("email") : "";
+            const smsText = (phone && !selectedEmails) ? t("SMS text") : "";
+            showToast.warn(`${t("Reminder sent via")} ${sendModeText} ${sendModeText && smsText ? t("and") + " " : ""}${smsText}!`);
         } catch (e) {
             console.error(e);
             showToast.warn(t("Error sending reminder."));
@@ -116,10 +141,10 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
         });
 
         const totals = {
-            current: buckets.current.reduce((sum, j) => sum + (Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0), 0),
-            days30: buckets.days30.reduce((sum, j) => sum + (Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0), 0),
-            days60: buckets.days60.reduce((sum, j) => sum + (Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0), 0),
-            older: buckets.older.reduce((sum, j) => sum + (Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0), 0)
+            current: buckets.current.reduce((sum, j) => sum + (Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0) - (Number(j.invoice.amountPaid) || 0), 0),
+            days30: buckets.days30.reduce((sum, j) => sum + (Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0) - (Number(j.invoice.amountPaid) || 0), 0),
+            days60: buckets.days60.reduce((sum, j) => sum + (Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0) - (Number(j.invoice.amountPaid) || 0), 0),
+            older: buckets.older.reduce((sum, j) => sum + (Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0) - (Number(j.invoice.amountPaid) || 0), 0)
         };
 
         return { buckets, totals };
@@ -161,14 +186,16 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
             <Table headers={[t('Customer'), t('Invoice #'), t('Date / Sent Date'), t('Age (Days)'), t('Amount'), t('Reminders Sent'), t('Actions')]}>
                 {['current', 'days30', 'days60', 'older'].flatMap((bucketKey) => {
                     return agingData.buckets[bucketKey as keyof typeof agingData.buckets].map((job: any) => {
-                        const amt = Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0;
+                        const total = Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0;
+                        const paid = Number(job.invoice.amountPaid) || 0;
+                        const outstanding = Math.max(0, total - paid);
                         const date = new Date(job.appointmentTime).getTime();
                         const days = Math.floor((new Date().getTime() - date) / (1000 * 60 * 60 * 24));
                         return (
                             <tr key={job.id} className="bg-white dark:bg-slate-900/50">
                                 <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{job.customerName}</td>
                                 <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">{job.invoice.id}</td>
-                                <td className="px-6 py-4 text-sm text-slate-500 dark:text-gray-400">
+                                <td className="px-6 py-4 text-sm text-slate-500 dark:text-gray-400" data-sort-value={new Date(job.appointmentTime).getTime()}>
                                     <div>{new Date(job.appointmentTime).toLocaleDateString()}</div>
                                     {job.invoice.sentAt ? (
                                         <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
@@ -183,7 +210,14 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                                         {days} {t("Days")}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">{fmt(amt)}</td>
+                                <td className="px-6 py-4 font-bold text-slate-900 dark:text-white">
+                                    <div>{fmt(outstanding)}</div>
+                                    {paid > 0 && (
+                                        <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                                            Paid: {fmt(paid)}
+                                        </div>
+                                    )}
+                                </td>
                                 <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400">
                                     {job.invoice.remindersSent && job.invoice.remindersSent.length > 0 ? (
                                         <div className="flex flex-wrap gap-1 max-w-[150px]">
@@ -199,7 +233,7 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                                 </td>
                                 <td className="px-6 py-4 text-sm">
                                     <button 
-                                        onClick={() => handleSendInvoiceReminder(job)}
+                                        onClick={() => setRecipientModalConfig({ isOpen: true, job })}
                                         className="inline-flex items-center px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 border border-orange-500/20 hover:border-orange-500/40"
                                         title={t("Send Payment Reminder")}
                                     >
@@ -212,6 +246,20 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                     });
                 })}
             </Table>
+
+            {recipientModalConfig.isOpen && recipientModalConfig.job && (
+                <RecipientSelectorModal
+                    isOpen={recipientModalConfig.isOpen}
+                    onClose={() => setRecipientModalConfig({ isOpen: false, job: null })}
+                    customerId={recipientModalConfig.job.customerId}
+                    locationId={recipientModalConfig.job.locationId}
+                    title={t("Select Reminder Recipients")}
+                    onConfirm={(emails) => {
+                        handleSendInvoiceReminder(recipientModalConfig.job, emails);
+                        setRecipientModalConfig({ isOpen: false, job: null });
+                    }}
+                />
+            )}
         </Card>
     );
 };
