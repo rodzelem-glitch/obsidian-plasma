@@ -4,10 +4,12 @@ import Table from 'components/ui/Table';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
 import showToast from "lib/toast";
-import { getBaseUrl } from "lib/utils";
-import { Bell } from 'lucide-react';
+import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
+import { Bell, Send } from 'lucide-react';
 import { useLanguage } from 'context/LanguageContext';
 import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
+import SendEmailModal from 'components/modals/SendEmailModal';
+import { generateInvoicePdfAttachment } from 'lib/pdfHelper';
 
 interface AgingReportTabProps {
     jobs: any[];
@@ -18,8 +20,9 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
     const { t } = useLanguage();
     const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
     const [recipientModalConfig, setRecipientModalConfig] = React.useState<{ isOpen: boolean; job: any | null }>({ isOpen: false, job: null });
+    const [sendInvoiceModalConfig, setSendInvoiceModalConfig] = React.useState<{ isOpen: boolean; job: any | null }>({ isOpen: false, job: null });
 
-    const handleSendInvoiceReminder = async (job: any, selectedEmails?: string[]) => {
+    const handleSendInvoiceReminder = async (job: any, selectedEmails?: string[], attachPdf?: boolean) => {
         let emails = selectedEmails;
         let phone = job.customerPhone;
         
@@ -65,7 +68,10 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
             const dueDateVal = job.invoice?.dueDate;
             const isLate = (() => {
                 if (!dueDateVal) return false;
-                const dueDateObj = new Date(dueDateVal);
+                let dueDateObj = new Date(dueDateVal);
+                if (typeof dueDateVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDateVal)) {
+                    dueDateObj = new Date(dueDateVal.replace(/-/g, '/'));
+                }
                 dueDateObj.setHours(0, 0, 0, 0);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
@@ -75,38 +81,46 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
             const pastDueBanner = isLate ? `<div style="color:#dc2626;font-size:32px;font-weight:bold;margin-bottom:10px;text-align:left;border-bottom:2px solid #dc2626;padding-bottom:10px;">PAST DUE</div>` : '';
 
             if (emails.length > 0) {
-                await db.collection('mail_queue').add({
+                let pdfAttachments: any[] = [];
+                if (attachPdf) {
+                    showToast.info(t("Generating invoice PDF attachment..."));
+                    const invPdf = await generateInvoicePdfAttachment(job, state.currentOrganization);
+                    pdfAttachments.push(invPdf);
+                }
+
+                await db.collection('mail_queue').add(cleanUndefinedFields({
                     to: emails,
                     replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
                     message: {
                         subject: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${job.invoice.id} from ${orgName}`,
                         html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;">${pastDueBanner}<h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${job.customerName},</p><p>This is a friendly reminder that your invoice <strong>#${job.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
                         text: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. Pay here: ${link}`,
-                        replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com'
+                        replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
+                        ...(pdfAttachments.length > 0 ? { attachments: pdfAttachments } : {})
                     },
                     organizationId: state.currentOrganization?.id,
                     type: 'InvoiceReminder',
                     createdAt: new Date().toISOString()
-                });
+                }));
             }
 
             if (phone && !selectedEmails) {
-                await db.collection('messages').add({
+                await db.collection('messages').add(cleanUndefinedFields({
                     to: phone,
                     body: `${isLate ? 'PAST DUE - ' : ''}Reminder from ${orgName}: Your invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. View and pay securely here: ${link}`,
                     organizationId: state.currentOrganization?.id,
                     status: 'pending',
                     type: 'sms',
                     createdAt: new Date().toISOString()
-                });
+                }));
             }
 
             const reminderDate = new Date().toISOString();
             const currentReminders = job.invoice.remindersSent || [];
             const newReminders = [...currentReminders, reminderDate];
-            await db.collection('jobs').doc(job.id).update({
+            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
                 'invoice.remindersSent': newReminders
-            });
+            }));
 
             // Update local job state
             job.invoice.remindersSent = newReminders;
@@ -231,9 +245,17 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                                         <span className="italic text-slate-400">{t("None")}</span>
                                     )}
                                 </td>
-                                <td className="px-6 py-4 text-sm">
+                                <td className="px-6 py-4 text-sm flex items-center gap-2">
                                     <button 
-                                        onClick={() => setRecipientModalConfig({ isOpen: true, job })}
+                                        onClick={() => setSendInvoiceModalConfig({ isOpen: true, job })}
+                                        className="inline-flex items-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
+                                        title={t("Send Invoice")}
+                                    >
+                                        <Send size={12} className="mr-1.5" />
+                                        {t("Send Invoice")}
+                                    </button>
+                                    <button 
+                                        onClick={() => setSendInvoiceModalConfig({ isOpen: true, job })}
                                         className="inline-flex items-center px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 border border-orange-500/20 hover:border-orange-500/40"
                                         title={t("Send Payment Reminder")}
                                     >
@@ -247,6 +269,16 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                 })}
             </Table>
 
+            {sendInvoiceModalConfig.isOpen && sendInvoiceModalConfig.job && (
+                <SendEmailModal
+                    isOpen={sendInvoiceModalConfig.isOpen}
+                    onClose={() => setSendInvoiceModalConfig({ isOpen: false, job: null })}
+                    job={sendInvoiceModalConfig.job}
+                    invoice={sendInvoiceModalConfig.job.invoice}
+                    mode="invoice"
+                />
+            )}
+
             {recipientModalConfig.isOpen && recipientModalConfig.job && (
                 <RecipientSelectorModal
                     isOpen={recipientModalConfig.isOpen}
@@ -254,8 +286,8 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                     customerId={recipientModalConfig.job.customerId}
                     locationId={recipientModalConfig.job.locationId}
                     title={t("Select Reminder Recipients")}
-                    onConfirm={(emails) => {
-                        handleSendInvoiceReminder(recipientModalConfig.job, emails);
+                    onConfirm={(emails, attachPdf) => {
+                        handleSendInvoiceReminder(recipientModalConfig.job, emails, attachPdf);
                         setRecipientModalConfig({ isOpen: false, job: null });
                     }}
                 />

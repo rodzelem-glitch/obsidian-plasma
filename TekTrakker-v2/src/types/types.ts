@@ -29,6 +29,45 @@ export interface SignedWaiver {
     body?: string;
 }
 
+export interface SubcontractorComplianceDoc {
+    id: string;
+    docKey: string;
+    name: string;
+    fileUrl?: string;
+    fileName?: string;
+    uploadedAt?: string;
+    expiresAt?: string;
+    status: 'missing' | 'pending' | 'verified' | 'rejected' | 'expired';
+    notes?: string;
+    verifiedBy?: string;
+    verifiedAt?: string;
+}
+
+export interface SubcontractorContract {
+    id: string;
+    title: string;
+    contractType: 'Master Service Agreement' | 'Independent Contractor Agreement' | 'Work Order Sub-Contract' | 'NDA / Non-Compete' | 'Custom Agreement';
+    effectiveDate?: string;
+    expirationDate?: string;
+    fileUrl?: string;
+    fileName?: string;
+    content?: string;
+    status: 'Draft' | 'Sent' | 'Signed' | 'Expired';
+    signedAt?: string;
+    signedByName?: string;
+    signedByEmail?: string;
+    signatureDataUrl?: string;
+    uploadedAt?: string;
+    notes?: string;
+}
+
+export interface SubcontractorComplianceSettings {
+    enforceComplianceBeforeAssignment?: boolean;
+    notifyOnLink?: boolean;
+    expiryWarningDays?: number;
+    requiredDocuments?: Record<string, boolean>;
+}
+
 export interface OrganizationSettings {
     publicProfile?: boolean;
     publicLogoUrl?: string;
@@ -40,7 +79,15 @@ export interface OrganizationSettings {
     openWeatherApiKey?: string;
     shovelsApiKey?: string;
     shovelsUsageCount?: number;
+    subcontractorComplianceSettings?: SubcontractorComplianceSettings;
     [key: string]: unknown;
+}
+
+export interface Division {
+    id: string;
+    name: string;
+    trade: IndustryVertical;
+    createdAt?: string;
 }
 
 export interface Organization {
@@ -72,6 +119,8 @@ export interface Organization {
     termsAndConditions?: string | null;
     customerTerms?: string | null;
     proposalTerms?: string | null;
+    proposalProtectionMode?: 'none' | 'summary' | 'nda';
+    proposalNdaContent?: string | null;
     membershipTerms?: string | null;
     footerImage?: string | null;
     subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled' | 'paused';
@@ -85,7 +134,10 @@ export interface Organization {
     paymentMethodAttached?: boolean;
     notificationEmails?: string[];
     supportedTrades?: IndustryVertical[];
+    divisions?: Division[];
+    additionalDivisionsSlots?: number;
     reviewLink?: string;
+    subcontractorComplianceSettings?: SubcontractorComplianceSettings;
     stripePublicKey?: string | null;
     stripeAccountId?: string | null;
     squareApplicationId?: string | null;
@@ -200,6 +252,16 @@ export interface Organization {
     achProcessingFeeEnabled?: boolean;
     achProcessingFeePercent?: number;
     achProcessingFeeFlat?: number;
+    lateFeeEnabled?: boolean;
+    lateFeeType?: 'flat' | 'percent';
+    lateFeeValue?: number;
+    lateFeeInterestRate?: number;
+    lateFeeGracePeriod?: number;
+    ein?: string;
+    businessType?: string;
+    incorporationState?: string;
+    formationDate?: string;
+    businessDocuments?: Array<{ id: string; name: string; url: string; uploadedAt: string }>;
 }
 
 // --- User & Employee ---
@@ -232,6 +294,7 @@ export interface User {
   ptoAccrued: number; 
   role: 'master_admin' | 'admin' | 'employee' | 'both' | 'customer' | 'supervisor' | 'platform_sales' | 'Technician' | 'Subcontractor' | 'franchise_admin';
   franchiseId?: string;
+  dispatchTeamIds?: string[];
   taxW9Content?: string; 
   reportsTo?: string | null; 
   hireDate?: string | null;
@@ -298,6 +361,9 @@ export interface User {
   geofenceRadius?: number | null;
   commissionRate?: number; 
   customCommissionSettings?: CommissionSettings;
+  squareTeamMemberId?: string | null;
+  gustoEmployeeId?: string | null;
+  adpEmployeeId?: string | null;
   hasAppAccess?: boolean;
   kioskPin?: string;
   gclid?: string;
@@ -309,26 +375,68 @@ export interface User {
     idUploaded: boolean;
     completedAt?: string;
   };
+  mfaEnabled?: boolean;
+  mfaSecret?: string;
+  allowedLocationIds?: string[];
+  customerPortalRole?: 'corporate' | 'regional' | 'branch';
+  assignedDivisions?: string[];
+  subcontractorId?: string | null;
 }
 
 // --- Customer & Assets ---
 export interface EquipmentAsset {
     id: string;
+    organizationId?: string;
+    customerId?: string;
+    locationId?: string;
     propertyId?: string;
     name?: string;
     brand: string;
     model: string;
     serial: string;
     type: string;
-    location?: string;
+    tonnage?: number;
+    refrigerantType?: string;
+    year?: string;
+    heatType?: string;
+    electricityType?: string;
+    seerRating?: string;
+    filterType?: string;
+    location?: string; // Legacy text location
+    physicalLocation?: string; // e.g. Roof, Mechanical Room
+    exactPlacement?: string;   // e.g. Front left corner, North wall near ladder
+    servesArea?: string;       // e.g. Dining room, Kitchen
+    zone?: string;             // e.g. Zone 1, RTU Zone
+    assetTag?: string;         // e.g. TK-RTU-000142
     installDate?: string;
     condition?: 'Excellent' | 'Good' | 'Fair' | 'Poor' | 'Critical';
+    status?: 'Operational' | 'Down' | 'Waiting for Parts' | 'Blower Motor Burnt Out' | string;
+    
+    // Photos
     serialPhotoUrl?: string;
+    serialPhotoLabel?: string;
     unitTagPhotoUrl?: string;
+    unitTagPhotoLabel?: string;
     conditionPhotoUrl?: string;
+    conditionPhotoLabel?: string;
+    wideLocationPhotoUrl?: string;
+    wideLocationPhotoLabel?: string;
+    accessPointPhotoUrl?: string;
+    accessPointPhotoLabel?: string;
+    qrCodePhotoUrl?: string;
+    qrCodePhotoLabel?: string;
+    
     notes?: string;
     linkedAssetIds?: string[];
     warranty?: AssetWarranty;
+    
+    // Geographical Positioning
+    gpsPin?: { lat: number; lng: number };
+    
+    // Refrigeration / Linked System Relationship
+    systemGroupId?: string;
+    systemGroupName?: string;
+    systemGroupRole?: 'Evaporator' | 'Condensing Unit' | 'Controller' | 'Compressor' | 'Standalone' | string;
 }
 
 export interface AssetWarranty {
@@ -363,6 +471,15 @@ export interface WarrantyClaim {
     createdAt?: string;
 }
 
+export interface LayoutHotspot {
+    id: string;
+    equipmentId?: string;
+    label: string;
+    x: number;
+    y: number;
+    isManual?: boolean;
+}
+
 export interface ServiceLocation {
    id: string;
    name: string;
@@ -376,6 +493,13 @@ export interface ServiceLocation {
    parentId?: string | null;
    locationType?: string;
    contacts?: { name: string; phone: string; email?: string; role?: string }[];
+   photos?: string[];
+   layoutPhotoUrl?: string;
+   layoutProfessionalSvg?: string;
+   layoutHotspots?: LayoutHotspot[];
+   layoutVertices?: { id: string; x: number; y: number }[];
+   layoutCustomShapes?: any[];
+   poNumber?: string;
 }
 
 export interface Customer {
@@ -386,6 +510,7 @@ export interface Customer {
   lastName?: string;
   address: string; 
   customerType: 'Residential' | 'Commercial' | 'Property Management'; 
+  dispatchTeamIds?: string[];
   email: string;
   phone: string;
   city?: string | null;
@@ -409,13 +534,55 @@ export interface Customer {
   savedProviders?: string[]; 
   serviceLocations?: ServiceLocation[];
   contacts?: Record<string, unknown>[];
+  billingContact?: { name: string; email: string; phone: string; };
   agreedToCustomerTerms?: boolean | null;
   customerTermsAgreedAt?: string | null;
+  isBlacklisted?: boolean;
+  blacklistReason?: string;
+  blacklistedAt?: string;
+  blacklistedBy?: string;
+  pricingRules?: { 
+      standardRate?: number; 
+      emergencyRate?: number; 
+      tripCharge?: number; 
+      markupPercentage?: number; 
+      contractedRate?: number;
+  };
+  paymentTerms?: string | null;
+  taxExempt?: boolean;
+  taxExemptCertUrl?: string;
+  taxExemptNumber?: string;
+  maintenanceAgreement?: MaintenanceAgreement | null;
 }
 
 // --- Job & Scheduling ---
 export interface Job {
+  archived?: boolean;
+  deleted?: boolean;
+  deletedAt?: string;
   duration?: number;
+  timeOnSiteMinutes?: number;
+  timeEntries?: Array<{
+    checkInTime: string;
+    checkOutTime?: string | null;
+    timeOnSiteMinutes?: number | null;
+  }>;
+  linkedJobIds?: string[];
+  linkedInvoiceIds?: string[];
+  linkedProposalIds?: string[];
+  parentJobId?: string | null;
+  isFollowUp?: boolean;
+  isServicePlan?: boolean | null;
+  servicePlanType?: 'membership' | 'maintenanceAgreement' | string | null;
+  servicePlanId?: string | null;
+  workOrderNumber?: string | null;
+  signatureMetadata?: any;
+  signatureHistory?: any[];
+  signatureUrl?: string | null;
+
+  checkInTime?: string;
+  checkOutTime?: string;
+  transitStartTime?: string;
   id: string;
   organizationId: string;
   assignedPartnerId?: string | null; 
@@ -429,16 +596,20 @@ export interface Job {
   locationId?: string | null;
   locationName?: string | null;
   poNumber?: string | null;
+  linkedPoNumbers?: string[];
+  linkedWorkOrderNumbers?: string[];
   customerPhone?: string | null;
   customerEmail?: string | null;
-  jobStatus: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled';
+  jobStatus: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled' | 'Needs Follow-up';
+  repairPostponed?: boolean;
+  repairPostponedReason?: string;
   appointmentTime: string; 
   specialInstructions: string;
   assignedTechnicianId?: string | null;
   assignedTechnicianName?: string | null;
     assignedCrew?: string[];
   assistants?: string[];
-  invoice: InvoiceDetails;
+  invoice?: InvoiceDetails;
   invoiceSignature?: string | null;
   invoiceSignedDate?: string | null;
   jobEvents: Record<string, unknown>[];
@@ -456,11 +627,13 @@ export interface Job {
       arrival?: string;
       diagnosis?: string;
       work?: string;
+      thankYouNote?: string;
   };
   source?: string | null;
   hvacType?: string | null;
   hvacBrand?: string | null;
   projectId?: string | null;
+  divisionId?: string | null;
   proposalId?: string | null;
   createdAt?: string;
   createdById?: string;
@@ -496,7 +669,46 @@ export interface Job {
     timestamp: string;
     imageUrl?: string;
   }>;
+  techRecommendations?: string;
+  visitType?: 'Diagnostic Only' | 'Diagnostic & Repair' | 'Repair' | 'Maintenance' | 'Service Call' | 'Other';
+  unitStates?: Array<{
+    assetId: string;
+    health?: 'Good' | 'Fair' | 'Poor' | 'Critical';
+    healthBefore?: 'Good' | 'Fair' | 'Poor' | 'Critical';
+    healthAfter?: 'Good' | 'Fair' | 'Poor' | 'Critical';
+    diagnosis?: string;
+    repair?: string;
+    recommendations?: string;
+  }>;
+  subcontractorWorkOrder?: {
+    nte: number;
+    ivrPin: string;
+    ivrNumber: string;
+    visitInstructions: string[];
+    specialInstructions: string;
+    terms: string[];
+    createdAt?: string;
+    sentAt?: string;
+    composedById?: string;
+    composedByName?: string;
+    subcontractorId?: string;
+    status?: 'pending' | 'accepted' | 'declined';
+    availabilityWindow?: {
+      date: string;
+      startTime: string;
+      endTime: string;
+      notes?: string;
+    };
+    organization?: {
+      name: string;
+      phone: string;
+      address: string;
+      logoUrl?: string;
+    };
+  };
+  subcontractorId?: string | null;
 }
+
 
 export interface Appointment {
     id: string;
@@ -526,19 +738,30 @@ export interface InvoiceLineItem {
     taxable?: boolean;
     name?: string; 
     isWarrantyWork?: boolean;
+    isPercentage?: boolean;
+    percentageRate?: number;
 }
 
 export interface InvoiceDetails {
     id: string;
+    poNumber?: string | null;
+    proposalId?: string | null;
     items: InvoiceLineItem[];
     subtotal: number;
     taxRate: number;
     taxAmount: number;
     totalAmount: number;
-    paymentProofUrl?: string;
-    paymentProofDate?: string; 
-    status: 'Paid' | 'Unpaid' | 'Pending' | 'Partially Paid';
+    paymentProofUrl?: string | null;
+    paymentProofDate?: string | null; 
+    status: 'Paid' | 'Unpaid' | 'Pending' | 'Partially Paid' | 'Failed' | 'Payment Pending';
+    signatureUrl?: string | null;
+    signatureMetadata?: any;
+    signatureHistory?: any[];
+    failedDate?: string | null;
+    lastFailureReason?: string;
     dueDate?: string | null;
+    invoiceDate?: string | null;
+    date?: string | null;
     notes?: string | null;
     amountPaid?: number;
     amount: number; 
@@ -555,6 +778,16 @@ export interface InvoiceDetails {
     additionalFeeAmount?: number;
     sentAt?: string;
     remindersSent?: string[];
+    opened?: boolean;
+    openedAt?: string;
+    paymentTerms?: string | null;
+    retainagePercent?: number;
+    workmanshipWarrantyMonths?: number;
+    partsWarrantyMonths?: number;
+    warrantyNotes?: string;
+    warrantyDisclaimerAgreed?: boolean;
+    warrantyIssuedDate?: string | null;
+    membershipEnrollment?: any;
 }
 
 // --- Proposals ---
@@ -566,7 +799,7 @@ export interface ProposalItem {
     price: number;
     total: number;
     type: 'Labor' | 'Part' | 'Part/Labor' | 'Fee' | 'Discount' | 'Service'; 
-    tier: 'Good' | 'Better' | 'Best';
+    tier: 'Good' | 'Better' | 'Best' | 'Basic' | 'Premium' | 'Platinum' | string;
     partCost?: number;
     laborHours?: number;
     hourlyRate?: number;
@@ -595,6 +828,9 @@ export interface Proposal {
     createdByName?: string;
     technicianId: string;
     jobId?: string;
+    linkedJobIds?: string[];
+    divisionId?: string;
+    invoiceId?: string | null;
     customerEmail?: string;
     selectedOption?: string | null;
     signature?: string | null;
@@ -605,6 +841,50 @@ export interface Proposal {
     remindersSent?: string[];
     proposalTermsAgreed?: boolean | null;
     proposalTermsAgreedAt?: string | null;
+    ndaSigned?: boolean | null;
+    ndaSignedAt?: string | null;
+    ndaSignerName?: string | null;
+    ndaSignatureDataUrl?: string | null;
+    competitorAgreementAgreed?: boolean | null;
+    competitorAgreementAgreedAt?: string | null;
+
+    // Project-level proposal fields
+    isProjectLevel?: boolean;
+    projectId?: string | null;
+    projectName?: string | null;
+    locationAddress?: string;
+    poNumber?: string;
+    scid?: string;
+    laborItems?: ProjectProposalLaborItem[];
+    laborSubtotal?: number;
+    roundedLaborProposal?: number;
+    roundedLaborBasis?: string;
+    partItems?: ProjectProposalPartItem[];
+    partsTotal?: number;
+    markupScheduleJson?: string;
+    allowanceItems?: ProjectProposalAllowanceItem[];
+    allowanceTotal?: number;
+    clarifications?: string[];
+    exclusions?: string[];
+    importantClarification?: string;
+    calculatedTotal?: number;
+    recommendedRoundedTotal?: number;
+    preparedByOrganization?: string;
+    preparedByPhone?: string;
+    preparedByLicence?: string;
+    signedAt?: string | null;
+    signatureName?: string | null;
+    taxRate?: number;
+    processingFeeRate?: number;
+    processingFeeAmount?: number;
+    trackingHistory?: ProposalTrackingEntry[];
+}
+
+export interface ProposalTrackingEntry {
+    status: string;
+    timestamp: string;
+    updatedBy: string;
+    notes?: string;
 }
 
 export interface ProposalPreset {
@@ -784,6 +1064,7 @@ export interface ToolReading {
     summary: string;
     reportUrl?: string;
     type?: string; 
+    phase?: 'before' | 'after';
 }
 
 export interface ToolMaintenanceLog {
@@ -950,6 +1231,7 @@ export interface PlatformSettings {
     subscriptionFee?: number;
     virtualWorkerFee?: number;
     virtualWorkerLifetimeFee?: number;
+    divisionFee?: number;
     updatedAt: string;
     franchiseFeePct?: number;
     franchiseBaseFee?: number;
@@ -967,11 +1249,13 @@ export interface PlatformLead {
     contactName: string;
     email?: string;
     phone?: string;
+    city?: string;
     value: number;
     status: 'New' | 'Contacted' | 'Demo Scheduled' | 'Proposal Sent' | 'Negotiation' | 'Closed Won' | 'Closed Lost';
     notes?: string;
     createdAt: string;
     updatedAt?: string;
+    convertedOrgId?: string;
     additionalContacts?: { name: string; role: string; email: string; phone: string }[];
 }
 
@@ -986,6 +1270,7 @@ export interface PlatformCommission {
     datePaid?: string;
     baseAmount: number; 
     rateUsed: number;
+    customerPaymentStatus?: 'Unpaid' | 'Paid';
 }
 
 export interface CommissionSettings {
@@ -1025,6 +1310,16 @@ export interface Notification {
     read: boolean;
     link?: string;
     createdAt: string;
+    type?: string;
+    data?: Record<string, any>;
+    senderId?: string;
+}
+
+export interface MessageAttachment {
+    name: string;
+    url: string;
+    type: string;
+    size?: number;
 }
 
 export interface Message {
@@ -1041,6 +1336,12 @@ export interface Message {
     deliveryStatus?: 'queued' | 'sent' | 'failed';
     deliveryError?: string;
     isEdited?: boolean;
+    attachments?: MessageAttachment[];
+    senderEmail?: string;
+    senderRole?: string;
+    receiverName?: string;
+    receiverPhone?: string;
+    receiverEmail?: string;
 }
 
 export interface BusinessDocument {
@@ -1066,7 +1367,7 @@ export interface Applicant {
     email: string;
     phone: string;
     position: string;
-    experienceYears: number;
+    experienceYears: number | string;
     status: string;
     appliedDate: string;
     applicationDate?: string;
@@ -1075,6 +1376,15 @@ export interface Applicant {
     resumeFileName?: string;
     notes?: string;
     marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; };
+    desiredSalary?: number | string;
+    referredBy?: string;
+    skills?: string[];
+    availability?: string[];
+    driversLicense?: string;
+    license?: string;
+    workAuthorized?: boolean;
+    address?: string;
+    smsOptIn?: boolean;
 }
 
 export interface InspectionTemplateItem {
@@ -1141,6 +1451,8 @@ export interface Expense {
     category: string;
     description: string;
     amount: number;
+    subtotal?: number;
+    taxAmount?: number;
     vendor?: string;
     paidBy?: string;
     paidById?: string;
@@ -1156,6 +1468,7 @@ export interface Expense {
     updatedAt?: string;
     updatedById?: string;
     updatedByName?: string;
+    expenseType?: 'business' | 'personal';
 }
 
 export interface Subcontractor {
@@ -1178,6 +1491,8 @@ export interface Subcontractor {
     allowDirectPayment?: boolean;
     paymentType: 'perJob' | 'percentage';
     paymentPercentage?: number;
+    complianceDocs?: SubcontractorComplianceDoc[];
+    contracts?: SubcontractorContract[];
 }
 
 export interface EquipmentRental {
@@ -1199,6 +1514,7 @@ export interface OrganizationTeam {
     name: string;
     description?: string;
     memberIds: string[]; // User IDs or Subcontractor IDs
+    customerIds?: string[];
 }
 
 export interface PartOrder {
@@ -1345,4 +1661,67 @@ export interface Review {
 }
 
 export interface Franchise { id: string; name: string; status: string; currentRoyaltyPct: number; currentMarketingFeePct: number; franchiseAgreementSignature?: string; franchiseAgreementSignedDate?: string; overrideSetupFee?: number; stripeAccountId?: string | null; ownerId?: string; createdAt: string; }
+
+export interface ProjectProposalLaborItem {
+    id: string;
+    unitName: string;
+    scope: string;
+    hours: number;
+    rate: number;
+    value: number;
+}
+
+export interface ProjectProposalPartItem {
+    id: string;
+    unitName: string;
+    partName: string;
+    quantity: number;
+    vendorCost: number;
+    markupPct: number;
+    customerUnitPrice: number;
+    customerLineTotal: number;
+    availability: string;
+}
+
+export interface ProjectProposalAllowanceItem {
+    id: string;
+    description: string;
+    basis: string;
+    amount: number;
+}
+
+export interface MaintenanceVisit {
+  id: string;
+  targetMonth: string;
+  targetDate?: string;
+  status: 'Pending' | 'Scheduled' | 'Completed' | 'Overdue';
+  assignedTechId?: string;
+  assignedTechName?: string;
+  jobId?: string;
+  notes?: string;
+  completedAt?: string;
+}
+
+export interface MaintenanceAgreement {
+  id: string;
+  agreementName: string;
+  status: 'Draft' | 'Active' | 'Cancelled' | 'Expired';
+  startDate: string;
+  endDate: string;
+  value: number;
+  billingFrequency: 'One-Time' | 'Monthly' | 'Quarterly' | 'Semi-Annually' | 'Annually';
+  paymentTerms: string;
+  coveredItems: string[];
+  coveredEquipmentIds: string[];
+  frequency: 'Monthly' | 'Bi-Monthly' | 'Quarterly' | 'Semi-Annually' | 'Annually';
+  visits: MaintenanceVisit[];
+  notes?: string;
+  notificationsSent?: Array<{
+    sentAt: string;
+    type: 'Email' | 'SMS';
+    recipient: string;
+    visitId: string;
+  }>;
+}
+
 

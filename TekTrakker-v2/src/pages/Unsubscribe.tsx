@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { cleanUndefinedFields } from 'lib/utils';
 import { useSearchParams } from 'react-router-dom';
 import { db } from 'lib/firebase';
 import { MailX, CheckCircle, ArrowLeft } from 'lucide-react';
@@ -15,10 +16,10 @@ const Unsubscribe: React.FC = () => {
         if (!email) return;
         setStatus('loading');
         try {
-            await db.collection('unsubscribes').doc(email).set({
+            await db.collection('unsubscribes').doc(email).set(cleanUndefinedFields({
                 email,
                 unsubscribedAt: new Date().toISOString()
-            });
+            }));
             setStatus('success');
         } catch (e) {
             console.error(e);

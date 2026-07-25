@@ -2,8 +2,10 @@
 import React from 'react';
 import Select from '../../ui/Select';
 import Button from '../../ui/Button';
-import { UserIcon, Building2, Users, Plus } from 'lucide-react';
+import { UserIcon, Building2, Users, Plus, AlertTriangle, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import type { User, Organization } from '../../../types';
+import { useAppContext } from '../../../context/AppContext';
+import { checkSubcontractorCompliance } from '../../../lib/subcontractorCompliance';
 
 interface AssignmentTypeProps {
     assignMode: 'internal' | 'partner';
@@ -38,6 +40,10 @@ const AssignmentType: React.FC<AssignmentTypeProps> = ({
     partnerPayoutAmount,
     setPartnerPayoutAmount
 }) => {
+    const { state } = useAppContext();
+    const selectedSub = state.subcontractors.find(s => s.linkedOrgId === partnerId || s.id === partnerId);
+    const complianceResult = selectedSub ? checkSubcontractorCompliance(selectedSub, state.currentOrganization?.subcontractorComplianceSettings) : null;
+
     return (
         <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700">
             <div className="flex gap-1 bg-slate-200 dark:bg-slate-700 p-1 rounded-lg mb-4">
@@ -54,6 +60,32 @@ const AssignmentType: React.FC<AssignmentTypeProps> = ({
                     <div className="flex items-end">
                         <Button type="button" variant="secondary" onClick={() => setShowCrewSelect(!showCrewSelect)} className="text-xs h-10 w-full"><Users size={14} className="mr-2"/> Crew ({assistantIds.length})</Button>
                     </div>
+                    {(() => {
+                        const tech = orgTechs.find(u => u.id === technicianId);
+                        const isSub = tech?.role === 'Subcontractor';
+                        if (isSub && setPartnerPayoutAmount) {
+                            return (
+                                <div className="col-span-2 mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                                    <div className="max-w-xs">
+                                        <label htmlFor="internal-sub-payout" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Pass-through Payout (Optional)</label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+                                            <input 
+                                                id="internal-sub-payout"
+                                                type="number" 
+                                                className="w-full pl-7 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:ring focus:ring-indigo-200"
+                                                placeholder="0.00"
+                                                value={partnerPayoutAmount || ''}
+                                                onChange={(e) => setPartnerPayoutAmount(e.target.value ? Number(e.target.value) : undefined)}
+                                            />
+                                        </div>
+                                        <p className="text-[10px] text-slate-500 mt-1">If this is a flat-fee payout for this subcontractor, enter the exact dollar amount to accrue for their flat-fee work order.</p>
+                                    </div>
+                                </div>
+                            );
+                        }
+                        return null;
+                    })()}
                 </div>
             ) : (
                 <>
@@ -67,6 +99,29 @@ const AssignmentType: React.FC<AssignmentTypeProps> = ({
                         <Button type="button" variant="secondary" onClick={openAddSubcontractorModal} className="text-xs h-10 w-full"><Plus size={14} className="mr-2"/> Add Subcontractor</Button>
                     </div>
                 </div>
+
+                {/* Subcontractor Compliance Validation Banner */}
+                {selectedSub && complianceResult && (
+                    <div className="mt-3">
+                        {complianceResult.isCompliant ? (
+                            <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg flex items-center gap-2 text-xs text-emerald-800 dark:text-emerald-300 font-bold">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                                Subcontractor Compliance Verified ({complianceResult.fulfilledCount}/{complianceResult.totalRequiredCount} Docs)
+                            </div>
+                        ) : (
+                            <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg space-y-1 text-xs text-amber-900 dark:text-amber-200">
+                                <div className="flex items-center gap-2 font-extrabold">
+                                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                                    Subcontractor Missing Required Compliance Documents
+                                </div>
+                                <p className="text-[11px] opacity-90 pl-6">
+                                    Missing: <strong>{complianceResult.missingDocLabels.join(', ')}</strong>
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {setPartnerPayoutAmount && (
                     <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                         <div className="max-w-xs">

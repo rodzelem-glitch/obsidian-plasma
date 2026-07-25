@@ -83,7 +83,12 @@ export default function PrivacyPolicy() {
             <h3 className="text-xl font-bold mt-6 mb-2">7. Data Security</h3>
             <p>We have implemented industry-standard encryption and security measures to prevent your personal data from being accidentally lost, used, or accessed in an unauthorized way.</p>
 
-            <h3 className="text-xl font-bold mt-6 mb-2">8. Contact Details</h3>
+            <h3 className="text-xl font-bold mt-6 mb-2">8. SMS Consent & Opt-In Policy</h3>
+            <p>By providing your phone number, you consent to receive text messages (SMS) from TekTrakker. These messages may include customer support replies, job scheduling updates, invoice notifications, and service alerts. Message frequency varies based on your account activity, typically up to 4 messages per month. Message and data rates may apply. You can opt out at any time by replying STOP. For help, reply HELP.</p>
+            <p className="mt-2 font-bold">Mobile Information Non-Sharing Statement:</p>
+            <p>No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. All the above categories exclude text messaging originator opt-in data and consent; this information will not be shared with any third parties.</p>
+
+            <h3 className="text-xl font-bold mt-6 mb-2">9. Contact Details</h3>
             <p>If you have any questions about this privacy policy or our privacy practices, please contact us at:</p>
             <p className="font-bold">TekTrakker Privacy Team</p>
             <a href="mailto:platform@tektrakker.com" className="text-blue-600 hover:underline">platform@tektrakker.com</a>

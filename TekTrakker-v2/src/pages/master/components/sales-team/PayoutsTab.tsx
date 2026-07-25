@@ -9,6 +9,7 @@ import type { User, PlatformCommission } from 'types';
 interface PayoutsTabProps {
     payoutData: {
         totalPending: number;
+        totalAwaitingPayment: number;
         totalPaidYTD: number;
         buckets: { current: number; days30: number; days60: number; days90: number };
         displayList: PlatformCommission[];
@@ -22,18 +23,22 @@ interface PayoutsTabProps {
 const PayoutsTab: React.FC<PayoutsTabProps> = ({ payoutData, payoutFilter, setPayoutFilter, salesReps, onMarkPaid }) => {
     return (
         <div className="space-y-6 animate-fade-in">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <Card className="bg-orange-50 border-orange-200 p-4">
-                    <p className="text-xs font-black text-orange-700 uppercase tracking-widest">Total Pending</p>
+                    <p className="text-xs font-black text-orange-700 uppercase tracking-widest">Total Pending Payout</p>
                     <p className="text-2xl font-black text-orange-900 dark:text-white mt-1">${payoutData.totalPending.toLocaleString()}</p>
+                </Card>
+                <Card className="bg-slate-50 border-slate-200 p-4">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Awaiting Cust. Pay</p>
+                    <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">${payoutData.totalAwaitingPayment.toLocaleString()}</p>
                 </Card>
                 <Card className="bg-emerald-50 border-emerald-200 p-4">
                     <p className="text-xs font-black text-emerald-700 uppercase tracking-widest">Paid YTD</p>
                     <p className="text-2xl font-black text-emerald-900 dark:text-white mt-1">${payoutData.totalPaidYTD.toLocaleString()}</p>
                 </Card>
-                <Card className="bg-slate-50 border-slate-200 p-4">
-                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">30-60 Days Aging</p>
-                    <p className="text-2xl font-black text-slate-800 dark:text-white mt-1">${payoutData.buckets.days30.toLocaleString()}</p>
+                <Card className="bg-blue-50 border-blue-200 p-4">
+                    <p className="text-xs font-black text-blue-700 uppercase tracking-widest">30-60 Days Aging</p>
+                    <p className="text-2xl font-black text-blue-900 dark:text-white mt-1">${payoutData.buckets.days30.toLocaleString()}</p>
                 </Card>
                 <Card className="bg-rose-50 border-rose-200 p-4">
                     <p className="text-xs font-black text-rose-700 uppercase tracking-widest">90+ Days Aging</p>
@@ -64,9 +69,15 @@ const PayoutsTab: React.FC<PayoutsTabProps> = ({ payoutData, payoutFilter, setPa
                                 <td className="px-6 py-4 text-sm font-mono">{new Date(comm.dateEarned).toLocaleDateString()}</td>
                                 <td className="px-6 py-4">
                                     {payoutFilter === 'Pending' ? (
-                                        <span className={`text-xs font-bold px-2 py-1 rounded ${diffDays > 30 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
-                                            {diffDays} Days
-                                        </span>
+                                        comm.customerPaymentStatus === 'Paid' ? (
+                                            <span className={`text-xs font-bold px-2 py-1 rounded ${diffDays > 30 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                {diffDays} Days
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs font-bold px-2 py-1 rounded bg-slate-100 text-slate-400">
+                                                Awaiting Cust. Pay
+                                            </span>
+                                        )
                                     ) : (
                                         <span className="text-xs text-emerald-600 font-bold flex items-center gap-1"><CheckCircle size={12}/> Paid</span>
                                     )}
@@ -74,9 +85,13 @@ const PayoutsTab: React.FC<PayoutsTabProps> = ({ payoutData, payoutFilter, setPa
                                 <td className="px-6 py-4 font-black text-slate-800 dark:text-white">${comm.amount.toLocaleString()}</td>
                                 <td className="px-6 py-4">
                                     {payoutFilter === 'Pending' && (
-                                        <Button onClick={() => onMarkPaid(comm.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8">
-                                            Mark Paid
-                                        </Button>
+                                        comm.customerPaymentStatus === 'Paid' ? (
+                                            <Button onClick={() => onMarkPaid(comm.id)} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8">
+                                                Mark Paid
+                                            </Button>
+                                        ) : (
+                                            <span className="text-xs font-bold text-slate-400">Awaiting Cust. Payment</span>
+                                        )
                                     )}
                                     {payoutFilter === 'Paid' && comm.datePaid && (
                                         <span className="text-xs text-slate-400">{new Date(comm.datePaid).toLocaleDateString()}</span>

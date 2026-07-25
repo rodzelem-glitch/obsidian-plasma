@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState } from 'react';
@@ -41,7 +42,7 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, organization
                 status: 'approved', // Auto-approved for now
             };
 
-            const docRef = await db.collection('reviews').add(newReview);
+            const docRef = await db.collection('reviews').add(cleanUndefinedFields(newReview));
             
             onReviewSubmitted({ ...newReview, id: docRef.id });
             

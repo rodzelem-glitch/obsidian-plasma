@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -5,10 +6,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
 import { db } from 'lib/firebase';
-import type { Message, User as AppUser } from 'types';
-import { User, Users, Search, Send, Clock, AlertCircle, Trash2, ArrowLeft, RefreshCw, CheckCircle2, ShieldAlert, Edit, X, Paperclip } from 'lucide-react';
+import type { Message, User as AppUser, MessageAttachment } from 'types';
+import { User, Users, Search, Send, Clock, AlertCircle, Trash2, ArrowLeft, RefreshCw, CheckCircle2, ShieldAlert, Edit, X, Paperclip, Image, FileText } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import { sendNotification } from 'lib/notificationService';
+import { uploadFileToStorage } from 'lib/storageService';
 
 const Messages: React.FC = () => {
     const navigate = useNavigate();
@@ -46,6 +48,9 @@ const Messages: React.FC = () => {
     const [isSending, setIsSending] = useState(false);
     const [includeCustomers, setIncludeCustomers] = useState(false);
     const [broadcastTarget, setBroadcastTarget] = useState<'all' | 'all_admins' | 'all_sales'>('all');
+    const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
+    const [uploadingAttachments, setUploadingAttachments] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [lastSeenBroadcastId, setLastSeenBroadcastId] = useState(() => localStorage.getItem(`tt_last_broadcast_${user?.id}`));
 
@@ -53,8 +58,8 @@ const Messages: React.FC = () => {
     const isMe = (id?: string) => {
         if (!id) return false;
         if (id === user?.id) return true;
-        if (user?.role === 'master_admin' && id === 'rodzelem@gmail.com') return true;
-        if (user?.email === 'rodzelem@gmail.com' && id === 'rodzelem@gmail.com') return true;
+        if (user?.role === 'master_admin' && (id === 'rodzelem@gmail.com' || id === 'ryanvavrecan@gmail.com')) return true;
+        if ((user?.email === 'rodzelem@gmail.com' || user?.email === 'ryanvavrecan@gmail.com') && (id === 'rodzelem@gmail.com' || id === 'ryanvavrecan@gmail.com')) return true;
         return false;
     };
 
@@ -126,7 +131,7 @@ const Messages: React.FC = () => {
             );
             
             // Inject Master Admin Contact for all organizations
-            if (user?.email && user.email.toLowerCase() !== 'rodzelem@gmail.com') {
+            if (user?.email && user.email.toLowerCase() !== 'rodzelem@gmail.com' && user.email.toLowerCase() !== 'ryanvavrecan@gmail.com') {
                 otherUsers.push({
                     id: 'rodzelem@gmail.com',
                     uid: 'rodzelem@gmail.com',
@@ -300,32 +305,77 @@ const Messages: React.FC = () => {
         if (activeTab === 'team' && selectedPartnerId !== 'all') {
             const unreadFromPartner = threadMessages.filter(m => m.senderId === selectedPartnerId && !m.read);
             unreadFromPartner.forEach(m => {
-                db.collection('messages').doc(m.id).update({ read: true }).catch(() => {});
+                db.collection('messages').doc(m.id).update(cleanUndefinedFields({ read: true })).catch(() => {});
+            });
+
+            // Mark matching notifications as read
+            const matchingNotifications = (state.notifications || []).filter(n => 
+                !n.read &&
+                (n.type === 'message' || n.type === 'broadcast') &&
+                (n.data?.senderId === selectedPartnerId || n.senderId === selectedPartnerId)
+            );
+            matchingNotifications.forEach(n => {
+                db.collection('notifications').doc(n.id).update(cleanUndefinedFields({ read: true })).catch(() => {});
+            });
+        }
+
+        if (activeTab === 'team' && selectedPartnerId === 'all') {
+            if (threadMessages.length > 0) {
+                const lastId = threadMessages[threadMessages.length - 1].id;
+                if (lastSeenBroadcastId !== lastId) {
+                    localStorage.setItem(`tt_last_broadcast_${user?.id}`, lastId);
+                    setLastSeenBroadcastId(lastId);
+                }
+            }
+
+            // Mark broadcast notifications as read when entering broadcast tab
+            const matchingNotifications = (state.notifications || []).filter(n => 
+                !n.read &&
+                n.type === 'broadcast'
+            );
+            matchingNotifications.forEach(n => {
+                db.collection('notifications').doc(n.id).update(cleanUndefinedFields({ read: true })).catch(() => {});
             });
         }
 
         if (activeTab === 'customers' && selectedCustomerId) {
             const unreadFromCustomer = threadMessages.filter(m => m.senderId === selectedCustomerId && !m.read);
             unreadFromCustomer.forEach(m => {
-                db.collection('messages').doc(m.id).update({ read: true }).catch(() => {});
+                db.collection('messages').doc(m.id).update(cleanUndefinedFields({ read: true })).catch(() => {});
+            });
+
+            // Mark matching notifications as read
+            const matchingNotifications = (state.notifications || []).filter(n => 
+                !n.read &&
+                (n.type === 'sms_received' || n.type === 'call_received' || n.type === 'message') &&
+                (n.data?.senderId === selectedCustomerId || n.senderId === selectedCustomerId)
+            );
+            matchingNotifications.forEach(n => {
+                db.collection('notifications').doc(n.id).update(cleanUndefinedFields({ read: true })).catch(() => {});
             });
         }
-
-        if (activeTab === 'team' && selectedPartnerId === 'all' && threadMessages.length > 0) {
-            const lastId = threadMessages[threadMessages.length - 1].id;
-            if (lastSeenBroadcastId !== lastId) {
-                localStorage.setItem(`tt_last_broadcast_${user?.id}`, lastId);
-                setLastSeenBroadcastId(lastId);
-            }
-        }
-    }, [threadMessages, activeTab, selectedPartnerId, selectedCustomerId, user?.id, lastSeenBroadcastId]);
+    }, [threadMessages, activeTab, selectedPartnerId, selectedCustomerId, user?.id, lastSeenBroadcastId, state.notifications]);
 
 
     // --- ACTIONS ---
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            const filesArray = Array.from(e.target.files);
+            setPendingAttachments(prev => [...prev, ...filesArray]);
+        }
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const removePendingAttachment = (index: number) => {
+        setPendingAttachments(prev => prev.filter((_, i) => i !== index));
+    };
+
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newMessage.trim() || !user || !state.currentOrganization) return;
+        if ((!newMessage.trim() && pendingAttachments.length === 0) || !user || !state.currentOrganization) return;
 
         if (activeTab === 'customers' && !selectedCustomerId) {
             showToast.warn("Please select a customer.");
@@ -367,26 +417,73 @@ const Messages: React.FC = () => {
         let deliveryStatus: Message['deliveryStatus'] = activeTab === 'team' ? 'sent' : 'queued';
 
         setIsSending(true);
+        if (pendingAttachments.length > 0) {
+            setUploadingAttachments(true);
+        }
 
         const activeReceiverId = (activeTab === 'team' && selectedPartnerId === 'all' && user?.role === 'master_admin') 
             ? broadcastTarget 
             : (activeTab === 'team' ? selectedPartnerId : (selectedCustomerId || ''));
 
-        const msg: Message = {
-            id: msgId,
-            organizationId: activeOrgId,
-            senderId: user.email === 'rodzelem@gmail.com' ? 'rodzelem@gmail.com' : user.id,
-            senderName: user.email === 'rodzelem@gmail.com' ? 'TekTrakker Administrator' : `${user.firstName} ${user.lastName}`,
-            receiverId: activeReceiverId,
-            content: newMessage.trim(),
-            timestamp: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-            read: false,
-            type: activeTab === 'team' ? 'text' : 'sms',
-            deliveryStatus: deliveryStatus
-        };
-
         try {
+            const uploadedAttachments: MessageAttachment[] = [];
+            if (pendingAttachments.length > 0) {
+                for (const file of pendingAttachments) {
+                    const path = `organizations/${activeOrgId}/messages/${msgId}/${file.name}`;
+                    const downloadUrl = await uploadFileToStorage(path, file);
+                    uploadedAttachments.push({
+                        name: file.name,
+                        url: downloadUrl,
+                        type: file.type,
+                        size: file.size
+                    });
+                }
+            }
+
+            let receiverName = '';
+            let receiverPhone = '';
+            let receiverEmail = '';
+
+            if (activeTab === 'team') {
+                if (selectedPartnerId === 'all') {
+                    receiverName = `Broadcast (${broadcastTarget})`;
+                } else {
+                    const partner = teamPartners.find(p => p.id === selectedPartnerId);
+                    if (partner) {
+                        receiverName = `${partner.firstName || ''} ${partner.lastName || ''}`.trim() || 'Team Member';
+                        receiverEmail = partner.email || partner.id || '';
+                        receiverPhone = partner.phone || '';
+                    }
+                }
+            } else {
+                const customer = state.customers.find(c => c.id === selectedCustomerId);
+                if (customer) {
+                    receiverName = customer.name || 'Customer';
+                    receiverPhone = customer.phone || '';
+                    receiverEmail = customer.email || '';
+                }
+            }
+
+            const msg: Message = {
+                id: msgId,
+                organizationId: activeOrgId,
+                senderId: (user.email === 'rodzelem@gmail.com' || user.email === 'ryanvavrecan@gmail.com') ? 'rodzelem@gmail.com' : user.id,
+                senderName: (user.email === 'rodzelem@gmail.com' || user.email === 'ryanvavrecan@gmail.com') ? 'TekTrakker Administrator' : `${user.firstName} ${user.lastName}`,
+                senderEmail: user.email || '',
+                senderRole: user.role || '',
+                receiverId: activeReceiverId,
+                receiverName,
+                receiverPhone,
+                receiverEmail,
+                content: newMessage.trim(),
+                timestamp: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+                read: false,
+                type: activeTab === 'team' ? 'text' : 'sms',
+                deliveryStatus: deliveryStatus,
+                ...(uploadedAttachments.length > 0 ? { attachments: uploadedAttachments } : {})
+            };
+
             // If Master Admin broadcasts, fan out message across all tenant silos so their bounded listeners pick it up natively
             if (activeTab === 'team' && selectedPartnerId === 'all' && state.currentOrganization.id === 'platform' && user?.role === 'master_admin') {
                 const batch = db.batch();
@@ -394,19 +491,19 @@ const Messages: React.FC = () => {
                 allOrgIds.forEach(orgId => {
                     const uniqueId = `${msgId}-${orgId}`;
                     const ref = db.collection('messages').doc(uniqueId);
-                    batch.set(ref, { ...msg, id: uniqueId, organizationId: orgId });
+                    batch.set(cleanUndefinedFields(ref), { ...msg, id: uniqueId, organizationId: orgId });
                 });
                 await batch.commit();
             } else {
-                await db.collection('messages').doc(msgId).set(msg);
+                await db.collection('messages').doc(msgId).set(cleanUndefinedFields(msg));
             }
             
             // Trigger Push Notification for Team Messages
             if (activeTab === 'team') {
                 if (selectedPartnerId !== 'all') {
                     await sendNotification(selectedPartnerId, {
-                        title: `New Message from ${user.email === 'rodzelem@gmail.com' ? 'TekTrakker Admin' : user.firstName}`,
-                        body: newMessage.trim(),
+                        title: `New Message from ${(user.email === 'rodzelem@gmail.com' || user.email === 'ryanvavrecan@gmail.com') ? 'TekTrakker Admin' : user.firstName}`,
+                        body: newMessage.trim() || (uploadedAttachments.length > 0 ? `Sent ${uploadedAttachments.length} attachment(s)` : ""),
                         type: 'message',
                         data: { senderId: user.id }
                     });
@@ -429,8 +526,8 @@ const Messages: React.FC = () => {
                     for (let i = 0; i < usersToNotify.length; i += BATCH_SIZE) {
                         const chunk = usersToNotify.slice(i, i + BATCH_SIZE);
                         const promises = chunk.map(p => sendNotification(p.id, {
-                            title: `Broadcast from ${user.email === 'rodzelem@gmail.com' ? 'TekTrakker Admin' : user.firstName}`,
-                            body: newMessage.trim(),
+                            title: `Broadcast from ${(user.email === 'rodzelem@gmail.com' || user.email === 'ryanvavrecan@gmail.com') ? 'TekTrakker Admin' : user.firstName}`,
+                            body: newMessage.trim() || (uploadedAttachments.length > 0 ? `Sent ${uploadedAttachments.length} attachment(s)` : ""),
                             type: 'broadcast',
                             data: { senderId: user.id }
                         }));
@@ -440,7 +537,7 @@ const Messages: React.FC = () => {
                     // Dispatch secondary explicit customer push explicitly if explicitly requested
                     if (state.currentOrganization.id === 'platform' && user?.role === 'master_admin' && includeCustomers) {
                          const custMsg = { ...msg, id: `${msgId}-cust`, receiverId: 'all_customers', type: 'sms' };
-                         await db.collection('messages').doc(custMsg.id).set(custMsg);
+                         await db.collection('messages').doc(custMsg.id).set(cleanUndefinedFields(custMsg));
                     }
                 }
             }
@@ -450,11 +547,13 @@ const Messages: React.FC = () => {
             dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });
             
             setNewMessage('');
+            setPendingAttachments([]);
         } catch (error) {
             console.error(error);
             showToast.warn("Send failed. Please check your connection.");
         } finally {
             setIsSending(false);
+            setUploadingAttachments(false);
         }
     };
 
@@ -490,10 +589,10 @@ const Messages: React.FC = () => {
             return;
         }
         try {
-            await db.collection('messages').doc(msg.id).update({
+            await db.collection('messages').doc(msg.id).update(cleanUndefinedFields({
                 content: editContent.trim(),
                 isEdited: true
-            });
+            }));
             const updatedMessages = state.messages.map(m => m.id === msg.id ? { ...m, content: editContent.trim(), isEdited: true } : m);
             dispatch({ type: 'SET_MESSAGES', payload: updatedMessages });
             setEditingMessageId(null);
@@ -732,7 +831,24 @@ const Messages: React.FC = () => {
                                     ) : (
                                         <>
                                             <div className={`px-4 md:px-5 py-2 md:py-3 rounded-2xl md:rounded-3xl shadow-sm text-sm leading-relaxed ${isOwnMessage ? 'bg-primary-600 text-white rounded-br-none' : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded-bl-none border border-slate-100 dark:border-slate-700'}`}>
-                                                {renderContentWithLinks(msg.content)} {msg.isEdited && <span className="text-[10px] opacity-70 italic ml-1">(edited)</span>}
+                                                {msg.content && renderContentWithLinks(msg.content)} {msg.isEdited && <span className="text-[10px] opacity-70 italic ml-1">(edited)</span>}
+                                                {msg.attachments && msg.attachments.length > 0 && (
+                                                    <div className={`mt-2 flex flex-col gap-2 ${msg.content ? 'pt-2 border-t border-white/20 dark:border-slate-700' : ''}`}>
+                                                        {msg.attachments.map((att, idx) => {
+                                                            const isImg = att.type.startsWith('image/');
+                                                            return isImg ? (
+                                                                <a key={idx} href={att.url} target="_blank" rel="noreferrer" className="block max-w-[240px] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 hover:opacity-90 transition-opacity">
+                                                                    <img src={att.url} alt={att.name} className="max-h-[160px] w-full object-cover" />
+                                                                </a>
+                                                            ) : (
+                                                                <a key={idx} href={att.url} target="_blank" rel="noreferrer" className={`flex items-center gap-2 p-2 rounded-lg text-xs border transition-colors ${isOwnMessage ? 'bg-primary-700 border-primary-500 text-white hover:bg-primary-800' : 'bg-slate-100 border-slate-200 dark:bg-slate-900 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800'}`}>
+                                                                    <FileText size={16} />
+                                                                    <span className="truncate max-w-[150px] font-semibold">{att.name}</span>
+                                                                </a>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
                                             </div>
                                             <div className={`absolute ${isOwnMessage ? '-left-16' : '-right-8'} top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover/msg:opacity-100 transition-opacity`}>
                                                 {isEditable && activeTab === 'team' && (
@@ -807,14 +923,51 @@ const Messages: React.FC = () => {
                                     <button type="button" onClick={() => setNewMessage(prev => prev + (prev.endsWith(" ") || prev === "" ? "" : " ") + "#DOC-")} className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center gap-1 transition-colors"><Paperclip size={10}/> Ref Doc</button>
                                 </div>
                             )}
-                            <div className="flex gap-2 md:gap-3">
+                            {pendingAttachments.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mb-2 p-2 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                                    {pendingAttachments.map((file, idx) => (
+                                        <div key={idx} className="flex items-center gap-1.5 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-sm border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 animate-fade-in">
+                                            {file.type.startsWith('image/') ? <Image size={14} className="text-blue-500" /> : <FileText size={14} className="text-emerald-500" />}
+                                            <span className="truncate max-w-[120px]">{file.name}</span>
+                                            <button type="button" onClick={() => removePendingAttachment(idx)} className="text-slate-400 hover:text-red-500 transition-colors ml-1" title="Remove file" aria-label="Remove file">
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {uploadingAttachments && (
+                                        <div className="flex items-center gap-2 text-xs font-bold text-primary-600 dark:text-primary-400 px-2 py-1">
+                                            <RefreshCw className="animate-spin" size={14} />
+                                            <span>Uploading...</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            <div className="flex gap-2 md:gap-3 items-center">
+                                <input 
+                                    type="file" 
+                                    multiple 
+                                    ref={fileInputRef} 
+                                    onChange={handleFileChange} 
+                                    className="hidden" 
+                                    aria-label="Upload attachments"
+                                />
+                                <button 
+                                    type="button" 
+                                    onClick={() => fileInputRef.current?.click()} 
+                                    className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center transition-all shadow-sm"
+                                    title="Attach Photos or Documents"
+                                    aria-label="Attach Photos or Documents"
+                                >
+                                    <Paperclip size={20} />
+                                </button>
                                 <input 
                                     className="flex-1 bg-slate-100 dark:bg-slate-800 border-none rounded-xl md:rounded-2xl px-4 md:px-6 py-3 md:py-4 text-sm font-medium focus:ring-2 focus:ring-primary-500 transition-all dark:text-white"
-                                    placeholder="Type a message..."
+                                    placeholder={uploadingAttachments ? "Uploading attachments..." : "Type a message..."}
                                     value={newMessage}
                                     onChange={e => setNewMessage(e.target.value)}
+                                    disabled={uploadingAttachments}
                                 />
-                                <button type="submit" disabled={!newMessage.trim() || isSending} className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-primary-600 text-white flex items-center justify-center hover:bg-primary-700 shadow-lg transition-all disabled:opacity-50">
+                                <button type="submit" disabled={(!newMessage.trim() && pendingAttachments.length === 0) || isSending} className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-primary-600 text-white flex items-center justify-center hover:bg-primary-700 shadow-lg transition-all disabled:opacity-50">
                                     {isSending ? <RefreshCw className="animate-spin" size={20}/> : <Send size={20}/>}
                                 </button>
                             </div>

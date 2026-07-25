@@ -1,11 +1,12 @@
 import showToast from "lib/toast";
+import { cleanUndefinedFields } from 'lib/utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import type { User, ShiftLog, VehicleLog, ShiftEdit, StoredFile } from 'types';
 import Card from 'components/ui/Card';
 import Input from 'components/ui/Input';
 import Button from 'components/ui/Button';
 import { FuelIcon, WrenchScrewdriverIcon, DocumentTextIcon, MapPinIcon, Download } from '@constants';
-import { Edit, Trash2, Paperclip, CheckCircle, Printer, Camera as CameraIcon } from 'lucide-react';
+import { Edit, Trash2, Paperclip, CheckCircle, Clock, Printer, Camera as CameraIcon } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
 import Modal from 'components/ui/Modal';
@@ -128,6 +129,14 @@ const TimeAndMileage: React.FC = () => {
             return;
         }
 
+        const cleanUndefined = (obj: any) => {
+            const copy = { ...obj };
+            Object.keys(copy).forEach(k => {
+                if (copy[k] === undefined) delete copy[k];
+            });
+            return copy;
+        };
+
         const loc = await getCurrentLocation();
         const logId = `shift-${Date.now()}`;
         const newLog: ShiftLog = { 
@@ -139,16 +148,16 @@ const TimeAndMileage: React.FC = () => {
         };
 
         try {
-            await db.collection('shiftLogs').doc(logId).set(newLog);
+            await db.collection('shiftLogs').doc(logId).set(cleanUndefinedFields(cleanUndefined(newLog)));
             dispatch({ type: 'ADD_SHIFT_LOG', payload: { userId: user.id, log: newLog } });
             
             // Immediately sync starting coordinates to technician profile
             if (loc) {
                 const locationData = { lat: loc.latitude, lng: loc.longitude, timestamp: new Date().toISOString() };
-                await db.collection('users').doc(user.id).update({
+                await db.collection('users').doc(user.id).update(cleanUndefinedFields({
                     location: locationData,
                     lastLocationUpdate: locationData.timestamp
-                }).catch(err => console.error("Immediate clock-in sync failed:", err));
+                })).catch(err => console.error("Immediate clock-in sync failed:", err));
                 
                 dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...user, location: locationData } });
             }
@@ -168,22 +177,30 @@ const TimeAndMileage: React.FC = () => {
         }
         if (activeShift && user) {
             const loc = await getCurrentLocation();
+            const cleanUndefined = (obj: any) => {
+                const copy = { ...obj };
+                Object.keys(copy).forEach(k => {
+                    if (copy[k] === undefined) delete copy[k];
+                });
+                return copy;
+            };
+
             const updatedLog = { 
                 ...activeShift, 
                 clockOut: new Date().toISOString(),
                 endLocation: loc ? { lat: loc.latitude, lng: loc.longitude, accuracy: loc.accuracy } : undefined
             };
             try {
-                await db.collection('shiftLogs').doc(activeShift.id).update(updatedLog);
+                await db.collection('shiftLogs').doc(activeShift.id).update(cleanUndefinedFields(cleanUndefined(updatedLog)));
                 dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: user.id, log: updatedLog } });
                 
                 // Immediately sync ending coordinates to technician profile
                 if (loc) {
                     const locationData = { lat: loc.latitude, lng: loc.longitude, timestamp: new Date().toISOString() };
-                    await db.collection('users').doc(user.id).update({
+                    await db.collection('users').doc(user.id).update(cleanUndefinedFields({
                         location: locationData,
                         lastLocationUpdate: locationData.timestamp
-                    }).catch(err => console.error("Immediate clock-out sync failed:", err));
+                    })).catch(err => console.error("Immediate clock-out sync failed:", err));
                     
                     dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...user, location: locationData } });
                 }
@@ -322,10 +339,10 @@ const TimeAndMileage: React.FC = () => {
             const safeLog = Object.fromEntries(Object.entries(log).filter(([_, v]) => v !== undefined)) as any;
 
             if (effectiveIsEditMode) {
-                await db.collection('vehicleLogs').doc(log.id).update(safeLog);
+                await db.collection('vehicleLogs').doc(log.id).update(cleanUndefinedFields(safeLog));
                 dispatch({ type: 'UPDATE_VEHICLE_LOG', payload: log });
             } else {
-                await db.collection('vehicleLogs').doc(log.id).set(safeLog);
+                await db.collection('vehicleLogs').doc(log.id).set(cleanUndefinedFields(safeLog));
                 dispatch({ type: 'ADD_VEHICLE_LOG', payload: log });
             }
 
@@ -463,22 +480,57 @@ const TimeAndMileage: React.FC = () => {
                 </div>
             </header>
             
-            <Card>
-                 <h3 className="text-lg font-bold text-primary-600 dark:text-primary-400 mb-4">{t("Current Shift Status")}</h3>
-                 <div className="text-center">
+            <Card className="rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-md overflow-hidden bg-white dark:bg-slate-800 p-5">
+                 <div className="flex items-center justify-between mb-4">
+                     <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                         <span className="w-2.5 h-2.5 rounded-full bg-primary-500 animate-ping"></span>
+                         {t("Current Shift Tracker")}
+                     </h3>
+                     {!!activeShift && (
+                         <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 px-3 py-1 rounded-full border border-emerald-200/60">
+                             {t("Live Shift Active")}
+                         </span>
+                     )}
+                 </div>
+
+                 <div className="text-center py-2">
                     {!!activeShift ? (
-                        <div>
-                            <p className="text-4xl font-mono text-gray-900 dark:text-white mb-2">{elapsedTime}</p>
-                            <p className="text-gray-500 dark:text-gray-400 text-sm">{t("Clocked in at")} {new Date(activeShift.clockIn).toLocaleTimeString()}</p>
+                        <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/60 mb-4">
+                            <p className="text-4xl sm:text-5xl font-black font-mono text-primary-600 dark:text-primary-400 tracking-tight">{elapsedTime}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-semibold">
+                                {t("Clocked in at")} <span className="text-slate-700 dark:text-slate-200 font-bold">{new Date(activeShift.clockIn).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                            </p>
                         </div>
                     ) : (
-                        <div>
-                            <p className="text-4xl font-mono text-gray-400 dark:text-gray-500 mb-2">{t("Not Clocked In")}</p>
+                        <div className="bg-slate-50 dark:bg-slate-900/40 p-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 mb-4">
+                            <p className="text-3xl sm:text-4xl font-black font-mono text-slate-400 dark:text-slate-500">{t("00:00:00")}</p>
+                            <p className="text-xs text-slate-400 mt-1 font-semibold">{t("Not Currently Clocked In")}</p>
                         </div>
                     )}
-                    <div className="flex gap-4 mt-6 justify-center">
-                        <Button onClick={handleClockIn} disabled={!!activeShift} className="w-40 bg-green-600 hover:bg-green-700 shadow-lg">{t("Clock In")}</Button>
-                        <Button onClick={handleClockOut} disabled={!activeShift} className="w-40 bg-red-600 hover:bg-red-700 shadow-lg">{t("Clock Out")}</Button>
+                    
+                    <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                        <button 
+                            type="button"
+                            onClick={handleClockIn} 
+                            disabled={!!activeShift} 
+                            className={`flex-1 min-h-[48px] py-3.5 px-4 rounded-xl text-sm sm:text-base font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-all touch-manipulation active:scale-[0.98] ${
+                                !!activeShift ? 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-700 dark:text-slate-500' : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                            }`}
+                        >
+                            <CheckCircle size={20} />
+                            <span>{t("Clock In")}</span>
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={handleClockOut} 
+                            disabled={!activeShift} 
+                            className={`flex-1 min-h-[48px] py-3.5 px-4 rounded-xl text-sm sm:text-base font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-all touch-manipulation active:scale-[0.98] ${
+                                !activeShift ? 'bg-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-700 dark:text-slate-500' : 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
+                            }`}
+                        >
+                            <Clock size={20} />
+                            <span>{t("Clock Out")}</span>
+                        </button>
                     </div>
                  </div>
             </Card>

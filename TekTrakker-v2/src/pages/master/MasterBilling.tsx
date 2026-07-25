@@ -1,5 +1,5 @@
 import showToast from "lib/toast";
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -72,6 +72,7 @@ const MasterBilling: React.FC = () => {
         subscriptionFee: 7,
         virtualWorkerFee: 49.99,
         virtualWorkerLifetimeFee: 1999,
+        divisionFee: 79,
         franchiseLifetimeFee: 25000,
         updatedAt: new Date().toISOString()
     });
@@ -115,7 +116,7 @@ const MasterBilling: React.FC = () => {
                         address: { street: '', city: '', state: '', zip: '' }, 
                         subscriptionStatus: 'active' 
                     };
-                    await db.collection('organizations').doc('platform').set(defaultPlatform);
+                    await db.collection('organizations').doc('platform').set(cleanUndefinedFields(defaultPlatform));
                     setPlatformOrg(defaultPlatform);
                 }
             } catch (e) { console.error(e); }
@@ -143,6 +144,7 @@ const MasterBilling: React.FC = () => {
 
     const [upgradePlan, setUpgradePlan] = useState<Organization['plan']>('starter');
     const [additionalUsers, setAdditionalUsers] = useState(0);
+    const [additionalDivisionsSlots, setAdditionalDivisionsSlots] = useState(0);
     const [customCharge, setCustomCharge] = useState(0);
     const [isFreeAccess, setIsFreeAccess] = useState(false);
     const [unlockAllFeatures, setUnlockAllFeatures] = useState(false);
@@ -175,7 +177,9 @@ const MasterBilling: React.FC = () => {
             const base = getBasePrice(o.plan || 'starter');
             const additionalUsers = o.additionalUserSlots || 0;
             const userFee = additionalUsers * getUserFee();
-            const totalBeforeDiscount = base + userFee;
+            const additionalDivs = o.additionalDivisionsSlots || 0;
+            const divisionFee = additionalDivs * (config.divisionFee ?? 79);
+            const totalBeforeDiscount = base + userFee + divisionFee;
             const discount = (o.customDiscountPct || 0) / 100;
             return sum + (totalBeforeDiscount * (1 - discount));
         }, 0);
@@ -196,6 +200,7 @@ const MasterBilling: React.FC = () => {
         setSelectedOrg(org);
         setUpgradePlan(org.plan || 'starter');
         setAdditionalUsers(org.additionalUserSlots || 0);
+        setAdditionalDivisionsSlots(org.additionalDivisionsSlots || 0);
         setCustomCharge(0);
         setIsFreeAccess(org.isFreeAccess || false);
         setUnlockAllFeatures(org.unlockAllFeatures || false);
@@ -210,8 +215,8 @@ const MasterBilling: React.FC = () => {
         setIsSubmitting(true);
         try {
             // Must use merge: true to avoid deleting integrations or other fields in the global document
-            await db.collection('platformSettings').doc('global').set({ ...config, updatedAt: new Date().toISOString() }, { merge: true });
-            if (platformOrg) await db.collection('organizations').doc('platform').update(platformOrg);
+            await db.collection('platformSettings').doc('global').set(cleanUndefinedFields({ ...config, updatedAt: new Date().toISOString() }), { merge: true });
+            if (platformOrg) await db.collection('organizations').doc('platform').update(cleanUndefinedFields(platformOrg));
             showToast.warn("Settings updated successfully and synchronized.");
         } catch (e) { showToast.warn("Failed to update config."); }
         finally { setIsSubmitting(false); }
@@ -224,6 +229,9 @@ const MasterBilling: React.FC = () => {
         const basePrice = isFreeAccess ? 0 : getBasePrice(upgradePlan || 'starter');
         const userCosts = isFreeAccess ? 0 : (additionalUsers * getUserFee());
         
+        const divisionFee = config.divisionFee ?? 79;
+        const divisionCosts = isFreeAccess ? 0 : (additionalDivisionsSlots * divisionFee);
+
         let virtualWorkerCost = 0;
         if (virtualWorkerEnabled && !isFreeAccess) {
             if (virtualWorkerBillingType === 'lifetime') {
@@ -237,7 +245,7 @@ const MasterBilling: React.FC = () => {
             }
         }
 
-        const grossSubtotal = basePrice + userCosts + virtualWorkerCost + customCharge;
+        const grossSubtotal = basePrice + userCosts + divisionCosts + virtualWorkerCost + customCharge;
         const discountAmount = isFreeAccess ? 0 : (grossSubtotal * (customDiscountPct / 100));
         const netBeforeTax = Math.max(0, grossSubtotal - discountAmount);
 
@@ -253,6 +261,10 @@ const MasterBilling: React.FC = () => {
 
         if (userCosts > 0) {
             items.push({ id: 'item-users', description: `Additional User Slots (${additionalUsers})`, quantity: 1, unitPrice: userCosts, total: userCosts, type: 'Fee' });
+        }
+
+        if (divisionCosts > 0) {
+            items.push({ id: 'item-divisions', description: `Additional Division Slots (${additionalDivisionsSlots})`, quantity: 1, unitPrice: divisionCosts, total: divisionCosts, type: 'Fee' });
         }
 
         if (virtualWorkerCost > 0) {
@@ -301,16 +313,17 @@ const MasterBilling: React.FC = () => {
         };
 
         try {
-            await db.collection('jobs').doc(jobId).set(invoiceData);
-            await db.collection('organizations').doc(selectedOrg.id).update({ 
+            await db.collection('jobs').doc(jobId).set(cleanUndefinedFields(invoiceData));
+            await db.collection('organizations').doc(selectedOrg.id).update(cleanUndefinedFields({ 
                 plan: upgradePlan, 
                 isFreeAccess: isFreeAccess, 
                 unlockAllFeatures: unlockAllFeatures, 
                 customDiscountPct: customDiscountPct, 
                 additionalUserSlots: additionalUsers,
+                additionalDivisionsSlots: additionalDivisionsSlots,
                 virtualWorkerEnabled: virtualWorkerEnabled,
                 virtualWorkerBillingType: virtualWorkerBillingType
-            });
+            }));
             showToast.warn(`Upgrade processed. Total: ${formatCurrency(finalTotal)}`);
             setIsManageModalOpen(false);
         } catch (e) {
@@ -331,7 +344,7 @@ const MasterBilling: React.FC = () => {
         setIsSubmitting(true);
         try {
             const orgName = platformOrg?.name || 'TekTrakker';
-            await db.collection('mail').add({
+            await db.collection('mail').add(cleanUndefinedFields({
                 to: [org.email],
                 message: {
                     subject: `Subscription Renewal Reminder - ${orgName}`,
@@ -353,7 +366,7 @@ const MasterBilling: React.FC = () => {
                 organizationId: 'platform',
                 type: 'RenewalReminder',
                 createdAt: new Date().toISOString()
-            });
+            }));
             showToast.warn(`Renewal reminder sent to ${org.email}`);
         } catch (e) {
             console.error(e);
@@ -479,11 +492,12 @@ const MasterBilling: React.FC = () => {
 
                         <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-3xl border border-blue-100 dark:border-blue-800">
                             <h4 className="font-black text-sm uppercase text-blue-600 tracking-widest mb-4 flex items-center gap-2"><CreditCard size={18}/> Platform Fees Configuration</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mt-4">
                                 <Input label="Excess User Fee ($/mo)" type="number" value={config.excessUserFee} onChange={e => setConfig({...config, excessUserFee: parseFloat(e.target.value) || 0})} />
                                 <Input label="Standard Per-User Fee ($/mo)" type="number" value={config.subscriptionFee ?? 7} onChange={e => setConfig({...config, subscriptionFee: parseFloat(e.target.value) || 0})} />
                                 <Input label="Virtual Worker Fee ($/mo)" type="number" value={config.virtualWorkerFee ?? 49.99} onChange={e => setConfig({...config, virtualWorkerFee: parseFloat(e.target.value) || 0})} />
                                 <Input label="Virtual Worker Lifetime Fee ($)" type="number" value={config.virtualWorkerLifetimeFee ?? 1999} onChange={e => setConfig({...config, virtualWorkerLifetimeFee: parseFloat(e.target.value) || 0})} />
+                                <Input label="Additional Division Fee ($/mo)" type="number" value={config.divisionFee ?? 79} onChange={e => setConfig({...config, divisionFee: parseFloat(e.target.value) || 0})} />
                             </div>
                         </div>
 
@@ -701,7 +715,7 @@ const MasterBilling: React.FC = () => {
                                 <p className="font-black text-sky-600">{selectedOrg.plan?.toUpperCase() || 'NONE'}</p>
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <Select label="Change Plan Tier" value={upgradePlan} onChange={e => setUpgradePlan(e.target.value as any)}>
                                 <option value="starter">Starter</option>
                                 <option value="growth">Growth</option>
@@ -709,6 +723,7 @@ const MasterBilling: React.FC = () => {
                                 <option value="payments_only">Payments Only ($10/mo)</option>
                             </Select>
                             <Input label="Additional User Slots" type="number" value={additionalUsers} onChange={e => setAdditionalUsers(parseInt(e.target.value) || 0)} />
+                            <Input label="Additional Division Slots" type="number" value={additionalDivisionsSlots} onChange={e => setAdditionalDivisionsSlots(parseInt(e.target.value) || 0)} />
                         </div>
                         <div className="p-5 bg-blue-50 dark:bg-blue-900/10 rounded-2xl border flex flex-col md:flex-row gap-6 items-start md:items-center">
                             <div className="flex flex-col gap-4">
@@ -743,7 +758,7 @@ const MasterBilling: React.FC = () => {
                             <div className="text-5xl font-black">
                                 {isFreeAccess ? (
                                     <span className="text-emerald-400">Complimentary</span>
-                                ) : (
+                               ) : (
                                     (() => {
                                         let vwCost = 0;
                                         if (virtualWorkerEnabled) {
@@ -757,7 +772,8 @@ const MasterBilling: React.FC = () => {
                                                 }
                                             }
                                         }
-                                        const subTotal = (getBasePrice(upgradePlan || 'starter') + (additionalUsers * getUserFee()) + vwCost) * (1 - (customDiscountPct / 100));
+                                        const divCost = isFreeAccess ? 0 : (additionalDivisionsSlots * (config.divisionFee ?? 79));
+                                        const subTotal = (getBasePrice(upgradePlan || 'starter') + (additionalUsers * getUserFee()) + divCost + vwCost) * (1 - (customDiscountPct / 100));
                                         return formatCurrency(subTotal);
                                     })()
                                 )}

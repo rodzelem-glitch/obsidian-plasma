@@ -13,11 +13,11 @@ import {
     Search, Printer, Shield
 } from '@constants';
 import { db, auth } from 'lib/firebase';
-import type { Customer, MembershipPlan, ServiceAgreement, Job, Proposal, User as AppUser, Organization, BusinessDocument } from 'types';
+import type { Customer, MembershipPlan, ServiceAgreement, Job, Proposal, User as AppUser, Organization, BusinessDocument, EquipmentAsset } from 'types';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import SignaturePad, { SignaturePadHandle } from 'components/ui/SignaturePad';
 import { QRCodeCanvas } from 'qrcode.react';
-import { formatAddress } from 'lib/utils';
+import { formatAddress, matchTier, displayTierName , cleanUndefinedFields } from 'lib/utils';
 import { APEX_MOCK_DOCUMENTS, MILE_HIGH_MOCK_ORG } from 'lib/mock-data/apex-demo';
 import showToast from 'lib/toast';
 
@@ -50,6 +50,32 @@ const CustomerDashboard: React.FC = () => {
     const [orgPlans, setOrgPlans] = useState<MembershipPlan[]>([]);
     const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
 
+    useEffect(() => {
+        if (currentUser) {
+            const role = currentUser.customerPortalRole;
+            const allowedIds = currentUser.allowedLocationIds || [];
+            if ((role === 'branch' || role === 'regional') && allowedIds.length === 1) {
+                setSelectedLocationId(allowedIds[0]);
+            } else if (role === 'branch' && allowedIds.length > 0) {
+                setSelectedLocationId(allowedIds[0]);
+            } else {
+                setSelectedLocationId('all');
+            }
+        }
+    }, [currentUser]);
+
+    useEffect(() => {
+        if (activeCustomerRecord) {
+            localStorage.setItem('activeCustomerRecordId', activeCustomerRecord.id);
+        }
+    }, [activeCustomerRecord]);
+
+    useEffect(() => {
+        if (activeOrg) {
+            localStorage.setItem('activeOrgId', activeOrg.id);
+        }
+    }, [activeOrg]);
+
     const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
@@ -57,6 +83,7 @@ const CustomerDashboard: React.FC = () => {
     const [isCancelPlanModalOpen, setIsCancelPlanModalOpen] = useState(false);
     const [isPlanSelectionModalOpen, setIsPlanSelectionModalOpen] = useState(false);
     const [isSigningProposal, setIsSigningProposal] = useState(false);
+    const [selectedProposalTier, setSelectedProposalTier] = useState<string | null>(null);
 
     const [viewingJobReport, setViewingJobReport] = useState<Job | null>(null);
     const [viewingProposal, setViewingProposal] = useState<Proposal | null>(null);
@@ -112,6 +139,20 @@ const CustomerDashboard: React.FC = () => {
             try {
                 console.log("[CustomerDashboard] Fetching profiles for:", currentUser.email, currentUser.uid);
                 const profilesMap = new Map<string, { customer: Customer, org: Organization }>();
+                // 0. Search by direct customerId match (for invited secondary customer users)
+                if ((currentUser as any).customerId) {
+                    console.log("[CustomerDashboard] Found customerId in currentUser profile:", (currentUser as any).customerId);
+                    const custDoc = await db.collection('customers').doc((currentUser as any).customerId).get();
+                    if (custDoc.exists) {
+                        const cust = { ...custDoc.data(), id: custDoc.id } as Customer;
+                        if (cust.organizationId) {
+                            const orgDoc = await db.collection('organizations').doc(cust.organizationId).get();
+                            if (orgDoc.exists) {
+                                profilesMap.set(cust.id, { customer: cust, org: { ...orgDoc.data(), id: orgDoc.id } as Organization });
+                            }
+                        }
+                    }
+                }
 
                 // 1. Search by UID directly (Doc ID match)
                 const uidDoc = await db.collection('customers').doc(currentUser.uid).get();
@@ -235,11 +276,17 @@ const CustomerDashboard: React.FC = () => {
             );
         });
 
+        const role = currentUser?.customerPortalRole;
+        const allowedIds = currentUser?.allowedLocationIds || [];
+        const isRestricted = (role === 'branch' || role === 'regional') && allowedIds.length > 0;
+
         if (selectedLocationId !== 'all') {
             filtered = filtered.filter(j => j.locationId === selectedLocationId);
+        } else if (isRestricted) {
+            filtered = filtered.filter(j => allowedIds.includes(j.locationId || ''));
         }
         return filtered.sort((a, b) => new Date(b.appointmentTime).getTime() - new Date(a.appointmentTime).getTime());
-    }, [activeCustomerRecord, activeOrg, jobs, selectedLocationId]);
+    }, [activeCustomerRecord, activeOrg, jobs, selectedLocationId, currentUser]);
 
     const myProposals = useMemo<Proposal[]>(() => {
         if (!state.currentUser?.email) return [];
@@ -247,20 +294,78 @@ const CustomerDashboard: React.FC = () => {
         const cleanName = (state.currentUser.firstName + " " + state.currentUser.lastName).toLowerCase();
 
         let filtered = state.proposals.filter(p => 
-            p.customerEmail?.toLowerCase() === email || 
-            p.customerName?.toLowerCase() === cleanName ||
-            (activeCustomerRecord && p.customerId === activeCustomerRecord.id)
+            p.status !== 'Draft' && (
+                p.customerEmail?.toLowerCase() === email || 
+                p.customerName?.toLowerCase() === cleanName ||
+                (activeCustomerRecord && p.customerId === activeCustomerRecord.id)
+            )
         );
+
+        const role = state.currentUser?.customerPortalRole;
+        const allowedIds = state.currentUser?.allowedLocationIds || [];
+        const isRestricted = (role === 'branch' || role === 'regional') && allowedIds.length > 0;
+
         if (selectedLocationId !== 'all') {
             filtered = filtered.filter(p => p.locationId === selectedLocationId);
+        } else if (isRestricted) {
+            filtered = filtered.filter(p => allowedIds.includes(p.locationId || ''));
         }
         return filtered;
     }, [state.currentUser, state.proposals, activeCustomerRecord, selectedLocationId]);
 
+    const myAssets = useMemo<EquipmentAsset[]>(() => {
+        if (!activeCustomerRecord) return [];
+        let filtered = activeCustomerRecord.equipment || [];
+        
+        const role = currentUser?.customerPortalRole;
+        const allowedIds = currentUser?.allowedLocationIds || [];
+        const isRestricted = (role === 'branch' || role === 'regional') && allowedIds.length > 0;
+
+        if (selectedLocationId !== 'all') {
+            filtered = filtered.filter(a => a.locationId === selectedLocationId);
+        } else if (isRestricted) {
+            filtered = filtered.filter(a => allowedIds.includes(a.locationId || ''));
+        }
+        return filtered;
+    }, [activeCustomerRecord, currentUser, selectedLocationId]);
+
+    const hasMultipleLocations = useMemo(() => {
+        if (!activeCustomerRecord) return false;
+        const role = currentUser?.customerPortalRole;
+        const allowedIds = currentUser?.allowedLocationIds || [];
+        
+        if (role === 'branch') return false;
+        if (role === 'regional') {
+            return allowedIds.length > 1;
+        }
+        
+        return (activeCustomerRecord.serviceLocations || []).length > 0;
+    }, [activeCustomerRecord, currentUser]);
+
+    const visibleLocations = useMemo(() => {
+        if (!activeCustomerRecord) return [];
+        const role = currentUser?.customerPortalRole;
+        const allowedIds = currentUser?.allowedLocationIds || [];
+        
+        if ((role === 'branch' || role === 'regional') && allowedIds.length > 0) {
+            return (activeCustomerRecord.serviceLocations || []).filter(loc => allowedIds.includes(loc.id));
+        }
+        return activeCustomerRecord.serviceLocations || [];
+    }, [activeCustomerRecord, currentUser]);
+
+    const showDefaultLocationOption = useMemo(() => {
+        const role = currentUser?.customerPortalRole;
+        const allowedIds = currentUser?.allowedLocationIds || [];
+        if ((role === 'branch' || role === 'regional') && allowedIds.length > 0) {
+            return allowedIds.includes('default');
+        }
+        return true;
+    }, [currentUser]);
+
     const upcomingJobs = useMemo<Job[]>(() => myJobs.filter((j: Job) => j.jobStatus !== 'Completed'), [myJobs]);
     const activeJob = useMemo<Job | null>(() => myJobs.find(j => j.jobStatus === 'In Progress') || upcomingJobs[0] || null, [myJobs, upcomingJobs]);
     const assignedTech = useMemo<AppUser | null>(() => activeJob?.assignedTechnicianId ? state.users.find(u => u.id === activeJob.assignedTechnicianId) || null : null, [activeJob, state.users]);
-    const unpaidInvoices = useMemo<Job[]>(() => myJobs.filter((j: Job) => j.invoice?.status === 'Unpaid' || j.invoice?.status === 'Pending'), [myJobs]);
+    const unpaidInvoices = useMemo<Job[]>(() => myJobs.filter((j: Job) => (j.invoice?.status === 'Unpaid' || j.invoice?.status === 'Pending') && j.invoice?.sentAt), [myJobs]);
 
     const estimatedSavings = useMemo(() => {
         if (!membership) return 0;
@@ -288,7 +393,7 @@ const CustomerDashboard: React.FC = () => {
                 photoUrl = await uploadFileToStorage(path, uploadProfilePic);
             }
             const updatedData = { ...profileData, profilePhotoUrl: photoUrl || null };
-            await db.collection('customers').doc(activeCustomerRecord.id).update(updatedData);
+            await db.collection('customers').doc(activeCustomerRecord.id).update(cleanUndefinedFields(updatedData));
             setActiveCustomerRecord({ ...activeCustomerRecord, ...updatedData } as Customer);
             setIsProfileModalOpen(false);
         } catch (e) { console.error(e); } finally { setIsSubmitting(false); }
@@ -301,13 +406,18 @@ const CustomerDashboard: React.FC = () => {
         const toEmail = helpData.isPlatformIssue ? 'platform@tektrakker.com' : activeOrg.email || 'platform@tektrakker.com';
         const subjectPrefix = helpData.isPlatformIssue ? '[Platform Support]' : `[Service Request: ${activeOrg.name}]`;
         try {
-            await db.collection('mail').add({
+            await db.collection('mail_queue').add(cleanUndefinedFields({
                 to: [toEmail],
+                replyTo: activeCustomerRecord.email || 'noreply@tektrakker.com',
                 message: {
                     subject: `${subjectPrefix} ${helpData.subject}`,
                     text: `Customer Help Request\nFrom: ${activeCustomerRecord.name} (${activeCustomerRecord.email})\n\n${helpData.description}`,
+                    replyTo: activeCustomerRecord.email || 'noreply@tektrakker.com'
                 },
-            });
+                organizationId: activeOrg.id || 'platform',
+                type: 'CustomerHelpRequest',
+                createdAt: new Date().toISOString()
+            }));
             setIsHelpModalOpen(false);
         } catch (error) {
             console.error(error);
@@ -325,9 +435,9 @@ const CustomerDashboard: React.FC = () => {
         if (!viewingWarrantyJob || !activeOrg) return;
         setIsSubmitting(true);
         try {
-            await db.collection('jobs').doc(viewingWarrantyJob.id).update({
+            await db.collection('jobs').doc(viewingWarrantyJob.id).update(cleanUndefinedFields({
                 'invoice.warrantyDisclaimerAgreed': true
-            });
+            }));
             setIsWarrantyModalOpen(false);
             setViewingWarrantyJob(null);
         } catch (e) {
@@ -360,7 +470,7 @@ const CustomerDashboard: React.FC = () => {
                 autoBillingId: data.subscriptionID,
                 autoBillingProcessor: 'stripe'
             };
-            await db.collection('serviceAgreements').doc(newAgreement.id).set(newAgreement);
+            await db.collection('serviceAgreements').doc(newAgreement.id).set(cleanUndefinedFields(newAgreement));
             setIsPlanSelectionModalOpen(false);
         } catch (error) { console.error(error); }
     };
@@ -407,10 +517,10 @@ const CustomerDashboard: React.FC = () => {
                 dispatch({ type: 'UPDATE_JOB', payload: { ...job, files: updatedFiles } });
             } else {
                 if (twinDocId) {
-                    await db.collection('documents').doc(twinDocId).update({ status: 'Signed', signature, signedAt: new Date().toISOString() });
+                    await db.collection('documents').doc(twinDocId).update(cleanUndefinedFields({ status: 'Signed', signature, signedAt: new Date().toISOString() }));
                 }
                 try {
-                    await db.collection('jobs').doc(job.id).update({ files: updatedFiles });
+                    await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({ files: updatedFiles }));
                 } catch (jobErr) {
                     console.warn('Could not update job files due to permissions, but twin document was signed safely.', jobErr);
                 }
@@ -465,15 +575,15 @@ const CustomerDashboard: React.FC = () => {
                     dispatch({ type: 'UPDATE_JOB', payload: { ...job, files: updatedFiles } });
                 }
             } else {
-                await db.collection('documents').doc(doc.id).update({
+                await db.collection('documents').doc(doc.id).update(cleanUndefinedFields({
                     status: 'Signed',
                     signature,
                     signedAt: new Date().toISOString(),
                     url: 'data:text/html;base64,' + btoa(unescape(encodeURIComponent(signedHtml)))
-                });
+                }));
                 if (job && updatedFiles) {
                     try {
-                        await db.collection('jobs').doc(job.id).update({ files: updatedFiles });
+                        await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({ files: updatedFiles }));
                     } catch (jobErr) {
                         console.warn('Could not update job files due to permissions, but main document was signed safely.', jobErr);
                     }
@@ -494,7 +604,7 @@ const CustomerDashboard: React.FC = () => {
         setIsSubmitting(true);
         try {
             if (activeCustomerRecord) {
-                await db.collection('customers').doc(activeCustomerRecord.id).update({ isDeleted: true });
+                await db.collection('customers').doc(activeCustomerRecord.id).update(cleanUndefinedFields({ isDeleted: true }));
             }
             if (auth.currentUser) {
                 await auth.currentUser.delete();
@@ -515,7 +625,7 @@ const CustomerDashboard: React.FC = () => {
         setIsSubmitting(true);
         try {
             // Unset auto-billing visually and cancel the plan agreement
-            await db.collection('serviceAgreements').doc(membership.id).update({ status: 'Cancelled' });
+            await db.collection('serviceAgreements').doc(membership.id).update(cleanUndefinedFields({ status: 'Cancelled' }));
             setIsCancelPlanModalOpen(false);
             showToast.success("Membership cancelled. You will not be billed again.");
         } catch (e: any) {
@@ -567,63 +677,73 @@ const CustomerDashboard: React.FC = () => {
                         <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 md:p-6 border border-slate-200 dark:border-slate-700 overflow-y-auto max-h-80 mb-6 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap font-sans">
                             {activeOrg.customerTerms}
                         </div>
-                        <div className="flex gap-3 justify-end pt-4 border-t border-slate-100 dark:border-slate-700">
-                            <Button
-                                variant="secondary"
-                                onClick={async () => {
-                                    try {
-                                        if (isDemoMode) {
-                                            exitDemo();
-                                        } else {
-                                            await auth.signOut();
-                                            dispatch({ type: 'LOGOUT' });
-                                            navigate('/login');
-                                            showToast.success("Logged out successfully.");
-                                        }
-                                    } catch (e: any) {
-                                        showToast.error("Failed to log out: " + e.message);
-                                    }
-                                }}
-                                className="h-12 px-6 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold"
+                        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-700">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/portal/terms')}
+                                className="text-xs font-bold text-indigo-600 hover:text-indigo-850 dark:text-indigo-400 dark:hover:text-indigo-300 underline cursor-pointer"
                             >
-                                Decline & Log Out
-                            </Button>
-                            <Button 
-                                onClick={async () => {
-                                    const now = new Date().toISOString();
-                                    try {
-                                        if (!isDemoMode) {
-                                            try {
-                                                await db.collection('customers').doc(activeCustomerRecord.id).update({
+                                View all agreements, disclaimers & warranty terms
+                            </button>
+                            <div className="flex gap-3 w-full sm:w-auto justify-end">
+                                <Button
+                                    variant="secondary"
+                                    onClick={async () => {
+                                        try {
+                                            if (isDemoMode) {
+                                                exitDemo();
+                                            } else {
+                                                localStorage.setItem('just_logged_out', 'true');
+                                                await auth.signOut();
+                                                dispatch({ type: 'LOGOUT' });
+                                                navigate('/login');
+                                                showToast.success("Logged out successfully.");
+                                            }
+                                        } catch (e: any) {
+                                            showToast.error("Failed to log out: " + e.message);
+                                        }
+                                    }}
+                                    className="h-12 px-6 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs"
+                                >
+                                    Decline & Log Out
+                                </Button>
+                                <Button 
+                                    onClick={async () => {
+                                        const now = new Date().toISOString();
+                                        try {
+                                            if (!isDemoMode) {
+                                                try {
+                                                    await db.collection('customers').doc(activeCustomerRecord.id).update(cleanUndefinedFields({
+                                                        agreedToCustomerTerms: true,
+                                                        customerTermsAgreedAt: now
+                                                    }));
+                                                } catch (dbError: any) {
+                                                    console.warn("Firestore customer terms update failed, falling back to local-only updates:", dbError);
+                                                }
+                                            }
+                                            dispatch({
+                                                type: 'UPDATE_CUSTOMER',
+                                                payload: {
+                                                    id: activeCustomerRecord.id,
                                                     agreedToCustomerTerms: true,
                                                     customerTermsAgreedAt: now
-                                                });
-                                            } catch (dbError: any) {
-                                                console.warn("Firestore customer terms update failed, falling back to local-only updates:", dbError);
-                                            }
-                                        }
-                                        dispatch({
-                                            type: 'UPDATE_CUSTOMER',
-                                            payload: {
-                                                id: activeCustomerRecord.id,
+                                                }
+                                            });
+                                            setActiveCustomerRecord(prev => prev ? {
+                                                ...prev,
                                                 agreedToCustomerTerms: true,
                                                 customerTermsAgreedAt: now
-                                            }
-                                        });
-                                        setActiveCustomerRecord(prev => prev ? {
-                                            ...prev,
-                                            agreedToCustomerTerms: true,
-                                            customerTermsAgreedAt: now
-                                        } : null);
-                                        showToast.success("Terms accepted. Welcome to the portal!");
-                                    } catch (e: any) {
-                                        showToast.warn("Failed to accept terms: " + e.message);
-                                    }
-                                }}
-                                className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none"
-                            >
-                                Accept & Continue
-                            </Button>
+                                            } : null);
+                                            showToast.success("Terms accepted. Welcome to the portal!");
+                                        } catch (e: any) {
+                                            showToast.warn("Failed to accept terms: " + e.message);
+                                        }
+                                    }}
+                                    className="bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none text-xs"
+                                >
+                                    Agree to All Terms
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -654,10 +774,10 @@ const CustomerDashboard: React.FC = () => {
                                         try {
                                             if (!isDemoMode) {
                                                 try {
-                                                    await db.collection('proposals').doc(viewingProposal.id).update({
+                                                    await db.collection('proposals').doc(viewingProposal.id).update(cleanUndefinedFields({
                                                         proposalTermsAgreed: true,
                                                         proposalTermsAgreedAt: now
-                                                    });
+                                                    }));
                                                 } catch (dbError: any) {
                                                     console.warn("Firestore proposal terms update failed, falling back to local-only updates:", dbError);
                                                 }
@@ -688,8 +808,14 @@ const CustomerDashboard: React.FC = () => {
                         </div>
                     ) : (
                         <div className="w-full h-full flex flex-col relative bg-slate-100 dark:bg-slate-900">
-                            <DocumentPreview type="Proposal" data={viewingProposal} onClose={() => setViewingProposal(null)} isInternal={false} />
-                            {viewingProposal.status === 'Sent' && (
+                            <DocumentPreview 
+                                type="Proposal" 
+                                data={viewingProposal ? { ...viewingProposal, selectedOption: selectedProposalTier || viewingProposal.selectedOption } : {}} 
+                                onClose={() => { setViewingProposal(null); setSelectedProposalTier(null); }} 
+                                isInternal={false} 
+                                onSelectTier={viewingProposal?.status !== 'Accepted' ? setSelectedProposalTier : undefined}
+                            />
+                            {(viewingProposal.status === 'Sent' || viewingProposal.status === 'Opened') && (
                                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110]">
                                     <Button onClick={() => setIsSigningProposal(true)} className="bg-emerald-600 h-16 px-12 text-xl font-black">Accept & Authorize Proposal</Button>
                                 </div>
@@ -751,10 +877,102 @@ const CustomerDashboard: React.FC = () => {
                         <div className="flex gap-3">
                             <Button variant="secondary" onClick={() => setIsSigningProposal(false)} className="flex-1">Cancel</Button>
                             <Button onClick={async () => {
-                                if (!sigPadRef.current || sigPadRef.current.isEmpty()) return;
+                                if (!sigPadRef.current || sigPadRef.current.isEmpty() || !viewingProposal) return;
                                 setIsSubmitting(true);
-                                await db.collection('proposals').doc(viewingProposal!.id).update({ status: 'Accepted', signatureDataUrl: sigPadRef.current.toDataURL() });
-                                setViewingProposal(null); setIsSigningProposal(false); setIsSubmitting(false);
+                                try {
+                                    const getAvailableTiersForProp = (prop: any) => {
+                                        const tiers = ['Basic', 'Premium', 'Platinum'];
+                                        return tiers.filter(t => (prop.items || []).some((i: any) => matchTier(i.tier, t)));
+                                    };
+
+                                    const calculateProposalTierTotal = (prop: any, tier: string) => {
+                                        const tierItems = (prop.items || []).filter((i: any) => matchTier(i.tier, tier));
+                                        const subtotal = tierItems.reduce((sum: number, item: any) => sum + (Number(item.price || 0) * Number(item.quantity || 1)), 0);
+                                        const taxableAmount = tierItems.filter((i: any) => i.taxable !== false).reduce((sum: number, item: any) => sum + (Number(item.price || 0) * Number(item.quantity || 1)), 0);
+                                        const taxRate = state.currentOrganization?.taxRate || 8.25;
+                                        const taxAmount = taxableAmount * (taxRate / 100);
+                                        return { subtotal, taxAmount, total: subtotal + taxAmount, items: tierItems };
+                                    };
+
+                                    const availableTiers = getAvailableTiersForProp(viewingProposal);
+                                    const finalTier = selectedProposalTier || (availableTiers[0] || 'Basic');
+                                    const { subtotal, taxAmount, total, items: tierItems } = calculateProposalTierTotal(viewingProposal, finalTier);
+                                    const signatureDataUrl = sigPadRef.current.toDataURL();
+                                    
+                                    let invoiceId = viewingProposal.invoiceId || null;
+
+                                    // If jobId is set on proposal, update the associated job's invoice
+                                    if (viewingProposal.jobId) {
+                                        try {
+                                            const jobDoc = await db.collection('jobs').doc(viewingProposal.jobId).get();
+                                            if (jobDoc.exists) {
+                                                const jobData = jobDoc.data();
+                                                const existingInvoice = jobData?.invoice || {};
+                                                invoiceId = existingInvoice.id || null;
+                                                
+                                                const invoiceItems = tierItems.map((pItem: any) => ({
+                                                    id: pItem.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                                                    description: pItem.name || pItem.description || 'Proposal Item',
+                                                    quantity: pItem.quantity || 1,
+                                                    unitPrice: pItem.price || 0,
+                                                    total: pItem.total || ((pItem.price || 0) * (pItem.quantity || 1)),
+                                                    type: (pItem.type as any) || 'Part'
+                                                }));
+
+                                                const updatedInvoice = {
+                                                    ...existingInvoice,
+                                                    proposalId: viewingProposal.id,
+                                                    items: invoiceItems,
+                                                    subtotal,
+                                                    taxAmount,
+                                                    totalAmount: total,
+                                                    amount: total,
+                                                    status: existingInvoice.status || 'Unpaid'
+                                                };
+
+                                                await db.collection('jobs').doc(viewingProposal.jobId).update(cleanUndefinedFields({
+                                                    proposalId: viewingProposal.id,
+                                                    invoice: updatedInvoice,
+                                                    updatedAt: new Date().toISOString()
+                                                }));
+                                            }
+                                        } catch (jobErr) {
+                                            console.error("Error updating associated job's invoice:", jobErr);
+                                        }
+                                    }
+
+                                    const updatedProposal = {
+                                        ...viewingProposal,
+                                        status: 'Accepted',
+                                        signatureDataUrl,
+                                        selectedOption: finalTier,
+                                        subtotal,
+                                        taxAmount,
+                                        total,
+                                        invoiceId
+                                    };
+
+                                    await db.collection('proposals').doc(viewingProposal.id).update(cleanUndefinedFields({
+                                        status: 'Accepted',
+                                        signatureDataUrl,
+                                        selectedOption: finalTier,
+                                        subtotal,
+                                        taxAmount,
+                                        total,
+                                        invoiceId
+                                    }));
+
+                                    dispatch({ type: 'UPDATE_PROPOSAL', payload: updatedProposal });
+                                    showToast.success("Proposal accepted successfully!");
+                                } catch (error) {
+                                    console.error(error);
+                                    showToast.warn("Failed to accept proposal.");
+                                } finally {
+                                    setViewingProposal(null);
+                                    setSelectedProposalTier(null);
+                                    setIsSigningProposal(false);
+                                    setIsSubmitting(false);
+                                }
                             }} disabled={isSubmitting} className="flex-1 bg-emerald-600">{isSubmitting ? '...' : 'Confirm Acceptance'}</Button>
                         </div>
                     </div>
@@ -766,7 +984,6 @@ const CustomerDashboard: React.FC = () => {
                 onClose={() => setViewingJobReport(null)} 
                 job={viewingJobReport as Job}
                 isAdmin={false}
-                onPrint={() => window.print()}
             />
 
             <JobAppointmentModal 
@@ -785,7 +1002,7 @@ const CustomerDashboard: React.FC = () => {
                       <div>
                           <h1 className="text-3xl font-black text-slate-900 dark:text-white">Welcome, {activeCustomerRecord.firstName || activeCustomerRecord.name.split(' ')[0]}</h1>
                           <p className="text-slate-500 flex items-center gap-2"><MapPinIcon size={14}/> {formatAddress(activeCustomerRecord.address)}</p>
-                          {(activeCustomerRecord.customerType as string) === 'Property Management' && (
+                          {(activeCustomerRecord.customerType as string) === 'Property Management' && hasMultipleLocations && (
                               <div className="mt-2 flex items-center gap-2">
                                   <span className="text-sm font-bold text-slate-600 dark:text-slate-400">View Location:</span>
                                   <select 
@@ -796,8 +1013,8 @@ const CustomerDashboard: React.FC = () => {
                                       className="text-sm bg-slate-100 dark:bg-slate-800 border-none rounded-md px-3 py-1 font-medium text-slate-900 dark:text-white"
                                   >
                                       <option value="all">All Locations</option>
-                                      <option value="default">Main Office / Unassigned</option>
-                                      {activeCustomerRecord.serviceLocations?.map(loc => (
+                                      {showDefaultLocationOption && <option value="default">Main Office / Unassigned</option>}
+                                      {visibleLocations.map(loc => (
                                           <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name}</option>
                                       ))}
                                   </select>
@@ -813,14 +1030,31 @@ const CustomerDashboard: React.FC = () => {
                            <button onClick={() => navigate('/marketplace')} className="text-[10px] font-black uppercase text-primary-600 px-2">Link New</button>
                        </div>
                        <div className="flex gap-3">
-                          <Button onClick={() => setIsRequestModalOpen(true)}>Book Service</Button>
-                          <Button onClick={() => setIsHelpModalOpen(true)} variant="secondary">Help</Button>
+                           {!activeCustomerRecord.isBlacklisted && <Button onClick={() => setIsRequestModalOpen(true)}>Book Service</Button>}
+                           <Button onClick={() => setIsHelpModalOpen(true)} variant="secondary">Help</Button>
                       </div>
                   </div>
               </div>
             </div>
 
             <div className="max-w-7xl mx-auto w-full px-6 mt-8 space-y-8">
+                {activeCustomerRecord.isBlacklisted && (
+                    <div className="bg-red-50 dark:bg-red-950/20 border-2 border-red-500 rounded-[2rem] p-6 shadow-xl flex items-start gap-4">
+                        <AlertTriangle className="text-red-500 mt-1 shrink-0" size={32} />
+                        <div>
+                            <h3 className="text-xl font-bold text-red-900 dark:text-red-400">Account Restricted</h3>
+                            <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                                Your account is currently suspended/restricted. Online booking is disabled. Please contact our support team immediately to settle any unpaid balances.
+                            </p>
+                            {activeCustomerRecord.blacklistReason && (
+                                <div className="mt-2 text-xs font-semibold text-red-800 dark:text-red-400 font-mono bg-red-100 dark:bg-red-950/40 px-3 py-1.5 rounded-lg inline-block border border-red-200 dark:border-red-900/50">
+                                    Reason: {activeCustomerRecord.blacklistReason}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {assignedTech && activeJob && (activeJob.jobStatus === 'Scheduled' || activeJob.jobStatus === 'In Progress') && (
                     <div className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 border-2 border-primary-500 shadow-xl flex items-center gap-6">
                         <div className="w-24 h-24 rounded-2xl overflow-hidden">{assignedTech.profilePicUrl ? <img src={assignedTech.profilePicUrl} className="w-full h-full object-cover" alt="Technician profile" /> : <div className="w-full h-full bg-slate-100 flex items-center justify-center"><UserIcon size={32}/></div>}</div>
@@ -862,7 +1096,7 @@ const CustomerDashboard: React.FC = () => {
                             estimatedSavings={estimatedSavings}
                             onViewPlans={() => setIsPlanSelectionModalOpen(true)}
                             onCancelPlan={() => setIsCancelPlanModalOpen(true)}
-                            completedJobs={myJobs.filter(j => j.jobStatus === 'Completed')}
+                            completedJobs={myJobs.filter(j => j.jobStatus === 'Completed' || j.jobStatus === 'Needs Follow-up')}
                             monthlyPrice={membership?.price}
                         />
 
@@ -874,11 +1108,11 @@ const CustomerDashboard: React.FC = () => {
                         />
 
                         {/* Assets */}
-                        <AssetsSection assets={activeCustomerRecord.equipment || []} />
+                        <AssetsSection assets={myAssets} />
 
                         {/* Service History */}
                         <ServiceHistorySection 
-                            jobs={myJobs.filter(j => j.jobStatus === 'Completed')}
+                            jobs={myJobs.filter(j => j.jobStatus === 'Completed' || j.jobStatus === 'Needs Follow-up')}
                             onViewReport={setViewingJobReport}
                             customerId={activeCustomerRecord.id}
                             organizationId={activeOrg?.id || null}
@@ -898,12 +1132,12 @@ const CustomerDashboard: React.FC = () => {
             <Modal isOpen={isRequestModalOpen} onClose={() => setIsRequestModalOpen(false)} title="New Request">
                 <form onSubmit={async (e) => {
                     e.preventDefault(); setIsSubmitting(true);
-                    await db.collection('appointments').add({
+                    await db.collection('appointments').add(cleanUndefinedFields({
                         organizationId: activeOrg!.id, customerId: activeCustomerRecord.id, customerName: activeCustomerRecord.name,
                         customerPhone: activeCustomerRecord.phone, customerEmail: activeCustomerRecord.email, address: activeCustomerRecord.address,
                         tasks: [requestData.type], appointmentTime: new Date(requestData.date || Date.now()).toISOString(),
                         status: 'Pending', source: 'CustomerPortal', createdAt: new Date().toISOString()
-                    });
+                    }));
                     setIsRequestModalOpen(false); setIsSubmitting(false);
                 }} className="space-y-4">
                     <Select label="Type" value={requestData.type} onChange={e => setRequestData({...requestData, type: e.target.value})}><option value="Repair">Repair</option></Select>

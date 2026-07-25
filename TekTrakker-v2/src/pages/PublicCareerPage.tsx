@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
@@ -27,6 +28,7 @@ const PublicCareerPage: React.FC = () => {
         position: 'HVAC Technician',
         experienceYears: '',
     });
+    const [smsConsent, setSmsConsent] = useState(false);
 
     useEffect(() => {
         const fetchOrg = async () => {
@@ -74,13 +76,14 @@ const PublicCareerPage: React.FC = () => {
                 resumeDataUrl,
                 resumeFileName: resumeFile?.name,
                 status: 'New',
-                appliedDate: new Date().toISOString()
+                appliedDate: new Date().toISOString(),
+                smsOptIn: smsConsent
             };
 
-            await db.collection('applicants').doc(applicant.id).set(applicant);
+            await db.collection('applicants').doc(applicant.id).set(cleanUndefinedFields(applicant));
 
             // Notify Admin
-            await db.collection('messages').add({
+            await db.collection('messages').add(cleanUndefinedFields({
                 organizationId: orgId,
                 senderId: 'system-applicant',
                 receiverId: 'all', // Broadcast to admins
@@ -89,7 +92,7 @@ const PublicCareerPage: React.FC = () => {
                 createdAt: new Date().toISOString(),
                 read: false,
                 type: 'alert'
-            });
+            }));
 
             setSuccess(true);
         } catch (error) {
@@ -116,6 +119,7 @@ const PublicCareerPage: React.FC = () => {
                         onClick={() => {
                             setSuccess(false);
                             setResumeFile(null);
+                            setSmsConsent(false);
                             setFormData({
                                 firstName: '', lastName: '', email: '', phone: '',
                                 position: 'HVAC Technician', experienceYears: ''
@@ -151,6 +155,19 @@ const PublicCareerPage: React.FC = () => {
                         </div>
                         <Input label="Email" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required />
                         <Input label="Phone" type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} required />
+                        
+                        <label className="flex items-start gap-2 text-xs text-gray-600 cursor-pointer mt-2">
+                            <input 
+                                type="checkbox" 
+                                checked={smsConsent} 
+                                onChange={e => setSmsConsent(e.target.checked)}
+                                className="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500" 
+                                required
+                            />
+                            <span>
+                                I consent to receive text messages (SMS) from {orgName} regarding my job application status and updates. Msg & data rates may apply. Message frequency varies. Reply STOP to cancel at any time. View our <a href="/#/privacy" target="_blank" rel="noopener noreferrer" className="text-primary-600 underline">Privacy Policy</a>.
+                            </span>
+                        </label>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Select label="Position" value={formData.position} onChange={e => setFormData({...formData, position: e.target.value})}>

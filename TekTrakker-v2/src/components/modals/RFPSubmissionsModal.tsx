@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/firebase';
@@ -49,32 +50,32 @@ const RFPSubmissionsModal: React.FC<RFPSubmissionsModalProps> = ({ isOpen, onClo
         if (!rfp) return;
         try {
             // Update submission status
-            await db.collection('rfp_notices').doc(rfp.id).collection('submissions').doc(submissionId).update({
+            await db.collection('rfp_notices').doc(rfp.id).collection('submissions').doc(submissionId).update(cleanUndefinedFields({
                 status: 'Won',
                 awardedAt: new Date().toISOString()
-            });
+            }));
 
             // Update Bid status
-            await db.collection('bids').doc(submissionId).update({
+            await db.collection('bids').doc(submissionId).update(cleanUndefinedFields({
                 status: 'Won'
-            });
+            }));
 
             // Update RFP status to Partially Awarded
             const updatedAwardedToIds = [...new Set([...(rfp.awardedToIds || []), orgId])];
-            await db.collection('rfp_notices').doc(rfp.id).update({
+            await db.collection('rfp_notices').doc(rfp.id).update(cleanUndefinedFields({
                 status: 'Partially Awarded',
                 awardedToIds: updatedAwardedToIds
-            });
+            }));
 
             // Add as subcontractor implicitly
             const currentOrgId = rfp.organizationId;
-            await db.collection('organizations').doc(currentOrgId).collection('subcontractors').doc(orgId).set({
+            await db.collection('organizations').doc(currentOrgId).collection('subcontractors').doc(orgId).set(cleanUndefinedFields({
                 organizationId: orgId,
                 name: orgName,
                 status: 'Active',
                 addedAt: new Date().toISOString(),
                 sourceRfp: rfp.id
-            }, { merge: true });
+            }), { merge: true });
 
             if (rfp.projectId) {
                 const projectRef = db.collection('projects').doc(rfp.projectId);
@@ -82,7 +83,7 @@ const RFPSubmissionsModal: React.FC<RFPSubmissionsModalProps> = ({ isOpen, onClo
                 if (docSnap.exists) {
                     const data = docSnap.data();
                     const updatedSubs = [...new Set([...(data?.assignedSubcontractorIds || []), orgId])];
-                    await projectRef.update({ assignedSubcontractorIds: updatedSubs });
+                    await projectRef.update(cleanUndefinedFields({ assignedSubcontractorIds: updatedSubs }));
                 }
             }
 
@@ -97,9 +98,9 @@ const RFPSubmissionsModal: React.FC<RFPSubmissionsModalProps> = ({ isOpen, onClo
     const handleCloseRFP = async () => {
         if (!rfp) return;
         try {
-            await db.collection('rfp_notices').doc(rfp.id).update({
+            await db.collection('rfp_notices').doc(rfp.id).update(cleanUndefinedFields({
                 status: 'Awarded'
-            });
+            }));
             showToast.success("RFP has been successfully closed and finalized.");
             onClose();
         } catch (err) {

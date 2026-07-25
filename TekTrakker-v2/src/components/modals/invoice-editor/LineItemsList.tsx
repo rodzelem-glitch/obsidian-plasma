@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Trash2, PlusCircle, Tag } from 'lucide-react';
+import { Trash2, PlusCircle, Tag, ChevronUp, ChevronDown } from 'lucide-react';
 import Button from '../../ui/Button';
 import type { InvoiceLineItem } from '../../../types';
 
@@ -11,6 +11,8 @@ interface LineItemsListProps {
     handleDeleteItem: (id: string) => void;
     handleAddItem: (type?: InvoiceLineItem['type'], description?: string) => void;
     setIsDiscountModalOpen: (open: boolean) => void;
+    contractedRate?: number;
+    handleMoveItem?: (id: string, direction: 'up' | 'down') => void;
 }
 
 const LineItemsList: React.FC<LineItemsListProps> = ({
@@ -18,14 +20,39 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
     handleUpdateItem,
     handleDeleteItem,
     handleAddItem,
-    setIsDiscountModalOpen
+    setIsDiscountModalOpen,
+    contractedRate,
+    handleMoveItem
 }) => {
     return (
         <div className="flex-1 min-h-[300px] flex flex-col bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner mt-4">
             <div className="overflow-y-auto flex-1 p-4 space-y-3">
-                {lineItems.map(item => (
-                    <div key={item.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 shadow-sm transition-all hover:border-primary-400">
-                        <div className="flex justify-between items-start gap-4">
+                {lineItems.map((item, index) => (
+                    <div key={item.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 sm:p-4 shadow-sm transition-all hover:border-primary-400 flex gap-3 items-center">
+                        {handleMoveItem && (
+                            <div className="flex flex-col gap-1 flex-shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => handleMoveItem(item.id, 'up')}
+                                    disabled={index === 0}
+                                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                    title="Move up"
+                                >
+                                    <ChevronUp size={16} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => handleMoveItem(item.id, 'down')}
+                                    disabled={index === lineItems.length - 1}
+                                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                    title="Move down"
+                                >
+                                    <ChevronDown size={16} />
+                                </button>
+                            </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-start gap-4">
                             <div className="flex-1 w-full space-y-2">
                                 <input 
                                     className="w-full font-bold text-base bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 rounded-md p-2.5 text-slate-900 dark:text-white"
@@ -70,19 +97,63 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                                         title="Quantity"
                                     />
                                 </div>
+                                {item.type === 'Discount' && (
+                                    <div className="flex flex-col gap-1 w-20 sm:w-24">
+                                        <label htmlFor={`method-${item.id}`} className="font-semibold px-1">Method</label>
+                                        <select
+                                            id={`method-${item.id}`}
+                                            value={item.isPercentage ? 'percent' : 'flat'}
+                                            onChange={e => {
+                                                const isPct = e.target.value === 'percent';
+                                                handleUpdateItem(item.id, 'isPercentage', isPct);
+                                                if (isPct) {
+                                                    handleUpdateItem(item.id, 'percentageRate', 10); // default to 10%
+                                                }
+                                            }}
+                                            className="h-10 px-2 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 border rounded focus:ring-1 focus:ring-primary-500 text-sm font-medium"
+                                            title="Discount Method"
+                                        >
+                                            <option value="flat">Flat ($)</option>
+                                            <option value="percent">Percent (%)</option>
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="flex flex-col gap-1 w-24 sm:w-28">
-                                    <label htmlFor={`price-${item.id}`} className="font-semibold px-1">Price ($)</label>
+                                    <label htmlFor={`price-${item.id}`} className="font-semibold px-1">
+                                        {item.type === 'Discount' ? (item.isPercentage ? 'Discount (%)' : 'Discount ($)') : 'Price ($)'}
+                                    </label>
                                     <input 
                                         id={`price-${item.id}`}
                                         type="number" 
-                                        value={item.unitPrice === 0 ? '' : item.unitPrice}
-                                        onChange={e => handleUpdateItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                                        value={
+                                            item.type === 'Discount' 
+                                                ? (item.isPercentage ? (item.percentageRate === 0 ? '' : item.percentageRate) : (item.unitPrice === 0 ? '' : Math.abs(item.unitPrice)))
+                                                : (item.unitPrice === 0 ? '' : item.unitPrice)
+                                        }
+                                        onChange={e => {
+                                            const val = parseFloat(e.target.value) || 0;
+                                            if (item.type === 'Discount' && item.isPercentage) {
+                                                handleUpdateItem(item.id, 'percentageRate', val);
+                                            } else {
+                                                handleUpdateItem(item.id, 'unitPrice', val);
+                                            }
+                                        }}
                                         onFocus={e => e.target.select()}
                                         step="0.01"
                                         className="h-10 pl-3 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 border rounded focus:ring-1 focus:ring-primary-500 font-medium"
                                         aria-label="Unit Price"
                                         title="Unit Price"
                                     />
+                                    {contractedRate !== undefined && contractedRate > 0 && (item.type === 'Labor' || item.type === 'Part/Labor') && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleUpdateItem(item.id, 'unitPrice', contractedRate)}
+                                            className="text-[9px] text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-500 font-extrabold underline leading-tight mt-0.5 text-left"
+                                            title="Apply contracted rate"
+                                        >
+                                            Apply Contracted (${contractedRate.toFixed(2)})
+                                        </button>
+                                    )}
                                 </div>
                                 <div className="flex flex-col gap-1 w-28 sm:w-32">
                                     <label htmlFor={`type-${item.id}`} className="font-semibold px-1">Type</label>
@@ -125,11 +196,12 @@ const LineItemsList: React.FC<LineItemsListProps> = ({
                                     Taxable
                                 </label>
                                 <p className="font-black text-slate-900 dark:text-white text-xl min-w-[90px] text-right">
-                                    ${(item.quantity * item.unitPrice).toFixed(2)}
+                                    {item.unitPrice < 0 ? '-' : ''}${(item.quantity * Math.abs(item.unitPrice)).toFixed(2)}
                                 </p>
                             </div>
                         </div>
                     </div>
+                </div>
                 ))}
                 
                 {lineItems.length === 0 && (

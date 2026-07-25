@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAppContext } from '../context/AppContext';
 import { LogOut, ShieldAlert } from 'lucide-react';
+import { isEmulatorMode } from '../lib/firebase';
 
 const DemoBanner: React.FC = () => {
     const { state, exitDemo } = useAppContext();
@@ -16,9 +17,8 @@ const DemoBanner: React.FC = () => {
                     const text = button.innerText?.toLowerCase() || '';
                     const label = button.getAttribute('aria-label')?.toLowerCase() || '';
                     const isEditAction = ['save', 'delete', 'add ', 'create', 'update', 'remove'].some(keyword => text.includes(keyword) || label.includes(keyword));
-                    const isEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
                     
-                    if (isEditAction && !text.includes('demo') && !isEmulator) {
+                    if (isEditAction && !text.includes('demo') && !isEmulatorMode) {
                         e.preventDefault();
                         e.stopPropagation();
                         alert("Action blocked: The demo environment is locked for edits.");

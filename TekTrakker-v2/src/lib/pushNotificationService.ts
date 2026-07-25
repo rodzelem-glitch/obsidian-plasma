@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from './utils';
 import { messaging, db } from './firebase';
 import { firebase } from './firebase';
 import { Capacitor } from '@capacitor/core';
@@ -5,15 +6,20 @@ import { PushNotifications } from '@capacitor/push-notifications';
 
 const VAPID_KEY = "BAyIBglImyH-kWG0p4VhTcsK59cqTelDxdV5Ji2ajDCChbYih5jrv7cnwe8BSot_poxOxCB1ifqkSwGafzhnc6c";
 
+// Track initialized users in-memory to prevent repeated FCM registration loops within the same window session
+const initializedFcmUsers = new Set<string>();
+
 export const setupFCMToken = async (userId: string) => {
+    if (!userId || initializedFcmUsers.has(userId)) {
+        return;
+    }
+    initializedFcmUsers.add(userId);
+
     console.log('[FCM] Starting setupFCMToken for user', userId);
 
     if (Capacitor.isNativePlatform()) {
         console.log('[FCM-Capacitor] Initializing Native Push Notifications...');
         try {
-            // Request permission to use push notifications
-            // iOS will prompt user and return if they granted permission or not
-            // Android will just grant without prompting
             const authStatus = await PushNotifications.requestPermissions();
             if (authStatus.receive !== 'granted') {
                 console.warn('[FCM-Capacitor] Push permission denied by user');
@@ -34,16 +40,14 @@ export const setupFCMToken = async (userId: string) => {
                 }
             }
 
-            // IMPORTANT: Listeners MUST be attached BEFORE calling register()!
-            // Otherwise the native layer emits the event before JavaScript is listening.
             await PushNotifications.addListener('registration', async (token) => {
                 const fcmToken = token.value;
                 console.log('[FCM-Capacitor] Push registration success, token: ' + fcmToken);
                 
                 try {
-                    await db.collection('users').doc(userId).set({
+                    await db.collection('users').doc(userId).set(cleanUndefinedFields({
                         fcmTokens: firebase.firestore.FieldValue.arrayUnion(fcmToken)
-                    }, { merge: true });
+                    }), { merge: true });
                     console.log('[FCM-Capacitor] Native token synced to Firestore');
                 } catch (dbErr: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
                     console.warn('[FCM-Capacitor] Could not sync token (likely Demo Mode):', dbErr.message);
@@ -58,14 +62,13 @@ export const setupFCMToken = async (userId: string) => {
                 console.log('[FCM-Capacitor] Target Notification received in foreground: ', notification);
             });
 
-            // Register with Apple / Google to receive push via APNS/FCM
             await PushNotifications.register();
 
         } catch (err) {
             console.error('[FCM-Capacitor] Critical initialization error:', err);
         }
 
-        return; // EXIT EARLY so we don't attempt Web Push
+        return;
     }
 
     // --- FALLBACK TO PURE WEB PUSH FOR BROWSER / PWA ---
@@ -82,37 +85,35 @@ export const setupFCMToken = async (userId: string) => {
         if (permission === 'granted') {
             console.log('[FCM] Obtaining token via VAPID key...');
             
-            // Explicitly register the service worker to prevent 'no active Service Worker' race conditions
-            let registration;
+            // Reuse active service worker if registered to prevent SW update loops
+            let registration: ServiceWorkerRegistration | undefined;
             try {
-                registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-                console.log('[FCM] Service worker explicitly registered for messaging:', registration);
-                
-                // Wait for the service worker to be active
-                if (registration.installing || registration.waiting) {
-                   console.log('[FCM] Service worker installing/waiting... waiting for ready state.');
-                   await navigator.serviceWorker.ready;
-                   console.log('[FCM] Service worker is now active and ready!');
-                } else if (registration.active) {
-                   console.log('[FCM] Service worker active.');
+                if ('serviceWorker' in navigator) {
+                    const existingRegs = await navigator.serviceWorker.getRegistrations();
+                    registration = existingRegs.find(r => r.active);
+                    if (!registration) {
+                        registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+                    }
+                }
+                if (registration && (registration.installing || registration.waiting)) {
+                    await navigator.serviceWorker.ready;
                 }
             } catch (swErr) {
-                console.error('[FCM] Failed to register service worker:', swErr);
-                return;
+                console.warn('[FCM] Failed to query/register service worker:', swErr);
             }
 
             const token = await messaging.getToken({ 
                 vapidKey: VAPID_KEY,
-                serviceWorkerRegistration: registration 
+                ...(registration ? { serviceWorkerRegistration: registration } : {})
             });
             
             if (token) {
                 console.log('[FCM] Successfully obtained token:', token.substring(0, 15) + '...');
                 // Save the token to the user document
                 try {
-                    await db.collection('users').doc(userId).set({
+                    await db.collection('users').doc(userId).set(cleanUndefinedFields({
                         fcmTokens: firebase.firestore.FieldValue.arrayUnion(token)
-                    }, { merge: true });
+                    }), { merge: true });
                     console.log('[FCM] Successfully synced token to Firestore!');
                 } catch (dbErr: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
                     console.warn('[FCM] Could not sync token (likely Demo Mode):', dbErr.message);
@@ -122,13 +123,13 @@ export const setupFCMToken = async (userId: string) => {
                 /*
                 console.log('[FCM] Dispatching test dummy notification to backend router...');
                 try {
-                    await db.collection('notifications').add({
+                    await db.collection('notifications').add(cleanUndefinedFields({
                         userId: userId,
                         title: "Test FCM Notification",
                         body: "If you see this, the entire pipeline is 100% working!",
                         status: 'pending',
                         createdAt: new Date().toISOString()
-                    });
+                    }));
                     console.log('[FCM] Test notification safely injected into database.');
                 } catch(dbErr) {
                     console.error('[FCM] Failed to inject test notification!', dbErr);

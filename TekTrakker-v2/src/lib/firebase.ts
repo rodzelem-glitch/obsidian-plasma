@@ -22,8 +22,6 @@ if (!firebase.apps.length) {
 
 const db = firebase.firestore();
 
-// IMPORTANT: Force long polling specifically on Mobile (Capacitor) to prevent socket freezing/listener delays.
-// On desktop web, we want standard highly-optimized WebSocket connection logic.
 interface CapacitorWindow extends Window {
     Capacitor?: {
         isNativePlatform?: () => boolean;
@@ -32,26 +30,30 @@ interface CapacitorWindow extends Window {
 
 const isNative = !!(window as unknown as CapacitorWindow).Capacitor?.isNativePlatform?.();
 
-if (isNative) {
-    db.settings({
-        experimentalForceLongPolling: true,
-        experimentalAutoDetectLongPolling: false
-    });
-} else {
-    // Standard desktop execution (No forced polling required)
-}
+// Force long polling globally to prevent connection freezing, proxy/VPN blocks, and QUIC protocol write errors (e.g., ERR_QUIC_PROTOCOL_ERROR).
+db.settings({
+    experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: false
+});
 
 const auth = firebase.auth();
 const functions = firebase.functions();
 const storage = firebase.storage();
 const app = firebase.app();
 
-if (import.meta.env.VITE_USE_EMULATOR === 'true') {
+const isLocalhost = window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || 
+                    window.location.hostname === '[::1]';
+
+const shouldConnectEmulator = isNative ? import.meta.env.DEV : isLocalhost;
+const isEmulatorMode = import.meta.env.VITE_USE_EMULATOR === 'true' && shouldConnectEmulator;
+
+if (isEmulatorMode) {
   console.log('Testing Mode: Connecting to Firebase Emulators');
-  db.useEmulator('localhost', 8081);
-  auth.useEmulator('http://localhost:9099');
-  functions.useEmulator('localhost', 5001);
-  storage.useEmulator('localhost', 9199);
+  db.useEmulator('127.0.0.1', 8081);
+  auth.useEmulator('http://127.0.0.1:9099');
+  functions.useEmulator('127.0.0.1', 5001);
+  storage.useEmulator('127.0.0.1', 9199);
 }
 
 // Activate Physical IndexDB Persistence for Offline Technicians
@@ -66,20 +68,28 @@ if (import.meta.env.VITE_USE_EMULATOR === 'true') {
         }
         localStorage.setItem('__tektrakker_fb_project', currentProjectId || '');
         
-        await db.enablePersistence({ synchronizeTabs: true });
+        if (isNative) {
+            await db.enablePersistence();
+        } else {
+            try {
+                await db.enablePersistence({ synchronizeTabs: true });
+            } catch (err: any) {
+                if (err.code === 'failed-precondition') {
+                    console.warn('Persistence failed: Multiple identical tabs open.');
+                } else {
+                    await db.enablePersistence();
+                }
+            }
+        }
     } catch (err: unknown) {
         const error = err as { code?: string };
-        if (error.code === 'failed-precondition') {
-            console.warn('Persistence failed: Multiple identical tabs open.');
-        } else if (error.code === 'unimplemented') {
+        if (error.code === 'unimplemented') {
             console.warn('Persistence failed: Browser does not support IndexDB.');
         } else {
             console.warn('Firestore Persistence Error:', err);
         }
     }
 })();
-
-
 
 let messaging: firebase.messaging.Messaging | null = null;
 try {
@@ -92,7 +102,7 @@ try {
 
 // Mobile Network Reconnection Fix
 if (isNative) {
-    import('@capacitor/app').then(({ App }) => {
+    import(/* @vite-ignore */ '@capacitor/app').then(({ App }) => {
         App.addListener('appStateChange', async ({ isActive }) => {
             if (isActive) {
                 console.log("App foregrounded: reconnecting Firestore network to sync stale data.");
@@ -101,17 +111,11 @@ if (isNative) {
                 } catch (e) {
                     console.warn("Could not enable network:", e);
                 }
-            } else {
-                console.log("App backgrounded: disabling Firestore network to preserve battery and prevent broken sockets.");
-                try {
-                    await db.disableNetwork();
-                } catch (e) {
-                    console.warn("Could not disable network:", e);
-                }
             }
         });
     }).catch(err => console.warn("Failed to load @capacitor/app", err));
 }
 
-export { db, auth, functions, storage, app, messaging, firebase };
+export { db, auth, functions, storage, app, messaging, firebase, isEmulatorMode };
+
 

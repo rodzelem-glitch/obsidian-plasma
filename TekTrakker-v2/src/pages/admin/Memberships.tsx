@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useMemo, useState } from 'react';
@@ -12,7 +13,6 @@ import Textarea from 'components/ui/Textarea';
 import { useNavigate } from 'react-router-dom';
 import type { MembershipPlan, ServiceAgreement } from 'types';
 import { db } from 'lib/firebase';
-import { getNextInvoiceNumbers } from 'lib/numbering';
 import { Shield, CheckCircle, Users, DollarSign, Wrench, FileText, Plus, Ban, Trash2 } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 
@@ -91,7 +91,7 @@ const Memberships: React.FC = () => {
         };
         
         try {
-            await db.collection('membershipPlans').doc(updatedPlan.id).set(updatedPlan);
+            await db.collection('membershipPlans').doc(updatedPlan.id).set(cleanUndefinedFields(updatedPlan));
             dispatch({ type: 'UPDATE_MEMBERSHIP_PLAN', payload: updatedPlan });
             setIsPlanModalOpen(false);
         } catch (e) {
@@ -103,10 +103,10 @@ const Memberships: React.FC = () => {
     const handleCancelAgreement = async (id: string) => {
         if (!await globalConfirm("Are you sure you want to cancel this agreement?")) return;
         try {
-            await db.collection('serviceAgreements').doc(id).update({
+            await db.collection('serviceAgreements').doc(id).update(cleanUndefinedFields({
                 status: 'Cancelled',
                 endDate: new Date().toISOString()
-            });
+            }));
             // Update handled by snapshot listener or manual refresh
         } catch (e) {
             showToast.warn("Failed to cancel agreement.");
@@ -156,7 +156,7 @@ const Memberships: React.FC = () => {
         };
 
         try {
-            await db.collection('serviceAgreements').doc(newId).set(agreement);
+            await db.collection('serviceAgreements').doc(newId).set(cleanUndefinedFields(agreement));
             setIsEnrollModalOpen(false);
             setEnrollForm({
                 customerId: '',
@@ -187,9 +187,6 @@ const Memberships: React.FC = () => {
             totalPms += targetLocations.length;
         }
 
-        const generatedInvoiceIds = await getNextInvoiceNumbers(state.currentOrganization?.id || '', totalPms);
-        let pmIndex = 0;
-        
         for (const agreement of activeAgreements) {
             const customer = state.customers.find(c => c.id === agreement.customerId);
             if (!customer) continue;
@@ -221,13 +218,12 @@ const Memberships: React.FC = () => {
                     assignedTechnicianName: techName,
                     source: 'Auto-PM',
                     specialInstructions: `Auto-generated PM for ${agreement.planName} Membership.`,
-                    invoice: { id: generatedInvoiceIds[pmIndex++], status: 'Unpaid', items: [], subtotal: 0, taxRate: 0, taxAmount: 0, totalAmount: 0, amount: 0 },
                     jobEvents: [],
                     createdAt: new Date().toISOString()
                 };
 
                 try {
-                    await db.collection('jobs').doc(newJobId).set(newJob);
+                    await db.collection('jobs').doc(newJobId).set(cleanUndefinedFields(newJob));
                     generatedCount++;
                 } catch (e) {
                     console.error("Failed to generate PM:", e);
@@ -237,7 +233,7 @@ const Memberships: React.FC = () => {
             // Decrement visit count
             try {
                 const updatedVisits = Math.max(0, agreement.visitsRemaining - 1);
-                await db.collection('serviceAgreements').doc(agreement.id).update({ visitsRemaining: updatedVisits });
+                await db.collection('serviceAgreements').doc(agreement.id).update(cleanUndefinedFields({ visitsRemaining: updatedVisits }));
             } catch (e) {
                 console.error("Failed to update agreement visits:", e);
             }
@@ -571,7 +567,7 @@ const Memberships: React.FC = () => {
                             <Button variant="secondary" onClick={() => setIsEditAgreementModalOpen(false)}>Cancel</Button>
                             <Button onClick={async () => {
                                 try {
-                                    await db.collection('serviceAgreements').doc(editingAgreement.id).update(editingAgreement);
+                                    await db.collection('serviceAgreements').doc(editingAgreement.id).update(cleanUndefinedFields(editingAgreement));
                                     setIsEditAgreementModalOpen(false);
                                     showToast.success("Agreement updated.");
                                 } catch (e) {

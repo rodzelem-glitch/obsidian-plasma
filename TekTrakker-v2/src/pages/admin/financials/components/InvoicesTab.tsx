@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import showToast from "lib/toast";
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
-import { Trash2, Share2, Copy, Bell, Calculator, Download, UserPlus, Search, ExternalLink, CreditCard, RefreshCw, Eye, Settings, FileText, Briefcase, ShieldCheck, DollarSign } from 'lucide-react';
+import { Trash2, Share2, Copy, Bell, Calculator, Download, UserPlus, Search, ExternalLink, CreditCard, RefreshCw, Eye, Settings, FileText, Briefcase, ShieldCheck, DollarSign, Send } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import Select from 'components/ui/Select';
 import Modal from 'components/ui/Modal';
@@ -17,6 +17,10 @@ import DocumentPreview from 'components/ui/DocumentPreview';
 import JobDetailModal from 'components/modals/JobDetailModal';
 import { useLanguage } from 'context/LanguageContext';
 import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
+import SendEmailModal from 'components/modals/SendEmailModal';
+import SignOffModal from 'pages/briefing/components/SignOffModal';
+import SubcontractorWorkOrderModal from 'components/modals/SubcontractorWorkOrderModal';
+import { generateInvoicePdfAttachment } from 'lib/pdfHelper';
 
 interface InvoicesTabProps {
     jobs: any[];
@@ -37,6 +41,8 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
     const [viewingJob, setViewingJob] = useState<any>(null);
     const [viewingProposal, setViewingProposal] = useState<any>(null);
     const [previewOtherDoc, setPreviewOtherDoc] = useState<any>(null);
+    const [activeSignOffJob, setActiveSignOffJob] = useState<any>(null);
+    const [activeSubBillJob, setActiveSubBillJob] = useState<any>(null);
     const [taxMode, setTaxMode] = useState(false);
     const [reassignInvoiceJob, setReassignInvoiceJob] = useState<any>(null);
     const [newInvoiceCustomerId, setNewInvoiceCustomerId] = useState('');
@@ -47,6 +53,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
     const [searchTerm, setSearchTerm] = useState('');
     const [isReconciling, setIsReconciling] = useState(false);
     const [recipientModalConfig, setRecipientModalConfig] = useState<{ isOpen: boolean; job: any | null }>({ isOpen: false, job: null });
+    const [sendInvoiceModalConfig, setSendInvoiceModalConfig] = useState<{ isOpen: boolean; job: any | null }>({ isOpen: false, job: null });
 
     const handleReconcilePayments = async () => {
         if (!state.currentOrganization?.id) return;
@@ -93,7 +100,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 organizationId: state.currentOrganization?.id,
                 type: 'internal'
             };
-            await db.collection('messages').doc(msgObj.id).set(msgObj);
+            await db.collection('messages').doc(msgObj.id).set(cleanUndefinedFields(msgObj));
             showToast.warn(t("Invoice shared successfully!"));
             setShareModalInvoice(null);
             setShareMessageText('');
@@ -110,7 +117,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
         if (!newCustomer) return;
         
         try {
-            await db.collection('jobs').doc(reassignInvoiceJob.id).update({
+            await db.collection('jobs').doc(reassignInvoiceJob.id).update(cleanUndefinedFields({
                 customerId: newCustomer.id,
                 customerName: newCustomer.name,
                 customerEmail: newCustomer.email || null,
@@ -118,7 +125,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 address: newCustomer.address || reassignInvoiceJob.address,
                 'invoice.billToName': newCustomer.name,
                 'invoice.billToAddress': newCustomer.address || ''
-            });
+            }));
             showToast.success(t("Invoice reassigned successfully."));
             setReassignInvoiceJob(null);
             setNewInvoiceCustomerId('');
@@ -127,7 +134,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
         }
     };
 
-    const handleSendInvoiceReminder = async (job: any, selectedEmails?: string[]) => {
+    const handleSendInvoiceReminder = async (job: any, selectedEmails?: string[], attachPdf?: boolean) => {
         let emails = selectedEmails;
         let phone = job.customerPhone;
         
@@ -174,7 +181,10 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
             const dueDateVal = job.invoice?.dueDate;
             const isLate = (() => {
                 if (!dueDateVal) return false;
-                const dueDateObj = new Date(dueDateVal);
+                let dueDateObj = new Date(dueDateVal);
+                if (typeof dueDateVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDateVal)) {
+                    dueDateObj = new Date(dueDateVal.replace(/-/g, '/'));
+                }
                 dueDateObj.setHours(0, 0, 0, 0);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
@@ -184,39 +194,47 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
             const pastDueBanner = isLate ? `<div style="color:#dc2626;font-size:32px;font-weight:bold;margin-bottom:10px;text-align:left;border-bottom:2px solid #dc2626;padding-bottom:10px;">PAST DUE</div>` : '';
 
             if (emails.length > 0) {
-                await db.collection('mail_queue').add({
+                let pdfAttachments: any[] = [];
+                if (attachPdf) {
+                    showToast.info(t("Generating invoice PDF attachment..."));
+                    const invPdf = await generateInvoicePdfAttachment(job, state.currentOrganization);
+                    pdfAttachments.push(invPdf);
+                }
+
+                await db.collection('mail_queue').add(cleanUndefinedFields({
                     to: emails,
                     replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
                     message: {
                         subject: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${job.invoice.id} from ${orgName}`,
                         html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;">${pastDueBanner}<h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${job.customerName},</p><p>This is a friendly reminder that your invoice <strong>#${job.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
                         text: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. Pay here: ${link}`,
-                        replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com'
+                        replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
+                        ...(pdfAttachments.length > 0 ? { attachments: pdfAttachments } : {})
                     },
                     organizationId: state.currentOrganization?.id,
                     type: 'InvoiceReminder',
                     createdAt: new Date().toISOString()
-                });
+                }));
             }
 
             if (phone && !selectedEmails) {
-                await db.collection('messages').add({
+                await db.collection('messages').add(cleanUndefinedFields({
                     to: phone,
                     body: `${isLate ? 'PAST DUE - ' : ''}Reminder from ${orgName}: Your invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. View and pay securely here: ${link}`,
                     organizationId: state.currentOrganization?.id,
                     status: 'pending',
                     type: 'sms',
                     createdAt: new Date().toISOString()
-                });
+                }));
             }
 
             // Save reminder sent date
             const reminderDate = new Date().toISOString();
             const currentReminders = job.invoice.remindersSent || [];
             const newReminders = [...currentReminders, reminderDate];
-            await db.collection('jobs').doc(job.id).update({
+            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
                 'invoice.remindersSent': newReminders
-            });
+            }));
 
             // Update local job state
             job.invoice.remindersSent = newReminders;
@@ -230,6 +248,11 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
         }
     };
 
+    const getCustomerDisplayName = (job: any) => {
+        const cust = state.customers?.find((c: any) => c.id === job.customerId);
+        return cust ? cust.name : (job.customerName || '');
+    };
+
     const sortedInvoices = [...jobs.filter((j: any) => j.invoice)]
         .filter((j: any) => {
             if (!searchTerm) return true;
@@ -240,7 +263,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 (j.id || '').toLowerCase().includes(q) || // Internal WO Number (Job ID)
                 (j.poNumber || '').toLowerCase().includes(q) || // External WO Number
                 ((j.invoice as any).poNumber || '').toLowerCase().includes(q) || // External WO Number (invoice-level)
-                (j.customerName || '').toLowerCase().includes(q) ||
+                (getCustomerDisplayName(j)).toLowerCase().includes(q) ||
                 amt.includes(q) ||
                 (j.invoice.status || '').toLowerCase().includes(q)
             );
@@ -257,9 +280,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
             case 'amount_asc':
                 return amtA - amtB;
             case 'name_asc':
-                return (a.customerName || '').localeCompare(b.customerName || '');
+                return (getCustomerDisplayName(a)).localeCompare(getCustomerDisplayName(b));
             case 'name_desc':
-                return (b.customerName || '').localeCompare(a.customerName || '');
+                return (getCustomerDisplayName(b)).localeCompare(getCustomerDisplayName(a));
             case 'status_asc':
             case 'status':
                 return (a.invoice.status || '').localeCompare(b.invoice.status || '');
@@ -454,7 +477,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 t('Invoice #'),
                 t('Customer'),
                 t('Service Location'),
-                t('Date / Sent Date'),
+                t('Appointment & Site Visit'),
                 t('Amount'),
                 t('Linked Documents'),
                 t('Status'),
@@ -464,14 +487,20 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     const linkedProposal = (state.proposals || []).find((p: any) => p.id === job.proposalId || p.jobId === job.id || (job.invoice?.id && p.invoiceId === job.invoice.id));
                     const hasInvoice = job.invoice?.id;
                     const signOffFile = (job.files || []).find((f: any) => f.fileName === 'SignOff_Sheet.html' || f.metadata?.label === 'Sign-Off Sheet' || f.id?.startsWith('signoff-doc'));
-                    const subBillFile = (job.files || []).find((f: any) => f.fileName === 'Subcontractor_Bill.html' || f.metadata?.label === 'Subcontractor Bill' || f.id?.startsWith('subcontractorbill-doc'));
+                    const subBillFile = (job.files || []).find((f: any) => f.fileName === 'Subcontractor_Bill.html' || f.metadata?.label === 'Subcontractor Bill' || f.id?.startsWith('subcontractorbill-doc') || f.fileName?.startsWith('Subcontractor_Bill_'));
+                    const isSubassigned = !!(job.assignedSubcontractorId || job.subcontractorId || job.subcontractorName || job.subcontractor || job.subcontractorCompany || job.subcontractorEmail);
                     const poNumber = job.poNumber || job.invoice?.poNumber || linkedProposal?.poNumber;
+
+                    const checkIn = job.checkInTime || (job.timeEntries && job.timeEntries[0]?.checkInTime);
+                    const checkOut = job.checkOutTime || (job.timeEntries && job.timeEntries[0]?.checkOutTime);
+                    const formattedIn = checkIn ? new Date(checkIn).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
+                    const formattedOut = checkOut ? new Date(checkOut).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
 
                     return (
                         <tbody key={job.id} className="border-b border-slate-200 dark:border-slate-700 last:border-b-0">
                             <tr>
                                 <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">{job.invoice.id}</td>
-                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{job.customerName}</td>
+                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{getCustomerDisplayName(job)}</td>
                                 <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
                                     <div>{job.locationName || <span className="italic text-slate-400">--</span>}</div>
                                     {job.address && (
@@ -480,40 +509,42 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                         </div>
                                     )}
                                 </td>
-                                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400" data-sort-value={new Date(job.appointmentTime).getTime()}>
-                                    <div>{new Date(job.appointmentTime).toLocaleDateString()}</div>
-                                    {job.invoice.sentAt ? (
-                                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-                                            {t("Sent")}: {new Date(job.invoice.sentAt).toLocaleDateString()}
+                                <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400">
+                                    {job.appointmentTime ? (
+                                        <div>
+                                            <div className="font-bold text-slate-800 dark:text-slate-200">{new Date(job.appointmentTime).toLocaleDateString()}</div>
+                                            {(formattedIn || formattedOut) ? (
+                                                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+                                                    {formattedIn && <span>In: {formattedIn}</span>}
+                                                    {formattedOut && <span> | Out: {formattedOut}</span>}
+                                                </div>
+                                            ) : (
+                                                <div className="text-[10px] text-slate-400 dark:text-slate-500 italic mt-0.5">Time on site logged</div>
+                                            )}
                                         </div>
                                     ) : (
-                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 italic">{t("Not Sent")}</div>
+                                        <span className="italic text-slate-400">Not scheduled</span>
                                     )}
                                 </td>
-                                <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
-                                    <div>${(Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0).toFixed(2)}</div>
-                                    {job.invoice.amountPaid !== undefined && job.invoice.amountPaid > 0 && (
-                                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
-                                            {t("Paid")}: ${job.invoice.amountPaid.toFixed(2)} | {t("Bal")}: {Math.max(0, ((Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0) - job.invoice.amountPaid)).toFixed(2)}
-                                        </div>
-                                    )}
+                                <td className="px-6 py-4 font-mono text-xs font-bold text-gray-900 dark:text-white">
+                                    ${(Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0).toFixed(2)}
                                 </td>
                                 <td className="px-6 py-4">
-                                    <div className="flex flex-wrap gap-1.5 max-w-[220px]">
-                                        {hasInvoice && (
-                                            <span 
-                                                onClick={() => setViewingInvoiceJob(job)}
-                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shadow-sm font-sans"
-                                                title={t("View Invoice")}
-                                            >
-                                                <DollarSign size={10} />
-                                                {`INV-${job.invoice.id}`}
-                                            </span>
-                                        )}
+                                    <div className="flex flex-wrap gap-1.5 items-center">
+                                        <a 
+                                            href={`/#/invoice/${job.id}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shadow-sm no-underline font-sans"
+                                            title={t("View Invoice")}
+                                        >
+                                            <FileText size={10} />
+                                            {`INV-${job.invoice.id}`}
+                                        </a>
 
                                         <span 
-                                            onClick={() => setViewingJob(job)}
-                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shadow-sm font-sans"
+                                            onClick={() => setViewingJob(job)} 
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50 cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors shadow-sm font-sans"
                                             title={t("View Job Details")}
                                         >
                                             <Briefcase size={10} />
@@ -542,25 +573,45 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                             </span>
                                         )}
 
-                                        {signOffFile && (
-                                            <span 
-                                                onClick={() => setPreviewOtherDoc({ ...signOffFile, type: 'Other', title: t('Manager Sign-Off Sheet') })}
-                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800/50 cursor-pointer hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-colors shadow-sm font-sans"
-                                                title={t("View Subcontractor Manager Sign-Off Sheet")}
-                                            >
-                                                <ShieldCheck size={10} />
-                                                {t("Sign-off")}
-                                            </span>
-                                        )}
+                                        {/* Sign-Off Button - ALWAYS shown */}
+                                        <span 
+                                            onClick={() => {
+                                                if (signOffFile) {
+                                                    setPreviewOtherDoc({ ...signOffFile, type: 'Other', title: t('Manager Sign-Off Sheet') });
+                                                } else {
+                                                    setActiveSignOffJob(job);
+                                                }
+                                            }}
+                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition-colors shadow-sm font-sans ${
+                                                signOffFile 
+                                                ? 'bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800/50 hover:bg-teal-100 dark:hover:bg-teal-900/40' 
+                                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-teal-50 hover:text-teal-700 hover:border-teal-300'
+                                            }`}
+                                            title={signOffFile ? t("View Subcontractor Manager Sign-Off Sheet") : t("Open Blank Sign-off Sheet to Sign")}
+                                        >
+                                            <ShieldCheck size={10} />
+                                            {signOffFile ? t("Sign-off") : t("+ Sign-off")}
+                                        </span>
 
-                                        {subBillFile && (
+                                        {/* Subcontractor Bill Button - ONLY shown if assigned to a subcontractor */}
+                                        {isSubassigned && (
                                             <span 
-                                                onClick={() => setPreviewOtherDoc({ ...subBillFile, type: 'Other', title: t('Subcontractor Bill') })}
-                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors shadow-sm font-sans"
-                                                title={t("View Subcontractor Bill")}
+                                                onClick={() => {
+                                                    if (subBillFile) {
+                                                        setPreviewOtherDoc({ ...subBillFile, type: 'Other', title: t('Subcontractor Bill') });
+                                                    } else {
+                                                        setActiveSubBillJob(job);
+                                                    }
+                                                }}
+                                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition-colors shadow-sm font-sans ${
+                                                    subBillFile 
+                                                    ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 dark:hover:bg-amber-900/40' 
+                                                    : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300'
+                                                }`}
+                                                title={subBillFile ? t("View Subcontractor Bill") : t("View Subcontractor Work Order / Bill")}
                                             >
                                                 <DollarSign size={10} />
-                                                {t("Sub Bill")}
+                                                {subBillFile ? t("Sub Bill") : t("+ Sub Bill")}
                                             </span>
                                         )}
                                     </div>
@@ -655,6 +706,16 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                         {t("Job")}
                                     </button>
 
+                                    <button 
+                                        aria-label={t("Send Invoice")} 
+                                        title={t("Send Invoice")} 
+                                        onClick={(e) => { e.stopPropagation(); setSendInvoiceModalConfig({ isOpen: true, job }); }} 
+                                        className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white transition-colors font-bold rounded-md shadow-sm"
+                                    >
+                                        <Send size={14} />
+                                        {t("Send Invoice")}
+                                    </button>
+
                                     {job.invoice.status !== 'Paid' && (
                                         <a 
                                             href={`/#/invoice/${job.id}`} 
@@ -673,7 +734,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                         <button 
                                             aria-label={t("Send Reminder")} 
                                             title={t("Send Reminder")} 
-                                            onClick={(e) => { e.stopPropagation(); setRecipientModalConfig({ isOpen: true, job }); }} 
+                                            onClick={(e) => { e.stopPropagation(); setSendInvoiceModalConfig({ isOpen: true, job }); }} 
                                             className="flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40 rounded-md text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/40 transition-colors font-bold shadow-sm"
                                         >
                                             <Bell size={14} />
@@ -730,6 +791,16 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 )})}
             </Table>
 
+            {sendInvoiceModalConfig.isOpen && sendInvoiceModalConfig.job && (
+                <SendEmailModal
+                    isOpen={sendInvoiceModalConfig.isOpen}
+                    onClose={() => setSendInvoiceModalConfig({ isOpen: false, job: null })}
+                    job={sendInvoiceModalConfig.job}
+                    invoice={sendInvoiceModalConfig.job.invoice}
+                    mode="invoice"
+                />
+            )}
+
             {recipientModalConfig.isOpen && recipientModalConfig.job && (
                 <RecipientSelectorModal
                     isOpen={recipientModalConfig.isOpen}
@@ -737,8 +808,8 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     customerId={recipientModalConfig.job.customerId}
                     locationId={recipientModalConfig.job.locationId}
                     title={t("Select Reminder Recipients")}
-                    onConfirm={(emails) => {
-                        handleSendInvoiceReminder(recipientModalConfig.job, emails);
+                    onConfirm={(emails, attachPdf) => {
+                        handleSendInvoiceReminder(recipientModalConfig.job, emails, attachPdf);
                         setRecipientModalConfig({ isOpen: false, job: null });
                     }}
                 />
@@ -767,6 +838,34 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     onClose={() => setViewingJob(null)}
                     job={viewingJob}
                     isAdmin={true}
+                />
+            )}
+
+            {activeSignOffJob && (
+                <SignOffModal 
+                    isOpen={!!activeSignOffJob} 
+                    onClose={() => setActiveSignOffJob(null)} 
+                    job={activeSignOffJob}
+                    onSave={async (file: any) => {
+                        try {
+                            const existingFiles = activeSignOffJob.files || [];
+                            const updatedFiles = [...existingFiles, file];
+                            await db.collection('jobs').doc(activeSignOffJob.id).update(cleanUndefinedFields({ files: updatedFiles }));
+                            activeSignOffJob.files = updatedFiles;
+                            showToast.success(t("Sign-off sheet saved successfully!"));
+                        } catch (err) {
+                            console.error("Error saving sign-off", err);
+                        }
+                        setActiveSignOffJob(null);
+                    }}
+                />
+            )}
+
+            {activeSubBillJob && (
+                <SubcontractorWorkOrderModal 
+                    isOpen={!!activeSubBillJob} 
+                    onClose={() => setActiveSubBillJob(null)} 
+                    job={activeSubBillJob} 
                 />
             )}
         </Card>

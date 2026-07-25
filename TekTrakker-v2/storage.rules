@@ -21,7 +21,7 @@ service firebase.storage {
 
     function isOrgFranchiseAdmin(orgId) {
       let orgPath = /databases/(default)/documents/organizations/$(orgId);
-      return firestore.exists(orgPath) && isFranchiseAdmin(firestore.get(orgPath).data.get('franchiseId', 'UNKNOWN'));
+      return firestore.exists(orgPath) && isFranchiseAdmin(firestore.get(orgPath).data.franchiseId != null ? firestore.get(orgPath).data.franchiseId : 'UNKNOWN');
     }
 
     // Identify if the authenticated token belongs to a Tenant organization
@@ -47,6 +47,13 @@ service firebase.storage {
         (tokenRole != null && (tokenRole == 'master_admin' || tokenRole == 'platform_sales')) ||
         (tokenRole == null && userData != null && (userData.role == 'master_admin' || userData.role == 'platform_sales'))
       );
+    }
+
+    function isOrgAdmin() {
+      let tokenRole = request.auth.token.get('role', null);
+      let userData = getFirestoreUser();
+      let roleVal = tokenRole != null ? tokenRole : (userData != null && userData.role != null ? userData.role : '');
+      return isSignedIn() && (roleVal == 'admin' || roleVal == 'master_admin' || roleVal == 'both' || roleVal == 'supervisor');
     }
 
     function isCustomerOwner(userId) {
@@ -83,7 +90,7 @@ service firebase.storage {
     // Safely isolated User/Employee internal directories
     match /organizations/{orgId}/users/{userId}/{allPaths=**} {
       // Employees/Techs can govern their own files natively
-      allow read, write: if (isCustomerOwner(userId) && isInternalStaff()) || isPlatformAdmin() || (isOrgMember(orgId) && isInternalStaff());
+      allow read, write: if (isCustomerOwner(userId) && isInternalStaff()) || isPlatformAdmin() || (isOrgMember(orgId) && isOrgAdmin());
     }
 
     // Special isolation for Customer-uploaded portal documents
@@ -95,6 +102,12 @@ service firebase.storage {
     match /organizations/{orgId}/branding/{allPaths=**} {
       allow read: if true; // Required for landing page public profiles
       allow write: if (isOrgMember(orgId) && isInternalStaff()) || isPlatformAdmin();
+    }
+
+    // Public guest upload directory for subcontractor/third-party technicians
+    match /organizations/{orgId}/public_uploads/{jobId}/{fileName} {
+      allow write: if true; // Allow anonymous writes
+      allow read: if isOrgMember(orgId) || isPlatformAdmin(); // Enforce reading isolation
     }
 
     // Core Multi-Tenant Organization Isolation

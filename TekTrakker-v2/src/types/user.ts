@@ -1,4 +1,3 @@
-
 import type { Address } from './organization';
 
 export interface EmployeeDocument {
@@ -30,6 +29,7 @@ export interface User {
   ptoAccrued: number; 
   role: 'master_admin' | 'franchise_admin' | 'admin' | 'employee' | 'both' | 'customer' | 'supervisor' | 'platform_sales' | 'Technician' | 'Subcontractor'; 
   franchiseId?: string;
+  dispatchTeamIds?: string[];
   reportsTo?: string | null; 
   hireDate?: string | null;
   ssn?: string | null; 
@@ -91,6 +91,7 @@ export interface User {
   geofenceRadius?: number | null;
   squareTeamMemberId?: string | null;
   gustoEmployeeId?: string | null;
+  adpEmployeeId?: string | null;
   hasAppAccess?: boolean;
   kioskPin?: string;
   gclid?: string;
@@ -102,4 +103,10 @@ export interface User {
     idUploaded: boolean;
     completedAt?: string;
   };
+  mfaEnabled?: boolean;
+  mfaSecret?: string;
+  allowedLocationIds?: string[];
+  customerPortalRole?: 'corporate' | 'regional' | 'branch';
+  assignedDivisions?: string[];
+  subcontractorId?: string | null;
 }

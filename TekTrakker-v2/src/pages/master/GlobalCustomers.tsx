@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -232,22 +233,22 @@ const GlobalCustomers: React.FC = () => {
                     ...cleanData,
                     organizationId: targetOrgId,
                 };
-                batch.set(newCustRef, newCustData);
+                batch.set(newCustRef, cleanUndefinedFields(newCustData));
             } else {
                 const custRef = db.collection('customers').doc(cid);
-                batch.update(custRef, { organizationId: targetOrgId });
+                batch.update(custRef, cleanUndefinedFields({ organizationId: targetOrgId }));
             }
 
             // 2. Move Jobs
             const jobsSnap = await db.collection('jobs').where('customerId', '==', cid).get();
             jobsSnap.forEach(doc => {
-                batch.update(doc.ref, { organizationId: targetOrgId });
+                batch.update(doc.ref, cleanUndefinedFields({ organizationId: targetOrgId }));
             });
 
             // 3. Move Appointments
             // Try ID match
             let apptSnap = await db.collection('appointments').where('customerId', '==', cid).get();
-            apptSnap.forEach(doc => batch.update(doc.ref, { organizationId: targetOrgId }));
+            apptSnap.forEach(doc => batch.update(doc.ref, cleanUndefinedFields({ organizationId: targetOrgId })));
             
             // Try Phone match (common for web leads)
             if (selectedCustomer.phone) {
@@ -255,14 +256,14 @@ const GlobalCustomers: React.FC = () => {
                     .where('customerPhone', '==', selectedCustomer.phone)
                     .where('organizationId', 'in', ['platform', 'unaffiliated']) // Only move unassigned ones
                     .get();
-                 apptSnapPhone.forEach(doc => batch.update(doc.ref, { organizationId: targetOrgId, customerId: cid }));
+                 apptSnapPhone.forEach(doc => batch.update(doc.ref, cleanUndefinedFields({ organizationId: targetOrgId, customerId: cid })));
             }
 
             // 4. Move User Login (if exists)
             if (selectedCustomer.email) {
                 const userSnap = await db.collection('users').where('email', '==', selectedCustomer.email).get();
                 userSnap.forEach(doc => {
-                    batch.update(doc.ref, { organizationId: targetOrgId });
+                    batch.update(doc.ref, cleanUndefinedFields({ organizationId: targetOrgId }));
                 });
             }
 

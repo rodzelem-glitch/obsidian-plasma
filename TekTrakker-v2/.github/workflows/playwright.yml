@@ -4,12 +4,18 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+
+permissions:
+  contents: write
+
 jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - uses: actions/setup-node@v4
       with:
         node-version: lts/*
@@ -17,8 +23,27 @@ jobs:
       run: npm ci
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
-    - name: Run Playwright tests
-      run: npx playwright test
+    - name: Run Playwright Test Sentinel (Self-Healing)
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: node scratch/test-sentinel.cjs
+    - name: Commit and Push Healed Changes
+      if: always()
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add .
+        git diff --quiet && git diff --staged --quiet || (git commit -m "style(sentinel): autonomic code healing [skip ci]" && git push)
+    - name: Build Web App
+      if: success() && github.event_name == 'push'
+      run: npm run build
+    - name: Deploy to Firebase Hosting
+      if: success() && github.event_name == 'push'
+      uses: w9jds/firebase-action@master
+      with:
+        args: deploy --only hosting
+      env:
+        GCP_SA_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:

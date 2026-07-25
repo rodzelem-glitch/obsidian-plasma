@@ -1,4 +1,5 @@
 import showToast from "lib/toast";
+import { cleanUndefinedFields } from 'lib/utils';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
@@ -196,7 +197,7 @@ const IndustryToolsHub: React.FC = () => {
             const functions = getFunctions();
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             const prompt = `Senior VRF Tech Support: ${vrfBrand} VRF, Error ${vrfError}. Identify issue and 3-5 tech steps. JSON: { "issue": "...", "steps": ["..."] }`;
-            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.5-flash', config: { response_mime_type: "application/json" } });
+            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.6-flash', config: { response_mime_type: "application/json" } });
             const cleanJson = (result.data.text || '{}').replace(/```json/g, '').replace(/```/g, '').trim();
             setVrfAnalysis(JSON.parse(cleanJson));
         } catch (e) {
@@ -224,7 +225,7 @@ const IndustryToolsHub: React.FC = () => {
             const job = state.jobs.find(j => j.id === selectedJobId);
             if (job) {
                 const updatedReadings = [...(job.toolReadings || []), reading];
-                await db.collection('jobs').doc(selectedJobId).update({ toolReadings: updatedReadings });
+                await db.collection('jobs').doc(selectedJobId).update(cleanUndefinedFields({ toolReadings: updatedReadings }));
                 dispatch({ type: 'UPDATE_JOB', payload: { ...job, toolReadings: updatedReadings } });
             }
             setIsSaveModalOpen(false);
@@ -255,7 +256,7 @@ const IndustryToolsHub: React.FC = () => {
             };
             
             const updatedReadings = [...otherReadings, newReading];
-            await db.collection('jobs').doc(vitalsJobId).update({ toolReadings: updatedReadings });
+            await db.collection('jobs').doc(vitalsJobId).update(cleanUndefinedFields({ toolReadings: updatedReadings }));
             dispatch({ type: 'UPDATE_JOB', payload: { ...job, toolReadings: updatedReadings } });
             
             showToast.warn("Comprehensive System Vitals explicitly bound and saved strictly to the job profile!");

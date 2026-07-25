@@ -1,4 +1,5 @@
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
+import { Capacitor } from '@capacitor/core';
 
 import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
@@ -7,15 +8,16 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Toggle from '../ui/Toggle'; 
 import { useAppContext } from 'context/AppContext';
-import { db, auth } from 'lib/firebase';
+import { db, auth, firebase } from 'lib/firebase';
 import type { User } from 'types';
-import { User as UserIcon, Lock, Mail, Camera, CheckCircle, Key, Trash2, DollarSign, Settings, Search, Filter, Eye, EyeOff, FileText, Upload, Download, ClipboardList, Umbrella, Loader2 } from 'lucide-react';
+import { User as UserIcon, Lock, Mail, Camera, CheckCircle, Key, Trash2, DollarSign, Settings, Search, Filter, Eye, EyeOff, FileText, Upload, Download, ClipboardList, Umbrella, Loader2, ShieldCheck, Fingerprint } from 'lucide-react';
 import HRHandbookView from '../../pages/admin/compliance/components/HRHandbookView';
 import HiringPacketView from '../../pages/admin/compliance/components/HiringPacketView';
-import { encryptSensitiveData, decryptSensitiveData } from 'lib/encryption';
+import { decryptSensitiveData } from 'lib/encryption';
 import { sendEmail, notifyAdmins } from 'lib/notificationService';
 import { uploadFileToStorage } from 'lib/storageService';
 import showToast from 'lib/toast';
+import { generateRandomSecret, verifyTOTP, getOtpauthUri } from 'lib/totp';
 
 interface EmployeeProfileModalProps {
     isOpen: boolean;
@@ -57,30 +59,215 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
     const [hrTypeFilter, setHrTypeFilter] = useState('All');
     const [viewerDoc, setViewerDoc] = useState<any | null>(null);
 
+    // MFA State Variables
+    const [isMfaSetupOpen, setIsMfaSetupOpen] = useState(false);
+    const [mfaSecret, setMfaSecret] = useState('');
+    const [mfaCode, setMfaCode] = useState('');
+    const [mfaError, setMfaError] = useState('');
+    const [isVerifyingMfa, setIsVerifyingMfa] = useState(false);
+    const [mfaDeactivateCode, setMfaDeactivateCode] = useState('');
+    const [isDeactivatingMfa, setIsDeactivatingMfa] = useState(false);
+
+    // Biometric Login State Variables
+    const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+    const [isBiometricEnabled, setIsBiometricEnabled] = useState(() => {
+        return localStorage.getItem('biometric_login_enabled') === 'true';
+    });
+    const [biometricPassword, setBiometricPassword] = useState('');
+    const [isVerifyingBiometric, setIsVerifyingBiometric] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && Capacitor.isNativePlatform()) {
+            import('@capgo/capacitor-native-biometric').then(({ NativeBiometric }) => {
+                NativeBiometric.isAvailable()
+                    .then((result) => {
+                        if (result.isAvailable) {
+                            setIsBiometricSupported(true);
+                        }
+                    })
+                    .catch((err) => {
+                        console.warn("Biometric check failed:", err);
+                    });
+            }).catch(err => {
+                console.error("Failed to load NativeBiometric plugin", err);
+            });
+        }
+    }, [isOpen]);
+
+    const handleEnableBiometrics = async () => {
+        if (!biometricPassword) {
+            showToast.warn("Please enter your password to enable biometric login.");
+            return;
+        }
+        if (!formData.email) {
+            showToast.error("User email not found. Please try again.");
+            return;
+        }
+        setIsVerifyingBiometric(true);
+        try {
+            const normalizedEmail = formData.email.toLowerCase().trim();
+            await auth.signInWithEmailAndPassword(normalizedEmail, biometricPassword);
+            
+            const { NativeBiometric } = await import('@capgo/capacitor-native-biometric');
+            await NativeBiometric.setCredentials({
+                username: normalizedEmail,
+                password: biometricPassword,
+                server: "tektrakker-v2.firebaseauth"
+            });
+            
+            localStorage.setItem('biometric_login_enabled', 'true');
+            setIsBiometricEnabled(true);
+            setBiometricPassword('');
+            showToast.success("Biometric Login has been securely enabled on this device!");
+        } catch (err: any) {
+            console.error("Biometric verification failed", err);
+            showToast.error("Verification failed: " + (err.message || "Invalid password"));
+        } finally {
+            setIsVerifyingBiometric(false);
+        }
+    };
+
+    const handleDisableBiometrics = async () => {
+        setIsVerifyingBiometric(true);
+        try {
+            const { NativeBiometric } = await import('@capgo/capacitor-native-biometric');
+            await NativeBiometric.deleteCredentials({
+                server: "tektrakker-v2.firebaseauth"
+            });
+            localStorage.setItem('biometric_login_enabled', 'false');
+            setIsBiometricEnabled(false);
+            showToast.success("Biometric Login has been disabled and credentials cleared.");
+        } catch (err: any) {
+            console.error("Failed to disable biometrics", err);
+            showToast.error("Failed to disable biometric login: " + err.message);
+        } finally {
+            setIsVerifyingBiometric(false);
+        }
+    };
+
+    const handleStartMfaSetup = () => {
+        const secret = generateRandomSecret();
+        setMfaSecret(secret);
+        setMfaCode('');
+        setMfaError('');
+        setIsMfaSetupOpen(true);
+    };
+
+    const handleConfirmMfaSetup = async () => {
+        if (!mfaCode || mfaCode.length !== 6) {
+            setMfaError("Verification code must be exactly 6 digits.");
+            return;
+        }
+        setMfaError('');
+        setIsVerifyingMfa(true);
+        try {
+            const isVerified = await verifyTOTP(mfaSecret, mfaCode);
+            if (isVerified) {
+                if (formData.id) {
+                    await db.collection('users').doc(formData.id).update(cleanUndefinedFields({
+                        mfaEnabled: true,
+                        mfaSecret: mfaSecret
+                    }));
+                    
+                    setFormData(prev => ({ ...prev, mfaEnabled: true, mfaSecret: mfaSecret }));
+                    sessionStorage.setItem('mfa_verified_' + formData.id, 'true');
+                    showToast.success("Multi-Factor Authentication enabled successfully!");
+                    
+                    setIsMfaSetupOpen(false);
+                    setMfaSecret('');
+                    setMfaCode('');
+                } else {
+                    setMfaError("User record error. Please save the profile first.");
+                }
+            } else {
+                setMfaError("Invalid verification code. Please check your authenticator app and try again.");
+            }
+        } catch (err: any) {
+            setMfaError("Failed to verify MFA: " + err.message);
+        } finally {
+            setIsVerifyingMfa(false);
+        }
+    };
+
+    const handleDisableMfa = async () => {
+        if (!mfaDeactivateCode || mfaDeactivateCode.length !== 6) {
+            showToast.warn("Please enter your current 6-digit MFA code to confirm deactivation.");
+            return;
+        }
+        setIsDeactivatingMfa(true);
+        try {
+            const currentSecret = (formData as any).mfaSecret || '';
+            const isVerified = await verifyTOTP(currentSecret, mfaDeactivateCode);
+            if (isVerified) {
+                if (formData.id) {
+                    await db.collection('users').doc(formData.id).update(cleanUndefinedFields({
+                        mfaEnabled: false,
+                        mfaSecret: firebase.firestore.FieldValue.delete()
+                    }));
+
+                    setFormData(prev => {
+                        const updated = { ...prev };
+                        updated.mfaEnabled = false;
+                        delete (updated as any).mfaSecret;
+                        return updated;
+                    });
+                    sessionStorage.removeItem('mfa_verified_' + formData.id);
+                    showToast.success("Multi-Factor Authentication disabled.");
+                    setMfaDeactivateCode('');
+                }
+            } else {
+                showToast.error("Invalid verification code. Could not deactivate Multi-Factor Authentication.");
+            }
+        } catch (err: any) {
+            showToast.error("Deactivation failed: " + err.message);
+        } finally {
+            setIsDeactivatingMfa(false);
+        }
+    };
+
     useEffect(() => {
         if (!isOpen) return;
         setFormData(initialData);
         
-        const decryptFields = async () => {
+        const fetchSensitiveData = async () => {
             if (!initialData.id || !state.currentOrganization?.id) return;
             setIsDecrypting(true);
             const orgId = state.currentOrganization.id;
             try {
-                let decryptedSsn = initialData.ssn || '';
-                if (decryptedSsn && decryptedSsn.length > 20) decryptedSsn = await decryptSensitiveData(decryptedSsn, orgId);
-                let decryptedPay = initialData.payRate || 0;
-                if (typeof decryptedPay === 'string' && decryptedPay.length > 20) {
-                    const val = await decryptSensitiveData(decryptedPay, orgId);
-                    decryptedPay = parseFloat(val) || 0;
-                }
-                let decryptedDob = initialData.dob || '';
-                if (decryptedDob && decryptedDob.length > 20) decryptedDob = await decryptSensitiveData(decryptedDob, orgId);
+                const sensitiveDoc = await db.collection('users').doc(initialData.id).collection('private').doc('sensitive').get();
+                const sensitiveFields = sensitiveDoc.exists ? sensitiveDoc.data() : {};
                 
-                setFormData(prev => ({ ...prev, ssn: decryptedSsn, payRate: decryptedPay, dob: decryptedDob }));
-            } catch (e) { console.error(e); } finally { setIsDecrypting(false); }
+                if (sensitiveFields) {
+                    let decryptedSsn = sensitiveFields.ssn || '';
+                    if (decryptedSsn && decryptedSsn.length > 20) {
+                        decryptedSsn = await decryptSensitiveData(decryptedSsn, orgId);
+                    }
+                    let decryptedPay = sensitiveFields.payRate || 0;
+                    if (typeof decryptedPay === 'string' && decryptedPay.length > 20) {
+                        const val = await decryptSensitiveData(decryptedPay, orgId);
+                        decryptedPay = parseFloat(val) || 0;
+                    }
+                    let decryptedDob = sensitiveFields.dob || '';
+                    if (decryptedDob && decryptedDob.length > 20) {
+                        decryptedDob = await decryptSensitiveData(decryptedDob, orgId);
+                    }
+                    
+                    setFormData(prev => ({
+                        ...prev,
+                        ...sensitiveFields,
+                        ssn: decryptedSsn,
+                        payRate: decryptedPay,
+                        dob: decryptedDob
+                    }));
+                }
+            } catch (e) {
+                console.error("Failed to load sensitive PII data:", e);
+            } finally {
+                setIsDecrypting(false);
+            }
         };
         
-        decryptFields(); 
+        fetchSensitiveData(); 
     }, [isOpen, initialData.id, state.currentOrganization?.id, isSelf]);
 
     const handleResetPassword = async () => {
@@ -116,7 +303,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         setIsDeleting(true);
         try {
             if (formData.id) {
-                await db.collection('users').doc(formData.id).update({ status: 'archived', deleted: true });
+                await db.collection('users').doc(formData.id).update(cleanUndefinedFields({ status: 'archived', deleted: true }));
             }
             if (auth.currentUser) {
                 await auth.currentUser.delete();
@@ -163,7 +350,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                 const orgCats = state.currentOrganization?.hrFileCategories || ['Drug Test', 'Writeup', 'License', 'Time Off', 'Onboarding', 'Other'];
                 if (!orgCats.includes(finalType) && state.currentOrganization?.id) {
                     const newCats = [...orgCats, finalType];
-                    await db.collection('organizations').doc(state.currentOrganization.id).update({ hrFileCategories: newCats });
+                    await db.collection('organizations').doc(state.currentOrganization.id).update(cleanUndefinedFields({ hrFileCategories: newCats }));
                     dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...state.currentOrganization, hrFileCategories: newCats } as any });
                 }
             }
@@ -180,7 +367,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                 dataUrl: downloadUrl, // Mapped to the Firebase Storage URL instead of Base64
                 createdAt: new Date().toISOString(),
                 fileType: finalType,
-                isVisibleToEmployee: hrFileVisible,
+                isVisibleToEmployee: isSelf ? true : hrFileVisible,
                 uploadedBy: state.currentUser?.id,
                 description: hrFileDesc,
                 tags: []
@@ -299,77 +486,112 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
             }
         }
         
-        if (formData.directDeposit?.preference === 'Direct Deposit') {
-            const rn = formData.directDeposit.routingNumber?.replace(/\D/g, '');
-            if (!rn || rn.length !== 9) {
-                showToast.warn("Routing number must be exactly 9 digits.");
-                return;
-            }
-            const an = formData.directDeposit.accountNumber?.replace(/\D/g, '');
-            if (!an || an.length < 4) {
-                showToast.warn("Please enter a valid account number.");
-                return;
-            }
-        }
+
 
         setIsSaving(true);
         const orgId = state.currentOrganization.id;
         const isNewUser = !formData.id;
         const id = formData.id || (isOfflineOnly ? `kiosk-${Date.now()}` : normalizedEmail);
         try {
-            let finalPayRate = formData.payRate;
-            let finalSsn = formData.ssn;
-            let finalDob = formData.dob;
-            
-            if (formData.ssn && formData.ssn.length < 20) {
-                 finalSsn = await encryptSensitiveData(formData.ssn, orgId);
-            }
-            if (typeof formData.payRate === 'number' || (typeof formData.payRate === 'string' && formData.payRate.length < 20)) {
-                 finalPayRate = await encryptSensitiveData(formData.payRate || 0, orgId);
-            }
-            if (formData.dob && formData.dob.length < 20) {
-                 finalDob = await encryptSensitiveData(formData.dob, orgId);
-            }
-
-            const finalData: any = {
+            const publicData: any = {
                 ...formData, 
                 id, organizationId: orgId, email: isOfflineOnly ? null : normalizedEmail,
                 username: formData.username || (isOfflineOnly ? formData.firstName : normalizedEmail.split('@')[0]),
                 firstName: formData.firstName || '', lastName: formData.lastName || '', 
-                status: formData.status || 'active',
-                payRate: finalPayRate,
-                ssn: finalSsn,
-                dob: finalDob
+                status: formData.status || 'active'
             };
             
             if (!isSelf) {
-                finalData.role = formData.role || 'employee';
-                finalData.squareTeamMemberId = (formData as any).squareTeamMemberId || null;
+                publicData.role = formData.role || 'employee';
+                publicData.squareTeamMemberId = (formData as any).squareTeamMemberId || null;
             } else {
-                delete finalData.role;
+                delete publicData.role;
             }
-            Object.keys(finalData).forEach(key => finalData[key] === undefined && delete finalData[key]);
+            
+            // Extract sensitive PII fields to write to the secure subcollection in plain text
+            const sensitiveData = {
+                ssn: formData.ssn || '',
+                dob: formData.dob || '',
+                driversLicense: formData.driversLicense || null,
+                directDeposit: formData.directDeposit || null,
+                payRate: typeof formData.payRate === 'string' ? parseFloat(formData.payRate) || 0 : formData.payRate || 0,
+                payType: formData.payType || 'hourly',
+                formSubmissions: formData.formSubmissions || null
+            };
+
+            // Remove sensitive fields from the public profile document
+            delete publicData.ssn;
+            delete publicData.dob;
+            delete publicData.driversLicense;
+            delete publicData.directDeposit;
+            delete publicData.payRate;
+            delete publicData.payType;
+            delete publicData.formSubmissions;
             
             // Do not overwrite fields managed by child components
-            delete finalData.signedPolicies;
-            delete finalData.policySignatures;
-            delete finalData.formSubmissions;
+            delete publicData.signedPolicies;
+            delete publicData.policySignatures;
+            
+            Object.keys(publicData).forEach(key => publicData[key] === undefined && delete publicData[key]);
             
             // Log for debugging
-            console.log("Saving user profile:", id, finalData);
+            console.log("Saving user profile:", id, publicData);
             
             if (isNewUser) {
-                await db.collection('users').doc(id).set(finalData);
+                await db.collection('users').doc(id).set(cleanUndefinedFields(publicData));
+                await db.collection('users').doc(id).collection('private').doc('sensitive').set(cleanUndefinedFields(sensitiveData));
                 // Send reminder for new hires
                 notifyAdmins(orgId, {
                     title: 'Action Required: New Hire Reporting',
-                    body: `A new employee (${finalData.firstName} ${finalData.lastName}) has been added. Please remember to report new hires to the state registry within 20 days of their hire date.`,
+                    body: `A new employee (${publicData.firstName} ${publicData.lastName}) has been added. Please remember to report new hires to the state registry within 20 days of their hire date.`,
                     type: 'system_alert'
                 });
             } else {
-                await db.collection('users').doc(id).update(finalData);
+                await db.collection('users').doc(id).update(cleanUndefinedFields(publicData));
+                await db.collection('users').doc(id).collection('private').doc('sensitive').set(cleanUndefinedFields(sensitiveData), { merge: true });
             }
-            dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...initialData, ...finalData } as User });
+
+            // Auto-sync subcontractor document in subcontractors collection
+            const isSubcontractorRole = publicData.role === 'Subcontractor';
+            if (isSubcontractorRole) {
+                const subDoc = {
+                    id: id,
+                    organizationId: orgId,
+                    companyName: `${publicData.firstName} ${publicData.lastName}`.trim(),
+                    email: normalizedEmail,
+                    phone: publicData.phone || '',
+                    trade: publicData.trade || 'General',
+                    status: publicData.status === 'archived' ? 'Inactive' : 'Active',
+                    handshakeStatus: 'None',
+                    paymentType: 'perJob',
+                    paymentPercentage: null
+                };
+                await db.collection('subcontractors').doc(id).set(cleanUndefinedFields(subDoc), { merge: true });
+            } else if (!isSelf) {
+                await db.collection('subcontractors').doc(id).delete().catch(err => console.warn("Failed to delete subcontractor doc:", err));
+            }
+
+            // Update team documents memberIds lists
+            const nextTeamIds = formData.dispatchTeamIds || [];
+            const teamsToUpdate = state.teams.filter(t => t.organizationId === orgId);
+            const teamUpdates = teamsToUpdate.map(async (team) => {
+                const shouldHaveUser = nextTeamIds.includes(team.id);
+                const currentMembers = team.memberIds || [];
+                const hasUser = currentMembers.includes(id);
+
+                if (shouldHaveUser && !hasUser) {
+                    await db.collection('teams').doc(team.id).update(cleanUndefinedFields({
+                        memberIds: [...currentMembers, id]
+                    }));
+                } else if (!shouldHaveUser && hasUser) {
+                    await db.collection('teams').doc(team.id).update(cleanUndefinedFields({
+                        memberIds: currentMembers.filter(mId => mId !== id)
+                    }));
+                }
+            });
+            await Promise.all(teamUpdates);
+
+            dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...initialData, ...publicData, ...sensitiveData } as User });
             onClose();
         } catch (error: any) { 
             console.error("Save Error Details:", error);
@@ -450,7 +672,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                         <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Personal Information</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="flex flex-col justify-end">
-                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Date of Birth</label>
+                                                <span className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Date of Birth</span>
                                                 <div className="bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 rounded-lg p-2.5 px-4 text-xs font-semibold flex items-center gap-1.5 border border-slate-200 dark:border-slate-700">
                                                     <Lock size={12} className="text-slate-400 shrink-0" />
                                                     DOB is encrypted & moved to **Payroll & Vault**
@@ -478,11 +700,10 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                     </div>
 
                                     <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                                        <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Employment Details</h4>
+                                        <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Employment Information</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <Input label="Start Date" type="date" value={formData.hireDate || ''} onChange={e => setFormData({...formData, hireDate: e.target.value})} />
                                             <Select label="Employment Type" value={formData.employmentType || ''} onChange={e => setFormData({...formData, employmentType: e.target.value as any})}>
-                                                <option value="">Select Type...</option>
                                                 <option value="Full-Time">Full-Time</option>
                                                 <option value="Part-Time">Part-Time</option>
                                                 <option value="Temporary">Temporary</option>
@@ -491,6 +712,37 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                             <Input label="Supervisor" value={formData.reportsTo || ''} onChange={e => setFormData({...formData, reportsTo: e.target.value})} />
                                         </div>
                                     </div>
+
+                                    {(state.currentOrganization?.divisions || []).length > 0 && (
+                                        <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                                            <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Assigned Divisions</h4>
+                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-black tracking-wider">
+                                                Assign this user to their respective divisions to filter operational data.
+                                            </p>
+                                            <div className="flex flex-wrap gap-4">
+                                                {(state.currentOrganization?.divisions || []).map(div => {
+                                                    const isChecked = (formData.assignedDivisions || []).includes(div.id);
+                                                    return (
+                                                        <label key={div.id} className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={isChecked}
+                                                                onChange={() => {
+                                                                    const current = formData.assignedDivisions || [];
+                                                                    const updated = isChecked 
+                                                                        ? current.filter(id => id !== div.id)
+                                                                        : [...current, div.id];
+                                                                    setFormData({ ...formData, assignedDivisions: updated });
+                                                                }}
+                                                                className="rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500" 
+                                                            />
+                                                            {div.name} <span className="text-[9px] text-slate-500 uppercase tracking-widest">({div.trade})</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
                                         <h4 className="font-bold text-slate-800 dark:text-white border-b pb-2">Driver's License (if driving company vehicles)</h4>
@@ -510,24 +762,24 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                         </Select>
                                         
                                         {formData.directDeposit?.preference === 'Direct Deposit' && (
-                                            <>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <Input label="Bank Name" value={formData.directDeposit?.bankName || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), bankName: e.target.value}})} />
-                                                    <Select label="Account Type" value={formData.directDeposit?.accountType || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), accountType: e.target.value as any}})}>
-                                                        <option value="">Select Type...</option>
-                                                        <option value="Checking">Checking</option>
-                                                        <option value="Savings">Savings</option>
-                                                    </Select>
-                                                    <Input label="Routing Number" value={formData.directDeposit?.routingNumber || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), routingNumber: e.target.value}})} />
-                                                    <Input label="Account Number" value={formData.directDeposit?.accountNumber || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), accountNumber: e.target.value}})} />
-                                                    <Input label="Effective Date" type="date" value={formData.directDeposit?.effectiveDate || ''} onChange={e => setFormData({...formData, directDeposit: {...(formData.directDeposit as any), effectiveDate: e.target.value}})} />
+                                            <div className="bg-indigo-50 dark:bg-indigo-950/30 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 mt-4 space-y-3">
+                                                <div className="flex items-start gap-2.5">
+                                                    <ShieldCheck className="text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" size={18} />
+                                                    <div>
+                                                        <p className="text-xs font-bold text-indigo-900 dark:text-indigo-200">Secure Direct Deposit Management</p>
+                                                        <p className="text-[11px] text-indigo-700/90 dark:text-indigo-300/80 leading-relaxed mt-1">
+                                                            To protect your sensitive financial information and maintain strict industry compliance standards, TekTrakker does not store raw bank account or routing numbers.
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg mt-4 border border-blue-100 dark:border-blue-800">
-                                                    <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
-                                                        I authorize TekAir Inc. to deposit my wages by electronic funds transfer into the account listed above and to reverse any erroneous credit entries as permitted by law and applicable banking rules. This authorization remains in effect until I submit a written change or cancellation and TekAir Inc. has had a reasonable opportunity to process it.
-                                                    </p>
+                                                <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-indigo-100/50 dark:border-slate-800 space-y-2 text-xs">
+                                                    <p className="font-semibold text-slate-800 dark:text-slate-200">How to update your banking details:</p>
+                                                    <ul className="list-disc pl-4 space-y-1 text-slate-600 dark:text-slate-400 text-[11px]">
+                                                        <li><strong>Integrated Payroll (Gusto):</strong> Please log in to your employee portal on <a href="https://gusto.com" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline font-semibold">Gusto</a> to set up or modify your bank routing and account numbers securely.</li>
+                                                        <li><strong>Manual Setup:</strong> If your organization handles payroll manually, please complete a physical direct deposit authorization form and hand it directly to your HR Administrator.</li>
+                                                    </ul>
                                                 </div>
-                                            </>
+                                            </div>
                                         )}
                                     </div>
 
@@ -538,10 +790,42 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                 <div className="space-y-6">
                                     <Select label="System Role" value={formData.role || 'employee'} onChange={e => setFormData({...formData, role: e.target.value as any})} disabled={isSelf}>
                                         <option value="employee">Technician</option>
+                                        <option value="Subcontractor">Subcontractor</option>
                                         <option value="supervisor">Supervisor</option>
                                         <option value="admin">Admin</option>
                                         <option value="both">Superuser</option>
                                     </Select>
+
+                                    {isOrgAdmin && (
+                                        <div className="space-y-2 mt-4">
+                                            <label className="block text-xs font-black uppercase text-slate-400 tracking-wider">Assigned Dispatch Teams</label>
+                                            <div className="space-y-1.5 max-h-36 overflow-y-auto border rounded-lg p-2.5 bg-slate-50 dark:bg-slate-900 custom-scrollbar">
+                                                {state.teams.filter(t => t.organizationId === state.currentOrganization?.id).map(team => {
+                                                    const currentTeams = formData.dispatchTeamIds || [];
+                                                    const isChecked = currentTeams.includes(team.id);
+                                                    return (
+                                                        <label key={team.id} className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer hover:text-slate-900 dark:hover:text-white">
+                                                            <input 
+                                                                type="checkbox"
+                                                                checked={isChecked}
+                                                                onChange={(e) => {
+                                                                    const next = e.target.checked 
+                                                                        ? [...currentTeams, team.id]
+                                                                        : currentTeams.filter(id => id !== team.id);
+                                                                    setFormData({ ...formData, dispatchTeamIds: next });
+                                                                }}
+                                                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                                            />
+                                                            {team.name}
+                                                        </label>
+                                                    );
+                                                })}
+                                                {state.teams.filter(t => t.organizationId === state.currentOrganization?.id).length === 0 && (
+                                                    <p className="text-[10px] text-slate-500 italic">No dispatch teams defined in Settings.</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -759,45 +1043,47 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                     <div className="flex justify-between items-center">
                                         <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2"><FileText size={16}/> HR File System</h4>
                                     </div>
-                                    {(!isSelf || isOrgAdmin) && (
-                                        <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-3">
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                <Input label="Document Title" value={hrFileLabel} onChange={e => setHrFileLabel(e.target.value)} />
-                                                <div className="space-y-2">
-                                                    <Select label="File Type" value={hrFileType} onChange={e => setHrFileType(e.target.value)}>
-                                                        <option value="">-- Select Type --</option>
-                                                        {activeHRCats.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                                                        <option value="_custom_" className="font-bold text-primary-600">+ Add Custom Type...</option>
-                                                    </Select>
-                                                    {hrFileType === '_custom_' && (
-                                                        <Input label="New Category Name" value={hrNewType} onChange={e => setHrNewType(e.target.value)} placeholder="e.g. Performance Review" />
-                                                    )}
-                                                </div>
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-3">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <Input label="Document Title" value={hrFileLabel} onChange={e => setHrFileLabel(e.target.value)} />
+                                            <div className="space-y-2">
+                                                <Select label="File Type" value={hrFileType} onChange={e => setHrFileType(e.target.value)}>
+                                                    <option value="">-- Select Type --</option>
+                                                    {activeHRCats.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                                                    <option value="_custom_" className="font-bold text-primary-600">+ Add Custom Type...</option>
+                                                </Select>
+                                                {hrFileType === '_custom_' && (
+                                                    <Input label="New Category Name" value={hrNewType} onChange={e => setHrNewType(e.target.value)} placeholder="e.g. Performance Review" />
+                                                )}
                                             </div>
-                                            <Input label="Description / Notes (Optional)" value={hrFileDesc} onChange={e => setHrFileDesc(e.target.value)} />
-                                            <div className="flex items-center justify-between mt-2">
+                                        </div>
+                                        <Input label="Description / Notes (Optional)" value={hrFileDesc} onChange={e => setHrFileDesc(e.target.value)} />
+                                        <div className="flex items-center justify-between mt-2">
+                                            {!isSelf ? (
                                                 <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
                                                     <input type="checkbox" checked={hrFileVisible} onChange={e => setHrFileVisible(e.target.checked)} className="rounded text-primary-600 focus:ring-primary-500 bg-white border-slate-300" />
                                                     Visible to Employee
                                                 </label>
-                                                <div className="flex items-center gap-2">
-                                                    <input type="file" onChange={e => {
-                                                        const file = e.target.files?.[0];
-                                                        if (file && file.size > 5 * 1024 * 1024) {
-                                                            showToast.warn("File too large. HR documents must be under 5MB.");
-                                                            e.target.value = '';
-                                                            setHrFileObj(null);
-                                                        } else {
-                                                            setHrFileObj(file || null);
-                                                        }
-                                                    }} className="text-xs" title="Select HR document to upload" aria-label="Select HR document to upload" />
-                                                    <Button type="button" onClick={handleUploadHR} disabled={!hrFileObj || !hrFileLabel || !hrFileType || isUploadingHR} className="text-xs flex items-center gap-1 w-auto">
-                                                        <Upload size={12}/> {isUploadingHR ? 'Uploading...' : 'Upload'}
-                                                    </Button>
-                                                </div>
+                                            ) : (
+                                                <div />
+                                            )}
+                                            <div className="flex items-center gap-2">
+                                                <input type="file" onChange={e => {
+                                                    const file = e.target.files?.[0];
+                                                    if (file && file.size > 5 * 1024 * 1024) {
+                                                        showToast.warn("File too large. HR documents must be under 5MB.");
+                                                        e.target.value = '';
+                                                        setHrFileObj(null);
+                                                    } else {
+                                                        setHrFileObj(file || null);
+                                                    }
+                                                }} className="text-xs" title="Select HR document to upload" aria-label="Select HR document to upload" />
+                                                <Button type="button" onClick={handleUploadHR} disabled={!hrFileObj || !hrFileLabel || !hrFileType || isUploadingHR} className="text-xs flex items-center gap-1 w-auto">
+                                                    <Upload size={12}/> {isUploadingHR ? 'Uploading...' : 'Upload'}
+                                                </Button>
                                             </div>
                                         </div>
-                                    )}
+                                    </div>
                                     
                                     <div className="border-t dark:border-slate-700 pt-4 space-y-3">
                                         <div className="flex gap-2">
@@ -917,47 +1203,101 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                     </div>
                                     
                                     {(!isSelf || isOrgAdmin) && (
-                                        <>
-                                            <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2"><ClipboardList size={16}/> Hiring Packet Tracking</h4>
-                                            <p className="text-xs text-slate-500 mb-4">Track this employee's onboarding progress. Check off items as they are verified by HR.</p>
-                                            
-                                            <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-4">
-                                                <Toggle 
-                                                    label="W-4 Tax Withholding Completed"
-                                                    enabled={formData.hiringPacketStatus?.w4Completed || false} 
-                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), w4Completed: val}})} 
-                                                />
-                                                <Toggle 
-                                                    label="I-9 Employment Eligibility Verified"
-                                                    enabled={formData.hiringPacketStatus?.i9Completed || false} 
-                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), i9Completed: val}})} 
-                                                />
-                                                <Toggle 
-                                                    label="Direct Deposit Setup"
-                                                    enabled={formData.hiringPacketStatus?.directDepositCompleted || false} 
-                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), directDepositCompleted: val}})} 
-                                                />
-                                                <Toggle 
-                                                    label="Handbook Signed & Acknowledged"
-                                                    enabled={formData.hiringPacketStatus?.handbookSigned || false} 
-                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), handbookSigned: val}})} 
-                                                />
-                                                <Toggle 
-                                                    label="Government ID Uploaded"
-                                                    enabled={formData.hiringPacketStatus?.idUploaded || false} 
-                                                    onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), idUploaded: val}})} 
-                                                />
-                                            </div>
-                                            <div className="mt-4 p-4 border rounded-lg bg-white dark:bg-slate-900">
-                                                <h5 className="font-bold text-sm mb-2 dark:text-white">Packet Status</h5>
-                                                {formData.hiringPacketStatus?.w4Completed && formData.hiringPacketStatus?.i9Completed && formData.hiringPacketStatus?.directDepositCompleted && formData.hiringPacketStatus?.handbookSigned && formData.hiringPacketStatus?.idUploaded ? (
-                                                    <div className="text-green-600 font-bold flex items-center gap-2"><CheckCircle size={16}/> Fully Complete</div>
-                                                ) : (
-                                                    <div className="text-amber-600 font-bold">Pending Completion</div>
-                                                )}
-                                            </div>
-                                        </>
-                                    )}
+                                         <>
+                                             <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
+                                                 <ClipboardList size={16}/> 
+                                                 {formData.role === 'Subcontractor' ? 'Subcontractor Compliance & Onboarding Packet' : 'Hiring Packet Tracking'}
+                                             </h4>
+                                             <p className="text-xs text-slate-500 mb-4">
+                                                 {formData.role === 'Subcontractor' 
+                                                     ? 'Track compliance requirements for this 1099 subcontractor. Verify tax forms, licenses, insurance, and signed contracts.' 
+                                                     : "Track this employee's onboarding progress. Check off items as they are verified by HR."}
+                                             </p>
+                                             
+                                             <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-4">
+                                                 {formData.role === 'Subcontractor' ? (
+                                                     <>
+                                                         <Toggle 
+                                                             label="Form W-9 Tax ID & Certification Completed"
+                                                             enabled={formData.hiringPacketStatus?.w4Completed || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), w4Completed: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Copy of Driver's License / Photo ID Uploaded"
+                                                             enabled={formData.hiringPacketStatus?.idUploaded || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), idUploaded: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Professional / Trade License Verified"
+                                                             enabled={(formData.hiringPacketStatus as any)?.licenseVerified || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), licenseVerified: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Business Insurance & Additional Insured COI Active"
+                                                             enabled={(formData.hiringPacketStatus as any)?.insuranceVerified || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), insuranceVerified: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Surety / Performance Bond Documentation"
+                                                             enabled={(formData.hiringPacketStatus as any)?.bondsVerified || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), bondsVerified: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Business References Verified"
+                                                             enabled={(formData.hiringPacketStatus as any)?.referencesVerified || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), referencesVerified: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Signed Subcontractor Master Agreement & NDA"
+                                                             enabled={formData.hiringPacketStatus?.handbookSigned || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), handbookSigned: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Direct Deposit / Payout Banking Details Setup"
+                                                             enabled={formData.hiringPacketStatus?.directDepositCompleted || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), directDepositCompleted: val}})} 
+                                                         />
+                                                     </>
+                                                 ) : (
+                                                     <>
+                                                         <Toggle 
+                                                             label="W-4 Tax Withholding Completed"
+                                                             enabled={formData.hiringPacketStatus?.w4Completed || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), w4Completed: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="I-9 Employment Eligibility Verified"
+                                                             enabled={formData.hiringPacketStatus?.i9Completed || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), i9Completed: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Direct Deposit Setup"
+                                                             enabled={formData.hiringPacketStatus?.directDepositCompleted || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), directDepositCompleted: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Handbook Signed & Acknowledged"
+                                                             enabled={formData.hiringPacketStatus?.handbookSigned || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), handbookSigned: val}})} 
+                                                         />
+                                                         <Toggle 
+                                                             label="Government ID Uploaded"
+                                                             enabled={formData.hiringPacketStatus?.idUploaded || false} 
+                                                             onChange={(val) => setFormData({...formData, hiringPacketStatus: {...(formData.hiringPacketStatus || {} as any), idUploaded: val}})} 
+                                                         />
+                                                     </>
+                                                 )}
+                                             </div>
+                                             <div className="mt-4 p-4 border rounded-lg bg-white dark:bg-slate-900">
+                                                 <h5 className="font-bold text-sm mb-2 dark:text-white">Packet Status</h5>
+                                                 {formData.hiringPacketStatus?.w4Completed && formData.hiringPacketStatus?.directDepositCompleted && formData.hiringPacketStatus?.handbookSigned && formData.hiringPacketStatus?.idUploaded ? (
+                                                     <div className="text-green-600 font-bold flex items-center gap-2"><CheckCircle size={16}/> Fully Compliant & Complete</div>
+                                                 ) : (
+                                                     <div className="text-amber-600 font-bold">Pending Completion / Compliance Review</div>
+                                                 )}
+                                             </div>
+                                         </>
+                                     )}
                                 </div>
                             )}
 
@@ -978,6 +1318,163 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Multi-Factor Authentication Card */}
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-4">
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h5 className="font-bold text-sm text-slate-700 dark:text-slate-300">Multi-Factor Authentication (MFA)</h5>
+                                                {formData.mfaEnabled ? (
+                                                    <span className="px-2 py-0.5 text-[10px] font-extrabold bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/30 rounded-full flex items-center gap-1">
+                                                        <CheckCircle size={10} /> Active
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-2 py-0.5 text-[10px] font-extrabold bg-slate-500/10 text-slate-500 border border-slate-500/30 rounded-full">
+                                                        Disabled
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                                                Add an extra layer of security to your payroll and platform account credentials using standard TOTP authenticator apps.
+                                            </p>
+
+                                            {formData.mfaEnabled ? (
+                                                <div className="space-y-4">
+                                                    <div className="pt-2 max-w-sm space-y-3 border-t dark:border-slate-750">
+                                                        <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">To disable MFA, enter your current 6-digit verification code below:</p>
+                                                        <Input 
+                                                            label="Current Verification Code" 
+                                                            placeholder="000000" 
+                                                            maxLength={6} 
+                                                            value={mfaDeactivateCode} 
+                                                            onChange={e => setMfaDeactivateCode(e.target.value.replace(/\D/g, ''))} 
+                                                        />
+                                                        <Button 
+                                                            type="button" 
+                                                            variant="danger" 
+                                                            disabled={isDeactivatingMfa || mfaDeactivateCode.length !== 6} 
+                                                            onClick={handleDisableMfa}
+                                                        >
+                                                            {isDeactivatingMfa ? 'Deactivating...' : 'Disable Multi-Factor Authentication'}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    {!isMfaSetupOpen ? (
+                                                        <Button type="button" onClick={handleStartMfaSetup} className="w-auto">
+                                                            Set Up Multi-Factor Authentication
+                                                        </Button>
+                                                    ) : (
+                                                        <div className="mt-4 p-4 border rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 space-y-4">
+                                                            <div className="flex flex-col md:flex-row items-center gap-6">
+                                                                <div className="p-2 bg-white rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-center">
+                                                                    <img 
+                                                                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getOtpauthUri(mfaSecret, formData.email || 'user'))}`} 
+                                                                        alt="MFA QR Code" 
+                                                                        className="w-36 h-36 object-contain"
+                                                                    />
+                                                                </div>
+                                                                <div className="flex-1 space-y-2">
+                                                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">1. Scan this QR Code with your Authenticator App</p>
+                                                                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                                                                        Or type the following setup key manually inside your app if you are configuring on the same device:
+                                                                    </p>
+                                                                    <code className="block p-2 bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 rounded font-mono text-[13px] tracking-wider select-all break-all border border-slate-200 dark:border-slate-800">
+                                                                        {mfaSecret}
+                                                                    </code>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="pt-4 border-t dark:border-slate-800 max-w-sm space-y-3">
+                                                                <Input 
+                                                                    label="2. Confirm with Verification Code" 
+                                                                    placeholder="000000" 
+                                                                    maxLength={6} 
+                                                                    value={mfaCode} 
+                                                                    onChange={e => setMfaCode(e.target.value.replace(/\D/g, ''))} 
+                                                                />
+                                                                {mfaError && <p className="text-xs text-red-500 font-bold">{mfaError}</p>}
+                                                                
+                                                                <div className="flex gap-2 pt-1">
+                                                                    <Button 
+                                                                        type="button" 
+                                                                        disabled={isVerifyingMfa || mfaCode.length !== 6} 
+                                                                        onClick={handleConfirmMfaSetup}
+                                                                    >
+                                                                        {isVerifyingMfa ? 'Verifying...' : 'Enable MFA'}
+                                                                    </Button>
+                                                                    <Button 
+                                                                        type="button" 
+                                                                        variant="secondary" 
+                                                                        onClick={() => setIsMfaSetupOpen(false)}
+                                                                    >
+                                                                        Cancel
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Biometric Login Card (Touch ID, Face ID, Fingerprint) */}
+                                    {Capacitor.isNativePlatform() && isBiometricSupported && (
+                                        <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-4">
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <h5 className="font-bold text-sm text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                                        <Fingerprint size={16} className="text-blue-500" /> Biometric Login
+                                                    </h5>
+                                                    {isBiometricEnabled ? (
+                                                        <span className="px-2 py-0.5 text-[10px] font-extrabold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded-full flex items-center gap-1">
+                                                            <CheckCircle size={10} /> Enabled
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 text-[10px] font-extrabold bg-slate-500/10 text-slate-500 border border-slate-500/30 rounded-full">
+                                                            Disabled
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                                                    Use your fingerprint or face recognition to quickly and securely log in to your TekTrakker account on this device.
+                                                </p>
+
+                                                {isBiometricEnabled ? (
+                                                    <div className="space-y-4">
+                                                        <Button 
+                                                            type="button" 
+                                                            variant="danger" 
+                                                            disabled={isVerifyingBiometric} 
+                                                            onClick={handleDisableBiometrics}
+                                                        >
+                                                            {isVerifyingBiometric ? 'Disabling...' : 'Disable Biometric Login'}
+                                                        </Button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="max-w-sm space-y-3">
+                                                        <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">To enable Biometric Login, verify your current account password:</p>
+                                                        <Input 
+                                                            label="Account Password" 
+                                                            type="password" 
+                                                            placeholder="Enter password" 
+                                                            value={biometricPassword} 
+                                                            onChange={e => setBiometricPassword(e.target.value)} 
+                                                        />
+                                                        <Button 
+                                                            type="button" 
+                                                            disabled={isVerifyingBiometric || !biometricPassword} 
+                                                            onClick={handleEnableBiometrics}
+                                                        >
+                                                            {isVerifyingBiometric ? 'Verifying...' : 'Verify & Enable Biometric Login'}
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="p-4 bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 rounded-lg space-y-4">
                                         <div>

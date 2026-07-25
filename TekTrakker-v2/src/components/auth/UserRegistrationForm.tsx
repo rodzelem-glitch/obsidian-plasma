@@ -1,5 +1,6 @@
 import React from 'react';
 import { InputField, SelectField } from './AuthFields';
+import { CheckCircle } from 'lucide-react';
 
 interface UserRegistrationFormProps {
     userType: 'staff' | 'customer';
@@ -24,10 +25,14 @@ interface UserRegistrationFormProps {
     setUserServiceNeed: (val: string) => void;
     consentGiven: boolean;
     setConsentGiven: (val: boolean) => void;
+    termsAccepted: boolean;
+    setTermsAccepted: (val: boolean) => void;
+    brandedOrgName?: string;
     handleRegisterUser: (e: React.FormEvent) => void;
     isLoading: boolean;
     brandColor: string;
     setView: (view: any) => void;
+    inviteLoaded?: boolean;
 }
 
 export const UserRegistrationForm: React.FC<UserRegistrationFormProps> = ({
@@ -35,9 +40,20 @@ export const UserRegistrationForm: React.FC<UserRegistrationFormProps> = ({
     email, setEmail, password, setPassword, userAddress, setUserAddress,
     userCity, setUserCity, userState, setUserState, userZip, setUserZip,
     userServiceNeed, setUserServiceNeed, consentGiven, setConsentGiven,
-    handleRegisterUser, isLoading, brandColor, setView
+    termsAccepted, setTermsAccepted, brandedOrgName = 'TekTrakker',
+    handleRegisterUser, isLoading, brandColor, setView,
+    inviteLoaded = false
 }) => (
     <form onSubmit={handleRegisterUser} className="space-y-4">
+        {inviteLoaded && (
+            <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs rounded-xl flex items-start gap-2.5 mb-2">
+                <CheckCircle size={16} className="shrink-0 mt-0.5" />
+                <div>
+                    <strong className="font-semibold block mb-0.5">Invitation Found!</strong>
+                    We've pre-filled your details from the invitation. Please verify your information below and set a secure password.
+                </div>
+            </div>
+        )}
         {/* Tabs removed as userType is now passed from the previous selection */}
 
         <InputField id="full-name" name="name" label="Full Name" value={userName} onChange={(e: any) => setUserName(e.target.value)} required brandColor={brandColor} />
@@ -70,11 +86,33 @@ export const UserRegistrationForm: React.FC<UserRegistrationFormProps> = ({
             </div>
         )}
         
-        <div className="flex items-start gap-3 mt-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
-            <input type="checkbox" id="consent" checked={consentGiven} onChange={e => setConsentGiven(e.target.checked)} className="mt-1 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500" />
-            <label htmlFor="consent" className="text-xs text-slate-400">
-                I agree to the <a href="#/terms" target="_blank" className="text-blue-400 hover:underline">Terms of Service</a> and consent to receive automated SMS/Email notifications regarding my account and services.
-            </label>
+        <div className="space-y-3 mt-4">
+            <div className="flex items-start gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                <input 
+                    type="checkbox" 
+                    id="terms-agree" 
+                    checked={termsAccepted} 
+                    onChange={e => setTermsAccepted(e.target.checked)} 
+                    className="mt-1 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500" 
+                    required
+                />
+                <label htmlFor="terms-agree" className="text-xs text-slate-400">
+                    I agree to the <a href="/#/terms" target="_blank" className="text-blue-400 hover:underline">Terms of Service</a> and <a href="/#/privacy" target="_blank" className="text-blue-400 hover:underline">Privacy Policy</a>.
+                </label>
+            </div>
+            
+            <div className="flex items-start gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                <input 
+                    type="checkbox" 
+                    id="consent" 
+                    checked={consentGiven} 
+                    onChange={e => setConsentGiven(e.target.checked)} 
+                    className="mt-1 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500" 
+                />
+                <label htmlFor="consent" className="text-xs text-slate-400 leading-relaxed">
+                    I consent to receive automated text messages (SMS) from {brandedOrgName} at the phone number provided, including service updates and account alerts. Message frequency varies. Msg & data rates may apply. Reply STOP to cancel at any time. View our <a href="/#/privacy" target="_blank" className="text-blue-400 hover:underline">Privacy Policy</a>.
+                </label>
+            </div>
         </div>
 
         <style>{`.reg-brand-button { background-color: ${brandColor}; }`}</style>

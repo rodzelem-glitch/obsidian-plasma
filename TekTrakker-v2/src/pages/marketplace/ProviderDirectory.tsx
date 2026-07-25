@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -33,6 +34,7 @@ const ProviderDirectory: React.FC = () => {
 
     const handleLogout = async () => {
         try {
+            localStorage.setItem('just_logged_out', 'true');
             await auth.signOut();
             dispatch({ type: 'LOGOUT' });
             navigate('/login', { replace: true });
@@ -57,12 +59,94 @@ const ProviderDirectory: React.FC = () => {
     const [contactPhone, setContactPhone] = useState('');
     const [contactMessage, setContactMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const [contactSmsConsent, setContactSmsConsent] = useState(false);
 
     const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
     const [bookingOrg, setBookingOrg] = useState<Organization | null>(null);
     const [bookingDate, setBookingDate] = useState('');
     const [bookingTime, setBookingTime] = useState('');
+    const [bookingSmsConsent, setBookingSmsConsent] = useState(false);
 
+    // Upgrade Modal State
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+    const [upgradeCompanyName, setUpgradeCompanyName] = useState('');
+    const [upgradePhone, setUpgradePhone] = useState('');
+    const [upgradeTrade, setUpgradeTrade] = useState('HVAC');
+    const [upgradeAddress, setUpgradeAddress] = useState('');
+    const [isUpgrading, setIsUpgrading] = useState(false);
+    const [upgradePlan, setUpgradePlan] = useState<'starter' | 'growth' | 'enterprise' | 'payments_only'>('starter');
+
+    const handleUpgradeAccount = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!currentUser) return;
+        if (!upgradeCompanyName.trim()) {
+            showToast.warn("Please enter your Company Name.");
+            return;
+        }
+
+        setIsUpgrading(true);
+        try {
+            const newOrgId = `org-${Date.now()}`;
+            const expiryDate = upgradePlan === 'payments_only' ? null : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const subStatus = upgradePlan === 'payments_only' ? 'active' : 'trial';
+            
+            const newOrgData = {
+                id: newOrgId,
+                name: upgradeCompanyName.trim(),
+                phone: upgradePhone.trim() || currentUser.phone || '',
+                email: currentUser.email || '',
+                address: upgradeAddress.trim() as any,
+                primaryVertical: upgradeTrade as any,
+                ownerId: currentUser.id,
+                subscriptionStatus: subStatus as any,
+                plan: upgradePlan,
+                subscriptionExpiryDate: expiryDate,
+                settings: {
+                    publicProfile: true
+                },
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            // 1. Create Organization doc
+            await db.collection('organizations').doc(newOrgId).set(cleanUndefinedFields(newOrgData));
+
+            // 2. Upgrade User account doc (preserve ID)
+            await db.collection('users').doc(currentUser.id).update(cleanUndefinedFields({
+                organizationId: newOrgId,
+                role: 'admin', // Upgrade to Admin
+                status: 'active',
+                upgradedFromSubcontractor: true,
+                upgradedAt: new Date().toISOString()
+            }));
+
+            showToast.success("Congratulations! Your account has been upgraded and your business registered.");
+            setIsUpgradeModalOpen(false);
+            
+            // Dispatch to context so layout updates instantly
+            dispatch({
+                type: 'LOGIN_SUCCESS',
+                payload: {
+                    user: {
+                        ...currentUser,
+                        organizationId: newOrgId,
+                        role: 'admin' as any,
+                        status: 'active' as any
+                    },
+                    organization: newOrgData,
+                    isMasterAdmin: false
+                }
+            });
+
+            // Redirect to admin dashboard
+            navigate('/admin/dashboard', { replace: true });
+        } catch (err: any) {
+            console.error("Upgrade failed:", err);
+            showToast.error("Failed to upgrade account: " + err.message);
+        } finally {
+            setIsUpgrading(false);
+        }
+    };
 
     useEffect(() => {
         const fetchProviders = async () => {
@@ -155,6 +239,7 @@ const ProviderDirectory: React.FC = () => {
         setContactEmail('');
         setContactPhone('');
         setContactMessage('');
+        setContactSmsConsent(false);
     }
 
     const handleOpenBookingModal = (org: Organization) => {
@@ -176,6 +261,7 @@ const ProviderDirectory: React.FC = () => {
         setContactMessage('');
         setBookingDate('');
         setBookingTime('');
+        setBookingSmsConsent(false);
     }
 
     const handleSendContactMessage = async () => {
@@ -203,7 +289,8 @@ const ProviderDirectory: React.FC = () => {
                     phone: contactPhone,
                     message: contactMessage,
                     type: 'marketplace_contact',
-                    formType: 'marketplace_contact'
+                    formType: 'marketplace_contact',
+                    smsOptIn: contactSmsConsent
                 }),
             });
 
@@ -275,7 +362,8 @@ const ProviderDirectory: React.FC = () => {
                     preferredDate: bookingDate,
                     preferredTime: bookingTime,
                     type: 'booking_request',
-                    formType: 'booking_request'
+                    formType: 'booking_request',
+                    smsOptIn: bookingSmsConsent
                 }),
             });
 
@@ -341,6 +429,101 @@ const ProviderDirectory: React.FC = () => {
                     </div>
                 </div>
             </header>
+
+            {currentUser && currentUser.role === 'Subcontractor' && currentUser.organizationId === 'unaffiliated' && (
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+                    <div className="bg-gradient-to-r from-teal-500 to-indigo-600 text-white rounded-3xl p-8 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="space-y-2 text-left">
+                            <h2 className="text-2xl font-black">Upgrade Your Subcontractor Account</h2>
+                            <p className="text-sm text-slate-100 max-w-2xl">
+                                Your slot has been released by your previous sponsor organization. You can now upgrade your account to register your own business, configure pricing, and accept direct dispatch work orders!
+                            </p>
+                        </div>
+                        <Button 
+                            onClick={() => setIsUpgradeModalOpen(true)}
+                            className="bg-white text-indigo-700 hover:bg-slate-100 h-12 px-6 shrink-0 w-full md:w-auto font-black uppercase text-xs tracking-wider"
+                        >
+                            Register My Business
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {isUpgradeModalOpen && (
+                <Modal 
+                    isOpen={isUpgradeModalOpen} 
+                    onClose={() => setIsUpgradeModalOpen(false)} 
+                    title="Register Your Business & Upgrade Account"
+                >
+                    <form onSubmit={handleUpgradeAccount} className="space-y-4 text-left">
+                        <p className="text-xs text-slate-500 mb-2 leading-relaxed">
+                            Upgrading will register your new business organization while keeping your current login credentials. All your signed documents, historical jobs, and agreements will remain intact.
+                        </p>
+                        
+                        <Input 
+                            label="Business / Company Name" 
+                            value={upgradeCompanyName} 
+                            onChange={e => setUpgradeCompanyName(e.target.value)} 
+                            required 
+                            placeholder="e.g. Apex Mechanical Services"
+                        />
+                        
+                        <Input 
+                            label="Business Phone Number" 
+                            type="tel"
+                            value={upgradePhone} 
+                            onChange={e => setUpgradePhone(e.target.value)} 
+                            placeholder="e.g. (555) 019-2834"
+                        />
+                        
+                        <Select 
+                            label="Primary Trade / Industry Vertical" 
+                            value={upgradeTrade} 
+                            onChange={e => setUpgradeTrade(e.target.value)}
+                        >
+                            {ALL_INDUSTRIES.map(ind => (
+                                <option key={ind} value={ind}>{ind}</option>
+                            ))}
+                        </Select>
+                        
+                        <Input 
+                            label="Business Address" 
+                            value={upgradeAddress} 
+                            onChange={e => setUpgradeAddress(e.target.value)} 
+                            placeholder="e.g. 123 Main St, Suite A, Dallas, TX 75201"
+                        />
+
+                        <Select 
+                            label="Subscription Plan (includes 14-day free trial)" 
+                            value={upgradePlan} 
+                            onChange={e => setUpgradePlan(e.target.value as any)}
+                        >
+                            <option value="starter">Starter Plan ($99/mo) — Up to 5 Users/Techs, Core Dispatch & Invoicing</option>
+                            <option value="growth">Growth Plan ($249/mo) — Up to 15 Users/Techs, Advanced Marketing & Estimator</option>
+                            <option value="enterprise">Enterprise Plan ($499/mo) — Unlimited Users, Custom Branding & Dedicated Support</option>
+                            <option value="payments_only">Payments-Only Plan (Free base fee, pay-per-transaction only)</option>
+                        </Select>
+
+                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
+                            <Button 
+                                type="button" 
+                                variant="secondary" 
+                                onClick={() => setIsUpgradeModalOpen(false)}
+                                disabled={isUpgrading}
+                            >
+                                Cancel
+                            </Button>
+                            <Button 
+                                type="submit" 
+                                disabled={isUpgrading}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                            >
+                                {isUpgrading ? 'Upgrading...' : 'Upgrade & Register'}
+                            </Button>
+                        </div>
+                    </form>
+                </Modal>
+            )}
 
             <div className="bg-slate-900 text-white py-20 px-6 text-center relative overflow-hidden">
                  <div className="absolute inset-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1581094794329-c8112a89af12?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center" />
@@ -539,6 +722,20 @@ const ProviderDirectory: React.FC = () => {
                         onChange={e => setContactPhone(e.target.value)}
                         placeholder="(555) 123-4567"
                     />
+                    {contactPhone && (
+                        <label className="flex items-start gap-2 text-xs text-slate-500 cursor-pointer mt-2">
+                            <input 
+                                type="checkbox" 
+                                checked={contactSmsConsent}
+                                onChange={e => setContactSmsConsent(e.target.checked)}
+                                className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
+                                required
+                            />
+                            <span>
+                                I consent to receive text messages (SMS) from the provider regarding my inquiry. Msg & data rates may apply. Message frequency varies. Reply STOP to cancel. View our <a href="/#/privacy" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">Privacy Policy</a>.
+                            </span>
+                        </label>
+                    )}
                     <Textarea 
                         label="Your Message"
                         value={contactMessage} 
@@ -583,6 +780,20 @@ const ProviderDirectory: React.FC = () => {
                         onChange={e => setContactPhone(e.target.value)}
                         placeholder="(555) 123-4567"
                     />
+                    {contactPhone && (
+                        <label className="flex items-start gap-2 text-xs text-slate-500 cursor-pointer mt-2">
+                            <input 
+                                type="checkbox" 
+                                checked={bookingSmsConsent}
+                                onChange={e => setBookingSmsConsent(e.target.checked)}
+                                className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
+                                required
+                            />
+                            <span>
+                                I consent to receive text messages (SMS) from the provider regarding my booking request. Msg & data rates may apply. Message frequency varies. Reply STOP to cancel. View our <a href="/#/privacy" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">Privacy Policy</a>.
+                            </span>
+                        </label>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Input 
                             label="Preferred Date"

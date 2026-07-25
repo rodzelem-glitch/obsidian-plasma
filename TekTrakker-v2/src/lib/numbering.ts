@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from './utils';
 ﻿import { db } from './firebase';
 
 export async function getNextInvoiceNumber(orgId: string): Promise<string> {

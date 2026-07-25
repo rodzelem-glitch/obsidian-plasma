@@ -57,7 +57,7 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ project, employees }) => {
                             const u = employees.find(u => u.id === uid);
                             return u ? (
                                 <div key={uid} className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded border">
-                                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">{u.firstName[0]}</div>
+                                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">{(u.firstName || '')[0] || (u.email || '')[0] || '?'}</div>
                                     <div>
                                         <p className="text-sm font-bold text-slate-900 dark:text-white">{u.firstName} {u.lastName}</p>
                                         <p className="text-xs text-slate-500 uppercase">{u.role}</p>

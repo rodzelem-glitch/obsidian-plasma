@@ -1,6 +1,7 @@
 
 import * as functions from "firebase-functions/v1";
 import * as admin from "firebase-admin";
+import { getDownloadURL } from "firebase-admin/storage";
 import cors from "cors";
 import { v4 as uuidv4 } from 'uuid';
 import type { Organization } from './types';
@@ -55,7 +56,7 @@ export const submitWidgetForm = functions.https.onRequest((req, res) => {
           const file = bucket.file(filename);
 
           await file.save(buffer, { metadata: { contentType } });
-          const [url] = await file.getSignedUrl({ action: 'read', expires: '03-01-2500' });
+          const url = await getDownloadURL(file);
           return url;
         } catch (e) {
           console.error("File upload to storage failed:", e);
@@ -77,6 +78,13 @@ export const submitWidgetForm = functions.https.onRequest((req, res) => {
         delete rawData.photoFileName;
       }
 
+      if (rawData.taxExemptDataUrl) {
+        const url = await uploadFile(rawData.taxExemptDataUrl, `certificates/${orgId}`, rawData.taxExemptFileName || 'certificate.pdf');
+        if (url) rawData.taxExemptUrl = url;
+        delete rawData.taxExemptDataUrl;
+        delete rawData.taxExemptFileName;
+      }
+
       const timestamp = new Date().toISOString();
       let collectionPath = '';
       let finalData: any = { ...rawData, organizationId: orgId, createdAt: timestamp };
@@ -85,20 +93,88 @@ export const submitWidgetForm = functions.https.onRequest((req, res) => {
 
       if (formType === 'booking') {
         collectionPath = 'appointments';
+
+        let customerName = rawData.name || '';
+        let customerPhone = rawData.phone || '';
+        let customerEmail = rawData.email || '';
+        const specialInstructionsParts: string[] = [];
+
+        if (rawData.customerType === 'Business / Commercial') {
+          customerName = rawData.businessName || rawData.onSiteContactName || rawData.name || '';
+          customerPhone = rawData.phone || '';
+          customerEmail = rawData.email || '';
+          specialInstructionsParts.push(`Customer Type: Business / Commercial`);
+          specialInstructionsParts.push(`Business Name: ${rawData.businessName || 'N/A'}`);
+          specialInstructionsParts.push(`Store/Location #: ${rawData.storeLocation || 'N/A'}`);
+          specialInstructionsParts.push(`On-Site Contact Name: ${rawData.onSiteContactName || 'N/A'}`);
+          specialInstructionsParts.push(`Authorized to request? ${rawData.authorizedToApprove || 'N/A'}`);
+          specialInstructionsParts.push(`Billing Email: ${rawData.billingEmail || 'N/A'}`);
+          specialInstructionsParts.push(`PO Required? ${rawData.poRequired || 'N/A'}`);
+          specialInstructionsParts.push(`Approval Limit: ${rawData.approvalLimit || 'N/A'}`);
+          specialInstructionsParts.push(`Tax Exempt? ${rawData.taxExempt || 'N/A'}`);
+        } else if (rawData.customerType === 'Renter / Tenant') {
+          customerName = rawData.name || '';
+          customerPhone = rawData.phone || '';
+          customerEmail = rawData.email || '';
+          specialInstructionsParts.push(`Customer Type: Renter / Tenant`);
+          specialInstructionsParts.push(`Landlord Name: ${rawData.landlordName || 'N/A'}`);
+          specialInstructionsParts.push(`Landlord Phone: ${rawData.landlordPhone || 'N/A'}`);
+        } else if (rawData.customerType === 'Property Manager') {
+          customerName = rawData.name || rawData.pmContactName || '';
+          customerPhone = rawData.phone || '';
+          customerEmail = rawData.email || '';
+          specialInstructionsParts.push(`Customer Type: Property Manager`);
+          specialInstructionsParts.push(`Management Company: ${rawData.pmCompanyName || 'N/A'}`);
+          specialInstructionsParts.push(`Owner Approval Required? ${rawData.ownerApprovalRequired || 'N/A'}`);
+          specialInstructionsParts.push(`Billing/AP Email: ${rawData.billingEmail || 'N/A'}`);
+          specialInstructionsParts.push(`Tax Exempt? ${rawData.taxExempt || 'N/A'}`);
+        } else if (rawData.customerType === 'General Contractor') {
+          customerName = rawData.name || rawData.gcContactName || '';
+          customerPhone = rawData.phone || '';
+          customerEmail = rawData.email || '';
+          specialInstructionsParts.push(`Customer Type: General Contractor`);
+          specialInstructionsParts.push(`GC Company: ${rawData.gcCompanyName || 'N/A'}`);
+          specialInstructionsParts.push(`Job Name/Reference #: ${rawData.gcJobName || 'N/A'}`);
+          specialInstructionsParts.push(`Billing/AP Email: ${rawData.billingEmail || 'N/A'}`);
+          specialInstructionsParts.push(`PO Required? ${rawData.poRequired || 'N/A'}`);
+          specialInstructionsParts.push(`Tax Exempt? ${rawData.taxExempt || 'N/A'}`);
+        } else {
+          // Homeowner or fallback
+          customerName = rawData.name || '';
+          customerPhone = rawData.phone || '';
+          customerEmail = rawData.email || '';
+          specialInstructionsParts.push(`Customer Type: Homeowner`);
+          if (rawData.isOwner === 'No') {
+            specialInstructionsParts.push(`Landlord/Owner Name: ${rawData.ownerName || 'N/A'}`);
+            specialInstructionsParts.push(`Landlord/Owner Phone: ${rawData.ownerPhone || 'N/A'}`);
+          }
+        }
+
+        if (rawData.notes) {
+          specialInstructionsParts.push(`Notes: ${rawData.notes}`);
+        } else if (rawData.issueSummary) {
+          specialInstructionsParts.push(`Notes: ${rawData.issueSummary}`);
+        }
+
+        if (rawData.systemAge || rawData.systemBrand) {
+          specialInstructionsParts.push(`System Age: ${rawData.systemAge || 'N/A'}, Brand: ${rawData.systemBrand || 'N/A'}`);
+        }
+
         finalData = {
             ...finalData,
-            customerName: rawData.name,
-            customerPhone: rawData.phone,
-            customerEmail: rawData.email || '',
+            customerName,
+            customerPhone,
+            customerEmail,
             address: rawData.address,
-            tasks: [rawData.serviceCategory, rawData.jobType].filter(Boolean),
-            appointmentTime: rawData.date ? `${rawData.date} ${rawData.arrivalWindow || ''}`.trim() : 'TBD',
+            tasks: [rawData.serviceCategory || rawData.serviceType, rawData.jobType].filter(Boolean),
+            appointmentTime: rawData.date ? `${rawData.date} ${rawData.arrivalWindow || ''}`.trim() : (rawData.preferredDate ? `${rawData.preferredDate} ${rawData.arrivalWindow || ''}`.trim() : 'TBD'),
             status: 'Pending',
-            specialInstructions: `System Age: ${rawData.systemAge || 'N/A'}, Brand: ${rawData.systemBrand || 'N/A'}.`,
+            specialInstructions: specialInstructionsParts.join(' | '),
             source: 'Widget'
         };
         notificationTitle = 'New Booking Request (Widget)';
         notificationText = `You have a new service request from ${finalData.customerName} for ${finalData.address}. Log in to your dashboard to view and approve it.`;
+
 
       } else if (formType === 'applicant') {
         collectionPath = 'applicants';

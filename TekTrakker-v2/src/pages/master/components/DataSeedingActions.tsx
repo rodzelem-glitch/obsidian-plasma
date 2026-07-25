@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useEffect } from 'react';
 import Button from 'components/ui/Button';
@@ -50,13 +51,13 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
         if (!newCode.trim()) return;
         setSeeding(true);
         try {
-            await db.collection('promoCodes').add({
+            await db.collection('promoCodes').add(cleanUndefinedFields({
                 code: newCode.trim().toUpperCase(),
                 description: newDesc || 'Manual Entry',
                 durationMonths: parseInt(durationMonths) || 12,
                 isActive: true,
                 createdAt: new Date().toISOString()
-            });
+            }));
             setNewCode('');
             setNewDesc('');
             setDurationMonths('12');
@@ -70,7 +71,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
 
     const handleTogglePromo = async (id: string, current: boolean) => {
         try {
-            await db.collection('promoCodes').doc(id).update({ isActive: !current });
+            await db.collection('promoCodes').doc(id).update(cleanUndefinedFields({ isActive: !current }));
             fetchPromoCodes();
         } catch (e) { console.error(e); }
     };
@@ -94,7 +95,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
                 const orgId = `test-org-${Date.now()}-${i}`;
                 const orgRef = db.collection('organizations').doc(orgId);
                 
-                batch.set(orgRef, {
+                batch.set(cleanUndefinedFields(orgRef), {
                     id: orgId,
                     name: `Test Org ${i} - ${['HVAC Specialists', 'Premier Plumbing', 'Elite Electric'][i-1]}`,
                     phone: `(555) 010-${1000 + i}`,
@@ -117,7 +118,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
                     const userRef = db.collection('users').doc(userId);
                     const isSupervisor = j === 1;
                     
-                    batch.set(userRef, {
+                    batch.set(cleanUndefinedFields(userRef), {
                         id: userId,
                         uid: userId,
                         organizationId: orgId,
@@ -138,7 +139,7 @@ const DataSeedingActions: React.FC<{ hidePromoMaker?: boolean }> = ({ hidePromoM
                 for (let k = 1; k <= 10; k++) {
                     const custId = `test-cust-${orgId}-${k}`;
                     const custRef = db.collection('customers').doc(custId);
-                    batch.set(custRef, {
+                    batch.set(cleanUndefinedFields(custRef), {
                         id: custId,
                         organizationId: orgId,
                         name: `Customer ${i}-${k}`,

@@ -1,6 +1,7 @@
+import { cleanUndefinedFields } from './lib/utils';
 
 import React, { useEffect, lazy, Suspense, useCallback } from 'react';
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { useAppContext } from './context/AppContext';
 import { User } from './types';
 import { auth } from './lib/firebase';
@@ -20,9 +21,12 @@ const PublicRoutes = lazy(() => import('./navigation/PublicRoutes'));
 import LocationTracker from './components/common/LocationTracker';
 import ScrollToTop from './components/common/ScrollToTop';
 import { CallListener } from './components/common/CallListener';
+import WorkOrderAssociationsModal from './components/modals/WorkOrderAssociationsModal';
+import SubcontractorAgreementsGate from './components/auth/SubcontractorAgreementsGate';
 
 
 const PublicProposal = lazy(() => import('./pages/PublicProposal'));
+import PublicProjectProposal from './pages/PublicProjectProposal';
 const PublicEquipmentReport = lazy(() => import('./pages/PublicEquipmentReport'));
 const ComplianceReport = lazy(() => import('./pages/landing/ComplianceReport'));
 const PrivacyPolicy = lazy(() => import('./pages/landing/PrivacyPolicy'));
@@ -38,6 +42,7 @@ const Unsubscribe = lazy(() => import('./pages/Unsubscribe'));
 
 // Public widgets - serve app data, not marketing
 const ReviewsWidget = lazy(() => import('./pages/landing/ReviewsWidget'));
+const SubcontractorOnboardingWidget = lazy(() => import('./pages/landing/SubcontractorOnboardingWidget'));
 
 // A simple loading spinner component
 const LoadingSpinner: React.FC = () => (
@@ -60,6 +65,7 @@ const App: React.FC = () => {
   const { state, dispatch, startDemo } = useAppContext();
   const { currentUser: user, isMasterAdmin, loading, isDemoMode } = state;
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Parse demo mode immediately during render. If we wait for useEffect, the <Navigate> fallback 
   // for public routes may redirect to /login and destroy the hash query parameters first.
@@ -92,28 +98,34 @@ const App: React.FC = () => {
         }
         return '/portal';
     }
-    if (user.role === 'employee') return '/briefing';
+    if (user.role === 'employee' || user.role === 'Subcontractor' || user.role === 'Technician') {
+        if (!user.organizationId || user.organizationId === 'unaffiliated') {
+            return '/marketplace';
+        }
+        return '/briefing';
+    }
     
     const path = (!user.organizationId || user.organizationId === 'unaffiliated' || !user.role) ? '/marketplace' : '/login';
     return path;
   }, []); // Dependencies for useCallback should be empty if it only uses its arguments, or include external state if needed.
 
+  const userId = user?.id;
   useEffect(() => {
-    if (user?.id && !isDemoMode) {
+    if (userId && !isDemoMode) {
       import('./lib/pushNotificationService').then(module => {
-        module.setupFCMToken(user.id);
+        module.setupFCMToken(userId);
       });
       // TEMPORARY: Reset master platform logo & color locally based on user request
-      if (isMasterAdmin && user.organizationId) {
+      if (isMasterAdmin && user?.organizationId) {
           import('./lib/firebase').then(({ db }) => {
-              db.collection('organizations').doc(user.organizationId).update({
+              db.collection('organizations').doc(user.organizationId).update(cleanUndefinedFields({
                   logoUrl: null,
                   primaryColor: null
-              }).catch(() => {});
+              })).catch(() => {});
           }).catch(() => {});
       }
     }
-  }, [user, isMasterAdmin, isDemoMode]);
+  }, [userId, isMasterAdmin, isDemoMode]);
 
   useEffect(() => {
     const applyTheme = async () => {
@@ -230,12 +242,29 @@ const App: React.FC = () => {
       const currentHash = window.location.hash.split('?')[0];
       const isPublicRoute = currentHash.startsWith('#/invoice/') || 
                             currentHash.startsWith('#/proposal-view/') || 
+                            currentHash.startsWith('#/project-proposal-view/') || 
                             currentHash.startsWith('#/report/') ||
+                            currentHash.startsWith('#/public-upload/') ||
                             currentHash.startsWith('#/unsubscribe') ||
-                            currentHash === '#/unsubscribe';
+                            currentHash === '#/unsubscribe' ||
+                            currentHash === '' ||
+                            currentHash === '#/' ||
+                            currentHash === '#/homeowners' ||
+                            currentHash === '#/ai-worker' ||
+                            currentHash === '#/ai-worker-commands' ||
+                            currentHash === '#/privacy' ||
+                            currentHash === '#/terms' ||
+                            currentHash === '#/eula' ||
+                            currentHash === '#/faq' ||
+                            currentHash === '#/franchise' ||
+                            currentHash === '#/franchise-agreement';
+      const isLocalhost = window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || 
+                          window.location.hostname.startsWith('192.168.') || 
+                          window.location.hostname.startsWith('10.');
       
-      if (isPublicRoute || sessionStorage.getItem('dismiss_app_update') === 'true') {
-        console.info('[PWA] Suppressing update toast on public route:', currentHash);
+      if (!user || isPublicRoute || isLocalhost || sessionStorage.getItem('dismiss_app_update') === 'true') {
+        console.info('[PWA] Suppressing update toast:', currentHash, { hasUser: !!user, isLocalhost });
         return;
       }
       const updateSW = event?.detail?.updateSW || (window as any).updateServiceWorker;
@@ -254,16 +283,7 @@ const App: React.FC = () => {
                 if (typeof updateSW === 'function') {
                   try {
                     console.log('Invoking updateSW...');
-                    const res = updateSW(true);
-                    if (res instanceof Promise) {
-                      res.then(() => {
-                        setTimeout(() => window.location.reload(), 500);
-                      }).catch(() => {
-                        window.location.reload();
-                      });
-                    } else {
-                      setTimeout(() => window.location.reload(), 1000);
-                    }
+                    updateSW(true);
                   } catch (err) {
                     console.error('Error invoking updateSW:', err);
                     window.location.reload();
@@ -309,9 +329,10 @@ const App: React.FC = () => {
     };
     window.addEventListener('app-update-available', handleAppUpdate as any);
     return () => window.removeEventListener('app-update-available', handleAppUpdate as any);
-  }, []);
+  }, [user]);
 
   const handleLogout = () => {
+    localStorage.setItem('just_logged_out', 'true');
     auth.signOut();
     dispatch({ type: 'LOGOUT' });
     navigate('/login');
@@ -322,6 +343,8 @@ const App: React.FC = () => {
       (window as any).appLoaded = true;
     }
   }, [loading, demoRole]);
+
+  console.log("[App-Debug] Render state - loading:", loading, "user:", user?.email, "demoRole:", demoRole, "hash:", window.location.hash);
 
   if (loading || demoRole) {
     const currentHash = window.location.hash.split('?')[0].replace('#', '') || '/';
@@ -337,6 +360,11 @@ const App: React.FC = () => {
   // Set loaded for public routes that bypass the spinner
   if (!loading && !demoRole) {
       (window as any).appLoaded = true;
+  }
+
+  const isEmployeeOnly = user && (user.role === 'employee' || user.role === 'Technician' || user.role === 'Subcontractor');
+  if (isEmployeeOnly && location.pathname.startsWith('/admin/training')) {
+    return <Navigate to={`/briefing/training${location.search}`} replace />;
   }
 
 
@@ -363,6 +391,12 @@ const App: React.FC = () => {
       
       <div className="safe-area-wrapper min-h-screen w-full flex flex-col">
         <ScrollToTop />
+        <WorkOrderAssociationsModal
+          isOpen={!!state.viewingWorkOrderNumber}
+          onClose={() => dispatch({ type: 'SET_VIEWING_WORK_ORDER', payload: { workOrderNumber: null, customerId: null } })}
+          workOrderNumber={state.viewingWorkOrderNumber}
+          customerId={state.viewingWorkOrderCustomerId}
+        />
         <Suspense fallback={<LoadingSpinner />}>
           <Routes>
             <Route path="/" element={user ? <Navigate to={getRedirectPath(user, isMasterAdmin)} replace /> : <Navigate to="/login" replace />} />
@@ -379,7 +413,8 @@ const App: React.FC = () => {
                     <CustomerPayment />
                 </Suspense>
             } />
-            <Route path="/proposal-view/:proposalId" element={<PublicProposal />} />
+            <Route path="/proposal-view/:proposalId" element={<PublicProjectProposal />} />
+            <Route path="/project-proposal-view/:proposalId" element={<PublicProjectProposal />} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
             <Route path="/report/equipment/:customerId" element={<PublicEquipmentReport />} />
 
@@ -391,6 +426,8 @@ const App: React.FC = () => {
 
             {/* Public widgets */}
             <Route path="/widgets/reviews/:orgId" element={<ReviewsWidget />} />
+            <Route path="/widgets/subcontractor-setup/:orgId" element={<SubcontractorOnboardingWidget />} />
+            <Route path="/widgets/subcontractor-onboarding/:orgId" element={<SubcontractorOnboardingWidget />} />
 
             {user ? (
               <>
@@ -399,7 +436,11 @@ const App: React.FC = () => {
                 <Route path="/sales/*" element={<SalesRoutes user={user} handleLogout={handleLogout} />} />
                 <Route path="/admin/*" element={<AdminRoutes user={user} handleLogout={handleLogout} isDemoMode={isDemoMode} />} />
                 <Route path="/portal/*" element={<CustomerRoutes user={user} handleLogout={handleLogout} />} />
-                <Route path="/briefing/*" element={<EmployeeRoutes user={user} handleLogout={handleLogout} isDemoMode={isDemoMode} getRedirectPath={() => getRedirectPath(user, isMasterAdmin)} />} />
+                <Route path="/briefing/*" element={
+                  <SubcontractorAgreementsGate user={user}>
+                    <EmployeeRoutes user={user} handleLogout={handleLogout} isDemoMode={isDemoMode} getRedirectPath={() => getRedirectPath(user, isMasterAdmin)} />
+                  </SubcontractorAgreementsGate>
+                } />
                 
                 {/* Fallback for any other authenticated route - might redirect to a default page or show a 404 within the user's layout */}
                 <Route path="*" element={<Navigate to={getRedirectPath(user, isMasterAdmin)} replace />} />

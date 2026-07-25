@@ -20,7 +20,7 @@ export default defineConfig(() => {
       },
       VitePWA({
         injectRegister: null,
-        registerType: 'prompt',
+        registerType: 'autoUpdate',
         devOptions: { enabled: true },
         manifest: {
           name: 'TekTrakker Technician App',
@@ -34,6 +34,9 @@ export default defineConfig(() => {
           ]
         },
         workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
+          cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           navigateFallbackDenylist: [

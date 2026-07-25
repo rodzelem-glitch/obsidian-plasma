@@ -1,16 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { PlayCircle, Search, Clock, Tag, BookOpen, ChevronLeft, ArrowRight, Play, CheckCircle2, X, MessageSquare } from 'lucide-react';
+import { PlayCircle, Search, Clock, Tag, BookOpen, ChevronLeft, ArrowRight, Play, CheckCircle2, X, MessageSquare, Sparkles } from 'lucide-react';
 import { User } from '../types';
 import Card from '../components/ui/Card';
 import { mockTrainingData, trainingCategories, TrainingArticle } from '../data/trainingModules';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useNavigate } from 'react-router-dom';
+import { useOnboardingTour } from '../components/ui/OnboardingTour';
 
 interface TrainingHubProps {
     user: User | null;
 }
 
 const TrainingHub: React.FC<TrainingHubProps> = ({ user }) => {
+    const navigate = useNavigate();
+    const { restartTour } = useOnboardingTour(user?.id);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('All');
     const [activeArticle, setActiveArticle] = useState<TrainingArticle | null>(null);
@@ -80,21 +84,6 @@ const TrainingHub: React.FC<TrainingHubProps> = ({ user }) => {
 
         return (
             <div className="flex-1 flex flex-col p-4 md:p-6 lg:p-8 max-w-7xl mx-auto w-full animate-fade-in pb-24">
-                {/* Fullscreen Video Overlay */}
-                {isVideoExpanded && activeArticle.videoUrl && (
-                    <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center animate-fade-in p-4 md:p-12">
-                        <button 
-                            onClick={() => setIsVideoExpanded(false)}
-                            aria-label="Close Video"
-                            className="absolute top-6 right-6 w-12 h-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors border border-white/20 z-[110]"
-                        >
-                            <X size={24} />
-                        </button>
-                        <div className="w-full max-w-6xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative">
-                            <img src={activeArticle.videoUrl} alt={activeArticle.title} className="w-full h-full object-contain" />
-                        </div>
-                    </div>
-                )}
 
                 <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                     <button 
@@ -104,43 +93,58 @@ const TrainingHub: React.FC<TrainingHubProps> = ({ user }) => {
                         <ChevronLeft size={16} /> Back to Hub
                     </button>
                     
-                    <button
-                        onClick={() => toggleCompletion(activeArticle.id)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm ${
-                            isCompleted 
-                                ? 'bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20'
-                                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
-                        }`}
-                    >
-                        {isCompleted ? <><CheckCircle2 size={16} /> Completed</> : "Skip / Mark as Complete"}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button
+                            onClick={() => {
+                                restartTour(activeArticle.id);
+                                const isTech = user?.role === 'employee' || window.location.hash.includes('/briefing');
+                                const paths: Record<string, string> = {
+                                    'dispatch-job': '/admin/operations',
+                                    'tech-clocking-in': '/briefing/timelog',
+                                    'build-proposal': isTech ? '/briefing/proposal' : '/admin/proposal',
+                                    'org-setup': '/admin/settings',
+                                    'crm-guide': '/admin/customers',
+                                    'invoicing-guide': '/admin/financials',
+                                    'messaging-guide': isTech ? '/briefing/messages' : '/admin/messages',
+                                    'analytics-guide': '/admin/dashboard',
+                                    'tech-workflow': '/briefing',
+                                    'tech-tools': '/briefing/tools',
+                                    'gov-bid-helper': '/admin/contracts',
+                                    'records-assets': '/admin/records'
+                                };
+                                const targetPath = paths[activeArticle.id];
+                                if (targetPath) {
+                                    navigate(targetPath);
+                                } else {
+                                    navigate(isTech ? '/briefing' : '/admin/dashboard');
+                                }
+                            }}
+                            className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-black text-white bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-500 hover:to-indigo-500 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary-500/20 transition-all cursor-pointer group"
+                        >
+                            <Sparkles size={16} className="text-amber-300 animate-pulse" />
+                            Start Interactive Tour
+                        </button>
+
+                        <button
+                            onClick={() => toggleCompletion(activeArticle.id)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm ${
+                                isCompleted 
+                                    ? 'bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 dark:bg-green-500/10 dark:text-green-400 dark:border-green-500/20'
+                                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            {isCompleted ? <><CheckCircle2 size={16} /> Completed</> : "Skip / Mark as Complete"}
+                        </button>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Left Column: Video & Metadata */}
                     <div className="lg:col-span-1 space-y-6">
-                        <div 
-                            className={`aspect-video w-full bg-slate-900 rounded-2xl overflow-hidden shadow-xl ring-1 ring-white/10 relative group flex items-center justify-center ${activeArticle.videoUrl ? 'cursor-pointer' : ''}`}
-                            onClick={() => activeArticle.videoUrl && setIsVideoExpanded(true)}
-                        >
-                            {activeArticle.videoUrl ? (
-                                <img src={activeArticle.videoUrl} alt={activeArticle.title} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
-                            ) : (
-                                <img src={activeArticle.thumbnailUrl} alt={activeArticle.title} className="w-full h-full object-cover opacity-60" />
+                        <div className="aspect-video w-full bg-slate-100 dark:bg-slate-800 rounded-2xl overflow-hidden shadow-xl ring-1 ring-slate-200 dark:ring-slate-800 relative">
+                            {activeArticle.thumbnailUrl && (
+                                <img src={activeArticle.thumbnailUrl} alt={activeArticle.title} className="w-full h-full object-cover" />
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent flex flex-col justify-end p-4 pointer-events-none">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2 text-white font-bold text-sm">
-                                        <PlayCircle size={16} className="text-primary-400 group-hover:scale-110 transition-transform" />
-                                        {activeArticle.duration} Video Guide
-                                    </div>
-                                    {activeArticle.videoUrl && (
-                                        <div className="px-3 py-1 bg-white/20 backdrop-blur text-white text-[10px] font-bold uppercase tracking-wider rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                                            Click to Enlarge
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
                         </div>
 
                         <Card className="p-6 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
@@ -210,7 +214,7 @@ const TrainingHub: React.FC<TrainingHubProps> = ({ user }) => {
                         Master TekTrakker <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-indigo-400">Like a Pro.</span>
                     </h1>
                     <p className="text-lg text-slate-300 font-medium mb-8 max-w-xl mx-auto sm:mx-0">
-                        Search our library of quick video walkthroughs and step-by-step guides to speed up your onboarding and streamline your workflow.
+                        Search our library of interactive guided tours and step-by-step written articles to master the platform and streamline your workflow.
                     </p>
 
                     <div className="relative w-full max-w-xl mx-auto sm:mx-0 group">
@@ -235,11 +239,11 @@ const TrainingHub: React.FC<TrainingHubProps> = ({ user }) => {
                             cx="64" cy="64" r="56" 
                             className="stroke-primary-500 fill-none stroke-[8] transition-all duration-1000 ease-out"
                             strokeDasharray="351"
-                            strokeDashoffset={351 - (351 * completedModules.length) / 8}
+                            strokeDashoffset={351 - (351 * completedModules.length) / mockTrainingData.length}
                         ></circle>
                     </svg>
                     <div className="absolute top-[35px] left-1/2 -translate-x-1/2 text-center">
-                        <span className="text-3xl font-black text-white">{completedModules.length}</span><span className="text-xs text-slate-400">/8</span>
+                        <span className="text-3xl font-black text-white">{completedModules.length}</span><span className="text-xs text-slate-400">/{mockTrainingData.length}</span>
                     </div>
                     <p className="text-white text-sm font-bold mt-4 tracking-wide text-center">Onboarding<br/>Progress</p>
                 </div>
@@ -292,6 +296,9 @@ const TrainingHub: React.FC<TrainingHubProps> = ({ user }) => {
                                     <span className="px-2 py-1 bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider rounded-md border border-white/10 flex items-center gap-1.5">
                                         <article.icon size={12} /> {article.category}
                                     </span>
+                                    <span className="px-2 py-1 bg-gradient-to-r from-primary-600 to-indigo-600 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider rounded-md border border-primary-500/20 flex items-center gap-1 shadow-sm">
+                                        <Sparkles size={10} className="text-amber-300 animate-pulse" /> Tour
+                                    </span>
                                 </div>
 
                                 {completedModules.includes(article.id) && (
@@ -299,17 +306,6 @@ const TrainingHub: React.FC<TrainingHubProps> = ({ user }) => {
                                         <CheckCircle2 size={14} />
                                     </div>
                                 )}
-
-                                <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/70 backdrop-blur-md text-white text-[10px] font-mono rounded-md border border-white/10 flex items-center gap-1.5 shadow-sm">
-                                    <Clock size={12} /> {article.duration}
-                                </div>
-
-                                {/* Hover Play Button Overlay */}
-                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-95 group-hover:scale-100 pointer-events-none">
-                                    <div className="w-14 h-14 bg-primary-500/90 backdrop-blur-sm text-white rounded-full flex items-center justify-center shadow-2xl shadow-primary-500/50">
-                                        <Play className="ml-1" fill="currentColor" />
-                                    </div>
-                                </div>
                             </div>
                             
                             <div className="p-5 flex-1 flex flex-col text-left">
@@ -340,7 +336,7 @@ const TrainingHub: React.FC<TrainingHubProps> = ({ user }) => {
                         Need More Training?
                     </h3>
                     <p className="text-slate-600 dark:text-slate-400 font-medium leading-relaxed max-w-3xl">
-                        If a specific task isn't covered in these videos, or if you feel that one of the tutorials isn't sufficient for your workflow, please send me an in-app message! I am always happy to help directly or record a new guide for you.
+                        If a specific task isn't covered in these guides, or if you feel that one of the tutorials isn't sufficient for your workflow, please send me an in-app message! I am always happy to help directly or design a new tour for you.
                     </p>
                 </div>
                 <div className="relative z-10 flex shrink-0">

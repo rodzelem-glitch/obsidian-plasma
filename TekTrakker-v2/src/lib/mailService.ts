@@ -1,14 +1,24 @@
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
 import { db } from './firebase';
 
 export interface EmailOptions {
     to: string | string[];
-    subject: string;
+    subject?: string;
     text?: string;
     html?: string;
     type?: string;
     organizationId?: string;
     bypassOptOut?: boolean; // Set to true for transactional emails like Invoices, OTPs
+    attachments?: any[];
+    replyTo?: string;
+    message?: {
+        subject?: string;
+        text?: string;
+        html?: string;
+        attachments?: any[];
+        replyTo?: string;
+    };
+    skipAutoLog?: boolean;
 }
 
 export const sendEmail = async (options: EmailOptions) => {
@@ -29,20 +39,6 @@ export const sendEmail = async (options: EmailOptions) => {
 
     if (recipients.length === 0) return; // Everyone logged out
 
-    const footerHtml = options.bypassOptOut ? '' : `
-        <br><br>
-        <hr style="border: none; border-top: 1px solid #eee; margin-top: 20px;">
-        <p style="font-size: 12px; color: #666; text-align: center;">
-            You received this email because you are subscribed to updates.
-            <br>
-            <a href="${getBaseUrl()}/#/unsubscribe?email={{recipient_email}}" style="color: #6366f1;">Manage Preferences or Unsubscribe</a>
-        </p>
-    `;
-
-    // Note: Trigger Email extension doesn't natively swap {{recipient_email}} if using 'to' array with multiple people,
-    // so it's best to send separate emails if there are multiple recipients, or just link generically.
-    // For simplicity, we just use a generic unsubscribe link. Realistically, we can encode the email in the URL.
-    
     const sendPromises = recipients.map(email => {
         const pFooterHtml = options.bypassOptOut ? '' : `
             <br><br>
@@ -54,19 +50,29 @@ export const sendEmail = async (options: EmailOptions) => {
             </p>
         `;
 
-        const finalHtml = options.html ? options.html + pFooterHtml : (options.text ? options.text.replace(/\n/g, '<br>') + pFooterHtml : '');
+        const subject = options.subject || options.message?.subject || 'Notification';
+        const rawHtml = options.html || options.message?.html;
+        const rawText = options.text || options.message?.text || '';
+        const attachments = options.attachments || options.message?.attachments || [];
+        const replyTo = options.replyTo || options.message?.replyTo;
 
-        return db.collection('mail_queue').add({
+        const finalHtml = rawHtml ? rawHtml + pFooterHtml : (rawText ? rawText.replace(/\n/g, '<br>') + pFooterHtml : '');
+
+        const mailDoc: any = {
             to: email,
             message: {
-                subject: options.subject,
-                text: options.text,
-                html: finalHtml
+                subject: subject,
+                text: rawText,
+                html: finalHtml,
+                ...(replyTo ? { replyTo } : {}),
+                ...(attachments.length > 0 ? { attachments } : {})
             },
             organizationId: options.organizationId || 'system',
             type: options.type || 'General',
             createdAt: new Date().toISOString()
-        });
+        };
+
+        return db.collection('mail_queue').add(cleanUndefinedFields(mailDoc));
     });
 
     await Promise.all(sendPromises);

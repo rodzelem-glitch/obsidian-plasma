@@ -1,4 +1,5 @@
 import showToast from "lib/toast";
+import { cleanUndefinedFields } from 'lib/utils';
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useAppContext } from '../../context/AppContext';
@@ -153,7 +154,7 @@ const SalesOverview: React.FC = () => {
             const signature = sigPadRef.current.toDataURL();
             const contractContent = currentUser.salesContractContent || (commissionRules ? generateContractHtml(currentUser, commissionRules) : '');
             const updateData = { salesContractSigned: true, salesContractDate: new Date().toISOString(), salesContractSignature: signature, salesContractContent: DOMPurify.sanitize(contractContent) };
-            await db.collection('users').doc(currentUser.id).update(updateData);
+            await db.collection('users').doc(currentUser.id).update(cleanUndefinedFields(updateData));
             dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...currentUser, ...updateData } as User & { id: string } });
             showToast.warn("Contract accepted.");
         } catch (e) { showToast.warn("Failed to save signature."); } finally { setIsSigning(false); }

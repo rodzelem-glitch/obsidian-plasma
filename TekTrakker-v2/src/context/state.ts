@@ -84,6 +84,8 @@ export interface AppState {
     leads: Lead[];
     activeJobIdForWorkflow: string | null;
     customerProfile: Customer | null; // Added
+    viewingWorkOrderNumber: string | null;
+    viewingWorkOrderCustomerId: string | null;
     teams: OrganizationTeam[];
     warrantyClaims: WarrantyClaim[];
     serviceLocations: ServiceLocation[];
@@ -141,6 +143,8 @@ export const initialState: AppState = {
     leads: [],
     activeJobIdForWorkflow: null,
     customerProfile: null, // Added
+    viewingWorkOrderNumber: null,
+    viewingWorkOrderCustomerId: null,
     teams: [],
     warrantyClaims: [],
     serviceLocations: [],

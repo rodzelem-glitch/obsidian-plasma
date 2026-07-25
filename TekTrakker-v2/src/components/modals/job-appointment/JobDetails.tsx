@@ -3,7 +3,7 @@ import React from 'react';
 import Input from '../../ui/Input';
 import Select from '../../ui/Select';
 import Textarea from '../../ui/Textarea';
-import { BusinessDocument, InspectionTemplate } from 'types';
+import { BusinessDocument, InspectionTemplate, Division } from 'types';
 
 interface JobDetailsProps {
     date: string;
@@ -21,6 +21,8 @@ interface JobDetailsProps {
     setNotes: (notes: string) => void;
     isHighPriority: boolean;
     setIsHighPriority: (val: boolean) => void;
+    poNumber: string;
+    setPoNumber: (val: string) => void;
     
     // Requirements
     waiverTemplates: BusinessDocument[];
@@ -31,6 +33,15 @@ interface JobDetailsProps {
     setSelectedDiagChecklists: (ids: string[]) => void;
     selectedQualChecklists: string[];
     setSelectedQualChecklists: (ids: string[]) => void;
+    
+    // Visit Type
+    visitType?: string;
+    setVisitType?: (val: string) => void;
+    
+    // Divisions
+    divisions?: Division[];
+    divisionId?: string;
+    setDivisionId?: (id: string) => void;
 }
 
 const timeSlots = Array.from({ length: 33 }, (_, i) => {
@@ -63,6 +74,8 @@ const JobDetails: React.FC<JobDetailsProps> = ({
     setNotes,
     isHighPriority,
     setIsHighPriority,
+    poNumber,
+    setPoNumber,
     waiverTemplates,
     checklistTemplates,
     selectedWaivers,
@@ -70,7 +83,12 @@ const JobDetails: React.FC<JobDetailsProps> = ({
     selectedDiagChecklists,
     setSelectedDiagChecklists,
     selectedQualChecklists,
-    setSelectedQualChecklists
+    setSelectedQualChecklists,
+    divisions = [],
+    divisionId = '',
+    setDivisionId,
+    visitType = 'Diagnostic & Repair',
+    setVisitType
 }) => {
     return (
         <>
@@ -95,10 +113,34 @@ const JobDetails: React.FC<JobDetailsProps> = ({
                 </Select>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {divisions.length > 0 && (
+                    <Select label="Assign Division" value={divisionId} onChange={e => setDivisionId && setDivisionId(e.target.value)}>
+                        <option value="">-- No Division --</option>
+                        {divisions.map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                    </Select>
+                )}
                 <Select label="Job Type" value={jobType} onChange={e => setJobType(e.target.value)}>
                     {availableTypes.map(t => <option key={t} value={t}>{t}</option>)}
                 </Select>
+                {setVisitType && (
+                    <Select label="Visit Type" value={visitType} onChange={e => setVisitType(e.target.value)}>
+                        <option value="Diagnostic Only">Diagnostic Only</option>
+                        <option value="Diagnostic & Repair">Diagnostic & Repair</option>
+                        <option value="Repair">Repair</option>
+                        <option value="Maintenance">Maintenance</option>
+                        <option value="Service Call">Service Call</option>
+                        <option value="Other">Other</option>
+                    </Select>
+                )}
+                <Input 
+                    label="PO / External Work Order #" 
+                    value={poNumber} 
+                    onChange={e => setPoNumber(e.target.value)} 
+                    placeholder="e.g. PO-10293 or WO-9981" 
+                />
                 <div className="flex flex-col gap-3">
                     <Select label="Source" value={leadSource} onChange={e => setLeadSource(e.target.value)}>
                         <option value="Call-In">Direct Call</option>

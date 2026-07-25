@@ -19,6 +19,7 @@ import FranchiseBilling from '../pages/master/FranchiseBilling';
 import MasterSalesTeam from '../pages/master/MasterSalesTeam';
 import ComplianceRegistry from '../pages/master/ComplianceRegistry';
 import PlatformAnalytics from '../pages/master/PlatformAnalytics'; 
+import TelephonyAnalytics from '../pages/master/TelephonyAnalytics';
 import PlatformCampaignStudio from '../pages/master/PlatformCampaignStudio';
 import MasterIntegrationRequests from '../pages/master/MasterIntegrationRequests';
 import Messages from '../pages/Messages';
@@ -64,6 +65,7 @@ const MasterAdminRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({
             <>
               <Route path="billing" element={<MasterBilling />} />
               <Route path="analytics" element={<PlatformAnalytics />} /> 
+              <Route path="telephony" element={<TelephonyAnalytics />} />
               <Route path="inbox" element={<MasterInbox />} />
               <Route path="financials" element={<Financials />} />
               <Route path="developer-console" element={<MobileDevConsole />} />

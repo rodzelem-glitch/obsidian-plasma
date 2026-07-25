@@ -36,7 +36,7 @@ export const analyzeRFPWithAI = functions.runWith({ secrets: ["GEMINI_API_KEY"] 
         const apiKey = await getGeminiApiKey(organizationId);
         
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
         const parts: any /* eslint-disable-line @typescript-eslint/no-explicit-any */[] = [{
     text: `You are an expert construction estimator. Analyze the provided RFP document(s). 

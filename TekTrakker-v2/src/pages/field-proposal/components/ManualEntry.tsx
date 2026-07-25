@@ -5,7 +5,7 @@ import Select from 'components/ui/Select';
 import Button from 'components/ui/Button';
 import { useLanguage } from 'context/LanguageContext';
 
-type Tier = 'Good' | 'Better' | 'Best';
+type Tier = 'Basic' | 'Premium' | 'Platinum';
 
 interface ManualEntryProps {
     activeTier: Tier;

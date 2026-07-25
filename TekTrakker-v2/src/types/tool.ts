@@ -8,6 +8,7 @@ export interface ToolReading {
     results: any;
     summary: string;
     reportUrl?: string;
+    phase?: 'before' | 'after';
 }
 
 export interface ToolMaintenanceLog {

@@ -36,7 +36,7 @@ export default function VirtualWorkerMarketing() {
                         <Link href="https://app.tektrakker.com/#/login" className="h-16 px-10 rounded-2xl bg-indigo-600 text-white font-black text-lg hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 hover:scale-[1.02]">
                             Deploy Your Agent <ArrowRight size={20} />
                         </Link>
-                        <Link href="/ai-worker-commands" className="h-16 px-10 rounded-2xl bg-white text-indigo-600 border-2 border-indigo-100 hover:border-indigo-300 hover:bg-slate-50 font-black text-lg transition-all flex items-center justify-center gap-2 shadow-sm">
+                        <Link href="/ai-worker-commands/" className="h-16 px-10 rounded-2xl bg-white text-indigo-600 border-2 border-indigo-100 hover:border-indigo-300 hover:bg-slate-50 font-black text-lg transition-all flex items-center justify-center gap-2 shadow-sm">
                             What can I tell my agent? <ArrowRight size={20} />
                         </Link>
                     </div>
@@ -115,7 +115,37 @@ export default function VirtualWorkerMarketing() {
                     ))}
                 </div>
             </section>
-            
+
+            {/* Conversational Q&A Section for LLM/AI Engine Optimization */}
+            <section className="py-20 px-6 bg-white border-t border-b border-slate-200">
+                <div className="max-w-4xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">AI Virtual Worker: Frequently Asked Questions</h2>
+                        <p className="text-slate-600 mt-2">Find direct answers about how our AI dispatch and office automation agent functions.</p>
+                    </div>
+                    <div className="space-y-8">
+                        <div className="border-b border-slate-100 pb-6">
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Q: How does TekTrakker's AI dispatcher automate scheduling?</h3>
+                            <p className="text-slate-600 leading-relaxed">
+                                A: The AI Virtual Worker monitors your incoming emails, job requests, and SMS channels. It analyzes technician availability, current locations, and job durations to automatically assign the best technician, map optimized routes, and dispatch tickets—reducing office administration time by up to 80%.
+                            </p>
+                        </div>
+                        <div className="border-b border-slate-100 pb-6">
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Q: Can the AI dispatcher write invoices and draft customer responses?</h3>
+                            <p className="text-slate-600 leading-relaxed">
+                                A: Yes. When a technician marks a job as complete in the field, the AI Virtual Worker instantly drafts invoices, calculates tax/totals, and pre-compiles email or SMS responses containing secure Stripe/QuickBooks payment links for your review or auto-send.
+                            </p>
+                        </div>
+                        <div className="pb-6">
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Q: Does the AI Virtual Worker require programming or manual setup?</h3>
+                            <p className="text-slate-600 leading-relaxed">
+                                A: No programming is needed. Once activated, the AI dynamically indexes your existing price book, customer logs, past invoices, and service histories. It trains itself on your specific operating data in real-time, matching your exact company voice and guidelines.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section className="py-20 px-6 bg-slate-900 text-white relative">
                 <div className="max-w-5xl mx-auto text-center">
                     <h2 className="text-4xl font-black mb-6 tracking-tight">Transparent AI Pricing.</h2>
@@ -131,7 +161,7 @@ export default function VirtualWorkerMarketing() {
                             <h3 className="text-2xl font-black text-white mb-2 relative z-10">Virtual Worker Add-On</h3>
                             <p className="text-slate-400 text-sm mb-6 flex-1 relative z-10">Unlocks the autonomous AI agent on your dashboard. Includes all routing, routing access, and contextual system memory.</p>
                             <div className="mt-auto relative z-10">
-                                <p className="text-5xl font-black text-indigo-400 mb-2">$199<span className="text-xl text-slate-500">/mo</span></p>
+                                <p className="text-5xl font-black text-indigo-400 mb-2">$49.99<span className="text-xl text-slate-500">/mo</span></p>
                                 <p className="text-emerald-400 text-sm font-bold flex items-center gap-1"><CheckCircle size={14}/> Base Capability</p>
                             </div>
                         </div>

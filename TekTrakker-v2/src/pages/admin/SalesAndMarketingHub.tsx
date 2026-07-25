@@ -21,13 +21,13 @@ const SalesAndMarketingHub: React.FC = () => {
             path: '/admin/campaigns?tab=analytics',
             color: 'bg-emerald-50 dark:bg-emerald-900/30'
         },
-        {
+        /* {
             title: 'Social Media Hub',
             description: 'Manage out-bound generic brand announcements.',
             icon: <Share2 className="w-8 h-8 text-blue-500" />,
             path: '/admin/social',
             color: 'bg-blue-50 dark:bg-blue-900/30'
-        },
+        }, */
         {
             title: 'Blog & Profiles',
             description: 'Manage company blog posts, articles, and public profiles.',

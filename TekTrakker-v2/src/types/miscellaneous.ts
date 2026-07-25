@@ -1,4 +1,4 @@
-﻿
+
 import type { StoredFile } from './file';
 
 
@@ -127,7 +127,7 @@ export interface Applicant {
     email: string;
     phone: string;
     position: string;
-    experienceYears: number;
+    experienceYears: number | string;
     status: string;
     appliedDate: string;
     applicationDate?: string;
@@ -136,6 +136,15 @@ export interface Applicant {
     resumeFileName?: string;
     notes?: string;
     marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; };
+    desiredSalary?: number | string;
+    referredBy?: string;
+    skills?: string[];
+    availability?: string[];
+    driversLicense?: string;
+    license?: string;
+    workAuthorized?: boolean;
+    address?: string;
+    smsOptIn?: boolean;
 }
 
 export interface WorkSchedule {
@@ -195,7 +204,7 @@ export interface ProposalItem {
     price: number;
     total: number;
     type: 'Labor' | 'Part' | 'Part/Labor' | 'Fee' | 'Discount' | 'Service';
-    tier: 'Good' | 'Better' | 'Best';
+    tier: 'Good' | 'Better' | 'Best' | 'Basic' | 'Premium' | 'Platinum' | string;
     partCost?: number;
     laborHours?: number;
     hourlyRate?: number;
@@ -218,6 +227,8 @@ export interface Proposal {
     createdByName?: string;
     technicianId: string;
     jobId?: string;
+    linkedJobIds?: string[];
+    divisionId?: string;
     selectedOption?: string | null;
     signature?: string | null;
     signatureDataUrl?: string | null;
@@ -226,6 +237,35 @@ export interface Proposal {
     remindersSent?: string[];
     proposalTermsAgreed?: boolean | null;
     proposalTermsAgreedAt?: string | null;
+    competitorAgreementAgreed?: boolean | null;
+    competitorAgreementAgreedAt?: string | null;
+
+    // Project-level proposal fields
+    isProjectLevel?: boolean;
+    projectId?: string | null;
+    projectName?: string | null;
+    locationAddress?: string;
+    poNumber?: string;
+    scid?: string;
+    laborItems?: any[];
+    laborSubtotal?: number;
+    roundedLaborProposal?: number;
+    roundedLaborBasis?: string;
+    partItems?: any[];
+    partsTotal?: number;
+    markupScheduleJson?: string;
+    allowanceItems?: any[];
+    allowanceTotal?: number;
+    clarifications?: string[];
+    exclusions?: string[];
+    importantClarification?: string;
+    calculatedTotal?: number;
+    recommendedRoundedTotal?: number;
+    preparedByOrganization?: string;
+    preparedByPhone?: string;
+    preparedByLicence?: string;
+    signedAt?: string | null;
+    signatureName?: string | null;
 }
 
 export interface Expense {
@@ -235,6 +275,8 @@ export interface Expense {
     category: string;
     description: string;
     amount: number;
+    subtotal?: number;
+    taxAmount?: number;
     vendor?: string;
     paidBy?: string;
     paidById?: string; // Audit trail
@@ -249,6 +291,7 @@ export interface Expense {
     updatedAt?: string;
     updatedById?: string;
     updatedByName?: string;
+    expenseType?: 'business' | 'personal';
 }
 
 export interface InspectionTemplateItem {
@@ -328,6 +371,13 @@ export interface Review {
     aiDraft?: string | null;
 }
 
+export interface MessageAttachment {
+    name: string;
+    url: string;
+    type: string;
+    size?: number;
+}
+
 export interface Message {
     id: string;
     organizationId: string;
@@ -341,6 +391,12 @@ export interface Message {
     deliveryStatus?: 'queued' | 'sent' | 'failed';
     deliveryError?: string;
     isEdited?: boolean;
+    attachments?: MessageAttachment[];
+    senderEmail?: string;
+    senderRole?: string;
+    receiverName?: string;
+    receiverPhone?: string;
+    receiverEmail?: string;
 }
 
 export interface PartOrder {
@@ -441,6 +497,7 @@ export interface OrganizationTeam {
     name: string;
     description?: string;
     memberIds: string[]; // User IDs or Subcontractor IDs
+    customerIds?: string[];
 }
 
 export interface ProjectSubtask {

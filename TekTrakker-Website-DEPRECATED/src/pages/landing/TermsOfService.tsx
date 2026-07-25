@@ -2,10 +2,16 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../../components/ui/Logo';
+import { Helmet } from 'react-helmet-async';
 
 const TermsOfService: React.FC = () => {
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans pt-safe">
+      <Helmet>
+        <title>Terms of Service | TekTrakker Platform Agreement</title>
+        <meta name="description" content="Read the official terms of service for the TekTrakker field service management platform, billing, and AI automated systems." />
+        <meta name="robots" content="noindex, follow" />
+      </Helmet>
       <nav className="border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-md z-50">
           <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
               <Link to="/" className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors">

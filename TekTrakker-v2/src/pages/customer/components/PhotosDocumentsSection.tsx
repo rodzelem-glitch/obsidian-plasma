@@ -79,7 +79,7 @@ const PhotosDocumentsSection: React.FC<PhotosDocumentsSectionProps> = ({ jobs, p
             });
 
             // Invoice
-            if (job.invoice && job.invoice.status) {
+            if (job.invoice && job.invoice.status && (job.invoice.status === 'Paid' || job.invoice.sentAt)) {
                 items.push({
                     id: `inv-${job.id}`,
                     title: `Invoice #${job.invoice.id || job.id.slice(-6).toUpperCase()}`,

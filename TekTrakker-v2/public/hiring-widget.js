@@ -8,6 +8,14 @@
     const containerId = scriptTag ? scriptTag.getAttribute('data-container-id') : 'tt-hiring-container';
     const WIDGET_TIMEOUT = 15000;
 
+    const widgetSrc = scriptTag ? scriptTag.getAttribute('src') : '';
+    let baseUrl = 'https://tektrakker.web.app';
+    if (widgetSrc && widgetSrc.startsWith('http')) {
+        try {
+            baseUrl = new URL(widgetSrc).origin;
+        } catch(e) {}
+    }
+
     if (!orgId || !functionUrl) {
         console.error("TekTrakker Hiring Widget: Missing data-org-id or data-function-url.");
         return;
@@ -153,8 +161,8 @@
                 </form>
             </div>
             <div class="tt-hiring-footer">
-                <a href="https://tektrakker.com" target="_blank" rel="noopener noreferrer">
-                    Powered by <img src="https://tektrakker.com/tektrakker-logo-full.png" alt="TekTrakker">
+                <a href="https://tektrakker.web.app" target="_blank" rel="noopener noreferrer">
+                    Powered by <img src="${baseUrl}/tektrakker-logo-web.png" alt="TekTrakker" style="height: 16px; display: inline-block; vertical-align: middle; margin-left: 6px;">
                 </a>
             </div>
         </div>
@@ -214,17 +222,16 @@
             try {
                 const file = formData.get('resume');
                 if (file && file.size > 0) {
-                    const reader = new FileReader();
-                    reader.readAsDataURL(file);
-                    reader.onload = async () => {
-                        payload.resumeDataUrl = reader.result;
-                        payload.resumeFileName = file.name;
-                        await sendData(payload, form, successMessage);
-                    };
-                    reader.onerror = () => { throw new Error("Resume could not be read."); };
-                } else {
-                    await sendData(payload, form, successMessage);
+                    const res = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.readAsDataURL(file);
+                        reader.onload = () => resolve({ dataUrl: reader.result, name: file.name });
+                        reader.onerror = () => reject(new Error("Resume could not be read."));
+                    });
+                    payload.resumeDataUrl = res.dataUrl;
+                    payload.resumeFileName = res.name;
                 }
+                await sendData(payload, form, successMessage);
             } catch (err) {
                  alert(`Error: ${err.message}`);
                  submitBtn.innerText = 'Submit Application';

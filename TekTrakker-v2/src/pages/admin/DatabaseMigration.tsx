@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState } from 'react';
 import { db } from '../../lib/firebase';
 import { uploadFileToStorage } from '../../lib/storageService';
@@ -74,7 +75,7 @@ const DatabaseMigration: React.FC = () => {
                 }
 
                 if (changed) {
-                    await db.collection('users').doc(doc.id).update(updates);
+                    await db.collection('users').doc(doc.id).update(cleanUndefinedFields(updates));
                     log(`Updated User: ${data.id}`);
                 }
             }
@@ -91,10 +92,10 @@ const DatabaseMigration: React.FC = () => {
                     try {
                         const path = `organizations/${data.organizationId || 'default'}/receipts/exp_${Date.now()}`;
                         const newUrl = await processBase64(targetStr, path);
-                        await db.collection('expenses').doc(doc.id).update({
+                        await db.collection('expenses').doc(doc.id).update(cleanUndefinedFields({
                             receiptData: null,
                             receiptUrl: newUrl
-                        });
+                        }));
                         fixedCount++;
                         log(`Updated Expense: ${doc.id}`);
                     } catch (e) { errorCount++; log(`Error updating Expense: ${doc.id}`); }
@@ -113,10 +114,10 @@ const DatabaseMigration: React.FC = () => {
                     try {
                         const path = `organizations/${data.organizationId || 'default'}/receipts/veh_${Date.now()}`;
                         const newUrl = await processBase64(targetStr, path);
-                        await db.collection('vehicleLogs').doc(doc.id).update({
+                        await db.collection('vehicleLogs').doc(doc.id).update(cleanUndefinedFields({
                             receiptData: null,
                             receiptUrl: newUrl
-                        });
+                        }));
                         fixedCount++;
                         log(`Updated Vehicle Log: ${doc.id}`);
                     } catch (e) { errorCount++; log(`Error updating Vehicle Log: ${doc.id}`); }
@@ -134,9 +135,9 @@ const DatabaseMigration: React.FC = () => {
                     try {
                         const path = `organizations/${data.organizationId || 'default'}/customers/${doc.id}/${Date.now()}_profile.jpg`;
                         const newUrl = await processBase64(data.profileImage, path);
-                        await db.collection('customers').doc(doc.id).update({
+                        await db.collection('customers').doc(doc.id).update(cleanUndefinedFields({
                             profileImage: newUrl
-                        });
+                        }));
                         fixedCount++;
                         log(`Updated Customer: ${doc.id}`);
                     } catch (e) { errorCount++; log(`Error updating Customer: ${doc.id}`); }
@@ -206,7 +207,7 @@ const DatabaseMigration: React.FC = () => {
                 }
 
                 if (changed) {
-                    await db.collection('jobs').doc(doc.id).update(updates);
+                    await db.collection('jobs').doc(doc.id).update(cleanUndefinedFields(updates));
                     log(`Updated Job: ${doc.id}`);
                 }
             }
@@ -244,7 +245,7 @@ const DatabaseMigration: React.FC = () => {
                             propertyType: 'Residential',
                             createdAt: new Date().toISOString()
                         };
-                        await db.collection('serviceLocations').doc(locId).set(defaultLoc);
+                        await db.collection('serviceLocations').doc(locId).set(cleanUndefinedFields(defaultLoc));
                         
                         // Also update embedded array for quick access
                         updates.serviceLocations = [defaultLoc];
@@ -257,7 +258,7 @@ const DatabaseMigration: React.FC = () => {
                 }
 
                 if (changed) {
-                    await db.collection('customers').doc(doc.id).update(updates);
+                    await db.collection('customers').doc(doc.id).update(cleanUndefinedFields(updates));
                     log(`Upgraded Customer Schema: ${doc.id}`);
                 }
             }

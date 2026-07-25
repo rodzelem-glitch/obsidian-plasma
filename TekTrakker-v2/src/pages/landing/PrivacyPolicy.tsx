@@ -89,6 +89,16 @@ const PrivacyPolicy: React.FC = () => {
                 We retain your business data as long as your account is active. If you choose to close your account, your data will be archived for 90 days before permanent deletion, unless otherwise required by law for tax or compliance purposes.
             </p>
           </section>
+
+          <section>
+            <h2 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3">
+                <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-sm">5</span>
+                Mobile Terms &amp; SMS Communications
+            </h2>
+            <p className="text-slate-600 leading-relaxed">
+                If you opt-in to receive SMS notifications, updates, or support messages from TekTrakker, we will use your phone number solely for this purpose. <strong>No mobile information will be shared with third parties or affiliates for marketing or promotional purposes.</strong> All the above categories exclude text messaging originator opt-in data and consent; this information will not be shared with any third parties or affiliates.
+            </p>
+          </section>
         </div>
       </main>
 

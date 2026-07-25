@@ -40,7 +40,7 @@ const ActionRequiredSection: React.FC<ActionRequiredSectionProps> = ({
     const jobFileUrls = new Set(pendingJobFiles.map(pf => pf.file.dataUrl));
     const pendingDocs = rawPendingDocs.filter(doc => !jobFileUrls.has(doc.url));
 
-    const pendingProposals = proposals.filter(p => p.status === 'Sent' || p.status === 'sent');
+    const pendingProposals = proposals.filter(p => p.status === 'Sent' || p.status === 'sent' || p.status === 'Opened');
 
     // 4. Found jobs with pending warranty acceptance
     const pendingWarranties = jobs.filter(job => {

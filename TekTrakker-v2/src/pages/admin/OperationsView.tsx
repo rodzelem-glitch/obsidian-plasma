@@ -30,7 +30,7 @@ const OperationsView: React.FC = () => {
             <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white">{t('Operations')}</h2>
                 <div className="flex flex-wrap gap-3 w-full md:w-auto">
-                    <Button onClick={() => setIsBookingOpen(true)} className="flex-1 md:flex-none shadow-md justify-center">
+                    <Button onClick={() => setIsBookingOpen(true)} data-tour="book-job-btn" className="flex-1 md:flex-none shadow-md justify-center">
                         {t('+ Book')}
                     </Button>
                     <div className="flex bg-gray-200 dark:bg-gray-700 p-1 rounded-lg flex-1 md:flex-none overflow-x-auto whitespace-nowrap scrollbar-hide">

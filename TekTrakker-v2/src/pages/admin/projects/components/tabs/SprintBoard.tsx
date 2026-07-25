@@ -85,7 +85,7 @@ const SprintBoard: React.FC<SprintBoardProps> = ({
     const getAssigneeInitial = (id?: string) => {
         if (!id) return '?';
         const user = employees.find(u => u.id === id);
-        return user ? user.firstName[0] : '?';
+        return user ? (user.firstName || '')[0] || (user.email || '')[0] || '?' : '?';
     };
 
     // Velocity calculation

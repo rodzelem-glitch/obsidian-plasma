@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
@@ -15,7 +16,7 @@ import { notifyAdmins } from 'lib/notificationService';
 import { uploadFileToStorage } from 'lib/storageService';
 import { useLanguage } from 'context/LanguageContext';
 
-const FEDERAL_FORMS = [
+const REQUIRED_DOCUMENTS = [
     {
         id: 'federal-w4',
         name: 'IRS Form W-4',
@@ -29,6 +30,13 @@ const FEDERAL_FORMS = [
         description: 'Employment Eligibility Verification — required for all new hires.',
         url: 'https://www.uscis.gov/sites/default/files/document/forms/i-9-paper-version.pdf',
         source: 'USCIS'
+    },
+    {
+        id: 'government-id',
+        name: 'Driver\'s License / Photo ID',
+        description: 'Provide a clear copy or photo of your valid Driver\'s License or state-issued photo ID.',
+        url: '',
+        source: 'Self'
     }
 ];
 
@@ -107,22 +115,62 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                 }
             };
 
-            await db.collection('users').doc(employee.id).update({ formSubmissions: updatedFormSubmissions });
-            dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...employee, formSubmissions: updatedFormSubmissions } });
+            const packetStatusKeyMap: Record<string, string> = {
+                'federal-w4': 'w4Completed',
+                'federal-i9': 'i9Completed',
+                'government-id': 'idUploaded'
+            };
+            const statusKey = packetStatusKeyMap[formId];
+            
+            const w4Completed = employee.hiringPacketStatus?.w4Completed || false;
+            const i9Completed = employee.hiringPacketStatus?.i9Completed || false;
+            const directDepositCompleted = employee.hiringPacketStatus?.directDepositCompleted || false;
+            const handbookSigned = employee.hiringPacketStatus?.handbookSigned || false;
+            const idUploaded = employee.hiringPacketStatus?.idUploaded || false;
+
+            const updatedHiringPacketStatus = (statusKey ? {
+                w4Completed: statusKey === 'w4Completed' ? true : w4Completed,
+                i9Completed: statusKey === 'i9Completed' ? true : i9Completed,
+                directDepositCompleted: statusKey === 'directDepositCompleted' ? true : directDepositCompleted,
+                handbookSigned: statusKey === 'handbookSigned' ? true : handbookSigned,
+                idUploaded: statusKey === 'idUploaded' ? true : idUploaded,
+                ...(employee.hiringPacketStatus?.completedAt ? { completedAt: employee.hiringPacketStatus.completedAt } : {})
+            } : employee.hiringPacketStatus) as User['hiringPacketStatus'];
+
+            // Save sensitive documents to the private subcollection
+            await db.collection('users').doc(employee.id).collection('private').doc('sensitive').set(cleanUndefinedFields({
+                formSubmissions: updatedFormSubmissions
+            }), { merge: true });
+
+            // Update status and form submissions on the public user profile document
+            const updatePayload: any = { formSubmissions: updatedFormSubmissions };
+            if (updatedHiringPacketStatus) {
+                updatePayload.hiringPacketStatus = updatedHiringPacketStatus;
+            }
+            await db.collection('users').doc(employee.id).update(cleanUndefinedFields(updatePayload));
+
+            dispatch({ 
+                type: 'UPDATE_EMPLOYEE', 
+                payload: { 
+                    ...employee, 
+                    formSubmissions: updatedFormSubmissions,
+                    ...(updatedHiringPacketStatus ? { hiringPacketStatus: updatedHiringPacketStatus } : {})
+                } 
+            });
 
             if (state.currentOrganization?.id) {
-                const formName = FEDERAL_FORMS.find(f => f.id === formId)?.name || formId;
+                const formName = REQUIRED_DOCUMENTS.find(f => f.id === formId)?.name || formId;
                 notifyAdmins(state.currentOrganization.id, {
-                    title: 'Federal Form Uploaded',
+                    title: 'Document Uploaded',
                     body: `${employee.firstName} ${employee.lastName} uploaded their completed ${formName}`,
                     type: 'hiring_packet'
                 });
             }
 
-            showToast.success(t('Form uploaded successfully!'));
+            showToast.success(t('Document uploaded successfully!'));
         } catch (error) {
-            console.error('Failed to upload federal form:', error);
-            showToast.error(t('Failed to upload form.'));
+            console.error('Failed to upload document:', error);
+            showToast.error(t('Failed to upload document.'));
         } finally {
             setUploadingFederalId(null);
         }
@@ -142,15 +190,34 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
             [docId]: signatureName
         };
 
+        const doc = packets.find(p => p.id === docId);
+        const isHandbook = doc?.type === 'Hiring Packet' || doc?.type === 'Handbook' || doc?.title?.toLowerCase().includes('handbook');
+        const updatedHiringPacketStatus = (isHandbook ? {
+            w4Completed: employee.hiringPacketStatus?.w4Completed || false,
+            i9Completed: employee.hiringPacketStatus?.i9Completed || false,
+            directDepositCompleted: employee.hiringPacketStatus?.directDepositCompleted || false,
+            idUploaded: employee.hiringPacketStatus?.idUploaded || false,
+            handbookSigned: true,
+            ...(employee.hiringPacketStatus?.completedAt ? { completedAt: employee.hiringPacketStatus.completedAt } : {})
+        } : null) as User['hiringPacketStatus'] | null;
+
+        const packetUpdate = updatedHiringPacketStatus ? { hiringPacketStatus: updatedHiringPacketStatus } : {};
+
         try {
-            await db.collection('users').doc(employee.id).update({ 
+            await db.collection('users').doc(employee.id).update(cleanUndefinedFields({ 
                 signedPolicies: updatedSignedPolicies,
-                policySignatures: updatedPolicySignatures
-            });
+                policySignatures: updatedPolicySignatures,
+                ...packetUpdate
+            }));
 
             dispatch({ 
                 type: 'UPDATE_EMPLOYEE', 
-                payload: { ...employee, signedPolicies: updatedSignedPolicies, policySignatures: updatedPolicySignatures } 
+                payload: { 
+                    ...employee, 
+                    signedPolicies: updatedSignedPolicies, 
+                    policySignatures: updatedPolicySignatures,
+                    ...packetUpdate
+                } 
             });
 
             if (state.currentOrganization?.id) {
@@ -164,7 +231,8 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
             showToast.success(t('Packet Acknowledged.'));
             setViewDoc(null);
             setSignatureName('');
-        } catch {
+        } catch (err) {
+            console.error("Failed to save signature:", err);
             showToast.warn(t("Failed to save signature."));
         }
     };
@@ -193,9 +261,9 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
         };
 
         try {
-            await db.collection('users').doc(employee.id).update({ 
+            await db.collection('users').doc(employee.id).update(cleanUndefinedFields({ 
                 formSubmissions: updatedFormSubmissions
-            });
+            }));
 
             dispatch({ 
                 type: 'UPDATE_EMPLOYEE', 
@@ -473,12 +541,12 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                 </Modal>
             )}
 
-            {/* Federal Forms Section */}
+            {/* Required Documents Section */}
             <div>
-                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-1"><ShieldCheck size={16}/> {t("Required Federal Forms")}</h4>
-                <p className="text-[11px] text-slate-500 mb-4">{t("Download the official form, complete it, then upload the filled-out version.")}</p>
+                <h4 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2 mb-1"><ShieldCheck size={16}/> {t("Required Onboarding Documents")}</h4>
+                <p className="text-[11px] text-slate-500 mb-4">{t("Download standard forms (where applicable), fill them out, and upload your completed files.")}</p>
                 <div className="flex flex-col gap-3">
-                    {FEDERAL_FORMS.map(form => {
+                    {REQUIRED_DOCUMENTS.map(form => {
                         const submission = employee?.formSubmissions?.[form.id];
                         const isUploaded = !!submission;
                         return (
@@ -500,13 +568,15 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
-                                        <button
-                                            type="button"
-                                            onClick={(e) => { e.preventDefault(); import('lib/downloadHelper').then(m => m.downloadFile(form.url, form.name + '.pdf')); }}
-                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 transition-colors"
-                                        >
-                                            <Download size={13} /> {t("Download")}
-                                        </button>
+                                        {form.url && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.preventDefault(); import('lib/downloadHelper').then(m => m.downloadFile(form.url, form.name + '.pdf')); }}
+                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-800 transition-colors"
+                                            >
+                                                <Download size={13} /> {t("Download")}
+                                            </button>
+                                        )}
                                         {isSelf && (
                                             <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors cursor-pointer ${
                                                 uploadingFederalId === form.id
@@ -520,7 +590,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                 ) : isUploaded ? (
                                                     <><Upload size={13} /> {t("Re-upload")}</>
                                                 ) : (
-                                                    <><Upload size={13} /> {t("Upload Completed")}</>
+                                                    <><Upload size={13} /> {t("Upload File")}</>
                                                 )}
                                                 <input
                                                     type="file"
@@ -531,7 +601,7 @@ const HiringPacketView: React.FC<HiringPacketViewProps> = ({ employee, isSelf })
                                                 />
                                             </label>
                                         )}
-                                        {!isSelf && isUploaded && submission.fileUrl && (
+                                        {isUploaded && submission.fileUrl && (
                                             <a
                                                 href={submission.fileUrl}
                                                 target="_blank"

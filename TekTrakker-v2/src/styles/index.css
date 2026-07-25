@@ -16,6 +16,7 @@
 html, body {
     -webkit-tap-highlight-color: transparent;
     background-color: #f8fafc; /* bg-slate-50 equivalent */
+    overflow-x: hidden; /* Prevent global horizontal page overflow/bouncing */
 }
 
 /* Overscroll behavior locking removed to resolve Windows precision touchpad issues.
@@ -37,20 +38,32 @@ html.dark, html.dark body {
   padding-bottom: var(--sab, env(safe-area-inset-bottom, 0px));
 }
 
-/* Custom scrollbar for admin panels */
+/* Custom scrollbar for admin panels and table/grid views to make them readable and easy to drag */
 .custom-scrollbar::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
+    width: 8px;
+    height: 8px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
+    background: #f1f5f9;
+    border-radius: 10px;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+    background: #1e293b;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
     background: #cbd5e1;
     border-radius: 10px;
+    border: 2px solid #f1f5f9;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
     background: #475569;
+    border: 2px solid #1e293b;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
 }
 
 /* Mobile-First Utility Classes */
@@ -192,6 +205,35 @@ button, a, input, select, textarea {
 .transition-delay-var {
     transition-delay: var(--delay);
 }
-.hide-scrollbar::-webkit-scrollbar { display: none; }
-/* stylelint-disable-next-line */
-.hide-scrollbar { -ms-overflow-style: none; /* scrollbar-width: none; removed to suppress IDE compat warning */ }
+/* Ensure hide-scrollbar and scrollbar-hide classes display visible scrollbars so users can navigate */
+.hide-scrollbar, .scrollbar-hide {
+    scrollbar-width: auto;
+    -ms-overflow-style: auto;
+}
+.hide-scrollbar::-webkit-scrollbar, .scrollbar-hide::-webkit-scrollbar {
+    display: block;
+    width: 8px;
+    height: 8px;
+}
+.hide-scrollbar::-webkit-scrollbar-track, .scrollbar-hide::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 10px;
+}
+.dark .hide-scrollbar::-webkit-scrollbar-track, .dark .scrollbar-hide::-webkit-scrollbar-track {
+    background: #1e293b;
+}
+.hide-scrollbar::-webkit-scrollbar-thumb, .scrollbar-hide::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+    border: 2px solid #f1f5f9;
+}
+.hide-scrollbar::-webkit-scrollbar-thumb:hover, .scrollbar-hide::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+.dark .hide-scrollbar::-webkit-scrollbar-thumb, .dark .scrollbar-hide::-webkit-scrollbar-thumb {
+    background: #475569;
+    border: 2px solid #1e293b;
+}
+.dark .hide-scrollbar::-webkit-scrollbar-thumb:hover, .dark .scrollbar-hide::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}

@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../lib/utils';
 import showToast from "lib/toast";
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../../../context/AppContext';
@@ -99,9 +100,9 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                     };
                     
                     const currentFiles = job.files || [];
-                    db.collection('jobs').doc(job.id).update({
+                    db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
                         files: [...currentFiles, waiverFile]
-                    }).catch(console.error);
+                    })).catch(console.error);
                 } catch (e) {
                     console.error("Error creating waiver file:", e);
                     showToast.warn(t("Error saving waiver document. Please try again."));
@@ -159,15 +160,16 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                 dispatch({ type: 'UPDATE_JOB', payload: { ...job, files: [...currentFiles, pendingWaiver] } });
                 dispatch({ type: 'ADD_DOCUMENT', payload: newDoc as BusinessDocument });
             } else {
-                await db.collection('jobs').doc(job.id).update({
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
                     files: [...currentFiles, pendingWaiver]
-                });
+                }));
                 // Also add as a BusinessDocument for centralized tracking
-                await db.collection('documents').add(newDoc);
+                await db.collection('documents').add(cleanUndefinedFields(newDoc));
             }
 
-            await db.collection('mail').add({
+            await db.collection('mail_queue').add(cleanUndefinedFields({
                 to: [job.customerEmail],
+                replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
                 message: {
                     subject: `Action Required: Waivers for ${job.customerName}`,
                     html: `
@@ -180,12 +182,13 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                             <p>You can sign these electronically by logging into your customer portal.</p>
                             <a href="https://app.tektrakker.com/portal" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Go to Customer Portal</a>
                         </div>
-                    `
+                    `,
+                    replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com'
                 },
                 organizationId: job.organizationId,
                 type: 'WaiverRequest',
                 createdAt: new Date().toISOString()
-            });
+            }));
             showToast.warn(t("Sent to customer and added to pending documents!"));
         } catch (e) {
             console.error(e);

@@ -1,6 +1,5 @@
 {
   "hosting": {
-    "site": "tektrakker",
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -15,34 +14,7 @@
     ],
     "headers": [
       {
-        "source": "**/*.zip",
-        "headers": [
-          {
-            "key": "Content-Type",
-            "value": "application/zip"
-          }
-        ]
-      },
-      {
-        "source": "**/*.@(js|css|png|jpg|jpeg|gif|svg|json)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=31536000, immutable"
-          }
-        ]
-      },
-      {
-        "source": "index.html",
-        "headers": [
-          {
-            "key": "Cache-control",
-            "value": "no-cache"
-          }
-        ]
-      },
-      {
-        "source": "@(widget|hiring-widget).js",
+        "source": "**/*.html",
         "headers": [
           {
             "key": "Cache-Control",
@@ -51,11 +23,29 @@
         ]
       },
       {
-        "source": "**",
+        "source": "/sw.js",
         "headers": [
           {
-            "key": "X-Content-Type-Options",
-            "value": "nosniff"
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/workbox-*.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
           }
         ]
       }
@@ -73,32 +63,5 @@
     "predeploy": [
       "npm --prefix \"$RESOURCE_DIR\" run build"
     ]
-  },
-  "auth": {
-    "providers": {
-      "googleSignIn": {
-        "oAuthBrandDisplayName": "TekTrakker",
-        "supportEmail": "roderick.macdonell@gmail.com"
-      }
-    }
-  },
-  "emulators": {
-    "auth": {
-      "port": 9099
-    },
-    "functions": {
-      "port": 5001
-    },
-    "firestore": {
-      "port": 8081
-    },
-    "storage": {
-      "port": 9199
-    },
-    "ui": {
-      "enabled": true,
-      "port": 4000
-    },
-    "singleProjectMode": true
   }
 }

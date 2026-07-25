@@ -40,11 +40,15 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
     const [billingZip, setBillingZip] = useState(orgAddress?.zip || '78701');
     const [billingCountry, setBillingCountry] = useState((orgAddress as any)?.country || 'US');
 
+    const isACHEnabled = true; // Enabled since ACH processing is live again
+
     const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY;
     const rawAccountId = state.currentOrganization?.kortAccountId || import.meta.env.VITE_KORT_ACCOUNT_ID;
-    // Fallback to active sandbox connected merchant account if the account is the partner account (which has Card/ACH disabled)
-    const activeAccountId = (rawAccountId === 'acct_AJdH2w6qvR8UAFn7KxIwc') ? 'acct_zDruOrRgOZVtafF9TPC2J' : rawAccountId;
     const isSandbox = !publishableKey || !publishableKey.startsWith('pk_rYhq');
+    const fallbackMerchantId = isSandbox ? 'acct_zDruOrRgOZVtafF9TPC2J' : 'acct_k5kvc1P0G1Rf4HNizIH8I';
+    // Fallback to active connected merchant account if the account is the partner account (which has Card/ACH disabled)
+    const activeAccountId = (rawAccountId === 'acct_AJdH2w6qvR8UAFn7KxIwc' || rawAccountId === 'acct_gmcBDSjKycUPv7zm5ym5Q') ? fallbackMerchantId : rawAccountId;
+
 
     useEffect(() => {
         if (!publishableKey || !activeAccountId) {
@@ -52,16 +56,60 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
             return;
         }
 
-        if (typeof Payments === 'undefined') {
-            setError('Payments SDK failed to load. Please check your network connection.');
-            return;
-        }
-
         let ignore = false;
         let formInstance: any = null;
 
+        const loadPaymentsSdk = (): Promise<any> => {
+            return new Promise((resolve, reject) => {
+                const globalPayments = (window as any).Payments || (window as any).Tilled;
+                if (globalPayments) {
+                    (window as any).Payments = globalPayments;
+                    resolve(globalPayments);
+                    return;
+                }
+
+                const existingScript = document.getElementById('tilled-payments-js');
+                if (existingScript) {
+                    const checkInterval = setInterval(() => {
+                        const sdk = (window as any).Payments || (window as any).Tilled;
+                        if (sdk) {
+                            clearInterval(checkInterval);
+                            (window as any).Payments = sdk;
+                            resolve(sdk);
+                        }
+                    }, 100);
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        reject(new Error('Payments SDK failed to load. Please check your network connection.'));
+                    }, 10000);
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.id = 'tilled-payments-js';
+                script.src = 'https://js.tilled.com/v2/tilled.js';
+                script.async = true;
+                script.onload = () => {
+                    const sdk = (window as any).Payments || (window as any).Tilled;
+                    if (sdk) {
+                        (window as any).Payments = sdk;
+                        resolve(sdk);
+                    } else {
+                        reject(new Error('Payments SDK failed to load. Please check your network connection.'));
+                    }
+                };
+                script.onerror = () => {
+                    reject(new Error('Payments SDK failed to load. Please check your network connection.'));
+                };
+                document.head.appendChild(script);
+            });
+        };
+
         const initForm = async () => {
             try {
+                const PaymentsSDK = await loadPaymentsSdk();
+                if (ignore) return;
+
                 // ACH is processed entirely server-side, no SDK form needed
                 if (paymentMethod === 'ach_debit') {
                     setPaymentsInstance(null);
@@ -70,7 +118,7 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
                 }
 
                 // Initialize Kort Payments SDK for the platform account
-                const payments = new Payments(publishableKey, activeAccountId, { sandbox: isSandbox });
+                const payments = new PaymentsSDK(publishableKey, activeAccountId, { sandbox: isSandbox });
                 setPaymentsInstance(payments);
 
                 // Create the form asynchronously based on selected payment method
@@ -254,20 +302,22 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
             </div>
             
             <div className="p-6">
-                <div className="flex gap-2 mb-6">
-                    <button 
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${paymentMethod === 'card' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
-                        onClick={() => setPaymentMethod('card')}
-                    >
-                        Credit Card
-                    </button>
-                    <button 
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${paymentMethod === 'ach_debit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
-                        onClick={() => setPaymentMethod('ach_debit')}
-                    >
-                        Bank Account (ACH)
-                    </button>
-                </div>
+                {isACHEnabled && (
+                    <div className="flex gap-2 mb-6">
+                        <button 
+                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${paymentMethod === 'card' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                            onClick={() => setPaymentMethod('card')}
+                        >
+                            Credit Card
+                        </button>
+                        <button 
+                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${paymentMethod === 'ach_debit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                            onClick={() => setPaymentMethod('ach_debit')}
+                        >
+                            Bank Account (ACH)
+                        </button>
+                    </div>
+                )}
                 
                 <div className="mb-6 space-y-4">
                     <div>

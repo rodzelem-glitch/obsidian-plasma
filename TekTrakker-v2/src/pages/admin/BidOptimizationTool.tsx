@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
@@ -135,7 +136,7 @@ const BidOptimizationTool: React.FC = () => {
                         ...(linkedNoticeId ? { noticeId: linkedNoticeId } : {})
                     };
                     
-                    await db.collection('bids').doc(bidId).set(newBid);
+                    await db.collection('bids').doc(bidId).set(cleanUndefinedFields(newBid));
                     setIsCreateModalOpen(false);
                     setViewBid(newBid);
                     setIsProcessing(false);
@@ -165,7 +166,7 @@ const BidOptimizationTool: React.FC = () => {
             paymentStatus: 'Pending',
             ...(linkedNoticeId ? { noticeId: linkedNoticeId } : {})
         };
-        await db.collection('bids').doc(bidId).set(newBid);
+        await db.collection('bids').doc(bidId).set(cleanUndefinedFields(newBid));
         setIsCreateModalOpen(false);
         setViewBid(newBid);
         setIsProcessing(false);
@@ -178,7 +179,7 @@ const BidOptimizationTool: React.FC = () => {
     const updateBid = async (updates: Partial<Bid>) => {
         if (!viewBid) return;
         const updatedBid = { ...viewBid, ...updates };
-        await db.collection('bids').doc(viewBid.id).update(updates);
+        await db.collection('bids').doc(viewBid.id).update(cleanUndefinedFields(updates));
         // Ensure the state update is a full bid object
         setViewBid(prev => prev ? { ...prev, ...updates } : null);
     };

@@ -34,7 +34,7 @@ export interface Organization {
     footerImage?: string | null;
     subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled';
     subscriptionExpiryDate?: string | null;
-    plan?: 'starter' | 'growth' | 'enterprise';
+    plan?: 'starter' | 'growth' | 'enterprise' | 'payments_only';
     createdAt?: string;
     paymentMethodAttached?: boolean;
     notificationEmails?: string[];
@@ -112,6 +112,7 @@ export interface Organization {
     publicProfile?: boolean; 
     publicDescription?: string; 
     publicProfileEnabled?: boolean; 
+    profileSlug?: string;
     ownerId?: string;
     bannerUrl?: string;
     serviceTypes?: ('Residential' | 'Commercial')[]; 
@@ -135,11 +136,13 @@ export interface PlatformSettings {
         starter: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
         growth: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
         enterprise: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
+        payments_only: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
     };
     excessUserFee: number;
     subscriptionFee?: number;
     virtualWorkerFee?: number;
     virtualWorkerLifetimeFee?: number;
+    divisionFee?: number;
     franchiseLifetimeFee?: number;
     updatedAt: string;
 }

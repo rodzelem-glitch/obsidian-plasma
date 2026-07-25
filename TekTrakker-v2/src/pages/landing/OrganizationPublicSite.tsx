@@ -368,8 +368,14 @@ const OrganizationPublicSite: React.FC = () => {
                         </ul>
                     </div>
                 </div>
-                <div className="max-w-6xl mx-auto mt-12 pt-8 border-t border-slate-800 text-center text-xs">
-                    &copy; {new Date().getFullYear()} {org.name}. Powered by TekTrakker.
+                <div className="max-w-6xl mx-auto mt-12 pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+                    <div>&copy; {new Date().getFullYear()} {org.name}. All rights reserved.</div>
+                    <div className="flex items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Powered by</span>
+                        <a href="https://tektrakker.web.app" target="_blank" rel="noopener noreferrer" className="flex items-center">
+                            <img src="/tektrakker-logo-web.png" alt="TekTrakker" className="h-4 w-auto object-contain brightness-0 invert" />
+                        </a>
+                    </div>
                 </div>
             </footer>
         </div>

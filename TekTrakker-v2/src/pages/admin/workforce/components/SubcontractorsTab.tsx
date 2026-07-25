@@ -1,5 +1,5 @@
 import showToast from "lib/toast";
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
 
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -8,13 +8,15 @@ import { db, functions } from '../../../../lib/firebase';
 import type { Subcontractor } from '../../../../types';
 import Button from '../../../../components/ui/Button';
 import SubcontractorModal from '../../../../components/modals/AddSubcontractorModal'; 
+import SubcontractorComplianceModal from '../../../../components/modals/SubcontractorComplianceModal';
 import Card from '../../../../components/ui/Card';
 import Input from '../../../../components/ui/Input';
 import Modal from '../../../../components/ui/Modal';
-import { PlusCircle, Copy, Link2, Mail, CheckCircle2, XCircle, Trash2, RefreshCw, Printer, FileText, Search } from 'lucide-react';
+import { PlusCircle, Copy, Link2, Mail, CheckCircle2, XCircle, Trash2, RefreshCw, Printer, FileText, Search, ShieldCheck } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import Form1099CopyA from '../../../master/components/sales-team/Form1099CopyA';
 import { sendEmail } from 'lib/notificationService';
+import { checkSubcontractorCompliance } from '../../../../lib/subcontractorCompliance';
 
 const SubcontractorsTab: React.FC = () => {
     const navigate = useNavigate();
@@ -23,6 +25,7 @@ const SubcontractorsTab: React.FC = () => {
     const [editingSub, setEditingSub] = useState<Partial<Subcontractor> | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [viewTaxSub, setViewTaxSub] = useState<Subcontractor | null>(null);
+    const [complianceSub, setComplianceSub] = useState<Subcontractor | null>(null);
     const [taxYear, setTaxYear] = useState<number>(new Date().getFullYear());
     const [taxAmountOverride, setTaxAmountOverride] = useState<string>('');
 
@@ -56,7 +59,7 @@ const SubcontractorsTab: React.FC = () => {
         try {
             // 1. Save Local Doc
             const cleanData = Object.fromEntries(Object.entries(subData).filter(([_, v]) => v !== undefined));
-            await db.collection('subcontractors').doc(subId).set(cleanData, { merge: true });
+            await db.collection('subcontractors').doc(subId).set(cleanUndefinedFields(cleanData), { merge: true });
             // Don't dispatch here if we rely on subscription, OR ensure we don't duplicate.
             // Dispatching helps UI responsiveness before sync.
             dispatch({ type: sub.id ? 'UPDATE_SUBCONTRACTOR' : 'ADD_SUBCONTRACTOR', payload: cleanData });
@@ -220,7 +223,7 @@ const SubcontractorsTab: React.FC = () => {
                 ptoAccrued: 0
             };
 
-            await db.collection('users').doc(normalizedEmail).set(inviteDoc, { merge: true });
+            await db.collection('users').doc(normalizedEmail).set(cleanUndefinedFields(inviteDoc), { merge: true });
 
             // 2. Send Invitation Email
             await sendEmail(state.currentOrganization, {
@@ -304,56 +307,97 @@ const SubcontractorsTab: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {uniqueSubs.map((sub) => (
-                    <Card key={sub.id} className="hover:shadow-lg transition-all group relative">
-                        <div className="flex justify-between items-start mb-4">
-                            <div>
-                                <h4 className="font-bold text-slate-900 dark:text-white">{sub.companyName}</h4>
-                                <p className="text-xs text-slate-500 uppercase font-bold tracking-tighter">{sub.trade}</p>
+                {uniqueSubs.map((sub) => {
+                    const comp = checkSubcontractorCompliance(sub, state.currentOrganization?.subcontractorComplianceSettings);
+                    return (
+                        <Card key={sub.id} className="hover:shadow-lg transition-all group relative">
+                            <div className="flex justify-between items-start mb-3">
+                                <div>
+                                    <h4 className="font-bold text-slate-900 dark:text-white">{sub.companyName}</h4>
+                                    <p className="text-xs text-slate-500 uppercase font-bold tracking-tighter">{sub.trade}</p>
+                                </div>
+                                {sub.linkedOrgId ? (
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase flex items-center gap-1 ${sub.handshakeStatus === 'Linked' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                        <Link2 size={10}/> {sub.handshakeStatus}
+                                    </span>
+                                ) : (
+                                    <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-black uppercase">Internal</span>
+                                )}
                             </div>
-                            {sub.linkedOrgId ? (
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase flex items-center gap-1 ${sub.handshakeStatus === 'Linked' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                    <Link2 size={10}/> {sub.handshakeStatus}
-                                </span>
-                            ) : (
-                                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-black uppercase">Internal</span>
-                            )}
-                        </div>
-                        <div className="space-y-2 mb-4">
-                             <p className="text-xs flex items-center gap-2 text-slate-600 dark:text-slate-400"><Mail size={12}/> {sub.email}</p>
-                        </div>
-                        
-                        <div className="pt-4 border-t flex justify-between items-center">
-                            {sub.handshakeStatus === 'Pending' ? (
-                                <button 
-                                    onClick={() => handleCancelRequest(sub)}
-                                    disabled={isProcessing}
-                                    className="text-[10px] font-bold text-red-500 hover:bg-red-50 px-2 py-1 rounded flex items-center gap-1 transition-colors"
+
+                            {/* Compliance Status Pill */}
+                            <div className="mb-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setComplianceSub(sub)}
+                                    className={`w-full p-2 rounded-lg text-left text-[11px] font-bold border transition-all flex items-center justify-between ${
+                                        comp.isCompliant 
+                                            ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100'
+                                            : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 text-amber-800 dark:text-amber-300 hover:bg-amber-100'
+                                    }`}
                                 >
-                                    <XCircle size={12}/> Cancel Request
+                                    <span className="flex items-center gap-1.5">
+                                        <ShieldCheck size={14} className={comp.isCompliant ? "text-emerald-600" : "text-amber-600"} />
+                                        {comp.isCompliant ? "Compliant & Verified" : `Missing ${comp.missingDocKeys.length} Compliance Docs`}
+                                    </span>
+                                    <span className="text-[10px] opacity-75 font-mono">
+                                        {comp.fulfilledCount}/{comp.totalRequiredCount}
+                                    </span>
                                 </button>
-                            ) : sub.handshakeStatus === 'Linked' ? (
-                                 <button 
-                                    onClick={() => handleUnlink(sub)}
-                                    disabled={isProcessing}
-                                    className="text-[10px] font-bold text-slate-400 hover:text-red-500 px-2 py-1 rounded flex items-center gap-1 transition-colors"
-                                >
-                                    <XCircle size={12}/> Unlink
-                                </button>
-                            ) : (
-                                <div></div>
-                            )}
-                             <div className="flex gap-2 items-center">
-                                  <button onClick={() => handleDeleteSub(sub)} className="px-2 py-1 text-slate-300 hover:text-red-600 transition-colors" title="Delete">
-                                     <Trash2 size={14}/>
-                                  </button>
-                                  <Button variant="secondary" size="sm" onClick={() => handleEditSub(sub)}>Manage</Button>
-                                  <Button variant="secondary" size="sm" className="bg-indigo-50 border-indigo-200 text-indigo-700" onClick={() => setViewTaxSub(sub as any)}><FileText size={14} className="mr-1"/> 1099</Button>
-                             </div>
-                        </div>
-                    </Card>
-                ))}
+                            </div>
+
+                            <div className="space-y-2 mb-4">
+                                <p className="text-xs flex items-center gap-2 text-slate-600 dark:text-slate-400"><Mail size={12}/> {sub.email}</p>
+                            </div>
+                            
+                            <div className="pt-4 border-t flex justify-between items-center flex-wrap gap-2">
+                                {sub.handshakeStatus === 'Pending' ? (
+                                    <button 
+                                        onClick={() => handleCancelRequest(sub)}
+                                        disabled={isProcessing}
+                                        className="text-[10px] font-bold text-red-500 hover:bg-red-50 px-2 py-1 rounded flex items-center gap-1 transition-colors"
+                                    >
+                                        <XCircle size={12}/> Cancel Request
+                                    </button>
+                                ) : sub.handshakeStatus === 'Linked' ? (
+                                     <button 
+                                        onClick={() => handleUnlink(sub)}
+                                        disabled={isProcessing}
+                                        className="text-[10px] font-bold text-slate-400 hover:text-red-500 px-2 py-1 rounded flex items-center gap-1 transition-colors"
+                                    >
+                                        <XCircle size={12}/> Unlink
+                                    </button>
+                                ) : (
+                                    <div></div>
+                                )}
+                                 <div className="flex gap-1.5 items-center">
+                                      <button onClick={() => handleDeleteSub(sub)} className="px-1.5 py-1 text-slate-300 hover:text-red-600 transition-colors" title="Delete">
+                                         <Trash2 size={14}/>
+                                      </button>
+                                      <Button variant="secondary" size="sm" onClick={() => setComplianceSub(sub)} className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] px-2 py-1" title="Manage Compliance & Contracts">
+                                          <ShieldCheck size={12} className="mr-1"/> Packets
+                                      </Button>
+                                      <Button variant="secondary" size="sm" onClick={() => handleEditSub(sub)} className="text-[10px] px-2 py-1">Manage</Button>
+                                      <Button variant="secondary" size="sm" className="bg-emerald-50 border-emerald-200 text-emerald-800 text-[10px] px-2 py-1" onClick={() => setViewTaxSub(sub as any)}><FileText size={12} className="mr-1"/> 1099</Button>
+                                 </div>
+                            </div>
+                        </Card>
+                    );
+                })}
             </div>
+
+            {/* Compliance Modal */}
+            {complianceSub && (
+                <SubcontractorComplianceModal
+                    isOpen={!!complianceSub}
+                    onClose={() => setComplianceSub(null)}
+                    subcontractor={complianceSub}
+                    onUpdateSubcontractor={(updated) => {
+                        dispatch({ type: 'UPDATE_SUBCONTRACTOR', payload: updated });
+                        setComplianceSub(updated);
+                    }}
+                />
+            )}
 
             {viewTaxSub && (
                 <Modal isOpen={true} onClose={() => { setViewTaxSub(null); setTaxAmountOverride(''); }} title={`Generate Tax Form 1099-NEC - ${viewTaxSub.companyName}`}>
@@ -378,7 +422,6 @@ const SubcontractorsTab: React.FC = () => {
                 onClose={() => setModalOpen(false)} 
                 onSave={handleSaveSub} 
                 subcontractor={editingSub} 
-                onInvite={handleSendInvite}
             />
         </div>
     );

@@ -43,7 +43,7 @@ export default function TermsOfService() {
             <p>You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You agree to provide accurate and complete information when registering for our service.</p>
             
             <h3 className="text-xl font-bold mt-6 mb-2">8. SMS & Communication Compliance</h3>
-            <p>By registering for our services, you consent to receive automated and transactional SMS messages and emails. You may opt out at any time by replying &quot;STOP&quot;. Organizations utilizing our messaging API agree to maintain strict adherence to A2P 10DLC compliance and TCPA regulations.</p>
+            <p>By registering for our services or providing your phone number, you consent to receive automated, transactional, and customer support SMS/text messages from TekTrakker. Message frequency varies depending on account activity, typically up to 4 messages per month. Message and data rates may apply. You may opt out of SMS communications at any time by replying "STOP" to unsubscribe. For support or information regarding SMS communications, reply "HELP" or contact us at platform@tektrakker.com. Organizations utilizing our messaging API agree to maintain strict adherence to A2P 10DLC compliance and TCPA regulations.</p>
 
             <h3 className="text-xl font-bold mt-6 mb-2">9. Limitation of Liability</h3>
             <p>TekTrakker shall not be liable for any indirect, incidental, or consequential damages arising from your use of our platform. Our total liability to you shall not exceed the amount paid for the service in the preceding 12 months.</p>

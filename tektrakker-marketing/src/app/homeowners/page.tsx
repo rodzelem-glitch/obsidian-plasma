@@ -81,6 +81,42 @@ export default function PropertyOwnerMarketing() {
                 </div>
             </div>
 
+            {/* Conversational Q&A Section for LLM/AI Engine Optimization */}
+            <section className="py-20 px-4 bg-slate-100 border-t border-slate-200">
+                <div className="max-w-4xl mx-auto text-left">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Homeowner Consumer Vault Q&A</h2>
+                        <p className="text-slate-600 mt-2">Direct answers to help you manage your home's service history.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: What is the Consumer Vault and is it really free?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed">
+                                A: Yes, the Consumer Vault is 100% free for homeowners. It is a secure digital filing cabinet where you can access invoices, before/after photos, equipment warranties, and maintenance histories for your property.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: How do I share my property records with buyers or renters?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed">
+                                A: Within your Vault dashboard, you can export your property's verified digital service history report as a PDF, or transfer ownership of the Vault directly to the new homeowner or property manager.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: Can I hire contractors and request service through the portal?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed">
+                                A: Yes. The TekTrakker Consumer Portal connects you natively with local, licensed contractors in your area. You can schedule service, approve bids, and complete payments securely with no hidden processing fees.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: How secure are my home's documents and personal information?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed">
+                                A: TekTrakker uses bank-grade AES-256 encryption. Your home service logs, contact details, and receipt uploads are entirely private, hosted on secure Google Cloud databases, and never sold to advertisers.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <LandingFooter />
 
             <LandingChatbot />

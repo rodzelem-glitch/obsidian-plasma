@@ -1,4 +1,4 @@
-import { getBaseUrl } from 'lib/utils';
+import { getBaseUrl , cleanUndefinedFields } from 'lib/utils';
 import React, { useState, useEffect } from 'react';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
@@ -67,6 +67,32 @@ const SocialMediaHub: React.FC = () => {
             fetchTemplates();
         }
     }, [state.currentOrganization?.id]);
+
+    useEffect(() => {
+        if (isFBConnected) {
+            const token = localStorage.getItem('tenant_fb_token');
+            if (token) {
+                const loadFB = () => {
+                    const FB = (window as any).FB;
+                    if (FB) {
+                        FB.api('/me/accounts', { access_token: token }, (accountsResponse: any) => {
+                            if (accountsResponse && accountsResponse.data) {
+                                setFbPages(accountsResponse.data);
+                                if (accountsResponse.data.length > 0 && !selectedFbPageId) {
+                                    const firstPageId = accountsResponse.data[0].id;
+                                    setSelectedFbPageId(firstPageId);
+                                    localStorage.setItem('tenant_fb_page_id', firstPageId);
+                                }
+                            }
+                        });
+                    } else {
+                        setTimeout(loadFB, 500);
+                    }
+                };
+                loadFB();
+            }
+        }
+    }, [isFBConnected, state.currentOrganization?.name]);
 
     const fetchTemplates = async () => {
         if (!state.currentOrganization?.id) return;
@@ -198,7 +224,7 @@ const SocialMediaHub: React.FC = () => {
 
     const handleConnectLI = () => {
         setIsLIConnecting(true);
-        const clientId = '86fh8gh2o2gdzj'; 
+        const clientId = '8634ydvgwg2ik9'; 
         const redirectUri = window.location.origin + '/auth/callback';
         const stateStr = 'linkedin';
         const scope = 'w_member_social'; // or correct scope
@@ -254,6 +280,8 @@ const SocialMediaHub: React.FC = () => {
         }
     };
 
+
+
     const handleDisconnectFB = () => {
         localStorage.removeItem('tenant_fb_auth');
         localStorage.removeItem('tenant_fb_token');
@@ -305,12 +333,12 @@ const SocialMediaHub: React.FC = () => {
     const handleSaveTemplate = async () => {
         if (!content.trim() || !state.currentOrganization?.id) return setErrorMsg("Cannot save an empty template or missing org.");
         try {
-            await db.collection('organizations').doc(state.currentOrganization.id).collection('socialMediaTemplates').add({
+            await db.collection('organizations').doc(state.currentOrganization.id).collection('socialMediaTemplates').add(cleanUndefinedFields({
                 content,
                 mediaUrl,
                 name: (aiPrompt.substring(0, 30) || 'Manual Draft') + '...',
                 createdAt: new Date().toISOString()
-            });
+            }));
             setSuccessMsg("Draft saved successfully!");
             await fetchTemplates();
             setTimeout(() => setSuccessMsg(''), 3000);
@@ -342,7 +370,7 @@ const SocialMediaHub: React.FC = () => {
             const gbContent = getFinalContent('gb');
 
             // Save the post log to Firestore
-            await db.collection('organizations').doc(state.currentOrganization?.id).collection('socialMediaPosts').add({
+            await db.collection('organizations').doc(state.currentOrganization?.id).collection('socialMediaPosts').add(cleanUndefinedFields({
                 content: content,
                 platformContent: platformContent,
                 mediaUrl,
@@ -350,7 +378,7 @@ const SocialMediaHub: React.FC = () => {
                 status: 'published',
                 authorId: state.currentUser?.id,
                 createdAt: new Date().toISOString()
-            });
+            }));
 
             if (postToX) {
                 const token = localStorage.getItem('tenant_x_token');
@@ -644,22 +672,28 @@ const SocialMediaHub: React.FC = () => {
                                 </label>
                                 
                                 {/* LinkedIn Authentication Module */}
-                                <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50 relative overflow-hidden opacity-60">
-                                    <div className="absolute top-2 right-2 z-10">
-                                        <span className="text-[9px] bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400 px-2 py-0.5 rounded-full font-black uppercase tracking-wider border border-amber-200 dark:border-amber-800">Coming Soon</span>
-                                    </div>
+                                <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">
                                     <div className="flex items-center justify-between gap-1 mb-3">
                                         <div className="flex items-center gap-2 overflow-hidden flex-1">
-                                            <span className="font-bold text-sm text-[#0A66C2] truncate">LinkedIn Business</span>
+                                            <span className="font-bold text-sm text-[#0A66C2] truncate">LinkedIn Professional</span>
+                                            {isLIConnected && <span className="hidden xl:inline-block text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Connected</span>}
                                         </div>
-                                        <button 
-                                            disabled
-                                            className="text-xs font-bold bg-slate-400 text-white px-3 py-1.5 rounded-md cursor-not-allowed shrink-0"
-                                        >
-                                            Connect
-                                        </button>
+                                        {isLIConnected ? (
+                                            <div className="flex items-center gap-2 shrink-0 pl-1">
+                                                <button onClick={handleDisconnectLI} className="text-[10px] uppercase font-bold text-slate-400 hover:text-red-500 transition-colors shrink-0">Disconnect</button>
+                                                <input id="postToLI" title="Post to LinkedIn" aria-label="Post to LinkedIn" type="checkbox" checked={postToLI} onChange={() => setPostToLI(!postToLI)} className="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-primary-500 cursor-pointer shrink-0" />
+                                            </div>
+                                        ) : (
+                                            <button 
+                                                onClick={handleConnectLI}
+                                                disabled={isLIConnecting}
+                                                className="text-xs font-bold bg-[#0A66C2] text-white hover:bg-blue-700 px-3 py-1.5 rounded-md transition-colors shrink-0"
+                                            >
+                                                {isLIConnecting ? "Connecting..." : "Connect"}
+                                            </button>
+                                        )}
                                     </div>
-                                    <p className="text-xs text-slate-500 leading-tight">Awaiting LinkedIn API approval for production access.</p>
+                                    <p className="text-xs text-slate-500 leading-tight">Authorize TekTrakker to schedule and publish organic updates directly to your professional LinkedIn profile.</p>
                                 </div>
 
                                 <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">

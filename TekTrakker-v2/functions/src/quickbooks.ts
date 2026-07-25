@@ -132,3 +132,198 @@ export const getQuickBooksConnectionStatus = functions.https.onCall(async (data,
     );
   }
 });
+
+/**
+ * Helper to refresh QuickBooks tokens if close to expiration
+ */
+const refreshClientToken = async (oauthClient: any, orgId: string) => {
+  const db = admin.firestore();
+  const orgDoc = await db.collection("organizations").doc(orgId).get();
+  if (!orgDoc.exists) {
+    throw new Error(`Organization ${orgId} not found`);
+  }
+  const integrations = orgDoc.data()?.integrations;
+  const qb = integrations?.quickbooks;
+  if (!qb || !qb.connected) {
+    throw new Error(`QuickBooks integration is not connected for organization ${orgId}`);
+  }
+
+  // Calculate remaining seconds
+  const tokenExpiresAtMs = qb.tokenExpiresAt ? (typeof qb.tokenExpiresAt.toMillis === "function" ? qb.tokenExpiresAt.toMillis() : new Date(qb.tokenExpiresAt).getTime()) : 0;
+  const refreshTokenExpiresAtMs = qb.refreshTokenExpiresAt ? (typeof qb.refreshTokenExpiresAt.toMillis === "function" ? qb.refreshTokenExpiresAt.toMillis() : new Date(qb.refreshTokenExpiresAt).getTime()) : 0;
+
+  oauthClient.setToken({
+    access_token: qb.accessToken,
+    refresh_token: qb.refreshToken,
+    x_refresh_token_expires_in: Math.max(0, Math.round((refreshTokenExpiresAtMs - Date.now()) / 1000)),
+    expires_in: Math.max(0, Math.round((tokenExpiresAtMs - Date.now()) / 1000)),
+  });
+
+  // Check if token expires within 5 minutes
+  if (tokenExpiresAtMs - Date.now() < 5 * 60 * 1000) {
+    functions.logger.log(`Refreshing QuickBooks access token for org: ${orgId}`);
+    const authResponse = await oauthClient.refresh();
+    const token = authResponse.getJson();
+    
+    // Save refreshed token to Firestore
+    await db.collection("organizations").doc(orgId).update({
+      "integrations.quickbooks.accessToken": token.access_token,
+      "integrations.quickbooks.refreshToken": token.refresh_token,
+      "integrations.quickbooks.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+      "integrations.quickbooks.tokenExpiresAt": admin.firestore.Timestamp.fromMillis(Date.now() + (token.expires_in * 1000)),
+    });
+  }
+
+  return {
+    realmId: qb.realmId,
+    accessToken: oauthClient.token.access_token,
+  };
+};
+
+/**
+ * Helper to execute query on QuickBooks Online
+ */
+const executeQuery = async (oauthClient: any, realmId: string, query: string) => {
+  const isProd = oauthClient.environment === "production";
+  const baseUrl = isProd ? "https://quickbooks.api.intuit.com" : "https://sandbox-quickbooks.api.intuit.com";
+  
+  const response = await oauthClient.makeApiCall({
+    url: `${baseUrl}/v3/company/${realmId}/query?query=${encodeURIComponent(query)}`,
+    method: "GET",
+    headers: {
+      "Accept": "application/json",
+    },
+  });
+  return JSON.parse(response.body);
+};
+
+/**
+ * Helper to POST resource to QuickBooks Online
+ */
+const createResource = async (oauthClient: any, realmId: string, resourceName: string, payload: any) => {
+  const isProd = oauthClient.environment === "production";
+  const baseUrl = isProd ? "https://quickbooks.api.intuit.com" : "https://sandbox-quickbooks.api.intuit.com";
+
+  const response = await oauthClient.makeApiCall({
+    url: `${baseUrl}/v3/company/${realmId}/${resourceName.toLowerCase()}?minorversion=65`,
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return JSON.parse(response.body);
+};
+
+/**
+ * Firestore Queue trigger to process QuickBooks Sync Tasks idempotently
+ */
+export const processQuickBooksSyncQueue = functions.firestore
+  .document("quickbooks_sync_queue/{taskId}")
+  .onCreate(async (snapshot, context) => {
+    const taskData = snapshot.data();
+    if (!taskData) return;
+
+    const { orgId, type, payload } = taskData;
+    const taskId = context.params.taskId;
+
+    if (!orgId || !type || !payload) {
+      functions.logger.error("Missing required task data fields:", taskId);
+      await snapshot.ref.update({
+        status: "failed",
+        error: "Missing required task fields (orgId, type, payload)",
+        processedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      return;
+    }
+
+    try {
+      const oauthClient = getOAuthClient();
+      const { realmId } = await refreshClientToken(oauthClient, orgId);
+
+      if (type === "invoice") {
+        const docNumber = payload.DocNumber;
+        if (!docNumber) {
+          throw new Error("Invoice payload is missing DocNumber");
+        }
+
+        // 1. Check if invoice already exists in QB
+        const query = `select * from Invoice where DocNumber = '${docNumber}'`;
+        const queryResult = await executeQuery(oauthClient, realmId, query);
+        const existingInvoice = queryResult.QueryResponse?.Invoice?.[0];
+
+        if (existingInvoice) {
+          functions.logger.log(`Invoice with DocNumber ${docNumber} already exists in QuickBooks. Skipping creation.`, existingInvoice.Id);
+          await snapshot.ref.update({
+            status: "skipped",
+            result: { id: existingInvoice.Id, qbInvoice: existingInvoice },
+            processedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          return;
+        }
+
+        // 2. Create invoice in QB
+        functions.logger.log(`Creating invoice in QuickBooks for DocNumber: ${docNumber}`);
+        const qbResponse = await createResource(oauthClient, realmId, "Invoice", payload);
+        const qbInvoice = qbResponse.Invoice;
+
+        if (!qbInvoice) {
+          throw new Error(JSON.stringify(qbResponse));
+        }
+
+        await snapshot.ref.update({
+          status: "completed",
+          result: { id: qbInvoice.Id, qbInvoice },
+          processedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+      } else if (type === "payment") {
+        const paymentRefNum = payload.PaymentRefNum;
+        if (!paymentRefNum) {
+          throw new Error("Payment payload is missing PaymentRefNum");
+        }
+
+        // 1. Check if payment already exists in QB
+        const query = `select * from Payment where PaymentRefNum = '${paymentRefNum}'`;
+        const queryResult = await executeQuery(oauthClient, realmId, query);
+        const existingPayment = queryResult.QueryResponse?.Payment?.[0];
+
+        if (existingPayment) {
+          functions.logger.log(`Payment with PaymentRefNum ${paymentRefNum} already exists in QuickBooks. Skipping creation.`, existingPayment.Id);
+          await snapshot.ref.update({
+            status: "skipped",
+            result: { id: existingPayment.Id, qbPayment: existingPayment },
+            processedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          return;
+        }
+
+        // 2. Create payment in QB
+        functions.logger.log(`Creating payment in QuickBooks for PaymentRefNum: ${paymentRefNum}`);
+        const qbResponse = await createResource(oauthClient, realmId, "Payment", payload);
+        const qbPayment = qbResponse.Payment;
+
+        if (!qbPayment) {
+          throw new Error(JSON.stringify(qbResponse));
+        }
+
+        await snapshot.ref.update({
+          status: "completed",
+          result: { id: qbPayment.Id, qbPayment },
+          processedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+      } else {
+        throw new Error(`Unsupported sync task type: ${type}`);
+      }
+
+    } catch (error: any) {
+      functions.logger.error(`Error processing QuickBooks sync task ${taskId}:`, error);
+      await snapshot.ref.update({
+        status: "failed",
+        error: error.message || String(error),
+        processedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+  });

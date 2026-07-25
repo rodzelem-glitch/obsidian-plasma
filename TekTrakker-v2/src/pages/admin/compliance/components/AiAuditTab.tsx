@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useEffect } from 'react';
 import { db, functions } from 'lib/firebase';
@@ -26,7 +27,7 @@ interface AiLog {
 const AiAuditTab: React.FC = () => {
     const { state } = useAppContext();
     const { t } = useLanguage();
-    const isMasterAdmin = state.currentUser?.role === 'master_admin' || state.currentUser?.email === 'rodzelem@gmail.com';
+    const isMasterAdmin = state.currentUser?.role === 'master_admin' || state.currentUser?.email === 'rodzelem@gmail.com' || state.currentUser?.email === 'ryanvavrecan@gmail.com';
     const [logs, setLogs] = useState<AiLog[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -126,7 +127,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const batch = db.batch();
     
     const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
-    batch.set(recordRef, {
+    batch.set(cleanUndefinedFields(recordRef), {
         id: recordRef.id,
         toolName: "${toolName}",
         loggedParams: params,
@@ -199,13 +200,13 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
                 localStorage.setItem(`demo-technician-tools`, JSON.stringify(toolsList));
                 showToast.success(isMasterAdmin ? t("Successfully promoted to global tool in demo mode!") : t("Successfully promoted to organization tools in demo mode!"));
             } else {
-                await db.collection('organizations').doc(orgId).collection('synthesizedTools').doc(cleanName).set(toolData);
+                await db.collection('organizations').doc(orgId).collection('synthesizedTools').doc(cleanName).set(cleanUndefinedFields(toolData));
                 if (isMasterAdmin) {
-                    await db.collection('globalSynthesizedTools').doc(cleanName).set({ ...toolData, promotedByOrg: orgId });
+                    await db.collection('globalSynthesizedTools').doc(cleanName).set(cleanUndefinedFields({ ...toolData, promotedByOrg: orgId }));
                 }
                 
                 const mailRef = db.collection('mail').doc();
-                await mailRef.set({
+                await mailRef.set(cleanUndefinedFields({
                     to: adminEmail,
                     message: {
                         from: 'TekTrakker Security Portal <no-reply@tektrakker.com>',
@@ -223,7 +224,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
                                <hr/>
                                <p><em>This is an automated platform operations report.</em></p>`
                     }
-                });
+                }));
                 showToast.success(isMasterAdmin 
                     ? t("Successfully promoted to global tool & audit report dispatched!") 
                     : t("Successfully promoted to organization tools & audit report dispatched!"));

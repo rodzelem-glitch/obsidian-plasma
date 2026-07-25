@@ -18,6 +18,24 @@ import { db } from 'lib/firebase';
 import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
 import { useLanguage } from 'context/LanguageContext';
+import { hasPermission , cleanUndefinedFields } from 'lib/utils';
+
+const PATH_PERMISSIONS: Record<string, string> = {
+  '/admin/analytics': 'view_financials',
+  '/admin/hr': 'view_financials',
+  '/admin/financials': 'view_financials',
+  '/admin/contracts': 'view_financials',
+  '/admin/project-proposals': 'view_financials',
+  '/admin/operations': 'manage_dispatch',
+  '/admin/projects': 'manage_dispatch',
+  '/admin/calendar': 'manage_dispatch',
+  '/admin/customers': 'view_customers',
+  '/admin/contracting': 'view_customers',
+  '/admin/marketing-hub': 'manage_marketing',
+  '/admin/reviews': 'manage_marketing',
+  '/admin/records': 'manage_inventory',
+  '/admin/compliance': 'view_refrigerant',
+};
 
 interface AdminSidebarProps {
   user: User;
@@ -163,7 +181,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
   }, {} as Record<string, any>), []);
 
   // Payments Only plan: restrict sidebar to only essential pages
-  const paymentsOnlyAllowedPaths = ['/admin/dashboard', '/admin/financials', '/admin/estimator', '/admin/settings'];
+  const paymentsOnlyAllowedPaths = ['/admin/dashboard', '/admin/financials', '/admin/estimator', '/admin/settings', '/admin/project-proposals'];
 
   const rawProcessedItems = useMemo(() => {
     return (isKortTester && !isUnlocked)
@@ -197,6 +215,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
             if (user.role === 'master_admin' || user.role === 'admin' || user.role === 'both' || isDemo || (isKortTester && isUnlocked)) roleAllowed = true;
             else if (user.role === 'supervisor') roleAllowed = item.roles.includes('supervisor');
             if (!roleAllowed) return null;
+
+            // Enforce permission overrides for admin pages
+            const requiredPerm = PATH_PERMISSIONS[item.path];
+            if (requiredPerm && !hasPermission(user, requiredPerm)) return null;
 
             return { isGroup: false, ...item, originalLabel: item.label, label: customLabels[item.path] || t(item.label), path };
         }
@@ -240,9 +262,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
   const saveOrder = async () => {
       if (!user.id) return;
       try {
-          await db.collection('users').doc(user.id).set({
+          await db.collection('users').doc(user.id).set(cleanUndefinedFields({
               preferences: { sidebarOrder: orderedPaths, customLabels, hiddenSidebarPaths: hiddenPaths }
-          }, { merge: true });
+          }), { merge: true });
 
           dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...user, preferences: { ...user.preferences, sidebarOrder: orderedPaths, customLabels, hiddenSidebarPaths: hiddenPaths } } });
           setIsCustomizeOpen(false);
@@ -256,9 +278,9 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
       if (!user.id) return;
       if (!window.confirm("Are you sure you want to revert to the default platform navigation? All custom names will be lost.")) return;
       try {
-          await db.collection('users').doc(user.id).set({
+          await db.collection('users').doc(user.id).set(cleanUndefinedFields({
               preferences: { sidebarOrder: null, customLabels: null, hiddenSidebarPaths: null }
-          }, { merge: true });
+          }), { merge: true });
 
           const defaultOrder = navGroups.flatMap(g => g.items.map(i => i.path));
           setOrderedPaths(defaultOrder);
@@ -403,6 +425,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
             {canSwitchToTech && (
                 <button
                     onClick={() => navigate('/briefing')}
+                    data-tour="switch-tech-btn"
                     title={isCollapsed ? t("Switch to Tech View") : undefined}
                     className={`w-full flex items-center justify-center px-4 py-2 border border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-primary-50 dark:hover:bg-primary-900/20 focus:outline-none transition-colors ${isCollapsed ? 'px-0' : ''}`}
                 >

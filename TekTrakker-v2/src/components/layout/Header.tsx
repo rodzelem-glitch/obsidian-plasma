@@ -46,16 +46,17 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
                         {canSeeAdmin && (
                             <button 
                                 onClick={() => navigate('/admin/dashboard')} 
-                                className="flex items-center text-xs font-semibold text-primary-600 dark:text-primary-400 border border-primary-500/40 px-2.5 py-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors min-h-[32px]" 
+                                data-tour="switch-admin-btn"
+                                className="flex items-center text-xs font-bold text-primary-600 dark:text-primary-400 border border-primary-500/40 px-3 py-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 active:scale-95 transition-all min-h-[38px] touch-manipulation" 
                                 title="Admin Dashboard"
                             >
-                                <span className="md:hidden font-bold">A</span>
-                                <span className="hidden md:inline">Admin</span>
+                                <span className="md:hidden font-extrabold">Admin</span>
+                                <span className="hidden md:inline">Admin Dashboard</span>
                             </button>
                         )}
                         <button 
                             onClick={onLogout} 
-                            className="flex items-center text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors min-h-[32px] px-1" 
+                            className="flex items-center justify-center text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-all min-h-[38px] min-w-[38px] px-2 rounded-lg active:scale-95 touch-manipulation" 
                             title="Log Out"
                         >
                             <span className="md:hidden">

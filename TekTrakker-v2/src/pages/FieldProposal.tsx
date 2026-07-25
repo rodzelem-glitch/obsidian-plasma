@@ -1,5 +1,5 @@
 import showToast from "lib/toast";
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl, matchTier, displayTierName , cleanUndefinedFields } from "lib/utils";
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -23,12 +23,13 @@ import ManualEntry from './field-proposal/components/ManualEntry';
 import ProposalItemsList from './field-proposal/components/ProposalItemsList';
 import PricebookModal from './field-proposal/components/PricebookModal';
 import { globalConfirm } from "lib/globalConfirm";
+import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
 
-type Tier = 'Good' | 'Better' | 'Best';
+type Tier = 'Basic' | 'Premium' | 'Platinum';
 type AddTool = 'ai' | 'manual' | 'pricebook';
 
 // Change ProposalItem to use unitPrice internally
-type InternalProposalItem = Omit<ProposalItem, 'price'> & { unitPrice: number, isPercentage?: boolean };
+type InternalProposalItem = Omit<ProposalItem, 'price' | 'tier'> & { unitPrice: number, isPercentage?: boolean, tier: Tier };
 
 const FieldProposal: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -46,7 +47,7 @@ const FieldProposal: React.FC = () => {
     const [recommendations, setRecommendations] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     
-    const [activeTier, setActiveTier] = useState<Tier>('Good');
+    const [activeTier, setActiveTier] = useState<Tier>('Basic');
     const [selectedOption, setSelectedOption] = useState<Tier | null>(null);
     
     const [additionalFeePercent, setAdditionalFeePercent] = useState<number>(0);
@@ -59,6 +60,14 @@ const FieldProposal: React.FC = () => {
 
     const sigPadRef = useRef<SignaturePadHandle>(null);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [isRecipientModalOpen, setIsRecipientModalOpen] = useState(false);
+
+    const associatedJob = useMemo(() => {
+        if (!jobIdRef.current) return null;
+        return state.jobs.find(j => j.id === jobIdRef.current) || null;
+    }, [state.jobs, jobIdRef.current]);
+
+    const locationId = associatedJob?.locationId || null;
 
     const customer = state.customers.find((c: Customer) => c.id === customerId);
 
@@ -79,47 +88,149 @@ const FieldProposal: React.FC = () => {
         }
     }, [jobIdRef, customerId, state.jobs]);
 
+    const [hasCheckedExisting, setHasCheckedExisting] = useState(false);
+
+    useEffect(() => {
+        const checkExisting = async () => {
+            if (jobIdRef.current && !editProposalId && !hasCheckedExisting && state.proposals.length > 0) {
+                setHasCheckedExisting(true);
+                const existing = state.proposals.find(p => p.jobId === jobIdRef.current && p.status !== 'Cancelled');
+                if (existing) {
+                    const continueExisting = await globalConfirm(
+                        t('There is already a proposal started for this job. Would you like to continue editing the existing proposal instead of creating a new one?'),
+                        t('Existing Proposal Found'),
+                        t('Edit Existing'),
+                        t('Create New Anyway')
+                    );
+                    if (continueExisting) {
+                        navigate(`${window.location.pathname}?proposalId=${existing.id}&jobId=${jobIdRef.current}${source ? `&source=${source}` : ''}`, { replace: true });
+                        return;
+                    }
+                }
+            }
+        };
+        checkExisting();
+    }, [jobIdRef, editProposalId, hasCheckedExisting, state.proposals, source, navigate, t]);
+
     const hasLoadedRef = useRef(false);
 
     useEffect(() => { const checkProposal = async () => {
         if (editProposalId && state.proposals.length > 0 && !hasLoadedRef.current) {
-            const proposalToCopy = state.proposals.find((p: Proposal) => p.id === editProposalId);
-            if (proposalToCopy) {
-                // Deep copy to prevent mutating the global AppContext state bypass
-                const proposal = JSON.parse(JSON.stringify(proposalToCopy));
-                
-                if (proposal.status === 'Accepted' || proposal.status === 'Sent') {
-                    if (await globalConfirm("Editing this finalized proposal will invalidate the current signature and revert it to a Draft. Do you want to proceed?")) {
-                        proposal.status = 'Draft';
-                        proposal.signatureDataUrl = null; 
+            const draftKey = `draft_field_proposal_${editProposalId}`;
+            const rawDraft = localStorage.getItem(draftKey);
+            let restored = false;
+            if (rawDraft) {
+                try {
+                    const draft = JSON.parse(rawDraft);
+                    const confirmRestore = await globalConfirm(
+                        t("We found an unsaved draft for this proposal. Would you like to restore it?"),
+                        t("Unsaved Draft Found"),
+                        t("Restore Draft"),
+                        t("Discard")
+                    );
+                    if (confirmRestore) {
+                        setItems(draft.items || []);
+                        setCustomerId(draft.customerId || '');
+                        setRecommendations(draft.recommendations || '');
+                        setActiveTier(draft.activeTier || 'Good');
+                        setSelectedOption(draft.selectedOption || null);
+                        setAdditionalFeePercent(draft.additionalFeePercent || 0);
+                        setAdditionalFeeName(draft.additionalFeeName || 'Processing Fee');
+                        setStep(draft.step || 1);
+                        hasLoadedRef.current = true;
+                        showToast.success(t("Draft restored!"));
+                        restored = true;
                     } else {
-                        navigate(-1);
-                        return;
+                        localStorage.removeItem(draftKey);
                     }
+                } catch (e) {
+                    console.error("Failed to restore field proposal draft:", e);
                 }
+            }
 
-                hasLoadedRef.current = true;
-                const exactCust = state.customers.find((c: Customer) => c.name === proposal.customerName);
-                if (exactCust) setCustomerId(exactCust.id);
+            if (!restored) {
+                const proposalToCopy = state.proposals.find((p: Proposal) => p.id === editProposalId);
+                if (proposalToCopy) {
+                    // Deep copy to prevent mutating the global AppContext state bypass
+                    const proposal = JSON.parse(JSON.stringify(proposalToCopy));
+                    
+                    if (proposal.status === 'Accepted' || proposal.status === 'Sent' || proposal.status === 'Opened') {
+                        if (await globalConfirm("Editing this finalized proposal will invalidate the current signature and revert it to a Draft. Do you want to proceed?")) {
+                            proposal.status = 'Draft';
+                            proposal.signatureDataUrl = null; 
+                        } else {
+                            navigate(-1);
+                            return;
+                        }
+                    }
 
-                const mappedItems = (proposal.items || []).map((item: any) => ({
-                    ...item,
-                    unitPrice: item.isPercentage ? (item.percentageRate || item.price || 0) : (item.price || 0),
-                }));
-                setItems(mappedItems as InternalProposalItem[]);
-                
-                setAdditionalFeePercent(proposal.additionalFeePercent || 0);
-                setAdditionalFeeName(proposal.additionalFeeName || 'Processing Fee');
-                setRecommendations(proposal.recommendations || '');
-                setSelectedOption((proposal.selectedOption as Tier) || null);
-                if (proposal.selectedOption) setActiveTier(proposal.selectedOption as Tier);
-                setStep(2); 
+                    hasLoadedRef.current = true;
+                    const exactCust = state.customers.find((c: Customer) => c.name === proposal.customerName);
+                    if (exactCust) setCustomerId(exactCust.id);
+
+                    const mappedItems = (proposal.items || []).map((item: any) => ({
+                        ...item,
+                        unitPrice: item.isPercentage ? (item.percentageRate || item.price || 0) : (item.price || 0),
+                    }));
+                    setItems(mappedItems as InternalProposalItem[]);
+                    
+                    setAdditionalFeePercent(proposal.additionalFeePercent || 0);
+                    setAdditionalFeeName(proposal.additionalFeeName || 'Processing Fee');
+                    setRecommendations(proposal.recommendations || '');
+                    const mappedOption = proposal.selectedOption ? displayTierName(proposal.selectedOption) as Tier : null;
+                    setSelectedOption(mappedOption);
+                    if (mappedOption) setActiveTier(mappedOption);
+                    setStep(2); 
+                }
             }
         }
     }; checkProposal(); }, [editProposalId, state.proposals, state.customers, navigate]);
 
+    useEffect(() => {
+        if (!editProposalId) {
+            hasLoadedRef.current = true;
+        }
+    }, [editProposalId]);
+
+    useEffect(() => {
+        const checkNewDraft = async () => {
+            if (!editProposalId && jobIdRef.current) {
+                const draftKey = `draft_field_proposal_${jobIdRef.current}`;
+                const rawDraft = localStorage.getItem(draftKey);
+                if (rawDraft) {
+                    try {
+                        const draft = JSON.parse(rawDraft);
+                        const confirmRestore = await globalConfirm(
+                            t("We found an unsaved draft for this proposal. Would you like to restore it?"),
+                            t("Unsaved Draft Found"),
+                            t("Restore Draft"),
+                            t("Discard")
+                        );
+                        if (confirmRestore) {
+                            setItems(draft.items || []);
+                            setCustomerId(draft.customerId || '');
+                            setRecommendations(draft.recommendations || '');
+                            setActiveTier(draft.activeTier || 'Good');
+                            setSelectedOption(draft.selectedOption || null);
+                            setAdditionalFeePercent(draft.additionalFeePercent || 0);
+                            setAdditionalFeeName(draft.additionalFeeName || 'Processing Fee');
+                            setStep(draft.step || 1);
+                            hasLoadedRef.current = true;
+                            showToast.success(t("Draft restored!"));
+                        } else {
+                            localStorage.removeItem(draftKey);
+                        }
+                    } catch (e) {
+                        console.error("Failed to restore new field proposal draft:", e);
+                    }
+                }
+            }
+        };
+        checkNewDraft();
+    }, [editProposalId, jobIdRef, t]);
+
     const calculateTierTotal = (tier: Tier) => {
-        const tierItems = items.filter((i: InternalProposalItem) => (i.tier && i.tier.toLowerCase() === tier.toLowerCase()) || (!i.tier && tier === 'Good'));
+        const tierItems = items.filter((i: InternalProposalItem) => matchTier(i.tier, tier));
         
         // Calculate base subtotal without percentage-based items
         const baseSubtotal = tierItems.filter(i => !i.isPercentage).reduce((sum: number, item: InternalProposalItem) => sum + (Number(item.unitPrice || 0) * Number(item.quantity || 1)), 0);
@@ -159,18 +270,40 @@ const FieldProposal: React.FC = () => {
         setItems(prevItems => prevItems.map(item => {
             if (item.id === id) {
                 const updated = { ...item, [field]: value };
+                
+                // 1. Handle type change rules
                 if (field === 'type') {
                     if (value === 'Discount') {
                         updated.unitPrice = -Math.abs(Number(updated.unitPrice) || 0);
                         updated.taxable = false;
+                    } else if (value === 'Fee') {
+                        updated.unitPrice = Math.abs(Number(updated.unitPrice) || 0);
                     } else {
                         updated.unitPrice = Math.abs(Number(updated.unitPrice) || 0);
                         updated.taxable = value === 'Part';
+                        updated.isPercentage = false; // Reset percentage for other types
                     }
                 }
-                if (field === 'unitPrice' || field === 'quantity' || field === 'type') {
+
+                // 2. Enforce negative/positive sign for Discount and Fee
+                if (updated.type === 'Discount') {
+                    if (!updated.isPercentage) {
+                        updated.unitPrice = -Math.abs(Number(updated.unitPrice) || 0);
+                    } else {
+                        updated.unitPrice = Math.abs(Number(updated.unitPrice) || 0);
+                    }
+                    updated.taxable = false; // discounts are never taxable
+                } else if (updated.type === 'Fee') {
+                    updated.unitPrice = Math.abs(Number(updated.unitPrice) || 0);
+                } else {
+                    updated.unitPrice = Math.abs(Number(updated.unitPrice) || 0);
+                }
+
+                // 3. Recalculate static total
+                if (field === 'unitPrice' || field === 'quantity' || field === 'type' || field === 'isPercentage') {
                     updated.total = (Number(updated.unitPrice) || 0) * (Number(updated.quantity) || 1);
                 }
+
                 return updated;
             }
             return item;
@@ -181,17 +314,43 @@ const FieldProposal: React.FC = () => {
         setItems(prev => prev.filter(i => i.id !== id));
     };
 
+    const handleMoveItem = (id: string, direction: 'up' | 'down') => {
+        const idx = items.findIndex(i => i.id === id);
+        if (idx === -1) return;
+
+        const currentItem = items[idx];
+        const itemTier = currentItem.tier;
+
+        const sameTierIndices = items
+            .map((item, i) => (matchTier(item.tier, itemTier) ? i : -1))
+            .filter(i => i !== -1);
+
+        const positionInTier = sameTierIndices.indexOf(idx);
+        if (positionInTier === -1) return;
+
+        const swapPosition = direction === 'up' ? positionInTier - 1 : positionInTier + 1;
+        if (swapPosition < 0 || swapPosition >= sameTierIndices.length) return;
+
+        const targetIndex = sameTierIndices[swapPosition];
+
+        const updated = [...items];
+        const temp = updated[idx];
+        updated[idx] = updated[targetIndex];
+        updated[targetIndex] = temp;
+        setItems(updated);
+    };
+
     const handleAddManualItem = (item: { name: string, description: string, quantity: number, price: number, type: string, isPercentage?: boolean, tier: Tier }) => {
         const newItem: InternalProposalItem = {
             id: `pi-man-${Date.now()}`,
             ...item,
             type: item.type as 'Part' | 'Labor' | 'Fee' | 'Discount' | 'Service',
-            unitPrice: item.price,
+            unitPrice: item.type === 'Discount' && !item.isPercentage ? -Math.abs(item.price) : Math.abs(item.price),
             partCost: 0, 
             laborHours: 0,
             hourlyRate: 0,
             margin: 0,
-            total: item.price * item.quantity, // This will be dynamically re-computed if isPercentage is true
+            total: item.type === 'Discount' && !item.isPercentage ? -Math.abs(item.price * item.quantity) : item.price * item.quantity, // This will be dynamically re-computed if isPercentage is true
             taxable: item.type === 'Part',
             isPercentage: item.isPercentage
         };
@@ -316,7 +475,7 @@ const FieldProposal: React.FC = () => {
         }
     };
 
-    const handleSaveProposal = async (action: 'saveDraft' | 'send' | 'accept' | 'verbalAccept') => {
+    const handleSaveProposal = async (action: 'saveDraft' | 'send' | 'accept' | 'verbalAccept', selectedEmails?: string[]) => {
         if (!customer || isSaving) return;
 
         let status: Proposal['status'];
@@ -329,7 +488,7 @@ const FieldProposal: React.FC = () => {
                 return;
             }
             if (!selectedOption) {
-                showToast.warn("Please select a pricing option (Good, Better, or Best) before accepting.");
+                showToast.warn("Please select a pricing option (Basic, Premium, or Platinum) before accepting.");
                 return;
             }
             status = 'Accepted';
@@ -347,19 +506,19 @@ const FieldProposal: React.FC = () => {
         const proposalId = editProposalId || await getNextProposalNumber(state.currentOrganization?.id || '');
         
         const getProcessedItems = () => {
-            const baseSubtotals: Record<string, number> = { good: 0, better: 0, best: 0 };
+            const baseSubtotals: Record<string, number> = { basic: 0, premium: 0, platinum: 0 };
             
-            ['Good', 'Better', 'Best'].forEach(t => {
-                const tItems = items.filter(i => (i.tier && i.tier.toLowerCase() === t.toLowerCase()) || (!i.tier && t === 'Good'));
+            ['Basic', 'Premium', 'Platinum'].forEach(t => {
+                const tItems = items.filter(i => matchTier(i.tier, t));
                 baseSubtotals[t.toLowerCase()] = tItems.filter(i => !i.isPercentage).reduce((sum, i) => sum + (Number(i.unitPrice || 0) * Number(i.quantity || 1)), 0);
             });
 
             return items.map(item => {
-                const itemTier = (item.tier || 'Good').toLowerCase();
+                const itemTier = displayTierName(item.tier).toLowerCase();
                 const { unitPrice, ...rest } = item;
                 
                 if (item.isPercentage) {
-                    const calculatedAmount = baseSubtotals[itemTier] * (Number(unitPrice || 0) / 100);
+                    const calculatedAmount = (baseSubtotals[itemTier] || 0) * (Number(unitPrice || 0) / 100);
                     const finalAmount = item.type === 'Discount' ? -Math.abs(calculatedAmount) : Math.abs(calculatedAmount);
                     return { ...rest, percentageRate: unitPrice, price: finalAmount, total: finalAmount * (item.quantity || 1) };
                 }
@@ -372,17 +531,27 @@ const FieldProposal: React.FC = () => {
         const tierForTotals = selectedOption || activeTier;
         const { subtotal, tax, total, additionalFeeAmount } = calculateTierTotal(tierForTotals);
 
+        const proposalLocationId = editProposalId 
+            ? (state.proposals.find(p => p.id === editProposalId)?.locationId || locationId)
+            : locationId;
+            
+        const proposalLocationName = editProposalId
+            ? (state.proposals.find(p => p.id === editProposalId)?.locationName || associatedJob?.locationName || null)
+            : (associatedJob?.locationName || null);
+
         const proposal: Proposal = {
             id: proposalId,
             jobId: jobIdRef.current,
             organizationId: state.currentOrganization?.id || '',
             technicianId: state.currentUser?.id || '',
+            locationId: proposalLocationId,
+            locationName: proposalLocationName,
             createdAt: state.proposals.find(p => p.id === editProposalId)?.createdAt || new Date().toISOString(),
             sentAt: action === 'send' ? new Date().toISOString() : (state.proposals.find(p => p.id === editProposalId)?.sentAt || null),
             remindersSent: state.proposals.find(p => p.id === editProposalId)?.remindersSent || [],
             customerName: customer.name,
             customerId: customer.id,
-            customerEmail: customer.email || null,
+            customerEmail: selectedEmails && selectedEmails.length > 0 ? selectedEmails[0] : (customer.email || null),
             items: itemsToSave, 
             status,
             signatureDataUrl,
@@ -394,12 +563,29 @@ const FieldProposal: React.FC = () => {
             additionalFeeName,
             additionalFeeAmount,
             recommendations: recommendations || '',
+            poNumber: associatedJob?.poNumber || state.proposals.find(p => p.id === editProposalId)?.poNumber || null,
         };
-
         try {
-            await db.collection('proposals').doc(proposalId).set(proposal, { merge: true });
+            await db.collection('proposals').doc(proposalId).set(cleanUndefinedFields(proposal), { merge: true });
             
-            // This is the fix: manually dispatch the update to the app's context
+            const draftKey = `draft_field_proposal_${editProposalId || jobIdRef.current || 'new'}`;
+            localStorage.removeItem(draftKey);
+            
+            if (jobIdRef.current) {
+                await db.collection('jobs').doc(jobIdRef.current).update(cleanUndefinedFields({
+                    proposalId: proposalId,
+                    updatedAt: new Date().toISOString()
+                }));
+                const existingJob = state.jobs.find(j => j.id === jobIdRef.current);
+                if (existingJob) {
+                    dispatch({
+                        type: 'UPDATE_JOB',
+                        payload: { ...existingJob, proposalId: proposalId, updatedAt: new Date().toISOString() }
+                    });
+                }
+            }
+            
+            // manually dispatch the update to the app's context
             dispatch({ 
                 type: editProposalId ? 'UPDATE_PROPOSAL' : 'ADD_PROPOSAL', 
                 payload: proposal 
@@ -425,7 +611,7 @@ const FieldProposal: React.FC = () => {
 
                 if (recipientId) {
                     try {
-                        await db.collection('messages').add({
+                        await db.collection('messages').add(cleanUndefinedFields({
                             organizationId: proposal.organizationId || state.currentOrganization?.id || 'unknown',
                             senderId: 'system',
                             senderName: 'System Alerts',
@@ -435,23 +621,28 @@ const FieldProposal: React.FC = () => {
                             timestamp: new Date().toISOString(),
                             read: false,
                             targetUrl: `/briefing/proposal?proposalId=${proposal.id}` 
-                        });
+                        }));
                     } catch(e) { console.error('Failed to notify tech', e); }
                 }
             }
 
-            if (action === 'send' && customer.email) {
-                const proposalLink = `${getBaseUrl()}/#/proposal-view/${proposalId}`;
-                await db.collection('mail').add({
-                    to: [customer.email],
-                    message: {
-                        subject: `New Proposal from ${state.currentOrganization?.name}`,
-                        html: `<p>Hi ${customer.name}, we have a proposal for you. View it here: <a href="${proposalLink}">${proposalLink}</a></p>`
-                    },
-                    organizationId: state.currentOrganization?.id,
-                    type: 'ProposalLink',
-                    createdAt: new Date().toISOString(),
-                });
+            if (action === 'send') {
+                const emails = selectedEmails || (customer.email ? [customer.email] : []);
+                if (emails.length > 0) {
+                    const proposalLink = `${getBaseUrl()}/#/proposal-view/${proposalId}`;
+                    await db.collection('mail_queue').add(cleanUndefinedFields({
+                        to: emails,
+                        replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
+                        message: {
+                            subject: `New Proposal from ${state.currentOrganization?.name}`,
+                            html: `<p>Hi ${customer.name}, we have a proposal for you. View it here: <a href="${proposalLink}">${proposalLink}</a></p>`,
+                            replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com'
+                        },
+                        organizationId: state.currentOrganization?.id,
+                        type: 'ProposalLink',
+                        createdAt: new Date().toISOString(),
+                    }));
+                }
             }
             
             // --- NAVIGATION LOGIC ---
@@ -470,7 +661,7 @@ const FieldProposal: React.FC = () => {
                         navigate(-1);
                         break;
                     case 'saveDraft':
-                        showToast.warn("Draft saved successfully!");
+                        showToast.warn("Proposal saved successfully!");
                         navigate(-1);
                         break;
                 }
@@ -485,19 +676,19 @@ const FieldProposal: React.FC = () => {
     };
 
     const generatePreviewData = () => {
-        const { subtotal, tax, total, additionalFeeAmount } = calculateTierTotal(selectedOption || activeTier || 'Good');
+        const { subtotal, tax, total, additionalFeeAmount } = calculateTierTotal(selectedOption || activeTier || 'Basic');
         
-        const baseSubtotals: Record<string, number> = { good: 0, better: 0, best: 0 };
-        ['Good', 'Better', 'Best'].forEach(t => {
-            const tItems = items.filter(i => (i.tier && i.tier.toLowerCase() === t.toLowerCase()) || (!i.tier && t === 'Good'));
+        const baseSubtotals: Record<string, number> = { basic: 0, premium: 0, platinum: 0 };
+        ['Basic', 'Premium', 'Platinum'].forEach(t => {
+            const tItems = items.filter(i => matchTier(i.tier, t));
             baseSubtotals[t.toLowerCase()] = tItems.filter(i => !i.isPercentage).reduce((sum, i) => sum + (Number(i.unitPrice || 0) * Number(i.quantity || 1)), 0);
         });
 
         const itemsToPreview = items.map(item => {
-            const itemTier = (item.tier || 'Good').toLowerCase();
+            const itemTier = displayTierName(item.tier).toLowerCase();
             const { unitPrice, ...rest } = item;
             if (item.isPercentage) {
-                const calculatedAmount = baseSubtotals[itemTier] * (Number(unitPrice || 0) / 100);
+                const calculatedAmount = (baseSubtotals[itemTier] || 0) * (Number(unitPrice || 0) / 100);
                 const finalAmount = item.type === 'Discount' ? -Math.abs(calculatedAmount) : Math.abs(calculatedAmount);
                 return { ...rest, percentageRate: unitPrice, price: finalAmount, total: finalAmount * (item.quantity || 1) };
             }
@@ -546,6 +737,8 @@ const FieldProposal: React.FC = () => {
                     type="Proposal" 
                     data={generatePreviewData()}
                     onClose={() => setIsPreviewOpen(false)} 
+                    isInternal={true}
+                    onSave={() => handleSaveProposal('saveDraft')}
                 />
             )}
 
@@ -559,7 +752,7 @@ const FieldProposal: React.FC = () => {
                             value={customerSearch} 
                             onChange={(e) => setCustomerSearch(e.target.value)} 
                         />
-                        <Select label={customerSearch ? `${t("Filtered Results")} (${state.customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).length})` : t("Select Customer")} value={customerId} onChange={e => setCustomerId(e.target.value)} className="h-14 text-lg">
+                        <Select label={customerSearch ? `${t("Filtered Results")} (${state.customers.filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase())).length})` : t("Select Customer")} value={customerId} onChange={e => setCustomerId(e.target.value)} data-tour="proposal-customer-select" className="h-14 text-lg">
                             <option value="">{t("-- Choose Customer --")}</option>
                             {state.customers
                                 .filter(c => c.name.toLowerCase().includes(customerSearch.toLowerCase()))
@@ -568,7 +761,7 @@ const FieldProposal: React.FC = () => {
                     </div>
                     <div className="flex gap-4 mt-8">
                          <Button onClick={() => navigate(-1)} variant="secondary" className="h-14 px-4 md:px-8 text-xl font-bold">{t("Cancel")}</Button>
-                         <Button onClick={() => setStep(2)} disabled={!customerId} className="flex-1 h-14 text-xl font-bold">{t("Start Building")} &rarr;</Button>
+                         <Button onClick={() => setStep(2)} disabled={!customerId} data-tour="proposal-start-building-btn" className="flex-1 h-14 text-xl font-bold">{t("Start Building")} &rarr;</Button>
                     </div>
                 </Card>
             )}
@@ -576,7 +769,7 @@ const FieldProposal: React.FC = () => {
             {step === 2 && (
                 <div className="space-y-8 animate-fade-in">
                     <div className="flex gap-2 bg-slate-200 dark:bg-slate-800 p-1.5 rounded-2xl max-w-xl mx-auto shadow-inner">
-                        {(['Good', 'Better', 'Best'] as Tier[]).map(tier => (
+                        {(['Basic', 'Premium', 'Platinum'] as Tier[]).map(tier => (
                             <div 
                                 key={tier}
                                 role="button"
@@ -599,14 +792,14 @@ const FieldProposal: React.FC = () => {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6 bg-slate-100 dark:bg-slate-800 p-2 rounded-2xl">
                             <button onClick={() => setActiveTool('ai')} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTool === 'ai' ? 'bg-indigo-600 text-white shadow-lg' : 'hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}><Sparkles size={16}/> {t("AI Generator")}</button>
                             <button onClick={() => setIsPricebookOpen(true)} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300`}><Book size={16}/> {t("Pricebook")}</button>
-                            <button onClick={() => setActiveTool('manual')} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTool === 'manual' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}><Edit2 size={16}/> {t("Manual Entry")}</button>
+                            <button onClick={() => setActiveTool('manual')} data-tour="proposal-manual-btn" className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all ${activeTool === 'manual' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'}`}><Edit2 size={16}/> {t("Manual Entry")}</button>
                         </div>
 
                         {activeTool === 'ai' && <AIGenerator onSuggestions={setAiSuggestions} />}
                         {activeTool === 'manual' && <ManualEntry activeTier={activeTier} onAdd={handleAddManualItem} />}
                         {aiSuggestions && activeTool === 'ai' && <AISuggestionsList suggestions={aiSuggestions} onAccept={handleAcceptAiSuggestion} />}
                         
-                        <ProposalItemsList items={calculateTierTotal(activeTier).items} activeTier={activeTier} onUpdate={handleUpdateItem} onDelete={handleDeleteItem} />
+                        <ProposalItemsList items={calculateTierTotal(activeTier).items} activeTier={activeTier} onUpdate={handleUpdateItem} onDelete={handleDeleteItem} onMoveItem={handleMoveItem} />
 
                         {/* Additional Fees & Discounts */}
                         <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
@@ -650,9 +843,9 @@ const FieldProposal: React.FC = () => {
                                 {editProposalId || source === 'workflow' ? t('Cancel') : t('Back')}
                             </Button>
                             <Button variant="outline" onClick={() => handleSaveProposal('saveDraft')} disabled={isSaving} className="px-4 md:px-8 font-bold flex items-center gap-2">
-                                <Save size={16} /> {isSaving ? t('Saving...') : t('Save Draft')}
+                                <Save size={16} /> {isSaving ? t('Saving...') : t('Save')}
                             </Button>
-                            <Button onClick={() => setStep(3)} disabled={items.length === 0} className="flex-1 h-14 text-xl font-black shadow-xl shadow-primary-500/30">{t("Review & Present")} &rarr;</Button>
+                            <Button onClick={() => setStep(3)} disabled={items.length === 0} data-tour="proposal-next-step-btn" className="flex-1 h-14 text-xl font-black shadow-xl shadow-primary-500/30">{t("Review & Present")} &rarr;</Button>
                         </div>
                     </Card>
                 </div>
@@ -661,7 +854,7 @@ const FieldProposal: React.FC = () => {
             {step === 3 && (
                 <div className="space-y-10 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {(['Good', 'Better', 'Best'] as Tier[]).map(tier => {
+                        {(['Basic', 'Premium', 'Platinum'] as Tier[]).map(tier => {
                             const { total, items: tierItems, additionalFeeAmount } = calculateTierTotal(tier);
                             const isSelected = selectedOption === tier;
                             if (tierItems.length === 0) return null;
@@ -696,7 +889,7 @@ const FieldProposal: React.FC = () => {
                                                     <p className={`text-sm font-bold ${isSelected ? 'text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400'}`}>{i.name}</p>
                                                 </div>
                                                 {i.description && (
-                                                    <p className={`text-xs ml-7 italic leading-snug ${isSelected ? 'text-slate-600 dark:text-slate-400' : 'text-slate-500 dark:text-slate-500'}`}>{i.description}</p>
+                                                    <p className={`text-xs ml-7 italic leading-snug whitespace-pre-wrap ${isSelected ? 'text-slate-600 dark:text-slate-400' : 'text-slate-500 dark:text-slate-500'}`}>{i.description}</p>
                                                 )}
                                             </div>
                                         ))}
@@ -712,12 +905,17 @@ const FieldProposal: React.FC = () => {
                             <h3 className="text-2xl font-black text-slate-900 dark:text-white">{t("Customer Authorization")}</h3>
                             <Button onClick={() => setIsPreviewOpen(true)} variant="secondary" className="w-auto flex items-center gap-2 text-xs font-black"><Eye size={16}/> {t("Preview")}</Button>
                         </div>
-                        <SignaturePad ref={sigPadRef} className="h-44 shadow-inner mb-8 bg-slate-50 dark:bg-slate-800 rounded-xl" />
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div data-tour="proposal-sig-pad">
+                            <SignaturePad ref={sigPadRef} className="h-44 shadow-inner mb-8 bg-slate-50 dark:bg-slate-800 rounded-xl" />
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                             <Button variant="secondary" onClick={() => setStep(2)} className="h-16 font-bold text-sm md:text-base">{t("Modify")}</Button>
-                            <Button onClick={() => handleSaveProposal('send')} disabled={isSaving} className="h-16 font-black bg-indigo-600 hover:bg-indigo-700 text-sm md:text-base"><Mail size={18} className="hidden md:block"/> {t("Email")}</Button>
+                            <Button variant="outline" onClick={() => handleSaveProposal('saveDraft')} disabled={isSaving} className="h-16 font-bold text-sm md:text-base flex items-center justify-center gap-2">
+                                <Save size={16} /> {isSaving ? t('Saving...') : t('Save')}
+                            </Button>
+                            <Button onClick={() => setIsRecipientModalOpen(true)} disabled={isSaving} className="h-16 font-black bg-indigo-600 hover:bg-indigo-700 text-sm md:text-base flex items-center justify-center gap-2"><Mail size={18} className="hidden md:block"/> {t("Email")}</Button>
                             <Button onClick={() => { if(window.confirm(t('Are you sure the customer has verbally agreed to this proposal?'))) handleSaveProposal('verbalAccept'); }} disabled={!selectedOption || isSaving} className="h-16 font-black bg-amber-500 hover:bg-amber-600 text-white shadow-xl text-sm md:text-base leading-tight">{t("Verbal")}<br/>{t("Accept")}</Button>
-                            <Button onClick={() => handleSaveProposal('accept')} disabled={!selectedOption || isSaving} className="h-16 font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl text-sm md:text-base leading-tight flex items-center justify-center gap-1 md:gap-2"><CheckCircle size={18} className="hidden md:block"/> {t("Sign &")}<br className="md:hidden"/> {t("Accept")}</Button>
+                            <Button onClick={() => handleSaveProposal('accept')} disabled={!selectedOption || isSaving} data-tour="proposal-submit-btn" className="h-16 font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl text-sm md:text-base leading-tight flex items-center justify-center gap-1 md:gap-2"><CheckCircle size={18} className="hidden md:block"/> {t("Sign &")}<br className="md:hidden"/> {t("Accept")}</Button>
                         </div>
                     </Card>
                 </div>
@@ -732,8 +930,96 @@ const FieldProposal: React.FC = () => {
                 onSelect={handleAddFromPricebook} 
                 marketMultiplier={state.currentOrganization?.marketMultiplier || 1.0} 
             />
+
+            {isRecipientModalOpen && (
+                <RecipientSelectorModal
+                    isOpen={isRecipientModalOpen}
+                    onClose={() => setIsRecipientModalOpen(false)}
+                    customerId={customerId}
+                    locationId={locationId}
+                    title="Select Proposal Recipients"
+                    onConfirm={(emails) => {
+                        handleSaveProposal('send', emails);
+                        setIsRecipientModalOpen(false);
+                    }}
+                />
+            )}
         </div>
     );
+    // Auto-save draft changes for Field Proposal
+    useEffect(() => {
+        if (!hasLoadedRef.current) return;
+
+        const original = editProposalId ? state.proposals.find(p => p.id === editProposalId) : null;
+        
+        const baseSubtotals: Record<string, number> = { basic: 0, premium: 0, platinum: 0 };
+        ['Basic', 'Premium', 'Platinum'].forEach(t => {
+            const tItems = items.filter(i => matchTier(i.tier, t));
+            baseSubtotals[t.toLowerCase()] = tItems.filter(i => !i.isPercentage).reduce((sum, i) => sum + (Number(i.unitPrice || 0) * Number(i.quantity || 1)), 0);
+        });
+
+        const itemsToCompare = items.map(item => {
+            const itemTier = displayTierName(item.tier).toLowerCase();
+            const { unitPrice, ...rest } = item;
+            if (item.isPercentage) {
+                const calculatedAmount = (baseSubtotals[itemTier] || 0) * (Number(unitPrice || 0) / 100);
+                const finalAmount = item.type === 'Discount' ? -Math.abs(calculatedAmount) : Math.abs(calculatedAmount);
+                return { ...rest, percentageRate: unitPrice, price: finalAmount, total: finalAmount * (item.quantity || 1) };
+            }
+            return { ...rest, price: unitPrice || 0 };
+        });
+
+        const hasChanges = !original ? (
+            items.length > 0 ||
+            customerId !== '' ||
+            recommendations !== '' ||
+            activeTier !== 'Basic' ||
+            selectedOption !== null ||
+            additionalFeePercent !== 0 ||
+            additionalFeeName !== 'Processing Fee' ||
+            step !== 1
+        ) : (
+            JSON.stringify(itemsToCompare) !== JSON.stringify(original.items || []) ||
+            customerId !== (state.customers.find((c: Customer) => c.name === original.customerName)?.id || '') ||
+            recommendations !== (original.recommendations || '') ||
+            activeTier !== (original.selectedOption ? displayTierName(original.selectedOption) as Tier : 'Basic') ||
+            selectedOption !== (original.selectedOption ? displayTierName(original.selectedOption) as Tier : null) ||
+            additionalFeePercent !== (original.additionalFeePercent || 0) ||
+            additionalFeeName !== (original.additionalFeeName || 'Processing Fee') ||
+            step !== 2
+        );
+
+        const draftKey = `draft_field_proposal_${editProposalId || jobIdRef.current || 'new'}`;
+        if (hasChanges) {
+            const draftData = {
+                items,
+                customerId,
+                recommendations,
+                activeTier,
+                selectedOption,
+                additionalFeePercent,
+                additionalFeeName,
+                step
+            };
+            localStorage.setItem(draftKey, JSON.stringify(draftData));
+        } else {
+            localStorage.removeItem(draftKey);
+        }
+    }, [
+        items,
+        customerId,
+        recommendations,
+        activeTier,
+        selectedOption,
+        additionalFeePercent,
+        additionalFeeName,
+        step,
+        editProposalId,
+        jobIdRef,
+        state.proposals,
+        state.customers
+    ]);
+
 };
 
 export default FieldProposal;

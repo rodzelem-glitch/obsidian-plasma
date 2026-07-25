@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -91,25 +92,25 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ defaultTab = 'overview'
         
         try {
             if (editingLead.id) {
-                await db.collection('platformLeads').doc(editingLead.id).update(leadData);
+                await db.collection('platformLeads').doc(editingLead.id).update(cleanUndefinedFields(leadData));
             } else {
                  const newRef = db.collection('platformLeads').doc();
                  const id = newRef.id;
-                 await newRef.set({ 
+                 await newRef.set(cleanUndefinedFields({ 
                      ...leadData, 
                      id, 
                      createdAt: new Date().toISOString(), 
                      status: 'New',
                      value: Number(editingLead.value) || 0
-                 });
+                 }));
                  // Log creation activity
-                 await db.collection('salesActivities').add({
+                 await db.collection('salesActivities').add(cleanUndefinedFields({
                      leadId: id,
                      type: 'system',
                      content: 'Lead created',
                      timestamp: new Date().toISOString(),
                      repId: currentUser?.id
-                 });
+                 }));
             }
             setIsEditLeadOpen(false);
         } catch (e) {
@@ -120,31 +121,31 @@ const SalesDashboard: React.FC<SalesDashboardProps> = ({ defaultTab = 'overview'
 
     const handleAddNote = async () => {
         if (!selectedLead || !newNote.trim()) return;
-        await db.collection('salesActivities').add({
+        await db.collection('salesActivities').add(cleanUndefinedFields({
             leadId: selectedLead.id,
             type: 'note',
             content: newNote,
             timestamp: new Date().toISOString(),
             repId: currentUser?.id
-        });
+        }));
         setNewNote('');
     };
 
     const handleLogActivity = async (type: 'call' | 'email') => {
         if (!selectedLead) return;
-        await db.collection('salesActivities').add({
+        await db.collection('salesActivities').add(cleanUndefinedFields({
             leadId: selectedLead.id,
             type: type,
             content: type === 'call' ? 'Logged a call' : 'Sent an email',
             timestamp: new Date().toISOString(),
             repId: currentUser?.id
-        });
+        }));
         showToast.warn(`${type === 'call' ? 'Call' : 'Email'} logged.`);
     };
 
     const handleUpdateStatus = async (status: string) => {
         if (!selectedLead) return;
-        await db.collection('platformLeads').doc(selectedLead.id).update({ status });
+        await db.collection('platformLeads').doc(selectedLead.id).update(cleanUndefinedFields({ status }));
         setSelectedLead({ ...selectedLead, status: status as any });
     };
 

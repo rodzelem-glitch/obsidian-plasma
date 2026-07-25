@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState } from 'react';
@@ -64,7 +65,7 @@ const ReviewHub: React.FC = () => {
             const generateResponseFn = httpsCallable(functions, 'generateReviewResponse');
             const result = await generateResponseFn({ review });
             const data = result.data as any;
-            await db.collection('reviews').doc(review.id).update({ aiDraft: data.text });
+            await db.collection('reviews').doc(review.id).update(cleanUndefinedFields({ aiDraft: data.text }));
         } catch(e: any) {
             console.error(e);
             showToast.warn("Failed to generate response.");
@@ -74,11 +75,11 @@ const ReviewHub: React.FC = () => {
     };
     
     const handleSaveResponse = async (review: Review, content: string) => {
-        await db.collection('reviews').doc(review.id).update({
+        await db.collection('reviews').doc(review.id).update(cleanUndefinedFields({
             responded: true,
             responseContent: content,
             aiDraft: null
-        });
+        }));
     };
 
     const handleDeleteReview = async (reviewId: string) => {

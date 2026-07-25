@@ -26,6 +26,8 @@ interface BusinessRegistrationFormProps {
     platformSettings: PlatformSettings | null;
     consentGiven: boolean;
     setConsentGiven: (val: boolean) => void;
+    termsAccepted: boolean;
+    setTermsAccepted: (val: boolean) => void;
     ccName: string;
     setCcName: (val: string) => void;
     ccNumber: string;
@@ -48,6 +50,7 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
     businessPhone, setBusinessPhone, email, setEmail, password, setPassword,
     promoCode, setPromoCode,
     selectedPlan, setSelectedPlan, platformSettings, consentGiven, setConsentGiven,
+    termsAccepted, setTermsAccepted,
     ccName, setCcName, ccNumber, setCcNumber, ccExp, setCcExp, ccCvc, setCcCvc,
     handleNextStepBusiness, handleRegisterBusiness, isLoading, brandColor, setView,
     handleVerifyPromo, isValidPromo
@@ -136,15 +139,37 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                         </div>
                     </div>
 
-                    <div className="flex items-start gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
-                        <input type="checkbox" id="biz-consent" checked={consentGiven} onChange={e => setConsentGiven(e.target.checked)} className="mt-1 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500" />
-                        <label htmlFor="biz-consent" className="text-xs text-slate-400">
-                            I agree to the <a href="#/terms" target="_blank" className="text-blue-400 hover:underline">SaaS Agreement</a> and consent to receive business communications via SMS/Email.
-                        </label>
+                    <div className="space-y-3">
+                        <div className="flex items-start gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                            <input 
+                                type="checkbox" 
+                                id="biz-terms-agree" 
+                                checked={termsAccepted} 
+                                onChange={e => setTermsAccepted(e.target.checked)} 
+                                className="mt-1 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500" 
+                                required
+                            />
+                            <label htmlFor="biz-terms-agree" className="text-xs text-slate-400">
+                                I agree to the <a href="/#/terms" target="_blank" className="text-blue-400 hover:underline">SaaS Agreement</a> (including telephony & AI usage charges) and <a href="/#/privacy" target="_blank" className="text-blue-400 hover:underline">Privacy Policy</a>.
+                            </label>
+                        </div>
+                        
+                        <div className="flex items-start gap-3 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
+                            <input 
+                                type="checkbox" 
+                                id="biz-consent" 
+                                checked={consentGiven} 
+                                onChange={e => setConsentGiven(e.target.checked)} 
+                                className="mt-1 rounded bg-slate-700 border-slate-600 text-blue-500 focus:ring-blue-500" 
+                            />
+                            <label htmlFor="biz-consent" className="text-xs text-slate-400 leading-relaxed">
+                                I consent to receive automated text messages (SMS) from TekTrakker at the phone number provided, including business communications, account updates, and system notifications. Message frequency varies. Msg & data rates may apply. Reply STOP to cancel at any time. View our <a href="/#/privacy" target="_blank" className="text-blue-400 hover:underline">Privacy Policy</a>.
+                            </label>
+                        </div>
                     </div>
 
                     <button type="submit" className={`w-full py-4 rounded-xl font-bold text-white shadow-lg transition-all ${isValidPromo ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20'}`}>
-                        {isValidPromo ? 'Register (Free Access)' : (isIOS ? 'Next: Add Subscription' : 'Next: Billing Info')}
+                        {isValidPromo ? 'Register (Free Access)' : (isIOS ? 'Next: Add Subscription' : 'Register & Start Free Trial')}
                     </button>
                 </>
             ) : (
@@ -153,7 +178,7 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                         <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Selected Plan</p>
                         <p className="text-2xl font-black text-white">{selectedPlan === 'starter' ? 'TekTrakker Pro' : selectedPlan === 'growth' ? 'TekTrakker Premium' : selectedPlan === 'payments_only' ? 'Payment Processing' : 'TekTrakker Unlimited'}</p>
                         <p className="text-sm text-blue-400 font-bold">${planPrices[selectedPlan as keyof typeof planPrices]} / month</p>
-                        <p className="text-xs text-slate-500 mt-2">{isIOS ? '1 Month Auto-Renewing Subscription' : isPaymentsOnly ? 'Billed Monthly • Cancel Anytime' : '30 Day Free Trial • Cancel Anytime'}</p>
+                        <p className="text-xs text-slate-500 mt-2">{isIOS ? '1 Month Auto-Renewing Subscription' : isPaymentsOnly ? 'Billed Monthly • Cancel Anytime' : '14 Day Free Trial • Cancel Anytime'}</p>
                         {isIOS && (
                             <div className="mt-4 text-[10px] text-slate-400 text-left leading-relaxed space-y-2 border-t border-slate-700/50 pt-4">
                                 <p>Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period.</p>
@@ -171,7 +196,7 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                             <CreditCard className="text-blue-400 mt-1" size={20} />
                             <div>
                                 <p className="text-xs font-bold text-blue-300">Secure Payment Method</p>
-                                <p className="text-[10px] text-slate-400 mt-1">{isPaymentsOnly ? 'Your card will be charged $10 today to activate your account.' : 'Your card will not be charged until your 30-day trial ends. We verify validity with a $0 authorization.'}</p>
+                                <p className="text-[10px] text-slate-400 mt-1">{isPaymentsOnly ? 'Your card will be charged $10 today to activate your account.' : 'Your card will not be charged until your 14-day trial ends. We verify validity with a $0 authorization.'}</p>
                             </div>
                         </div>
                         

@@ -19,18 +19,18 @@ const SalesSidebar: React.FC<SalesSidebarProps> = ({ user, onLogout, isOpen = fa
 
   const navGroups = [
     {
-        group: 'Sales Pipeline',
+        group: 'Proposals',
         items: [
             { path: '/sales/dashboard', label: 'Overview', icon: LayoutDashboard },
             { path: '/sales/leads', label: 'My Leads', icon: Users },
             { path: '/sales/pipeline', label: 'Pipeline', icon: Target },
+            { path: '/admin/project-proposals', label: 'Project Proposals', icon: FileText },
         ]
     },
     {
         group: 'Outreach',
         items: [
             { path: '/sales/campaigns', label: 'Campaigns', icon: Rocket },
-            { path: '/sales/mailing-lists', label: 'Mailing Lists', icon: ListChecks },
             { path: '/sales/messages', label: 'Messages', icon: MessageSquare },
         ]
     },

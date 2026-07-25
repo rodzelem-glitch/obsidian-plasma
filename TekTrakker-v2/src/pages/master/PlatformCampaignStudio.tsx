@@ -11,8 +11,9 @@ import Table from 'components/ui/Table';
 import Textarea from 'components/ui/Textarea';
 import MailingListManager from './components/MailingListManager';
 import type { MailingList, MailingListContact } from './components/MailingListManager';
+import OutreachSmtpSettings from './components/OutreachSmtpSettings';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { getBaseUrl } from 'lib/utils';
+import { getBaseUrl , cleanUndefinedFields } from 'lib/utils';
 import DOMPurify from 'dompurify';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
@@ -23,7 +24,8 @@ import OutreachROI from '../sales/campaigns/components/OutreachROI';
 import {
     Sparkles, Send, Code, Eye, RefreshCw, Search, Filter,
     Users, Building2, Mail, ListChecks, ChevronDown, Upload, Image as ImageIcon, BookOpen, Save,
-    Play, Pause, Trash2, Plus, Target, Clock, BarChart3, TrendingUp, AlertCircle, Loader2, ArrowLeft, GripVertical, MessageSquare, BarChart2
+    Play, Pause, Trash2, Plus, Target, Clock, BarChart3, TrendingUp, AlertCircle, Loader2, ArrowLeft, GripVertical, MessageSquare, BarChart2,
+    Settings as SettingsIcon
 } from 'lucide-react';
 
 type AudienceSource = 'organizations' | 'org_customers' | 'mailing_lists';
@@ -70,7 +72,7 @@ const PlatformCampaignStudio: React.FC = () => {
     const [isLoadingData, setIsLoadingData] = useState(true);
 
     // UI state
-    const [activeView, setActiveView] = useState<'compose' | 'drip' | 'lists' | 'templates' | 'analytics'>(() => {
+    const [activeView, setActiveView] = useState<'compose' | 'drip' | 'lists' | 'templates' | 'analytics' | 'settings'>(() => {
         return location.pathname.includes('drip-campaigns') ? 'drip' : 'compose';
     });
     const [audienceSource, setAudienceSource] = useState<AudienceSource>('organizations');
@@ -259,7 +261,7 @@ USER PROMPT: ${aiPrompt}`;
         if (!subject.trim() || !htmlContent.trim()) { toast.error('Subject and content required'); return; }
         setIsSending(true);
         try {
-            const campaignRef = await db.collection('marketingCampaigns').add({
+            const campaignRef = await db.collection('marketingCampaigns').add(cleanUndefinedFields({
                 organizationId: 'platform',
                 subject: subject.trim(),
                 sentAt: new Date().toISOString(),
@@ -267,13 +269,13 @@ USER PROMPT: ${aiPrompt}`;
                 readCount: 0,
                 audienceSource,
                 sentBy: state.currentUser?.email || 'master_admin'
-            });
+            }));
 
             const batches = [];
             let currentBatch = db.batch();
             let count = 0;
             selectedEmails.forEach(email => {
-                currentBatch.set(db.collection('mail_queue').doc(), {
+                currentBatch.set(cleanUndefinedFields(db.collection('mail_queue')).doc(), {
                     to: [email],
                     message: { subject: subject.trim(), html: htmlContent, replyTo: state.currentUser?.email || 'noreply@tektrakker.com' },
                     organizationId: 'platform',
@@ -303,14 +305,14 @@ USER PROMPT: ${aiPrompt}`;
 
     const handleSaveTemplate = async () => {
         if (!subject.trim() || !htmlContent.trim()) { toast.warn('Need subject + content to save'); return; }
-        await db.collection('platform_campaign_templates').add({
+        await db.collection('platform_campaign_templates').add(cleanUndefinedFields({
             name: subject.trim(),
             subject: subject.trim(),
             htmlContent,
             aiPrompt,
             brandingOrgId,
             createdAt: new Date().toISOString()
-        });
+        }));
         toast.success('Template saved to library!');
     };
 
@@ -349,7 +351,7 @@ USER PROMPT: ${aiPrompt}`;
         };
 
         try {
-            await db.collection('sales_campaigns').doc(campaign.id).set(campaign);
+            await db.collection('sales_campaigns').doc(campaign.id).set(cleanUndefinedFields(campaign));
             setIsCreateModalOpen(false);
             setNewCampaign({ 
                 name: '', type: 'email', audience: 'new_leads', 
@@ -382,7 +384,7 @@ USER PROMPT: ${aiPrompt}`;
               { "name": "Phase 2 - Pain Point", "subject": "Email Subject", "content": "Body content here.", "delayDays": 3 }
             ]`;
 
-            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.5-flash' });
+            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.6-flash' });
 
             let text = result.data.text.replace(/```json/g, '').replace(/```/g, '').trim();
             const generatedPhases = JSON.parse(text);
@@ -408,7 +410,7 @@ USER PROMPT: ${aiPrompt}`;
     const toggleCampaignStatus = async (camp: Campaign) => {
         const nextStatus = camp.status === 'active' ? 'paused' : 'active';
         try {
-            await db.collection('sales_campaigns').doc(camp.id).update({ status: nextStatus });
+            await db.collection('sales_campaigns').doc(camp.id).update(cleanUndefinedFields({ status: nextStatus }));
             toast.success(`Sequence ${nextStatus === 'active' ? 'activated' : 'paused'}!`);
         } catch (e) {
             toast.error("Update failed.");
@@ -449,6 +451,7 @@ USER PROMPT: ${aiPrompt}`;
         { id: 'lists' as const, label: 'Mailing Lists', icon: ListChecks },
         { id: 'templates' as const, label: 'Message Templates', icon: BookOpen },
         { id: 'analytics' as const, label: 'Analytics & ROI', icon: BarChart2 },
+        { id: 'settings' as const, label: 'Outreach SMTP', icon: SettingsIcon },
     ];
 
     return (
@@ -472,6 +475,8 @@ USER PROMPT: ${aiPrompt}`;
             {activeView === 'lists' && <MailingListManager />}
 
             {activeView === 'templates' && <TemplateDesigner />}
+
+            {activeView === 'settings' && <OutreachSmtpSettings />}
 
             {activeView === 'analytics' && (
                 <div className="space-y-6">

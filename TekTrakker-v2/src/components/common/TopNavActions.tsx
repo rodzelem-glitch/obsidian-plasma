@@ -1,8 +1,9 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect } from 'react';
 import type { User } from 'types';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
-import { QrCode, X, User as UserIcon, PhoneCall, Languages, ChevronDown } from 'lucide-react';
+import { QrCode, X, User as UserIcon, Languages, ChevronDown } from 'lucide-react';
 import EmployeeProfileModal from '../modals/EmployeeProfileModal';
 import { db } from 'lib/firebase';
 import VirtualWorker from '../ui/VirtualWorker';
@@ -24,9 +25,7 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
     const [showNotifications, setShowNotifications] = useState(false);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-    const [isPhoneVisible, setIsPhoneVisible] = useState(() => {
-        return localStorage.getItem('rc-widget-hidden') !== 'true';
-    });
+
 
     useEffect(() => {
         setShowNotifications(false);
@@ -51,7 +50,7 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
         n.userId === user.id || 
         n.userId === user.email || 
         n.userId === 'all' || 
-        (user.role === 'master_admin' && n.userId === 'rodzelem@gmail.com') ||
+        (user.role === 'master_admin' && (n.userId === 'rodzelem@gmail.com' || n.userId === 'ryanvavrecan@gmail.com')) ||
         (n.userId === 'all_admins' && (user.role === 'admin' || user.role === 'master_admin' || user.role === 'both'))
     );
     const unreadCount = myNotifications.filter(n => !n.read).length;
@@ -171,20 +170,9 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
 
     return (
         <>
-            <style>{`
-                ${!isPhoneVisible ? '#rc-widget { display: none !important; }' : ''}
-                @media (max-width: 767px) {
-                    #rc-widget { display: none !important; }
-                }
-            `}</style>
             <div className="flex items-center space-x-1 sm:space-x-3">
                 <VirtualWorker variant="nav" />
                 <LiveSupportFloatingButton variant="nav" />
-                <button onClick={() => {
-                    const newVisible = !isPhoneVisible;
-                    setIsPhoneVisible(newVisible);
-                    localStorage.setItem('rc-widget-hidden', (!newVisible).toString());
-                }} className={`hidden md:block p-1.5 sm:p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${!isPhoneVisible ? 'text-gray-400' : 'text-orange-500 bg-orange-50 dark:bg-orange-500/10'}`} title={t("Toggle Phone Widget")}><PhoneCall className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                 
                 {/* Language Selector Dropdown */}
                 <div className="relative lang-selector-container">
@@ -257,7 +245,7 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
                                 <button className="text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors" onClick={() => {
                                     dispatch({type: 'MARK_ALL_READ', payload: user.id});
                                     myNotifications.filter(n => !n.read).forEach(n => {
-                                        db.collection('notifications').doc(n.id).update({ read: true }).catch(console.error);
+                                        db.collection('notifications').doc(n.id).update(cleanUndefinedFields({ read: true })).catch(console.error);
                                     });
                                 }}>Mark all as read</button>
                             </div>
@@ -273,7 +261,7 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
                                     className={`p-4 border rounded-xl dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors ${!n.read ? 'bg-primary-50/50 border-primary-100 dark:bg-primary-900/10 dark:border-primary-800/30' : 'border-slate-100'}`} 
                                     onClick={() => { 
                                         dispatch({type:'MARK_NOTIFICATION_READ', payload: n.id}); 
-                                        if (!n.read) db.collection('notifications').doc(n.id).update({ read: true }).catch(console.error);
+                                        if (!n.read) db.collection('notifications').doc(n.id).update(cleanUndefinedFields({ read: true })).catch(console.error);
                                         if(n.link) navigate(n.link); 
                                         setShowNotifications(false); 
                                     }}
@@ -281,7 +269,7 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             e.preventDefault();
                                             dispatch({type:'MARK_NOTIFICATION_READ', payload: n.id}); 
-                                            if (!n.read) db.collection('notifications').doc(n.id).update({ read: true }).catch(console.error);
+                                            if (!n.read) db.collection('notifications').doc(n.id).update(cleanUndefinedFields({ read: true })).catch(console.error);
                                             if(n.link) navigate(n.link); 
                                             setShowNotifications(false);
                                         }

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { cleanUndefinedFields } from '../../lib/utils';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -35,6 +36,8 @@ const VirtualWorkerReports: React.FC = () => {
   const [shareEmail, setShareEmail] = useState('');
   const [shareType, setShareType] = useState<'messaging' | 'email'>('messaging');
   const [searchMember, setSearchMember] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
+  const reportContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const user = state.currentUser;
@@ -125,7 +128,7 @@ const VirtualWorkerReports: React.FC = () => {
     };
 
     try {
-        await db.collection('messages').doc(msgId).set(msg);
+        await db.collection('messages').doc(msgId).set(cleanUndefinedFields(msg));
         showToast.success(`Report shared with ${targetName}`);
         setIsShareModalOpen(false);
     } catch (err) {
@@ -138,17 +141,92 @@ const VirtualWorkerReports: React.FC = () => {
     return <div className="p-8 text-center text-slate-500">Loading your AI reports...</div>;
   }
 
-  const handleDownload = (task: AiTask) => {
-    if (!task.resultMarkdown) return;
-    const blob = new Blob([task.resultMarkdown], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `AI_Report_${new Date(task.queuedAt).getTime()}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const handleDownload = async (task: AiTask) => {
+    if (!task.resultMarkdown || !reportContentRef.current) return;
+    setIsDownloading(true);
+    try {
+      // @ts-ignore - html2pdf has no types available right now
+      const html2pdf = (await import('html2pdf.js')).default;
+      
+      const element = reportContentRef.current;
+      const clone = element.cloneNode(true) as HTMLElement;
+      
+      // Clean up clone styles for PDF generation (making sure it's printable light mode)
+      clone.style.boxShadow = 'none';
+      clone.style.margin = '0';
+      clone.style.padding = '32px';
+      clone.style.width = '790px'; // standard Letter width
+      clone.style.height = 'auto';
+      clone.style.overflow = 'visible';
+      clone.style.backgroundColor = '#ffffff';
+      clone.style.color = '#0b0f19';
+      
+      // Force light mode
+      clone.classList.remove('dark', 'dark:prose-invert');
+      clone.classList.add('prose-slate');
+      
+      // Clean up dark mode specific text colors and bg classes from all nested elements
+      const allElements = clone.querySelectorAll('*');
+      allElements.forEach((el: any) => {
+        // Remove tailwind dark classes
+        el.classList.forEach((className: string) => {
+          if (className.startsWith('dark:')) {
+            el.classList.remove(className);
+          }
+        });
+        
+        // Remove generic text-white / text-slate-100 etc. that would make text invisible on white background
+        if (el.classList.contains('text-white') || el.classList.contains('text-slate-100') || el.classList.contains('text-slate-200')) {
+          el.classList.remove('text-white', 'text-slate-100', 'text-slate-200');
+          el.style.color = '#0b0f19';
+        }
+        
+        // Adjust background colors to be printable
+        if (el.classList.contains('bg-slate-900') || el.classList.contains('bg-slate-800') || el.classList.contains('bg-slate-950') || el.classList.contains('bg-indigo-950')) {
+          el.classList.remove('bg-slate-900', 'bg-slate-800', 'bg-slate-950', 'bg-indigo-950');
+          el.style.backgroundColor = '#f8fafc';
+          el.style.color = '#0b0f19';
+        }
+        
+        // Ensure tables and borders look good
+        if (el.tagName === 'TABLE' || el.tagName === 'TH' || el.tagName === 'TD') {
+          el.style.borderColor = '#cbd5e1';
+          el.style.color = '#0b0f19';
+        }
+      });
+      
+      // Temporarily append clone to body to compute styles
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'absolute';
+      wrapper.style.left = '-9999px';
+      wrapper.style.top = '-9999px';
+      wrapper.appendChild(clone);
+      document.body.appendChild(wrapper);
+      
+      const cleanPrompt = task.prompt.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const dateStr = new Date(task.queuedAt).toISOString().split('T')[0];
+      const fileName = `AI_Report_${cleanPrompt}_${dateStr}.pdf`;
+      
+      const opt: any = {
+        margin:       [0.4, 0.4, 0.4, 0.4], // 0.4in margins
+        filename:     fileName,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 790, backgroundColor: '#ffffff' },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+      
+      const pdfDataUri = await html2pdf().from(clone).set(opt).output('datauristring');
+      const { downloadFile } = await import('../../lib/downloadHelper');
+      await downloadFile(pdfDataUri, fileName);
+      
+      document.body.removeChild(wrapper);
+      showToast.success("PDF report downloaded successfully.");
+    } catch (err) {
+      console.error("Failed to generate/download PDF:", err);
+      showToast.error("Failed to download PDF report.");
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const filteredMembers = state.users.filter(u => 
@@ -249,8 +327,15 @@ const VirtualWorkerReports: React.FC = () => {
                                     <Button variant="outline" size="sm" onClick={() => setIsShareModalOpen(true)} className="rounded-lg shadow-sm border-slate-200">
                                         <Share2 size={16} className="mr-2" /> Share
                                     </Button>
-                                    <Button variant="outline" size="sm" onClick={() => handleDownload(selectedTask)} className="rounded-lg shadow-sm border-slate-200">
-                                        <Download size={16} className="mr-2" /> Download
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm" 
+                                        onClick={() => handleDownload(selectedTask)} 
+                                        disabled={isDownloading}
+                                        className="rounded-lg shadow-sm border-slate-200"
+                                    >
+                                        <Download size={16} className="mr-2" /> 
+                                        {isDownloading ? 'Generating PDF...' : 'Download PDF'}
                                     </Button>
                                 </>
                             )}
@@ -290,7 +375,7 @@ const VirtualWorkerReports: React.FC = () => {
                         )}
 
                         {selectedTask.status === 'Completed' && selectedTask.resultMarkdown && (
-                            <div className="prose prose-slate prose-indigo dark:prose-invert max-w-none">
+                            <div ref={reportContentRef} className="prose prose-slate prose-indigo dark:prose-invert max-w-none">
                                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
                                     {selectedTask.resultMarkdown}
                                 </ReactMarkdown>

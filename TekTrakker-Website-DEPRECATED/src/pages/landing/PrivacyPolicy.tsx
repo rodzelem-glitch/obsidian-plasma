@@ -2,10 +2,16 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../../components/ui/Logo';
+import { Helmet } from 'react-helmet-async';
 
 const PrivacyPolicy: React.FC = () => {
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans pt-safe">
+      <Helmet>
+        <title>Privacy Policy | TekTrakker Data Security & Disclosures</title>
+        <meta name="description" content="Read the official privacy policy and data usage disclosures for the TekTrakker platform, including Google Play Store location data compliance." />
+        <meta name="robots" content="noindex, follow" />
+      </Helmet>
       <nav className="border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-md z-50">
           <div className="max-w-7xl mx-auto px-6 h-16 flex justify-between items-center">
               <Link to="/" className="flex items-center gap-2 text-slate-500 hover:text-slate-900 transition-colors">
@@ -85,7 +91,12 @@ const PrivacyPolicy: React.FC = () => {
             <h3 className="text-xl font-bold mt-6 mb-2">7. Data Security</h3>
             <p>We have implemented industry-standard encryption and security measures to prevent your personal data from being accidentally lost, used, or accessed in an unauthorized way.</p>
 
-            <h3 className="text-xl font-bold mt-6 mb-2">8. Contact Details</h3>
+            <h3 className="text-xl font-bold mt-6 mb-2">8. SMS Consent & Opt-In Policy</h3>
+            <p>By providing your phone number, you consent to receive text messages (SMS) from TekTrakker. These messages may include customer support replies, job scheduling updates, invoice notifications, and service alerts. Message frequency varies based on your account activity, typically up to 4 messages per month. Message and data rates may apply. You can opt out at any time by replying STOP. For help, reply HELP.</p>
+            <p className="mt-2 font-bold">Mobile Information Non-Sharing Statement:</p>
+            <p>No mobile information will be shared with third parties or affiliates for marketing or promotional purposes. All the above categories exclude text messaging originator opt-in data and consent; this information will not be shared with any third parties.</p>
+
+            <h3 className="text-xl font-bold mt-6 mb-2">9. Contact Details</h3>
             <p>If you have any questions about this privacy policy or our privacy practices, please contact us at:</p>
             <p className="font-bold">TekTrakker Privacy Team</p>
             <a href="mailto:platform@tektrakker.com" className="text-blue-600 hover:underline">platform@tektrakker.com</a>

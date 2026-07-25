@@ -16,6 +16,7 @@ const WebCameraModal: React.FC<WebCameraModalProps> = ({ isOpen, onClose, onCapt
     const [stream, setStream] = useState<MediaStream | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isMirror, setIsMirror] = useState(false);
+    const [isCaptured, setIsCaptured] = useState(false);
 
     const stopCamera = () => {
         if (stream) {
@@ -26,6 +27,7 @@ const WebCameraModal: React.FC<WebCameraModalProps> = ({ isOpen, onClose, onCapt
 
     useEffect(() => {
         if (isOpen) {
+            setIsCaptured(false);
             const startCamera = async () => {
                 setError(null);
                 try {
@@ -49,12 +51,14 @@ const WebCameraModal: React.FC<WebCameraModalProps> = ({ isOpen, onClose, onCapt
     }, [isOpen]);
 
     const capturePhoto = () => {
+        if (isCaptured) return;
         if (videoRef.current && canvasRef.current) {
             const video = videoRef.current;
             const canvas = canvasRef.current;
             const context = canvas.getContext('2d');
 
             if (context) {
+                setIsCaptured(true);
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 
@@ -103,7 +107,7 @@ const WebCameraModal: React.FC<WebCameraModalProps> = ({ isOpen, onClose, onCapt
                 <div className="flex flex-col gap-3 p-2">
                     <Button 
                         onClick={capturePhoto} 
-                        disabled={!stream}
+                        disabled={!stream || isCaptured}
                         className="w-full h-14 bg-primary-600 hover:bg-primary-700 text-white font-black text-lg rounded-2xl flex items-center justify-center gap-3 shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
                     >
                         <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">

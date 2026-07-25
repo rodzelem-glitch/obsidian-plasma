@@ -15,8 +15,22 @@ service cloud.firestore {
     }
 
     function getUserData() {
-      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
-      return exists(userPath) ? get(userPath).data : null;
+      return request.auth == null ? null : (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) 
+          ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data 
+          : null
+      );
+    }
+
+    function isTerminalJobState(jobData) {
+      return jobData != null && (
+        jobData.get('jobStatus', '') == 'Cancelled' ||
+        jobData.get('jobStatus', '') == 'Completed' ||
+        jobData.get('invoiceStatus', '') == 'Paid' ||
+        jobData.get('invoiceStatus', '') == 'Closed' ||
+        (jobData.get('invoice', null) != null && 
+         (jobData.get('invoice', {}).get('status', '') == 'Paid' || jobData.get('invoice', {}).get('status', '') == 'Closed'))
+      );
     }
 
     // ROBUST ORG CHECK: Prioritize token claims (fast), fallback to simple UID check
@@ -24,9 +38,47 @@ service cloud.firestore {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
       let isDirectMember = isSignedIn() && (
         (request.auth.token.organizationId != null && request.auth.token.organizationId == resourceOrgId) ||
-        (exists(userPath) && get(userPath).data.get('organizationId', '') == resourceOrgId)
+        (exists(userPath) && get(userPath).data.get('organizationId', '') == resourceOrgId) ||
+        (request.auth.token.email != null && 
+         exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('organizationId', '') == resourceOrgId)
       );
       return isDirectMember || isMaster() || isPlatformSales() || isOrgFranchiseAdmin(resourceOrgId);
+    }
+
+    function isDirectOrgMember(resourceOrgId) {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isSignedIn() && (
+        (request.auth.token.organizationId != null && request.auth.token.organizationId == resourceOrgId) ||
+        (exists(userPath) && get(userPath).data.get('organizationId', '') == resourceOrgId) ||
+        (request.auth.token.email != null && 
+         exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('organizationId', '') == resourceOrgId)
+      );
+    }
+
+    function isDirectAssignedPartner(jobData) {
+      return isSignedIn() && 
+             jobData.assignedPartnerId != null &&
+             isDirectOrgMember(jobData.assignedPartnerId);
+    }
+
+    function isSubcontractor() {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isSignedIn() && (
+        request.auth.token.get('role', '') == 'Subcontractor' ||
+        (exists(userPath) && get(userPath).data.get('role', '') == 'Subcontractor')
+      );
+    }
+
+    function isAssignedSubcontractor(jobData) {
+      return isSubcontractor() && (
+        jobData.get('assignedTechnicianId', '') == request.auth.uid ||
+        jobData.get('assistants', []).hasAny([request.auth.uid]) ||
+        jobData.get('assignedCrew', []).hasAny([request.auth.uid]) ||
+        (jobData.get('subcontractorId', null) != null && jobData.get('subcontractorId', null) == request.auth.uid) ||
+        (jobData.get('subcontractorEmail', null) != null && request.auth.token.email != null && jobData.get('subcontractorEmail', null) == request.auth.token.email)
+      );
     }
     
     function isFranchiseAdmin(docFranchiseId) {
@@ -36,92 +88,117 @@ service cloud.firestore {
 
     function isOrgFranchiseAdmin(orgId) {
       let orgPath = /databases/$(database)/documents/organizations/$(orgId);
-      let orgData = exists(orgPath) ? get(orgPath).data : null;
-      return orgData != null && isFranchiseAdmin(orgData.get('franchiseId', 'X'));
+      let orgData = exists(orgPath) ? get(orgPath).data : {};
+      return exists(orgPath) && isFranchiseAdmin(orgData.get('franchiseId', 'X'));
     }
     
     // Checks if user is an admin (UID or Email keyed)
     function isOrgAdmin() {
-      let userPathByUid = /databases/$(database)/documents/users/$(request.auth.uid);
-      let userPathByEmail = /databases/$(database)/documents/users/$(request.auth.token.email);
-      let userData = exists(userPathByUid) ? get(userPathByUid).data : 
-                     (exists(userPathByEmail) ? get(userPathByEmail).data : null);
-                     
       return isSignedIn() && (
-        (request.auth.token.role != null && request.auth.token.role in ['admin', 'master_admin', 'both', 'supervisor']) ||
-        (userData != null && (userData.role in ['admin', 'master_admin', 'both', 'supervisor']))
+        request.auth.token.get('role', '') in ['admin', 'master_admin', 'both', 'supervisor', 'Admin', 'Master_Admin', 'Both', 'Supervisor'] ||
+        (
+          request.auth.uid != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['admin', 'master_admin', 'both', 'supervisor', 'Admin', 'Master_Admin', 'Both', 'Supervisor']
+        ) ||
+        (
+          request.auth.token.email != null && exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('role', '') in ['admin', 'master_admin', 'both', 'supervisor', 'Admin', 'Master_Admin', 'Both', 'Supervisor']
+        )
       );
     }
 
     function isMaster() {
       return request.auth != null && (
-        request.auth.token.role == 'master_admin' || 
-        request.auth.token.role == 'both' ||
-        (getUserData() != null && (getUserData().role == 'master_admin' || getUserData().role == 'both'))
+        request.auth.token.get('role', '') == 'master_admin' || 
+        request.auth.token.get('role', '') == 'both' ||
+        (getUserData() != null && (getUserData().get('role', '') == 'master_admin' || getUserData().get('role', '') == 'both'))
       );
     }
     
     // Checks if user is a Platform Sales Rep
     function isPlatformSales() {
       return isSignedIn() && (
-        (request.auth.token.role != null && request.auth.token.role == 'platform_sales') ||
-        (getUserData() != null && getUserData().role == 'platform_sales')
+        request.auth.token.get('role', '') == 'platform_sales' ||
+        (getUserData() != null && getUserData().get('role', '') == 'platform_sales')
       );
     }
 
     // Checks if user is a customer (UID or Email keyed)
     function isCustomer() {
-      let userPathByUid = /databases/$(database)/documents/users/$(request.auth.uid);
-      let userPathByEmail = /databases/$(database)/documents/users/$(request.auth.token.email);
-      let userData = exists(userPathByUid) ? get(userPathByUid).data : 
-                     (exists(userPathByEmail) ? get(userPathByEmail).data : null);
-                     
       return isSignedIn() && (
-        (request.auth.token.role != null && request.auth.token.role == 'customer') ||
-        (userData != null && userData.role == 'customer')
+        request.auth.token.get('role', '') == 'customer' ||
+        (
+          request.auth.uid != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'customer'
+        ) ||
+        (
+          request.auth.token.email != null && exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('role', '') == 'customer'
+        )
       );
+    }
+
+    function isCustomerContactOf(customerId) {
+      let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(userPath) && 
+             get(userPath).data.get('customerId', '') == customerId;
     }
 
     // Checks if the user is the customer assigned to this document
     function isCustomerOwner(resourceData) {
       // Direct UID match (for Doc ID) or field match
       return isSignedIn() && resourceData != null && (
-        (resourceData.userId != null && resourceData.userId == request.auth.uid) ||
-        (resourceData.customerId != null && resourceData.customerId == request.auth.uid) ||
-        (resourceData.email != null && request.auth.token.email != null && resourceData.email == request.auth.token.email) ||
-        (resourceData.customerEmail != null && request.auth.token.email != null && resourceData.customerEmail == request.auth.token.email) ||
-        (resourceData.id != null && resourceData.id == request.auth.uid)
+        (resourceData.get('userId', null) != null && resourceData.get('userId', null) == request.auth.uid) ||
+        (resourceData.get('customerId', null) != null && (resourceData.get('customerId', null) == request.auth.uid || isCustomerContactOf(resourceData.get('customerId', null)))) ||
+        (resourceData.get('email', null) != null && request.auth.token.email != null && resourceData.get('email', null) == request.auth.token.email) ||
+        (resourceData.get('customerEmail', null) != null && request.auth.token.email != null && resourceData.get('customerEmail', null) == request.auth.token.email) ||
+        (resourceData.get('id', null) != null && (resourceData.get('id', null) == request.auth.uid || isCustomerContactOf(resourceData.get('id', null)))) ||
+        (resourceData.get('subcontractorId', null) != null && resourceData.get('subcontractorId', null) == request.auth.uid) ||
+        (resourceData.get('subcontractorEmail', null) != null && request.auth.token.email != null && resourceData.get('subcontractorEmail', null) == request.auth.token.email)
       );
     }
 
     // Check if the user's organization is the assigned partner for the job
     function isAssignedPartner(resourceData) {
       return isSignedIn() && 
-             resourceData.assignedPartnerId != null &&
-             isOrgMember(resourceData.assignedPartnerId);
+             resourceData.get('assignedPartnerId', null) != null &&
+             isOrgMember(resourceData.get('assignedPartnerId', null));
     }
     
     // --- Core Collections ---
 
     match /users/{userId} {
-      allow get: if isMaster() 
-                 || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null)))
-                 || isUser(userId) 
-                 || (isSignedIn() && request.auth.token.email != null && request.auth.token.email == userId) 
-                 || (isSignedIn() && resource != null && resource.data.email != null && request.auth.token.email != null && request.auth.token.email == resource.data.email)
-                 || (resource != null && isOrgMember(resource.data.organizationId));
+      allow get: if isSignedIn();
                  
       allow list: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || (resource != null && isOrgMember(resource.data.organizationId)) || (isSignedIn() && resource != null && resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email); 
       
-      allow write: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isUser(userId) || (isOrgAdmin() && resource != null && isOrgMember(resource.data.organizationId)) || (isSignedIn() && request.auth.token.email != null && request.auth.token.email == userId);
+      allow write: if isMaster() 
+                 || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) 
+                 || isUser(userId) 
+                 || (isOrgAdmin() && resource != null && isOrgMember(resource.data.organizationId)) 
+                 || (isSignedIn() && request.auth.token.email != null && request.auth.token.email == userId)
+                 || (isSubcontractor() && resource != null && resource.data.get('subcontractorId', '') == request.auth.uid)
+                 || (isPlatformSales() && (
+                      isUser(userId)
+                       || (resource != null && resource.data.get('organizationId', '') != 'platform' && (
+                            resource.data.get('role', '') == 'customer' 
+                            || resource.data.get('role', '') == 'both' 
+                            || resource.data.get('role', '') == 'admin'
+                          ))
+                     ));
       allow create: if isSignedIn();
+
+      match /private/sensitive {
+        allow read, write: if isUser(userId) || isOrgAdmin() || isMaster();
+      }
     }
 
     // Organizations: Public read for login/branding, Admin write only.
     match /organizations/{orgId} {
       allow read: if true; 
       allow create: if isSignedIn();
-      allow update, delete: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      allow update: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin()) || (isOrgMember(orgId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nextProposalNum', 'nextInvoiceNum']));
+      allow delete: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
       
       match /secrets/{secretId} {
          allow read, write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
@@ -148,7 +225,7 @@ service cloud.firestore {
       }
       
       match /jobs/{jobId}/ai_messages/{msgId} {
-         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+         allow read, write: if isDirectOrgMember(orgId);
       }
 
       match /blogPosts/{postId} {
@@ -170,13 +247,11 @@ service cloud.firestore {
       }
 
       match /aiLongTasks/{taskId} {
-         allow read: if isMaster() || isPlatformSales() || isOrgMember(orgId);
-         allow write: if isMaster() || isOrgMember(orgId);
+         allow read, write: if isDirectOrgMember(orgId);
       }
 
       match /aiTasks/{taskId} {
-         allow read: if isMaster() || isPlatformSales() || isOrgMember(orgId);
-         allow write: if isMaster() || isOrgMember(orgId);
+         allow read, write: if isDirectOrgMember(orgId);
       }
 
       match /active_calls/{callId} {
@@ -189,19 +264,16 @@ service cloud.firestore {
          allow write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
       }
 
-      match /customizations/{customId} {
-         allow read: if isOrgMember(orgId);
-         allow write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      match /jobs/{jobId}/companycam_photos/{photoId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
       }
 
-      match /synthesizedTools/{toolId} {
-         allow read: if isOrgMember(orgId);
-         allow write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      match /aiVoiceLogs/{logId} {
+         allow read, write: if isDirectOrgMember(orgId);
       }
 
-      match /synthesizedData/{dataId} {
-         allow read: if isOrgMember(orgId);
-         allow write: if isOrgMember(orgId);
+      match /synthesizedData/{docId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
       }
     }
 
@@ -212,35 +284,86 @@ service cloud.firestore {
 
     // Customers: Accessible by organization members or the customer themselves.
     match /customers/{customerId} {
+      allow get: if isSignedIn();
       allow read: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || (resource != null && isOrgMember(resource.data.organizationId)) || (resource != null && isCustomerOwner(resource.data)) || request.auth.uid == customerId || (isSignedIn() && resource != null && resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email) || (isSignedIn() && resource != null && resource.data.userId == request.auth.uid);
       allow write: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId)) || (resource != null && isCustomerOwner(resource.data)) || request.auth.uid == customerId;
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || (request.resource.data.email != null && request.auth.token.email != null && request.resource.data.email == request.auth.token.email) || request.auth.uid == customerId;
+      allow create: if isMaster() || (isOrgMember(request.resource.data.organizationId)) || (request.resource.data.email != null && request.auth.token.email != null && request.resource.data.email == request.auth.token.email) || request.auth.uid == customerId;
+
+      match /communications/{commId} {
+        allow read, write: if isSignedIn();
+      }
     }
 
     match /appointments/{appointmentId} {
-      allow read: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow write: if isMaster() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId);
+      allow read: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || (resource != null && isOrgMember(resource.data.organizationId)) || (resource != null && isCustomerOwner(resource.data));
       allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || isCustomerOwner(request.resource.data);
-    }
-
-    match /events/{eventId} {
-      allow read: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId);
-      allow write: if isMaster() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId);
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+      allow update: if isMaster() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || (resource != null && isOrgMember(resource.data.organizationId));
+      allow delete: if resource == null || isMaster() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || (resource != null && isOrgMember(resource.data.organizationId));
     }
 
     match /jobs/{jobId} {
       allow get: if true;
-      allow list: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isAssignedPartner(resource.data) || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow write: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId) || isAssignedPartner(resource.data) || isCustomerOwner(resource.data);
-      allow create: if isMaster() || isPlatformSales() || isOrgMember(request.resource.data.organizationId);
+      allow list: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isAssignedPartner(resource.data) || isCustomerOwner(resource.data);
+      allow list: if isOrgMember(resource.data.organizationId) && !isSubcontractor();
+      allow list: if isOrgMember(resource.data.organizationId) && isAssignedSubcontractor(resource.data);
+      allow create: if isMaster() || isPlatformSales() || (isOrgMember(request.resource.data.organizationId) && !isSubcontractor());
+      allow update: if isMaster() 
+                    || isPlatformSales() 
+                    || isOrgAdmin()
+                    || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) 
+                    || (resource != null && isOrgMember(resource.data.get('organizationId', '')) && !isPlatformSales() && (!isSubcontractor() || isAssignedSubcontractor(resource.data)))
+                    || (request.resource != null && isOrgMember(request.resource.data.get('organizationId', '')) && !isPlatformSales() && (!isSubcontractor() || isAssignedSubcontractor(request.resource.data)))
+                    || (resource != null && isAssignedPartner(resource.data))
+                    || (
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['invoiceSignature', 'invoiceSignedDate', 'customerFeedback'])
+                       )
+                    || (
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['proposalId', 'invoice', 'updatedAt']) &&
+                         request.resource.data.proposalId != null &&
+                         exists(/databases/$(database)/documents/proposals/$(request.resource.data.proposalId)) &&
+                         get(/databases/$(database)/documents/proposals/$(request.resource.data.proposalId)).data.get('jobId', '') == jobId
+                       )
+                    || (
+                          isCustomerOwner(resource.data) &&
+                          (
+                            !isTerminalJobState(resource.data) 
+                            || (
+                                 request.resource.data.diff(resource.data).affectedKeys().hasOnly(['invoiceSignature', 'invoiceSignedDate', 'customerFeedback', 'invoice']) &&
+                                 (
+                                   !request.resource.data.diff(resource.data).affectedKeys().hasAny(['invoice']) ||
+                                   (
+                                     resource.data.invoice == null ||
+                                     (
+                                       request.resource.data.invoice.diff(resource.data.invoice).affectedKeys().hasOnly(['status', 'opened', 'openedAt']) &&
+                                       (
+                                         !request.resource.data.invoice.diff(resource.data.invoice).affectedKeys().hasAny(['status']) ||
+                                         request.resource.data.invoice.status == 'Opened'
+                                       ) &&
+                                       (
+                                         !request.resource.data.invoice.diff(resource.data.invoice).affectedKeys().hasAny(['opened']) ||
+                                         request.resource.data.invoice.opened == true
+                                       )
+                                     )
+                                   )
+                                 )
+                               )
+                          )
+                        )
+                    || (
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['files', 'updatedAt', 'tempToken']) &&
+                         request.resource.data.get('tempToken', '') != '' &&
+                         exists(/databases/$(database)/documents/magic_links/$(request.resource.data.tempToken)) &&
+                         get(/databases/$(database)/documents/magic_links/$(request.resource.data.tempToken)).data.jobId == jobId &&
+                         get(/databases/$(database)/documents/magic_links/$(request.resource.data.tempToken)).data.active == true &&
+                         request.time < get(/databases/$(database)/documents/magic_links/$(request.resource.data.tempToken)).data.expiresAt
+                       );
+      allow delete: if false;
       
       match /ai_messages/{msgId} {
-        allow read, write: if isMaster() || 
-                             isPlatformSales() || 
-                             isOrgMember(resource.data.organizationId) || 
-                             isCustomerOwner(resource.data) ||
-                             isAssignedPartner(resource.data);
+        allow read, write: if isSignedIn() && (
+                             isDirectOrgMember(get(/databases/$(database)/documents/jobs/$(jobId)).data.organizationId) ||
+                             isDirectAssignedPartner(get(/databases/$(database)/documents/jobs/$(jobId)).data)
+                           );
       }
       
       match /diagnostics/{reportId} {
@@ -252,7 +375,9 @@ service cloud.firestore {
     match /invoices/{invoiceId} {
       allow get: if true;
       allow list: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow read, write: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow create, update: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow delete: if false;
     }
     
     // Allow users to generate outbound system emails via batch write extensions
@@ -266,8 +391,22 @@ service cloud.firestore {
     }
 
     match /messages/{messageId} {
-      allow create: if true; // Unauthenticated system alerts (e.g. from applicant submissions)
-      allow read, write: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow create: if true; 
+      allow read: if isMaster() || isPlatformSales() || isCustomerOwner(resource.data)
+                  || (
+                       isOrgMember(resource.data.organizationId) &&
+                       (
+                         resource.data.type in ['sms', 'email', 'customer-log'] ||
+                         resource.data.receiverId in ['all', 'all_admins', 'all_sales'] ||
+                         resource.data.senderId == request.auth.uid ||
+                         resource.data.receiverId == request.auth.uid ||
+                         (request.auth.token.email != null && (
+                           resource.data.senderId == request.auth.token.email ||
+                           resource.data.receiverId == request.auth.token.email
+                         ))
+                       )
+                     );
+      allow write: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
     }
 
     match /inventory/{itemId} {
@@ -277,9 +416,39 @@ service cloud.firestore {
     }
 
     match /expenses/{expenseId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+      allow read: if isMaster()
+                  || (isPlatformSales() && resource.data.createdById == request.auth.uid)
+                  || (isOrgMember(resource.data.organizationId) && !isPlatformSales())
+                  || (
+                        resource.data.projectId != null &&
+                        exists(/databases/$(database)/documents/jobs/$(resource.data.projectId)) &&
+                        (
+                          isAssignedPartner(get(/databases/$(database)/documents/jobs/$(resource.data.projectId)).data) ||
+                          isAssignedSubcontractor(get(/databases/$(database)/documents/jobs/$(resource.data.projectId)).data)
+                        )
+                     );
+      allow create: if isMaster()
+                  || (isPlatformSales() && request.resource.data.createdById == request.auth.uid)
+                  || (isOrgMember(request.resource.data.organizationId) && !isPlatformSales())
+                  || (
+                        request.resource.data.projectId != null &&
+                        exists(/databases/$(database)/documents/jobs/$(request.resource.data.projectId)) &&
+                        (
+                          isAssignedPartner(get(/databases/$(database)/documents/jobs/$(request.resource.data.projectId)).data) ||
+                          isAssignedSubcontractor(get(/databases/$(database)/documents/jobs/$(request.resource.data.projectId)).data)
+                        )
+                     );
+      allow write: if isMaster()
+                  || (isPlatformSales() && resource.data.createdById == request.auth.uid)
+                  || (isOrgMember(resource.data.organizationId) && !isPlatformSales())
+                  || (
+                        resource.data.projectId != null &&
+                        exists(/databases/$(database)/documents/jobs/$(resource.data.projectId)) &&
+                        (
+                          isAssignedPartner(get(/databases/$(database)/documents/jobs/$(resource.data.projectId)).data) ||
+                          isAssignedSubcontractor(get(/databases/$(database)/documents/jobs/$(resource.data.projectId)).data)
+                        )
+                     );
     }
 
     match /serviceLocations/{locationId} {
@@ -295,15 +464,47 @@ service cloud.firestore {
     }
 
     match /payables/{payableId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId)
+                  || (
+                        resource.data.jobId != null &&
+                        exists(/databases/$(database)/documents/jobs/$(resource.data.jobId)) &&
+                        (
+                          isAssignedPartner(get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data) ||
+                          isAssignedSubcontractor(get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data)
+                        )
+                     );
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId)
+                  || (
+                        request.resource.data.jobId != null &&
+                        exists(/databases/$(database)/documents/jobs/$(request.resource.data.jobId)) &&
+                        (
+                          isAssignedPartner(get(/databases/$(database)/documents/jobs/$(request.resource.data.jobId)).data) ||
+                          isAssignedSubcontractor(get(/databases/$(database)/documents/jobs/$(request.resource.data.jobId)).data)
+                        )
+                     );
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId)
+                  || (
+                        resource.data.jobId != null &&
+                        exists(/databases/$(database)/documents/jobs/$(resource.data.jobId)) &&
+                        (
+                          isAssignedPartner(get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data) ||
+                          isAssignedSubcontractor(get(/databases/$(database)/documents/jobs/$(resource.data.jobId)).data)
+                        )
+                     );
     }
 
     match /proposals/{proposalId} {
       allow read: if true; 
-      allow write: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId);
       allow create: if isMaster() || isPlatformSales() || isOrgMember(request.resource.data.organizationId);
+      allow update: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId)
+                    || (
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                           'status', 'signatureDataUrl', 'signatureName', 'signedAt', 'selectedOption', 'subtotal', 'taxAmount', 'total', 'invoiceId',
+                           'ndaSigned', 'ndaSignedAt', 'ndaSignerName', 'ndaSignatureDataUrl',
+                           'proposalTermsAgreed', 'proposalTermsAgreedAt', 'trackingHistory'
+                         ])
+                       );
+      allow delete: if false;
     }
     
     match /proposalPresets/{presetId} {
@@ -367,8 +568,8 @@ service cloud.firestore {
     }
 
     match /subcontractors/{subId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || (resource.data.linkedOrgId != null && isOrgMember(resource.data.linkedOrgId));
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || (resource.data.linkedOrgId != null && isOrgMember(resource.data.linkedOrgId));
       allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
     }
 
@@ -391,13 +592,25 @@ service cloud.firestore {
     }
     
     match /platformLeads/{leadId} {
-       allow read, write: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId);
-       allow create: if isMaster() || isPlatformSales() || isFranchiseAdmin(request.resource.data.get('franchiseId', null)) || isOrgMember(request.resource.data.organizationId);
+       allow read, write: if isMaster()
+                  || (isPlatformSales() && (resource == null || resource.data.repId == request.auth.uid))
+                  || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null)))
+                  || (isOrgMember(resource.data.organizationId) && !isPlatformSales());
+       allow create: if isMaster()
+                  || (isPlatformSales() && request.resource.data.repId == request.auth.uid)
+                  || isFranchiseAdmin(request.resource.data.get('franchiseId', null))
+                  || (isOrgMember(request.resource.data.organizationId) && !isPlatformSales());
     }
     
     match /platform_leads/{leadId} {
-       allow read, write: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId);
-       allow create: if isMaster() || isPlatformSales() || isFranchiseAdmin(request.resource.data.get('franchiseId', null)) || isOrgMember(request.resource.data.organizationId);
+       allow read, write: if isMaster()
+                  || (isPlatformSales() && (resource == null || resource.data.repId == request.auth.uid))
+                  || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null)))
+                  || (isOrgMember(resource.data.organizationId) && !isPlatformSales());
+       allow create: if isMaster()
+                  || (isPlatformSales() && request.resource.data.repId == request.auth.uid)
+                  || isFranchiseAdmin(request.resource.data.get('franchiseId', null))
+                  || (isOrgMember(request.resource.data.organizationId) && !isPlatformSales());
     }
 
     match /marketingCampaigns/{campaignId} {
@@ -407,11 +620,13 @@ service cloud.firestore {
     }
     
     match /sales_campaigns/{campaignId} {
-      allow read, write: if isMaster() || isPlatformSales();
+      allow read, write: if isMaster()
+                  || (isPlatformSales() && (resource == null || resource.data.repId == request.auth.uid) && (request.resource == null || request.resource.data.repId == request.auth.uid));
     }
     
     match /sales_templates/{templateId} {
-      allow read, write: if isMaster() || isPlatformSales();
+      allow read, write: if isMaster()
+                  || (isPlatformSales() && (resource == null || resource.data.repId == request.auth.uid) && (request.resource == null || request.resource.data.repId == request.auth.uid));
     }
     
     match /salesResources/{resourceId} {
@@ -425,17 +640,36 @@ service cloud.firestore {
     }
     
     match /platformCommissions/{commId} {
-        allow read, write: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId) || isUser(resource.data.repId);
-        allow create: if isMaster() || isPlatformSales() || isFranchiseAdmin(request.resource.data.get('franchiseId', null)) || isOrgMember(request.resource.data.organizationId);
+        allow read, write: if isMaster()
+                  || (isPlatformSales() && (resource == null || resource.data.repId == request.auth.uid))
+                  || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null)))
+                  || (isOrgMember(resource.data.organizationId) && !isPlatformSales())
+                  || isUser(resource.data.repId);
+        allow create: if isMaster()
+                  || (isPlatformSales() && request.resource.data.repId == request.auth.uid)
+                  || isFranchiseAdmin(request.resource.data.get('franchiseId', null))
+                  || (isOrgMember(request.resource.data.organizationId) && !isPlatformSales());
     }
     
     match /platform_commissions/{commId} {
-        allow read, write: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId) || isUser(resource.data.repId);
-        allow create: if isMaster() || isPlatformSales() || isFranchiseAdmin(request.resource.data.get('franchiseId', null)) || isOrgMember(request.resource.data.organizationId);
+        allow read, write: if isMaster()
+                  || (isPlatformSales() && (resource == null || resource.data.repId == request.auth.uid))
+                  || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null)))
+                  || (isOrgMember(resource.data.organizationId) && !isPlatformSales())
+                  || isUser(resource.data.repId);
+        allow create: if isMaster()
+                  || (isPlatformSales() && request.resource.data.repId == request.auth.uid)
+                  || isFranchiseAdmin(request.resource.data.get('franchiseId', null))
+                  || (isOrgMember(request.resource.data.organizationId) && !isPlatformSales());
     }
     
     match /salesActivities/{activityId} {
-       allow read, write: if isMaster() || isPlatformSales() || isUser(resource.data.repId);
+       allow read, write: if isMaster()
+                  || (isPlatformSales() && (resource == null || resource.data.repId == request.auth.uid))
+                  || (resource != null && isUser(resource.data.repId));
+       allow create: if isMaster()
+                  || (isPlatformSales() && request.resource.data.repId == request.auth.uid)
+                  || isUser(request.resource.data.repId);
     }
 
     match /workSchedules/{scheduleId} {
@@ -498,11 +732,7 @@ service cloud.firestore {
       allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
     }
 
-    match /messages/{messageId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow create: if true; 
-    }
+
 
     match /notifications/{notificationId} {
       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
@@ -532,10 +762,22 @@ service cloud.firestore {
     }
     
     match /documents/{docId} {
-      allow get: if true;
-      allow list: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data) || (isSignedIn() && request.resource.data.status == 'Signed');
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) || isCustomer();
+      allow get: if !isPlatformSales() 
+                 || (isPlatformSales() && (resource.data.userId == request.auth.uid || resource.data.createdBy == request.auth.uid));
+      allow list: if isMaster() 
+                  || (isPlatformSales() && (resource.data.userId == request.auth.uid || resource.data.createdBy == request.auth.uid))
+                  || (isOrgMember(resource.data.organizationId) && !isPlatformSales()) 
+                  || isCustomerOwner(resource.data);
+      allow update, delete: if isMaster() 
+                    || (isPlatformSales() && (resource.data.userId == request.auth.uid || resource.data.createdBy == request.auth.uid))
+                    || (isOrgMember(resource.data.organizationId) && !isPlatformSales()) 
+                    || isCustomerOwner(resource.data) 
+                    || (isSignedIn() && request.resource.data.status == 'Signed');
+      allow create: if isMaster() 
+                    || (isPlatformSales() && request.resource.data.organizationId == 'platform' && (request.resource.data.userId == request.auth.uid || request.resource.data.createdBy == request.auth.uid))
+                    || (isOrgMember(request.resource.data.organizationId) && !isPlatformSales()) 
+                    || isCustomer()
+                    || (isSignedIn() && request.resource.data.type == 'Agreement' && (request.resource.data.subcontractorId == request.auth.uid || (request.auth.token.email != null && request.resource.data.subcontractorEmail == request.auth.token.email)));
     }
 
     match /reviews/{reviewId} {
@@ -551,9 +793,9 @@ service cloud.firestore {
     }
     
     match /inspectionTemplates/{templateId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+      allow read: if isMaster() || isPlatformSales() || (resource != null && isOrgMember(resource.data.get('organizationId', '')));
+      allow write: if isMaster() || (resource != null && isOrgMember(resource.data.get('organizationId', '')));
+      allow create: if isMaster() || isOrgMember(request.resource.data.get('organizationId', ''));
     }
     
     match /platformSettings/{settingId} {
@@ -621,6 +863,12 @@ service cloud.firestore {
       allow create: if isMaster() || isPlatformSales() || isOrgMember(request.resource.data.organizationId);
     }
 
+    match /magic_links/{tokenId} {
+      allow get: if true;
+      allow create: if isMaster() || isPlatformSales() || (isOrgMember(request.resource.data.organizationId) && isOrgAdmin());
+      allow update, delete: if isMaster() || isPlatformSales() || (isOrgMember(resource.data.organizationId) && isOrgAdmin());
+    }
+
     match /platformSettings/{settingId} {
       allow read: if true;
       allow write: if isMaster() || isPlatformSales();
@@ -632,7 +880,8 @@ service cloud.firestore {
 
     // Platform Campaign Studio: mailing lists (master admin + platform sales)
     match /platform_mailing_lists/{listId} {
-      allow read, write: if isMaster() || isPlatformSales();
+      allow read, write: if isMaster()
+                  || (isPlatformSales() && (resource == null || resource.data.repId == request.auth.uid) && (request.resource == null || request.resource.data.repId == request.auth.uid));
     }
 
     // Platform Campaign Studio: saved email templates (master admin + platform sales)
@@ -644,8 +893,15 @@ service cloud.firestore {
       allow read, write: if isMaster();
     }
 
-    match /whiteboards/{boardId} {
-      allow read, write: if isMaster() || isPlatformSales() || isOrgMember(boardId);
+    match /events/{eventId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /whiteboards/{orgId} {
+      allow read, write: if (orgId == 'platform' && request.auth != null && (request.auth.token.email == 'rodzelem@gmail.com' || request.auth.token.email == 'ryanvavrecan@gmail.com')) ||
+                           (orgId != 'platform' && (isMaster() || isPlatformSales() || isOrgMember(orgId)));
     }
   }
 }

@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import showToast from "lib/toast";
 
@@ -23,6 +24,7 @@ interface ExpensesTabProps {
     setIsExpenseModalOpen: (val: boolean) => void;
     setNewExpense: (val: any) => void;
     currentUser: any;
+    isAdmin?: boolean;
 }
 
 const ExpensesTab: React.FC<ExpensesTabProps> = ({
@@ -33,7 +35,8 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
     setViewingReceipt,
     setIsExpenseModalOpen,
     setNewExpense,
-    currentUser
+    currentUser,
+    isAdmin = false
 }) => {
     const { state } = useAppContext();
     const { t } = useLanguage();
@@ -62,7 +65,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                 organizationId: state.currentOrganization?.id,
                 type: 'internal'
             };
-            await db.collection('messages').doc(msgObj.id).set(msgObj);
+            await db.collection('messages').doc(msgObj.id).set(cleanUndefinedFields(msgObj));
             showToast.warn(t("Expense shared successfully!"));
             setShareModalExp(null);
             setShareMessageText('');
@@ -126,11 +129,13 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
     const [searchTerm, setSearchTerm] = useState('');
     const [taxMode, setTaxMode] = useState(false);
     const [taxYear, setTaxYear] = useState(new Date().getFullYear().toString());
+    const [typeFilter, setTypeFilter] = useState<'all' | 'business' | 'personal'>('all');
 
     const taxSummary = React.useMemo(() => {
         if (!taxMode) return [];
         const summary: Record<string, { total: number, deductible: number, count: number }> = {};
         allExpenses.forEach(exp => {
+            if (exp.expenseType === 'personal') return;
             const dateStr = exp.date || '';
             if (dateStr.startsWith(taxYear)) {
                 const cat = exp.category || 'Other expenses';
@@ -165,6 +170,9 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
     const sortedExpenses = React.useMemo(() => {
         return [...allExpenses]
             .filter(exp => {
+                if (typeFilter === 'business' && exp.expenseType === 'personal') return false;
+                if (typeFilter === 'personal' && exp.expenseType !== 'personal') return false;
+
                 if (!searchTerm) return true;
                 const q = searchTerm.toLowerCase();
                 const amt = (Number(exp.amount) || 0).toFixed(2);
@@ -193,7 +201,7 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                     return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
             }
         });
-    }, [allExpenses, sortBy, searchTerm]);
+    }, [allExpenses, sortBy, searchTerm, typeFilter]);
 
     return (
         <Card>
@@ -244,6 +252,20 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                 <h3 className="font-bold text-gray-800 dark:text-white">{t("Accounts Payable & Expenses")}</h3>
                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2 text-sm">
+                        <label htmlFor="filter-expense-type" className="font-medium text-slate-600 dark:text-slate-300">{t("Type:")}</label>
+                        <select 
+                            id="filter-expense-type"
+                            aria-label={t("Filter Expense Type")}
+                            className="border rounded-lg p-1.5 dark:bg-slate-800 dark:border-slate-600 text-slate-700 dark:text-slate-200"
+                            value={typeFilter}
+                            onChange={(e) => setTypeFilter(e.target.value as 'all' | 'business' | 'personal')}
+                        >
+                            <option value="all">{t("All")}</option>
+                            <option value="business">{t("Business")}</option>
+                            <option value="personal">{t("Personal")}</option>
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
                         <label htmlFor="sort-expenses" className="font-medium text-slate-600 dark:text-slate-300">{t("Sort by:")}</label>
                         <select 
                             id="sort-expenses"
@@ -261,9 +283,11 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                         </select>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant={taxMode ? "primary" : "secondary"} onClick={() => setTaxMode(!taxMode)} className="w-auto text-xs flex items-center gap-2">
-                            <Calculator size={14} /> {taxMode ? t("Exit Tax Prep") : t("Tax Prep Mode")}
-                        </Button>
+                        {isAdmin && (
+                            <Button variant={taxMode ? "primary" : "secondary"} onClick={() => setTaxMode(!taxMode)} className="w-auto text-xs flex items-center gap-2">
+                                <Calculator size={14} /> {taxMode ? t("Exit Tax Prep") : t("Tax Prep Mode")}
+                            </Button>
+                        )}
                         <Button onClick={() => { 
                             setNewExpense({date: new Date().toISOString().split('T')[0], category: 'Materials', description: '', amount: 0, vendor: '', paidBy: currentUser?.firstName || 'Admin', projectId: ''}); 
                             setIsExpenseModalOpen(true); 
@@ -362,14 +386,30 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                     ))}
                 </div>
             ) : (
-                <Table headers={[t('Date'), t('Vendor'), t('Category'), t('Description'), t('Amount'), t('Receipt'), t('Actions')]}>
-                    {sortedExpenses.map((exp: any) => (
+                <Table headers={[t('Date'), t('Vendor'), t('Category'), t('Description'), t('Subtotal'), t('Tax Paid'), t('Total'), t('Receipt'), t('Actions')]}>
+                    {sortedExpenses.map((exp: any) => {
+                        const expTotal = Number(exp.amount) || 0;
+                        const expTax = Number(exp.taxAmount) || 0;
+                        const expSubtotal = Number(exp.subtotal) || (expTotal ? Math.max(0, expTotal - expTax) : 0);
+
+                        return (
                         <tr key={exp.id} title={`Keys: ${Object.keys(exp).join(', ')}`}>
                             <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.date}</td>
                             <td className="px-6 py-4 font-medium text-slate-900 dark:text-white">{exp.vendor}</td>
-                            <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">{t(exp.category)}</td>
+                            <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
+                                <div>{t(exp.category)}</div>
+                                <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded font-black mt-1 uppercase tracking-wider ${
+                                    exp.expenseType === 'personal' 
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' 
+                                    : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400'
+                                }`}>
+                                    {exp.expenseType === 'personal' ? t('Personal') : t('Business')}
+                                </span>
+                            </td>
                             <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">{exp.description}</td>
-                            <td className="px-6 py-4 font-bold text-red-600">-${(Number(exp.amount) || 0).toFixed(2)}</td>
+                            <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">${expSubtotal.toFixed(2)}</td>
+                            <td className="px-6 py-4 font-semibold text-purple-600 dark:text-purple-400">${expTax.toFixed(2)}</td>
+                            <td className="px-6 py-4 font-bold text-red-600">-${expTotal.toFixed(2)}</td>
                             <td className="px-6 py-4 text-center group">
                                 <div className="flex items-center justify-center gap-2">
                                     {(() => {
@@ -383,9 +423,11 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                                         <Paperclip size={18} />
                                                         {possibleUrls.length > 1 && <span className="ml-1 text-[10px] font-bold bg-blue-100 text-blue-800 px-1 rounded-full">{possibleUrls.length}</span>}
                                                     </button>
-                                                    <button onClick={() => handleDeleteReceipt(exp.id, exp.type)} className="text-red-500 hover:text-red-700" title={t("Delete Receipt")}>
-                                                        <Trash2 size={16} />
-                                                    </button>
+                                                    {isAdmin && (
+                                                        <button onClick={() => handleDeleteReceipt(exp.id, exp.type)} className="text-red-500 hover:text-red-700" title={t("Delete Receipt")}>
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             );
                                         } else {
@@ -436,10 +478,13 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                                 <button onClick={() => handleEditExpense(exp)} className="text-blue-500 hover:text-blue-700 p-1" title={t("Edit Expense")}><Edit size={16}/></button>
                                 <button aria-label={t("Copy Reference")} title={t("Copy Reference")} onClick={(e) => { e.stopPropagation(); handleCopyRef(exp.id); }} className="p-1 text-slate-400 hover:text-primary-600"><Copy size={16}/></button>
                                 <button aria-label={t("Share Expense")} title={t("Share Expense")} onClick={(e) => { e.stopPropagation(); setShareModalExp(exp); }} className="p-1 text-slate-400 hover:text-primary-600"><Share2 size={16}/></button>
-                                <button onClick={() => handleDeleteExpense(exp.id, exp.type)} className="text-red-500 hover:text-red-700 p-1" title={t("Delete Expense")}><Trash2 size={16}/></button>
+                                {isAdmin && (
+                                    <button onClick={() => handleDeleteExpense(exp.id, exp.type)} className="text-red-500 hover:text-red-700 p-1" title={t("Delete Expense")}><Trash2 size={16}/></button>
+                                )}
                             </td>
                         </tr>
-                    ))}
+                    );
+                })}
                 </Table>
             )}
         </Card>

@@ -12,7 +12,7 @@ import type { RefrigerantCylinder, RefrigerantTransaction, ToolMaintenanceLog, B
 import { CheckCircle, AlertTriangle, Wrench, Shield, Users, Printer, Flag, Trash2 } from 'lucide-react';
 import { globalConfirm } from 'lib/globalConfirm';
 import showToast from 'lib/toast';
-import { getBaseUrl } from 'lib/utils';
+import { getBaseUrl , cleanUndefinedFields } from 'lib/utils';
 import { useLanguage } from 'context/LanguageContext';
 
 import ToolsTab from './compliance/components/ToolsTab';
@@ -98,11 +98,11 @@ const ComplianceDashboard: React.FC = () => {
             createdAt: newCylinder.createdAt || new Date().toISOString()
         };
         if (isEdit) {
-            await db.collection('refrigerantCylinders').doc(cyl.id).update(cyl);
+            await db.collection('refrigerantCylinders').doc(cyl.id).update(cleanUndefinedFields(cyl));
             dispatch({ type: 'UPDATE_CYLINDER', payload: cyl });
         } else {
             const trans: RefrigerantTransaction = { id: `trans-${Date.now()}`, organizationId: state.currentOrganization.id, date: new Date().toISOString(), action: 'Purchase', cylinderId: cyl.id, amount: cyl.totalWeight, notes: 'Initial Purchase', createdAt: new Date().toISOString() };
-            await Promise.all([db.collection('refrigerantCylinders').doc(cyl.id).set(cyl), db.collection('refrigerantTransactions').doc(trans.id).set(trans)]);
+            await Promise.all([db.collection('refrigerantCylinders').doc(cyl.id).set(cleanUndefinedFields(cyl)), db.collection('refrigerantTransactions').doc(trans.id).set(cleanUndefinedFields(trans))]);
             dispatch({ type: 'ADD_CYLINDER', payload: cyl });
             dispatch({ type: 'ADD_REF_TRANSACTION', payload: trans });
         }
@@ -130,7 +130,7 @@ const ComplianceDashboard: React.FC = () => {
             nextDueDate: maintenanceLog.nextDueDate || '', 
             notes: maintenanceLog.notes || '' 
         };
-        await db.collection('toolMaintenanceLogs').doc(log.id).set(log);
+        await db.collection('toolMaintenanceLogs').doc(log.id).set(cleanUndefinedFields(log));
         dispatch({ type: 'ADD_TOOL_LOG', payload: log });
         setIsLogMaintenanceOpen(false);
     };
@@ -146,7 +146,7 @@ const ComplianceDashboard: React.FC = () => {
             
             const newCert = { name: certName, expiryDate: certExpiry, fileUrl: downloadUrl };
             const updatedCerts = [...(selectedUserForCert.certifications || []), newCert];
-            await db.collection('users').doc(selectedUserForCert.id).update({ certifications: updatedCerts });
+            await db.collection('users').doc(selectedUserForCert.id).update(cleanUndefinedFields({ certifications: updatedCerts }));
             setIsCertUploadOpen(false);
         } catch (e) { showToast.error(t("Failed to upload certification.")); } finally { setIsUploadingCert(false); }
     };

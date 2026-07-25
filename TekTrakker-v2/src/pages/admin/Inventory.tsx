@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -109,10 +110,10 @@ const Inventory: React.FC = () => {
 
             if (editingItem.id) {
                 dispatch({ type: 'UPDATE_INVENTORY', payload: itemToSave });
-                await db.collection('inventory').doc(itemToSave.id).update(itemToSave);
+                await db.collection('inventory').doc(itemToSave.id).update(cleanUndefinedFields(itemToSave));
             } else {
                 dispatch({ type: 'ADD_INVENTORY', payload: itemToSave });
-                await db.collection('inventory').doc(itemToSave.id).set(itemToSave);
+                await db.collection('inventory').doc(itemToSave.id).set(cleanUndefinedFields(itemToSave));
             }
             setIsModalOpen(false);
             setEditingItem(initialItem);
@@ -149,7 +150,7 @@ const Inventory: React.FC = () => {
                 tareWeight: 0,
                 updatedAt: new Date().toISOString()
             };
-            await db.collection('refrigerantCylinders').doc(cylId).set(cylinder);
+            await db.collection('refrigerantCylinders').doc(cylId).set(cleanUndefinedFields(cylinder));
             dispatch({ type: 'DELETE_INVENTORY', payload: item.id });
             await db.collection('inventory').doc(item.id).delete();
             setActiveTab('refrigerant');
@@ -181,7 +182,7 @@ const Inventory: React.FC = () => {
             lastUpdated: new Date().toISOString()
         };
         dispatch({ type: 'UPDATE_INVENTORY', payload: updatedSource });
-        await db.collection('inventory').doc(updatedSource.id).update(updatedSource);
+        await db.collection('inventory').doc(updatedSource.id).update(cleanUndefinedFields(updatedSource));
 
         // 2. Increase/Create Destination
         const existingDestItem = state.inventory.find(i => i.sku === transferItem.sku && i.location === transferDest);
@@ -193,7 +194,7 @@ const Inventory: React.FC = () => {
                 lastUpdated: new Date().toISOString()
             };
             dispatch({ type: 'UPDATE_INVENTORY', payload: updatedDest });
-            await db.collection('inventory').doc(updatedDest.id).update(updatedDest);
+            await db.collection('inventory').doc(updatedDest.id).update(cleanUndefinedFields(updatedDest));
         } else {
             const newDestItem: InventoryItem = {
                 ...transferItem,
@@ -204,7 +205,7 @@ const Inventory: React.FC = () => {
                 organizationId: state.currentOrganization?.id || transferItem.organizationId
             };
             dispatch({ type: 'ADD_INVENTORY', payload: newDestItem });
-            await db.collection('inventory').doc(newDestItem.id).set(newDestItem);
+            await db.collection('inventory').doc(newDestItem.id).set(cleanUndefinedFields(newDestItem));
         }
 
         setIsTransferModalOpen(false);

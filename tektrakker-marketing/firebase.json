@@ -2,13 +2,24 @@
   "hosting": {
     "site": "tektrakker-marketing",
     "public": "out",
+    "trailingSlash": true,
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
-    "cleanUrls": true,
+    "cleanUrls": false,
     "redirects": [
+      {
+        "source": "/hiring-widget.js",
+        "destination": "https://app.tektrakker.com/hiring-widget.js",
+        "type": 301
+      },
+      {
+        "source": "/widget.js",
+        "destination": "https://app.tektrakker.com/widget.js",
+        "type": 301
+      },
       {
         "source": "/p/:slug*",
         "destination": "https://app.tektrakker.com/#/p/:slug*",
@@ -26,6 +37,15 @@
       }
     ],
     "headers": [
+      {
+        "source": "/sitemap.xml",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex"
+          }
+        ]
+      },
       {
         "source": "**/*.@(js|css|png|jpg|jpeg|gif|svg|json|webp|woff2|mp4)",
         "headers": [

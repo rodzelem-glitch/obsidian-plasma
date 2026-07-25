@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState } from 'react';
 import Modal from 'components/ui/Modal';
@@ -112,7 +113,7 @@ const ProjectCloseoutModal: React.FC<ProjectCloseoutModalProps> = ({ isOpen, onC
                 jobId: project.id // loosely tie it
             };
 
-            await db.collection('documents').doc(businessDoc.id).set(businessDoc);
+            await db.collection('documents').doc(businessDoc.id).set(cleanUndefinedFields(businessDoc));
             dispatch({ type: 'ADD_DOCUMENT', payload: businessDoc });
 
             // 2. Dispatch Messages to all selected targets
@@ -129,7 +130,7 @@ const ProjectCloseoutModal: React.FC<ProjectCloseoutModalProps> = ({ isOpen, onC
                     type,
                     deliveryStatus: 'queued'
                 };
-                await db.collection('messages').doc(msg.id).set(msg);
+                await db.collection('messages').doc(msg.id).set(cleanUndefinedFields(msg));
                 dispatch({ type: 'ADD_MESSAGE', payload: msg } as any);
             };
 

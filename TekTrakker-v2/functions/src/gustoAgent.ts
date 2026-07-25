@@ -292,8 +292,10 @@ export const stageGustoPayroll = onCall({ cors: true }, async (request) => {
     });
 
     const usersSnapshot = await db.collection('users').where('organizationId', '==', orgId).get();
+    const subsSnapshot = await db.collection('subcontractors').where('organizationId', '==', orgId).get();
+    const allUserDocs = [...usersSnapshot.docs, ...subsSnapshot.docs];
     const usersDict: Record<string, string> = {};
-    usersSnapshot.docs.forEach(d => { if (d.data().gustoEmployeeId) usersDict[d.id] = d.data().gustoEmployeeId; });
+    allUserDocs.forEach(d => { if (d.data().gustoEmployeeId) usersDict[d.id] = d.data().gustoEmployeeId; });
 
     const employeeCompensations: any[] = [];
     for (const userId of Object.keys(compensationMap)) {

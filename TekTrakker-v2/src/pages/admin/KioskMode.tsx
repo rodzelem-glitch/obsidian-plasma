@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -68,6 +69,14 @@ const KioskMode: React.FC = () => {
         try {
             const loc = await getCurrentLocation();
             
+            const cleanUndefined = (obj: any) => {
+                const copy = { ...obj };
+                Object.keys(copy).forEach(k => {
+                    if (copy[k] === undefined) delete copy[k];
+                });
+                return copy;
+            };
+
             if (activeShift) {
                 // Clock OUT
                 const updatedLog = { 
@@ -75,7 +84,7 @@ const KioskMode: React.FC = () => {
                     clockOut: new Date().toISOString(),
                     endLocation: loc ? { lat: loc.latitude, lng: loc.longitude, accuracy: loc.accuracy } : undefined
                 };
-                await db.collection('shiftLogs').doc(activeShift.id).update(updatedLog);
+                await db.collection('shiftLogs').doc(activeShift.id).update(cleanUndefinedFields(cleanUndefined(updatedLog)));
                 dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: user.id, log: updatedLog } });
                 setMode('SUCCESS_OUT');
             } else {
@@ -88,7 +97,7 @@ const KioskMode: React.FC = () => {
                     userId: user.id,
                     startLocation: loc ? { lat: loc.latitude, lng: loc.longitude, accuracy: loc.accuracy } : undefined
                 };
-                await db.collection('shiftLogs').doc(logId).set(newLog);
+                await db.collection('shiftLogs').doc(logId).set(cleanUndefinedFields(cleanUndefined(newLog)));
                 dispatch({ type: 'ADD_SHIFT_LOG', payload: { userId: user.id, log: newLog } });
                 setMode('SUCCESS_IN');
             }
@@ -159,7 +168,7 @@ const KioskMode: React.FC = () => {
                                         className={`flex flex-col items-center justify-center p-6 rounded-2xl border-2 transition-all transform hover:scale-105 ${isClockedIn ? 'bg-primary-900/40 border-primary-500/50 hover:bg-primary-800/60' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
                                     >
                                         <div className="w-20 h-20 bg-slate-600 rounded-full mb-4 flex items-center justify-center overflow-hidden border-2 border-slate-500">
-                                            {u.profilePicUrl ? <img src={u.profilePicUrl} className="w-full h-full object-cover"/> : <span className="text-2xl font-bold">{u.firstName[0]}</span>}
+                                            {u.profilePicUrl ? <img src={u.profilePicUrl} className="w-full h-full object-cover"/> : <span className="text-2xl font-bold">{(u.firstName || '')[0] || (u.email || '')[0] || '?'}</span>}
                                         </div>
                                         <p className="text-lg font-bold text-white mb-1">{u.firstName} {u.lastName}</p>
                                         

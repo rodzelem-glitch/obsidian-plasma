@@ -1,5 +1,5 @@
 import showToast from "lib/toast";
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl, cleanUndefinedFields } from "lib/utils";
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -9,7 +9,7 @@ import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import Modal from 'components/ui/Modal';
 import { db } from 'lib/firebase';
-import type { PlatformLead, Job, Organization, User as AppUser, PlatformSettings, InvoiceLineItem } from 'types';
+import type { PlatformLead, Job, Organization, User as AppUser, PlatformSettings, InvoiceLineItem, CommissionSettings } from 'types';
 import { 
     Plus, Phone, Mail, User, Users, Clock, 
     MessageSquare, FileText, Send, CheckCircle2, ArrowRight,
@@ -21,14 +21,14 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { globalConfirm } from "lib/globalConfirm";
 
 const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
-    id: 'platform_billing',
+    id: 'global',
     plans: {
-        starter: { monthly: 49, annual: 490, maxUsers: 5 },
-        growth: { monthly: 149, annual: 1490, maxUsers: 15 },
-        enterprise: { monthly: 299, annual: 2990, maxUsers: 15 },
-        payments_only: { monthly: 10, annual: 199, maxUsers: 999999, unlimitedUsers: true, features: ['proposals', 'paymentProcessing'] }
+        starter: { monthly: 49, annual: 550, maxUsers: 1 },
+        growth: { monthly: 149, annual: 1500, maxUsers: 5 },
+        enterprise: { monthly: 350, annual: 3500, maxUsers: 0, unlimitedUsers: true },
+        payments_only: { monthly: 10, annual: 100, maxUsers: 999999, unlimitedUsers: true, features: ['proposals', 'paymentProcessing'] }
     },
-    excessUserFee: 10,
+    excessUserFee: 30,
     updatedAt: new Date().toISOString()
 };
 
@@ -46,6 +46,14 @@ const SalesLeads: React.FC = () => {
     // Edit / Create State
     const [isEditLeadOpen, setIsEditLeadOpen] = useState(false);
     const [editingLead, setEditingLead] = useState<Partial<PlatformLead>>({ additionalContacts: [] });
+    
+    // Interactive Calculator States
+    const [calcPlan, setCalcPlan] = useState<'starter'|'growth'|'enterprise'|'payments_only'>('starter');
+    const [calcBillingCycle, setCalcBillingCycle] = useState<'monthly'|'annual'>('monthly');
+    const [calcAdditionalUsers, setCalcAdditionalUsers] = useState(0);
+    const [calcDiscount, setCalcDiscount] = useState(0);
+    const [calcCommissionRules, setCalcCommissionRules] = useState<CommissionSettings | null>(null);
+    const [templates, setTemplates] = useState<any[]>([]);
     
     // Communication State
     const [commInput, setCommInput] = useState('');
@@ -87,15 +95,37 @@ const SalesLeads: React.FC = () => {
              if (state.platformSettings) {
                  setSettings(state.platformSettings);
              } else {
-                 const doc = await db.collection('settings').doc('platform_billing').get();
+                 const doc = await db.collection('platformSettings').doc('global').get();
                  if (doc.exists) {
-                     setSettings(doc.data() as PlatformSettings);
+                     setSettings({ id: doc.id, ...doc.data() } as PlatformSettings);
                  }
              }
         };
         fetchSettings();
 
-        return () => unsub();
+        db.collection('settings').doc('commission_rules').get().then(doc => {
+            if (currentUser?.customCommissionSettings) {
+                setCalcCommissionRules(currentUser.customCommissionSettings);
+            } else if (doc.exists) {
+                setCalcCommissionRules(doc.data() as CommissionSettings);
+            } else {
+                setCalcCommissionRules({
+                    baseRate: 0.25,
+                    acceleratorRate: 0.30,
+                    annualQuota: 500000,
+                    renewalRate: 0.05,
+                    rampUpMonths: { phase1: 3, phase1QuotaPct: 0.50, phase2: 6, phase2QuotaPct: 0.75 }
+                });
+            }
+        });
+
+        const unsubTemplates = db.collection('sales_templates')
+            .where('repId', '==', currentUser.id)
+            .onSnapshot(snap => {
+                setTemplates(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            });
+
+        return () => { unsub(); unsubTemplates(); };
     }, [currentUser, searchParams, state.platformSettings]);
 
     // Load activities when lead selected
@@ -133,6 +163,31 @@ const SalesLeads: React.FC = () => {
         return { basePrice, extraUserCost, subtotal, discountAmount, total };
     }, [convertPlan, additionalUsers, customDiscount, settings]);
 
+    // Interactive Calculator Pricing
+    const calcPricing = useMemo(() => {
+        const planConfig = settings.plans[calcPlan] || settings.plans.starter;
+        const basePrice = calcBillingCycle === 'monthly' ? planConfig.monthly : planConfig.annual / 12;
+        const basePriceTotal = calcBillingCycle === 'monthly' ? planConfig.monthly : planConfig.annual;
+        const userFee = settings.excessUserFee || 30;
+        
+        const extraUsers = Math.max(0, calcAdditionalUsers);
+        const extraUserCost = extraUsers * userFee;
+        const extraUserCostTotal = extraUserCost * (calcBillingCycle === 'monthly' ? 1 : 12);
+        
+        const subtotal = basePriceTotal + extraUserCostTotal;
+        const discountAmount = subtotal * (Math.min(100, Math.max(0, calcDiscount)) / 100);
+        const total = subtotal - discountAmount;
+
+        // savings compared to monthly plan (annual plan has built-in discount)
+        const monthlyBaseEquivalent = planConfig.monthly * 12 + (extraUsers * userFee * 12);
+        const savings = Math.max(0, monthlyBaseEquivalent - total);
+
+        const rate = calcCommissionRules?.baseRate || 0.25;
+        const projectedCommission = total * rate;
+        
+        return { basePrice, basePriceTotal, extraUserCostTotal, subtotal, discountAmount, total, savings, projectedCommission };
+    }, [calcPlan, calcBillingCycle, calcAdditionalUsers, calcDiscount, settings, calcCommissionRules]);
+
     // --- HANDLERS ---
 
     const handleSaveLead = async (e: React.FormEvent) => {
@@ -146,17 +201,17 @@ const SalesLeads: React.FC = () => {
         
         try {
             if (editingLead.id) {
-                await db.collection('platformLeads').doc(editingLead.id).update(leadData);
+                await db.collection('platformLeads').doc(editingLead.id).update(cleanUndefinedFields(leadData));
                 setSelectedLead({ ...selectedLead, ...leadData } as PlatformLead);
             } else {
                  const newRef = db.collection('platformLeads').doc();
-                 await newRef.set({ 
+                 await newRef.set(cleanUndefinedFields({ 
                      ...leadData, 
                      id: newRef.id, 
                      createdAt: new Date().toISOString(), 
                      status: 'New',
                      value: Number(editingLead.value) || 0
-                 });
+                 }));
             }
             setIsEditLeadOpen(false);
         } catch (e) {
@@ -179,16 +234,16 @@ const SalesLeads: React.FC = () => {
     const handleUpdateStatus = async (status: string) => {
         if (!selectedLead) return;
         
-        await db.collection('platformLeads').doc(selectedLead.id).update({ status });
+        await db.collection('platformLeads').doc(selectedLead.id).update(cleanUndefinedFields({ status }));
         setSelectedLead({ ...selectedLead, status: status as any });
         
-        await db.collection('salesActivities').add({
+        await db.collection('salesActivities').add(cleanUndefinedFields({
             leadId: selectedLead.id,
             type: 'status',
             content: `Status changed to ${status}`,
             timestamp: new Date().toISOString(),
             repId: currentUser?.id
-        });
+        }));
     };
     
     const handleSubmitCommunication = async () => {
@@ -221,17 +276,17 @@ const SalesLeads: React.FC = () => {
             }
             
             // Log activity
-            await db.collection('salesActivities').add({
+            await db.collection('salesActivities').add(cleanUndefinedFields({
                 leadId: selectedLead.id,
                 type: commType,
                 content: commInput,
                 timestamp: new Date().toISOString(),
                 repId: currentUser?.id
-            });
+            }));
             
             if (commType === 'note') {
                  const newNotes = selectedLead.notes ? `${selectedLead.notes}\n\n[${new Date().toLocaleDateString()}] ${commInput}` : commInput;
-                 await db.collection('platformLeads').doc(selectedLead.id).update({ notes: newNotes });
+                 await db.collection('platformLeads').doc(selectedLead.id).update(cleanUndefinedFields({ notes: newNotes }));
                  setSelectedLead({ ...selectedLead, notes: newNotes });
             }
             
@@ -356,10 +411,13 @@ const SalesLeads: React.FC = () => {
             
             // Execute Batch
             const batch = db.batch();
-            batch.set(db.collection('organizations').doc(orgId), newOrg);
-            batch.set(db.collection('users').doc(userId), newUser);
-            batch.set(db.collection('jobs').doc(invoiceId), newJob);
-            batch.update(db.collection('platformLeads').doc(selectedLead.id), { status: 'Closed Won' });
+            batch.set(db.collection('organizations').doc(orgId), cleanUndefinedFields(newOrg));
+            batch.set(db.collection('users').doc(userId), cleanUndefinedFields(newUser));
+            batch.set(db.collection('jobs').doc(invoiceId), cleanUndefinedFields(newJob));
+            batch.update(db.collection('platformLeads').doc(selectedLead.id), cleanUndefinedFields({ 
+                status: 'Closed Won',
+                convertedOrgId: orgId
+            }));
             
             await batch.commit();
             
@@ -368,7 +426,7 @@ const SalesLeads: React.FC = () => {
             setConvertedInvoiceLink(link);
             
             // Update UI
-            setSelectedLead({ ...selectedLead, status: 'Closed Won' });
+            setSelectedLead({ ...selectedLead, status: 'Closed Won', convertedOrgId: orgId });
             showToast.warn("Lead converted successfully! Organization and Invoice created.");
         } catch (e: any) {
             console.error(e);
@@ -421,7 +479,7 @@ const SalesLeads: React.FC = () => {
                             </div>
                             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full xl:w-auto mt-2 xl:mt-0">
                                 <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
-                                    {selectedLead.status !== 'Closed Won' && (
+                                    {!selectedLead.convertedOrgId && (
                                         <Button onClick={() => { setAdditionalUsers(0); setCustomDiscount(0); setIsConvertModalOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3 flex items-center gap-1">
                                             <Rocket size={14}/> Convert to Deal
                                         </Button>
@@ -466,7 +524,7 @@ const SalesLeads: React.FC = () => {
                         <div className="flex-1 overflow-y-auto p-6 bg-slate-100 dark:bg-slate-950">
                             {activeTab === 'details' && (
                                 <div className="space-y-6 animate-fade-in">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                                             <p className="text-xs font-bold text-slate-500 uppercase mb-1">Value</p>
                                             <p className="text-xl font-black">${selectedLead.value?.toLocaleString()}</p>
@@ -475,11 +533,171 @@ const SalesLeads: React.FC = () => {
                                             <p className="text-xs font-bold text-slate-500 uppercase mb-1">Source</p>
                                             <p className="text-sm font-medium">Outbound</p>
                                         </div>
+                                        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                                            <p className="text-xs font-bold text-slate-500 uppercase mb-1">Status</p>
+                                            <p className="text-sm font-medium">{selectedLead.status} {selectedLead.convertedOrgId && "✓ Converted"}</p>
+                                        </div>
                                     </div>
                                     
                                     <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800">
                                         <h4 className="font-bold mb-4 text-sm uppercase text-slate-500 flex items-center gap-2"><StickyNote size={16}/> Notes</h4>
                                         <p className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-300">{selectedLead.notes || 'No notes added.'}</p>
+                                    </div>
+
+                                    {/* Interactive Quote & Commission Calculator */}
+                                    <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4 shadow-sm">
+                                        <h4 className="font-bold text-slate-800 dark:text-white flex items-center gap-2 border-b dark:border-slate-800 pb-2">
+                                            <Rocket size={18} className="text-blue-500"/> Interactive Quote & Commission Calculator
+                                        </h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Select Plan</label>
+                                                <select 
+                                                    title="Calc Plan" aria-label="Plan"
+                                                    value={calcPlan}
+                                                    onChange={e => setCalcPlan(e.target.value as any)}
+                                                    className="w-full p-2 border rounded text-sm bg-slate-50 dark:bg-slate-800 dark:border-slate-700 text-slate-950 dark:text-slate-50"
+                                                >
+                                                    {Object.keys(settings.plans).map(planKey => (
+                                                        <option key={planKey} value={planKey}>
+                                                            {planKey.toUpperCase()} (${settings.plans[planKey].monthly}/mo)
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Billing Interval</label>
+                                                <div className="flex border rounded-lg overflow-hidden text-sm border-slate-200 dark:border-slate-700">
+                                                    <button 
+                                                        onClick={() => setCalcBillingCycle('monthly')}
+                                                        className={`flex-1 py-1.5 font-bold ${calcBillingCycle === 'monthly' ? 'bg-primary-600 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                                                    >
+                                                        Monthly
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setCalcBillingCycle('annual')}
+                                                        className={`flex-1 py-1.5 font-bold ${calcBillingCycle === 'annual' ? 'bg-primary-600 text-white' : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+                                                    >
+                                                        Annual (Save)
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {!(settings.plans[calcPlan] || settings.plans.starter).unlimitedUsers ? (
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Additional Users (+${settings.excessUserFee}/user/mo)</label>
+                                                    <input 
+                                                        type="number"
+                                                        min="0"
+                                                        value={calcAdditionalUsers}
+                                                        onChange={e => setCalcAdditionalUsers(parseInt(e.target.value) || 0)}
+                                                        className="w-full p-2 border rounded text-sm bg-slate-50 dark:bg-slate-800 dark:border-slate-700 text-slate-950 dark:text-slate-50"
+                                                    />
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Additional Users</label>
+                                                    <div className="w-full p-2 border rounded text-sm bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 italic">
+                                                        Unlimited User Slots included
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Discount (%)</label>
+                                                <input 
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    value={calcDiscount}
+                                                    onChange={e => setCalcDiscount(parseFloat(e.target.value) || 0)}
+                                                    className="w-full p-2 border rounded text-sm bg-slate-50 dark:bg-slate-800 dark:border-slate-700 text-slate-950 dark:text-slate-50"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl space-y-2 text-sm border border-slate-200 dark:border-slate-700">
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500 dark:text-slate-400 font-medium">Base Contract Price:</span>
+                                                <span className="font-bold">${calcPricing.basePriceTotal.toFixed(2)} / yr equivalent</span>
+                                            </div>
+                                            {calcPricing.extraUserCostTotal > 0 && (
+                                                <div className="flex justify-between">
+                                                    <span className="text-slate-500 dark:text-slate-400 font-medium">Excess User Costs:</span>
+                                                    <span className="font-bold">${calcPricing.extraUserCostTotal.toFixed(2)}</span>
+                                                </div>
+                                            )}
+                                            {calcPricing.discountAmount > 0 && (
+                                                <div className="flex justify-between text-green-600 dark:text-green-400 font-medium">
+                                                    <span>Discount:</span>
+                                                    <span>-${calcPricing.discountAmount.toFixed(2)} (-{calcDiscount}%)</span>
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between border-t border-dashed dark:border-slate-700 pt-2">
+                                                <span className="font-black text-slate-800 dark:text-white">Contract Total:</span>
+                                                <span className="font-black text-slate-900 dark:text-white text-lg">${calcPricing.total.toFixed(2)}</span>
+                                            </div>
+                                            {calcPricing.savings > 0 && (
+                                                <div className="flex justify-between text-xs text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/20 px-2 py-1 rounded">
+                                                    <span>Total Savings vs Standard Monthly:</span>
+                                                    <span>${calcPricing.savings.toFixed(2)}</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900 text-xs">
+                                            <div className="flex items-center gap-1.5 text-blue-700 dark:text-blue-300 font-bold">
+                                                <Percent size={14}/> Projected Rep Commission:
+                                            </div>
+                                            <span className="font-black text-blue-900 dark:text-blue-100 text-sm">${calcPricing.projectedCommission.toFixed(2)}</span>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-2 pt-2">
+                                            <Button 
+                                                variant="secondary" 
+                                                onClick={async () => {
+                                                    const quoteText = `\n\n[Quote Generated - ${new Date().toLocaleDateString()}]\nPlan: ${calcPlan.toUpperCase()}\nBilling Interval: ${calcBillingCycle.toUpperCase()}\nUsers: ${calcAdditionalUsers}\nDiscount: ${calcDiscount}%\nTotal Contract Price: $${calcPricing.total.toFixed(2)}\nProjected Commission: $${calcPricing.projectedCommission.toFixed(2)}`;
+                                                    const newNotes = selectedLead.notes ? `${selectedLead.notes}${quoteText}` : quoteText.trim();
+                                                    await db.collection('platformLeads').doc(selectedLead.id).update(cleanUndefinedFields({ notes: newNotes }));
+                                                    setSelectedLead({ ...selectedLead, notes: newNotes });
+                                                    showToast.warn("Quote saved to Lead notes.");
+                                                }}
+                                                className="text-xs flex items-center gap-1"
+                                            >
+                                                Save Quote to Notes
+                                            </Button>
+                                            <Button 
+                                                onClick={async () => {
+                                                    if (!selectedLead.email) {
+                                                        showToast.warn("Lead has no email.");
+                                                        return;
+                                                    }
+                                                    const { sendEmail } = await import('../../lib/mailService');
+                                                    const emailText = `Hello ${selectedLead.contactName},\n\nWe have prepared a custom pricing quote for ${selectedLead.companyName} on the TekTrakker Platform:\n\n- Plan: ${calcPlan.toUpperCase()}\n- Billing Interval: ${calcBillingCycle.toUpperCase()}\n- User Slots: ${calcAdditionalUsers}\n- Total Price: $${calcPricing.total.toFixed(2)} / period\n\nIf you have any questions or are ready to get started, please let me know!\n\nBest regards,\n${currentUser?.firstName} ${currentUser?.lastName}\nTekTrakker Sales Team`;
+                                                    await sendEmail({
+                                                        to: selectedLead.email,
+                                                        subject: `Custom Quote: TekTrakker Platform for ${selectedLead.companyName}`,
+                                                        text: emailText,
+                                                        organizationId: 'platform',
+                                                        type: 'SalesOutreach',
+                                                        bypassOptOut: false
+                                                    });
+                                                    // Log as email activity
+                                                    await db.collection('salesActivities').add(cleanUndefinedFields({
+                                                        leadId: selectedLead.id,
+                                                        type: 'email',
+                                                        content: `Sent Quote Email:\nPeriod: ${calcBillingCycle}\nPlan: ${calcPlan}\nTotal: $${calcPricing.total.toFixed(2)}`,
+                                                        timestamp: new Date().toISOString(),
+                                                        repId: currentUser?.id
+                                                    }));
+                                                    showToast.warn("Quote email sent to client.");
+                                                }}
+                                                className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 border-0"
+                                            >
+                                                Send Quote Email
+                                            </Button>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -517,10 +735,34 @@ const SalesLeads: React.FC = () => {
                             {activeTab === 'communication' && (
                                 <div className="flex flex-col h-full animate-fade-in">
                                     <div className="bg-white dark:bg-slate-900 border rounded-xl p-4 shadow-sm mt-4">
-                                        <div className="flex gap-2 mb-2">
-                                            <button onClick={() => setCommType('note')} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${commType === 'note' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-500'}`}>Internal Note</button>
-                                            <button onClick={() => setCommType('sms')} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${commType === 'sms' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>SMS Text</button>
-                                            <button onClick={() => setCommType('email')} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${commType === 'email' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-500'}`}>Email</button>
+                                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 mb-2">
+                                            <div className="flex gap-2">
+                                                <button onClick={() => setCommType('note')} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${commType === 'note' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-500'}`}>Internal Note</button>
+                                                <button onClick={() => setCommType('sms')} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${commType === 'sms' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>SMS Text</button>
+                                                <button onClick={() => setCommType('email')} className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${commType === 'email' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-500'}`}>Email</button>
+                                            </div>
+                                            {templates.filter(t => t.type === commType).length > 0 && (
+                                                <select 
+                                                    title="Template" aria-label="Template"
+                                                    onChange={(e) => {
+                                                        const temp = templates.find(t => t.id === e.target.value);
+                                                        if (temp) {
+                                                            let text = temp.content || '';
+                                                            text = text.replace(/\{\{firstName\}\}/g, selectedLead.contactName.split(' ')[0]);
+                                                            text = text.replace(/\{\{companyName\}\}/g, selectedLead.companyName);
+                                                            text = text.replace(/\{\{city\}\}/g, selectedLead.city || '');
+                                                            setCommInput(text);
+                                                        }
+                                                    }}
+                                                    className="p-1 rounded border text-xs bg-slate-50 dark:bg-slate-800 dark:border-slate-700 text-slate-950 dark:text-slate-50"
+                                                    defaultValue=""
+                                                >
+                                                    <option value="" disabled>Insert Template...</option>
+                                                    {templates.filter(t => t.type === commType).map(t => (
+                                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                                    ))}
+                                                </select>
+                                            )}
                                         </div>
                                         <Textarea 
                                             placeholder={commType === 'note' ? "Add an internal note..." : commType === 'sms' ? "Type SMS message..." : "Type email body..."}
@@ -592,7 +834,7 @@ const SalesLeads: React.FC = () => {
                                 </select>
                             </div>
                             
-                            {convertPlan === 'enterprise' && (
+                            {!(settings.plans[convertPlan] || settings.plans.starter).unlimitedUsers && (
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Additional Users (+${settings.excessUserFee}/user)</label>
                                     <input 

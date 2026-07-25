@@ -1,7 +1,5 @@
 {
   "projects": {
     "default": "tektrakker"
-  },
-  "targets": {},
-  "etags": {}
+  }
 }

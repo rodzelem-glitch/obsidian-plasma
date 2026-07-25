@@ -3,9 +3,11 @@ import { Users, FileSignature, DollarSign, Umbrella, ArrowRight, Clock, Award, S
 import { usePayrollService } from 'hooks/usePayrollService';
 import { useAppContext } from 'context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
 import type { User } from 'types';
 import { db } from '../../lib/firebase';
+import { cleanUndefinedFields } from 'lib/utils';
 import showToast from 'lib/toast';
 
 import TimeSheetReview from './TimeSheetReview';
@@ -51,7 +53,10 @@ const HROperationsDashboard: React.FC = () => {
         
         const matchesRole = roleFilter === 'all' || usr.role?.toLowerCase() === roleFilter.toLowerCase();
         
-        const isConfigured = !!usr.payRate;
+        const isSynced = activePayrollService === 'gusto' ? !!usr.gustoEmployeeId : activePayrollService === 'adp' ? !!usr.adpEmployeeId : false;
+        const isConfiguredLocal = !!usr.payRate;
+        const isConfigured = (activePayrollService === 'gusto' || activePayrollService === 'adp') ? isSynced : isConfiguredLocal;
+
         const matchesConfig = configFilter === 'all' || 
             (configFilter === 'configured' && isConfigured) || 
             (configFilter === 'pending' && !isConfigured);
@@ -72,10 +77,10 @@ const HROperationsDashboard: React.FC = () => {
                                 const orgId = state.currentOrganization?.id;
                                 if (!orgId) return;
                                 
-                                await db.collection('organizations').doc(orgId).update({
+                                await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({
                                     gustoCompanyUuid: null,
                                     gustoOnboardingUrl: null
-                                });
+                                }));
                                 
                                 const usersSnap = await db.collection('users').where('organizationId', '==', orgId).get();
                                 const subSnap = await db.collection('subcontractors').where('organizationId', '==', orgId).get();
@@ -83,13 +88,13 @@ const HROperationsDashboard: React.FC = () => {
                                 
                                 usersSnap.forEach(uDoc => {
                                     if (uDoc.data().gustoEmployeeId || uDoc.data().gustoOnboardingUrl) {
-                                        batch.update(uDoc.ref, { gustoEmployeeId: null, gustoOnboardingUrl: null });
+                                        batch.update(uDoc.ref, cleanUndefinedFields({ gustoEmployeeId: null, gustoOnboardingUrl: null }));
                                     }
                                 });
                                 
                                 subSnap.forEach(sDoc => {
                                     if (sDoc.data().gustoEmployeeId || sDoc.data().gustoOnboardingUrl) {
-                                        batch.update(sDoc.ref, { gustoEmployeeId: null, gustoOnboardingUrl: null });
+                                        batch.update(sDoc.ref, cleanUndefinedFields({ gustoEmployeeId: null, gustoOnboardingUrl: null }));
                                     }
                                 });
                                 
@@ -144,15 +149,15 @@ const HROperationsDashboard: React.FC = () => {
                             <ShieldCheck className="w-6 h-6" />
                         </div>
                         <div>
-                            <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">{t('ADP Workforce Connected')}</h4>
+                            <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">{t('ADP Connected')}</h4>
                             <p className="text-xs text-slate-500 dark:text-slate-400">{t('ADP integration active. Push employee hours and staging logs effortlessly.')}</p>
                         </div>
                     </div>
                     <button 
-                        onClick={() => window.open('https://workforcenow.adp.com', '_blank')}
+                        onClick={() => window.open('https://runpayroll.adp.com', '_blank', 'noopener,noreferrer')}
                         className="shrink-0 bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm active:scale-95"
                     >
-                        {t('Open ADP Workforce')} <ArrowRight className="w-4 h-4" />
+                        {t('Open ADP Portal')} <ArrowRight className="w-4 h-4" />
                     </button>
                 </div>
             )}
@@ -440,7 +445,7 @@ const HROperationsDashboard: React.FC = () => {
                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
                                         {filteredUsers.map((usr: any) => {
                                             const user = usr as any;
-                                            const isSynced = !!user.gustoEmployeeId;
+                                            const isSynced = activePayrollService === 'gusto' ? !!user.gustoEmployeeId : activePayrollService === 'adp' ? !!user.adpEmployeeId : false;
                                             const isConfigured = !!user.payRate;
                                             
                                             return (
@@ -468,13 +473,13 @@ const HROperationsDashboard: React.FC = () => {
                                                         </span>
                                                     </td>
                                                     <td className="p-4">
-                                                        {activePayrollService === 'gusto' ? (
+                                                        {activePayrollService === 'gusto' || activePayrollService === 'adp' ? (
                                                             isSynced ? (
                                                                 <div className="flex flex-col">
                                                                     <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">
                                                                         <ShieldCheck className="w-4 h-4" /> {t('Actively Linked')}
                                                                     </span>
-                                                                    <span className="text-[10px] text-slate-400 font-mono mt-0.5" title={user.gustoEmployeeId}>ID: {user.gustoEmployeeId.substring(0,8)}...</span>
+                                                                    <span className="text-[10px] text-slate-400 font-mono mt-0.5" title={activePayrollService === 'gusto' ? user.gustoEmployeeId : user.adpEmployeeId}>ID: {(activePayrollService === 'gusto' ? user.gustoEmployeeId : user.adpEmployeeId)?.substring(0,8)}...</span>
                                                                 </div>
                                                             ) : (
                                                                 <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-500 font-bold text-sm">
@@ -507,6 +512,21 @@ const HROperationsDashboard: React.FC = () => {
                                                                      setEditW4Status(user.w4Status || 'Missing');
                                                                      setEditPtoBalance(String(user.ptoAccrued || '0'));
                                                                      setEditWeeklyHours(String(user.weeklyStandardHours || '40'));
+                                                                 } else if (activePayrollService === 'adp' && !isSynced) {
+                                                                     try {
+                                                                         showToast.info("Linking worker profile to ADP...");
+                                                                         const functions = getFunctions();
+                                                                         const syncReq = httpsCallable(functions, 'manualSyncADPEmployee');
+                                                                         const res = await syncReq({ userId: user.id, orgId: state.currentOrganization?.id });
+                                                                         const data = res.data as any;
+                                                                         if (data.success) {
+                                                                             showToast.success(`Successfully linked worker to ADP with ID: ${data.adpEmployeeId}`);
+                                                                         }
+                                                                     } catch (err: any) {
+                                                                         showToast.error(`Failed to link worker to ADP: ${err.message}`);
+                                                                     }
+                                                                 } else if (activePayrollService === 'adp' && isSynced) {
+                                                                     showToast.info("Worker profile is already linked to ADP.");
                                                                  } else {
                                                                      showToast.info(t('Connect a payroll provider in Settings -> Integrations to link employee profiles directly.'));
                                                                  }
@@ -515,13 +535,13 @@ const HROperationsDashboard: React.FC = () => {
                                                                  isConfigured && activePayrollService === 'none'
                                                                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/10' 
                                                                  : activePayrollService === 'none'
-                                                                 ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/10'
+                                                                 ? 'bg-indigo-650 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/10'
                                                                  : isSynced
-                                                                 ? 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-355 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-not-allowed'
-                                                                 : 'bg-indigo-400 text-white cursor-not-allowed'
+                                                                 ? 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-355 hover:bg-slate-50 dark:hover:bg-slate-800' + (activePayrollService === 'adp' ? ' cursor-default' : ' cursor-not-allowed')
+                                                                 : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/10'
                                                              }`}
                                                          >
-                                                             {activePayrollService === 'none' && isConfigured ? t('Edit Rate') : t('Link Payroll')}
+                                                             {activePayrollService === 'none' && isConfigured ? t('Edit Rate') : isSynced ? t('Linked') : t('Link ADP')}
                                                          </button>
                                                      </td>
                                                 </tr>
@@ -655,9 +675,9 @@ const HROperationsDashboard: React.FC = () => {
                                                                     const val = e.target.value === 'Missing' ? null : e.target.value;
                                                                     const isSub = user.id.startsWith('sub-') || user.role?.toLowerCase() === 'subcontractor';
                                                                     const collectionName = isSub ? 'subcontractors' : 'users';
-                                                                    await db.collection(collectionName).doc(user.id).update({
+                                                                    await db.collection(collectionName).doc(user.id).update(cleanUndefinedFields({
                                                                         w4Status: val
-                                                                    });
+                                                                    }));
                                                                     showToast.success(`W-4 status updated for ${user.firstName || user.name}`);
                                                                 } catch (err: any) {
                                                                     console.error(err);
@@ -682,9 +702,9 @@ const HROperationsDashboard: React.FC = () => {
                                                                         const collectionName = isSub ? 'subcontractors' : 'users';
                                                                         const currentPto = user.ptoAccrued || 0;
                                                                         if (currentPto <= 0) return;
-                                                                        await db.collection(collectionName).doc(user.id).update({
+                                                                        await db.collection(collectionName).doc(user.id).update(cleanUndefinedFields({
                                                                             ptoAccrued: currentPto - 1
-                                                                        });
+                                                                        }));
                                                                         showToast.success(`Decremented PTO for ${user.firstName || user.name}`);
                                                                     } catch (err: any) {
                                                                         console.error(err);
@@ -705,9 +725,9 @@ const HROperationsDashboard: React.FC = () => {
                                                                         const isSub = user.id.startsWith('sub-') || user.role?.toLowerCase() === 'subcontractor';
                                                                         const collectionName = isSub ? 'subcontractors' : 'users';
                                                                         const currentPto = user.ptoAccrued || 0;
-                                                                        await db.collection(collectionName).doc(user.id).update({
+                                                                        await db.collection(collectionName).doc(user.id).update(cleanUndefinedFields({
                                                                             ptoAccrued: currentPto + 1
-                                                                        });
+                                                                        }));
                                                                         showToast.success(`Incremented PTO for ${user.firstName || user.name}`);
                                                                     } catch (err: any) {
                                                                         console.error(err);
@@ -901,13 +921,13 @@ const HROperationsDashboard: React.FC = () => {
                                         const isSub = editingUser.id.startsWith('sub-') || editingUser.role?.toLowerCase() === 'subcontractor';
                                         const collectionName = isSub ? 'subcontractors' : 'users';
                                         
-                                        await db.collection(collectionName).doc(editingUser.id).update({
+                                        await db.collection(collectionName).doc(editingUser.id).update(cleanUndefinedFields({
                                             payRate: rateVal,
                                             payType: editPayType,
                                             w4Status: w4Val,
                                             ptoAccrued: ptoVal,
                                             weeklyStandardHours: hoursVal
-                                        });
+                                        }));
 
                                         showToast.success("HR profile updated successfully!");
                                         setEditingUser(null);

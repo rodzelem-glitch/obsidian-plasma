@@ -15,6 +15,30 @@ const getTilledApiUrl = () => {
     return 'https://sandbox-api.tilled.com';
 };
 
+const getPlatformMerchantId = () => {
+    const secretKey = kortSecretKey.value();
+    if (secretKey && secretKey.startsWith('sk_o5oQ')) {
+        return 'acct_k5kvc1P0G1Rf4HNizIH8I';
+    }
+    return 'acct_zDruOrRgOZVtafF9TPC2J';
+};
+
+const normalizeCountryCode = (country: any): string => {
+    if (typeof country !== 'string') return 'US';
+    const trimmed = country.trim().toUpperCase();
+    if (!trimmed) return 'US';
+    if (trimmed === 'USA' || trimmed === 'UNITED STATES' || trimmed === 'UNITED STATES OF AMERICA' || trimmed === 'U.S.A.' || trimmed === 'U.S.') {
+        return 'US';
+    }
+    if (trimmed === 'CANADA') {
+        return 'CA';
+    }
+    if (trimmed.length === 2) {
+        return trimmed;
+    }
+    return 'US';
+};
+
 export const createKortPaymentIntent = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, _context) => {
     const { amount, currency, organizationId, metadata } = data;
 
@@ -406,7 +430,7 @@ export const attachKortPaymentMethod = functions.runWith({ secrets: [kortSecretK
         const orgRef = db.collection('organizations').doc(organizationId);
         const orgDoc = await orgRef.get();
         const orgData = orgDoc.data() || {};
-        const orgMerchantId = orgData.kortAccountId || 'acct_zDruOrRgOZVtafF9TPC2J';
+        const orgMerchantId = orgData.kortAccountId || getPlatformMerchantId();
 
         const customerId = await getOrCreateKortCustomerHelper(organizationId, db, secretKey, partnerAccountId);
 
@@ -428,19 +452,20 @@ export const attachKortPaymentMethod = functions.runWith({ secrets: [kortSecretK
                 body: JSON.stringify({
                     type: 'ach_debit',
                     billing_details: {
-                        name: billingDetails?.name || 'Customer',
+                        name: String(billingDetails?.name || 'Customer').trim(),
                         address: {
-                            street: billingDetails?.street || '',
-                            city: billingDetails?.city || '',
-                            state: billingDetails?.state || '',
-                            zip: billingDetails?.zip || '',
-                            country: billingDetails?.country || 'US'
+                            street: String(billingDetails?.street || '').trim(),
+                            city: String(billingDetails?.city || '').trim(),
+                            state: String(billingDetails?.state || '').trim(),
+                            zip: String(billingDetails?.zip || '').trim(),
+                            country: normalizeCountryCode(billingDetails?.country)
                         }
                     },
                     ach_debit: {
                         account_type: achDetails.accountType || 'checking',
-                        account_number: achDetails.accountNumber,
-                        routing_number: achDetails.routingNumber
+                        account_number: String(achDetails.accountNumber).replace(/\D/g, ''),
+                        routing_number: String(achDetails.routingNumber).replace(/\D/g, ''),
+                        account_holder_name: String(billingDetails?.name || 'Customer').trim().substring(0, 22)
                     }
                 })
             });
@@ -488,6 +513,72 @@ export const attachKortPaymentMethod = functions.runWith({ secrets: [kortSecretK
         throw new functions.https.HttpsError('internal', error.message || 'Attachment failed.');
     }
 });
+
+async function resolveJobIdFromFallback(
+    db: any,
+    eventData: any,
+    allowedInvoiceStatuses: string[] = ['Unpaid', 'Partially Paid']
+): Promise<string | null> {
+    try {
+        // Retrieve amount in dollars
+        const amount = eventData.amount ? eventData.amount / 100 : 0;
+        if (amount <= 0) return null;
+
+        // Try to get billing name or customer name
+        let billingName = '';
+        if (eventData.billing_details && eventData.billing_details.name) {
+            billingName = eventData.billing_details.name.trim().toLowerCase();
+        } else if (eventData.payment_method && eventData.payment_method.billing_details && eventData.payment_method.billing_details.name) {
+            billingName = eventData.payment_method.billing_details.name.trim().toLowerCase();
+        } else if (eventData.customer && eventData.customer.first_name) {
+            billingName = `${eventData.customer.first_name} ${eventData.customer.last_name || ''}`.trim().toLowerCase();
+        }
+
+        if (!billingName) return null;
+
+        functions.logger.info(`Attempting fallback job lookup for name "${billingName}" and amount $${amount}`);
+
+        const jobsSnapshot = await db.collection('jobs')
+            .where('deleted', '!=', true)
+            .get();
+
+        let bestMatchJobId: string | null = null;
+        let matchCount = 0;
+
+        jobsSnapshot.forEach((doc: any) => {
+            const job = doc.data();
+            if (job.invoice && allowedInvoiceStatuses.includes(job.invoice.status)) {
+                const jobAmount = job.invoice.totalAmount || job.invoice.amount || 0;
+                if (Math.abs(jobAmount - amount) < 0.02) {
+                    const jobCustomerName = (job.customerName || '').trim().toLowerCase();
+                    
+                    const nameWords = billingName.split(/\s+/).filter((w: string) => w.length > 2);
+                    const jobWords = jobCustomerName.split(/\s+/).filter((w: string) => w.length > 2);
+                    
+                    const hasSharedWord = nameWords.some((w: string) => jobWords.includes(w));
+                    const isSubstring = jobCustomerName.includes(billingName) || billingName.includes(jobCustomerName);
+                    
+                    if (jobCustomerName && (hasSharedWord || isSubstring)) {
+                        bestMatchJobId = doc.id;
+                        matchCount++;
+                    }
+                }
+            }
+        });
+
+        if (matchCount === 1) {
+            functions.logger.info(`Fallback lookup matched unique job: ${bestMatchJobId}`);
+            return bestMatchJobId;
+        } else if (matchCount > 1) {
+            functions.logger.warn(`Fallback lookup found multiple matching jobs. Skipping automatic resolution.`);
+        } else {
+            functions.logger.info(`Fallback lookup found no matching jobs.`);
+        }
+    } catch (err) {
+        functions.logger.error("Error during fallback job lookup", err);
+    }
+    return null;
+}
 
 export const tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhookSecret] }).https.onRequest(async (req, res) => {
     try {
@@ -541,14 +632,65 @@ export const tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWe
             res.status(200).send('Webhook processed successfully');
         } else if (eventType === 'payment_intent.succeeded') {
             const metadata = eventData.metadata || {};
-            const jobId = metadata.jobId;
+            let jobId = metadata.jobId;
+            
+            if (!jobId || jobId === 'unknown') {
+                jobId = await resolveJobIdFromFallback(db, eventData, ['Unpaid', 'Partially Paid']) || undefined;
+            }
+
             if (jobId && jobId !== 'unknown') {
-                await db.collection('jobs').doc(jobId).update({
+                const amountDollars = eventData.amount ? eventData.amount / 100 : 0;
+                const updatePayload: any = {
                     'invoice.status': 'Paid',
                     'invoice.paidDate': new Date().toISOString(),
                     'invoice.paymentIntentId': eventData.id
-                });
+                };
+                if (amountDollars > 0) {
+                    updatePayload['invoice.amountPaid'] = amountDollars;
+                }
+                await db.collection('jobs').doc(jobId).update(updatePayload);
                 functions.logger.info(`Job ${jobId} marked as Paid via webhook with intent ${eventData.id}.`);
+
+                // Queue receipt email automatically
+                try {
+                    const jobDoc = await db.collection('jobs').doc(jobId).get();
+                    if (jobDoc.exists) {
+                        const jobData = jobDoc.data() || {};
+                        let customerEmail = jobData.customerEmail;
+                        if (!customerEmail && jobData.customerId) {
+                            const custDoc = await db.collection('customers').doc(jobData.customerId).get();
+                            if (custDoc.exists) {
+                                customerEmail = custDoc.data()?.email;
+                            }
+                        }
+
+                        if (customerEmail) {
+                            const orgDoc = await db.collection('organizations').doc(jobData.organizationId).get();
+                            const orgName = orgDoc.exists ? orgDoc.data()?.name : 'Service Provider';
+                            const orgEmail = orgDoc.exists ? orgDoc.data()?.email : 'noreply@tektrakker.com';
+                            const invoiceId = jobData.invoice?.id || jobId;
+                            const totalAmount = jobData.invoice?.totalAmount || amountDollars;
+
+                            await db.collection('mail_queue').add({
+                                to: customerEmail,
+                                replyTo: orgEmail,
+                                message: {
+                                    subject: `Payment Receipt: Invoice #${invoiceId}`,
+                                    html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #eee;border-radius:8px;"><h2 style="color:#059669;">Payment Receipt</h2><p>Hi ${jobData.customerName || 'Customer'},</p><p>Thank you for your payment of <strong>$${totalAmount?.toFixed(2)}</strong> to <strong>${orgName}</strong>.</p><div style="margin:20px 0;"><p style="margin:5px 0;"><strong>Invoice:</strong> #${invoiceId}</p><p style="margin:5px 0;"><strong>Amount Paid:</strong> $${totalAmount?.toFixed(2)}</p><p style="margin:5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p><p style="margin:5px 0;"><strong>Status:</strong> PAID</p></div><p style="font-size:12px;color:#666;">This email serves as your official receipt. Please retain it for your records.</p></div>`,
+                                    text: `Payment Receipt for Invoice #${invoiceId}. Amount: $${totalAmount?.toFixed(2)}. Status: PAID.`
+                                },
+                                organizationId: jobData.organizationId,
+                                type: 'Receipt',
+                                createdAt: new Date().toISOString()
+                            });
+                            functions.logger.info(`Queued automatic payment receipt for job ${jobId} to ${customerEmail}`);
+                        } else {
+                            functions.logger.warn(`Could not send auto receipt for job ${jobId}: customer email is missing`);
+                        }
+                    }
+                } catch (emailErr) {
+                    functions.logger.error("Error queueing automatic payment receipt email:", emailErr);
+                }
             }
             res.status(200).send('Payment succeeded processed');
         } else if (eventType === 'payment_intent.payment_failed' || eventType === 'charge.failed') {
@@ -577,12 +719,89 @@ export const tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWe
                 }
             }
 
+            if (!jobId || jobId === 'unknown') {
+                jobId = await resolveJobIdFromFallback(db, eventData, ['Unpaid', 'Partially Paid', 'Failed']) || undefined;
+            }
+
             if (jobId && jobId !== 'unknown') {
-                await db.collection('jobs').doc(jobId).update({
-                    'invoice.status': 'Failed',
-                    'invoice.failedDate': new Date().toISOString()
-                });
-                functions.logger.warn(`Job ${jobId} marked as Failed via webhook with intent ${eventData.id}.`);
+                const failureReason = eventData.last_payment_error?.message || 
+                                      eventData.failure_message || 
+                                      eventData.outcome?.seller_message || 
+                                      'Payment method declined or invalid.';
+
+                try {
+                    const jobDoc = await db.collection('jobs').doc(jobId).get();
+                    const jobData = jobDoc.exists ? (jobDoc.data() || {}) : {};
+                    const rawItems = jobData.invoice?.items || [];
+                    const isPaymentFee = (item: any) => {
+                        if (!item) return false;
+                        const nameStr = (item.name || item.description || '').toLowerCase().trim();
+                        return nameStr.includes('processing fee') || nameStr.includes('bank transfer fee');
+                    };
+                    const cleanItems = rawItems.filter((item: any) => !isPaymentFee(item));
+                    const cleanTotal = Math.round(cleanItems.reduce((sum: number, item: any) => sum + (Number(item.total) || 0), 0) * 100) / 100;
+                    const resetTotal = cleanTotal > 0 ? cleanTotal : (jobData.invoice?.totalAmount || 0);
+
+                    await db.collection('jobs').doc(jobId).update({
+                        'invoice.status': 'Failed',
+                        'invoice.amountPaid': 0,
+                        'invoice.items': cleanItems,
+                        'invoice.totalAmount': resetTotal,
+                        'invoice.amount': resetTotal,
+                        'invoice.failedDate': new Date().toISOString(),
+                        'invoice.lastFailureReason': failureReason
+                    });
+                } catch (updateErr) {
+                    await db.collection('jobs').doc(jobId).update({
+                        'invoice.status': 'Failed',
+                        'invoice.amountPaid': 0,
+                        'invoice.failedDate': new Date().toISOString(),
+                        'invoice.lastFailureReason': failureReason
+                    });
+                }
+                functions.logger.warn(`Job ${jobId} marked as Failed via webhook with intent ${eventData.id}. Reason: ${failureReason}`);
+
+                // Queue automated payment failure email to customer
+                try {
+                    const jobDoc = await db.collection('jobs').doc(jobId).get();
+                    if (jobDoc.exists) {
+                        const jobData = jobDoc.data() || {};
+                        let customerEmail = jobData.customerEmail;
+                        if (!customerEmail && jobData.customerId) {
+                            const custDoc = await db.collection('customers').doc(jobData.customerId).get();
+                            if (custDoc.exists) {
+                                customerEmail = custDoc.data()?.email;
+                            }
+                        }
+
+                        if (customerEmail) {
+                            const orgDoc = await db.collection('organizations').doc(jobData.organizationId).get();
+                            const orgName = orgDoc.exists ? orgDoc.data()?.name : 'Service Provider';
+                            const orgEmail = orgDoc.exists ? (orgDoc.data()?.email || 'noreply@tektrakker.com') : 'noreply@tektrakker.com';
+                            const invoiceId = jobData.invoice?.id || jobId;
+                            const totalAmount = jobData.invoice?.totalAmount || jobData.invoice?.amount || (eventData.amount ? eventData.amount / 100 : 0);
+                            const paymentLink = `https://tektrakker.web.app/#/invoice/${jobId}`;
+
+                            await db.collection('mail_queue').add({
+                                to: customerEmail,
+                                replyTo: orgEmail,
+                                message: {
+                                    subject: `Action Required: Payment Failed for Invoice #${invoiceId}`,
+                                    html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #eee;border-radius:8px;"><h2 style="color:#dc2626;margin-top:0;">Payment Method Failed</h2><p>Hi ${jobData.customerName || 'Customer'},</p><p>We were unable to process your payment for <strong>Invoice #${invoiceId}</strong> to <strong>${orgName}</strong>. Your payment method has failed.</p><div style="margin:20px 0;padding:15px;background-color:#fef2f2;border:1px solid #fecaca;border-radius:6px;"><p style="margin:5px 0;"><strong>Invoice:</strong> #${invoiceId}</p><p style="margin:5px 0;"><strong>Amount Due:</strong> $${totalAmount?.toFixed(2)}</p><p style="margin:5px 0;"><strong>Status:</strong> PAYMENT FAILED</p><p style="margin:5px 0;color:#991b1b;"><strong>Reason:</strong> ${failureReason}</p></div><div style="margin:20px 0;"><a href="${paymentLink}" style="background-color:#dc2626;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">Update Payment Method &amp; Pay</a></div><p style="font-size:12px;color:#666;">Please click the button above or contact ${orgName} to update your payment method and complete this payment.</p></div>`,
+                                    text: `Payment method failed for Invoice #${invoiceId} to ${orgName}. Amount Due: $${totalAmount?.toFixed(2)}. Reason: ${failureReason}. Pay online: ${paymentLink}`
+                                },
+                                organizationId: jobData.organizationId,
+                                type: 'PaymentFailed',
+                                createdAt: new Date().toISOString()
+                            });
+                            functions.logger.info(`Queued automatic payment failure email for job ${jobId} to ${customerEmail}`);
+                        } else {
+                            functions.logger.warn(`Could not send auto failure email for job ${jobId}: customer email is missing`);
+                        }
+                    }
+                } catch (emailErr) {
+                    functions.logger.error("Error queueing automatic payment failure email:", emailErr);
+                }
             } else {
                 functions.logger.warn(`Payment failed for account ${accountId}, intent ${eventData.id}`);
             }
@@ -612,6 +831,10 @@ export const tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWe
                         functions.logger.error("Failed to fetch payment intent for refund metadata", e);
                     }
                 }
+            }
+
+            if (!jobId || jobId === 'unknown') {
+                jobId = await resolveJobIdFromFallback(db, eventData, ['Paid', 'Unpaid', 'Partially Paid']) || undefined;
             }
 
             if (jobId && jobId !== 'unknown') {
@@ -679,6 +902,10 @@ export const tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWe
                     jobId: jobId || 'unknown'
                 }, { merge: true });
                 functions.logger.info(`Dispute ${eventData.id} for org ${orgId} saved.`);
+            }
+
+            if (!jobId || jobId === 'unknown') {
+                jobId = await resolveJobIdFromFallback(db, eventData, ['Paid', 'Unpaid', 'Partially Paid', 'Refunded']) || undefined;
             }
 
             if (jobId && jobId !== 'unknown') {
@@ -889,6 +1116,36 @@ export const processAutomatedBilling = functions.runWith({ secrets: [kortSecretK
                 totalAmount += aiWorkerFee;
             }
             
+            const userFee = platformSettings?.excessUserFee !== undefined ? platformSettings.excessUserFee : 25;
+            const divFee = platformSettings?.divisionFee !== undefined ? platformSettings.divisionFee : 79;
+            
+            if (orgData.isFreeAccess) {
+                const nextMonth = new Date(today);
+                nextMonth.setMonth(nextMonth.getMonth() + 1);
+                
+                await db.collection('organizations').doc(doc.id).update({
+                    nextBillingDate: nextMonth.toISOString(),
+                    subscriptionStatus: 'active',
+                    failedPaymentAttempts: 0,
+                    lastBillingError: admin.firestore.FieldValue.delete()
+                });
+
+                await db.collection('platformInvoices').add({
+                    organizationId: doc.id,
+                    amount: 0,
+                    date: today.toISOString(),
+                    status: 'paid',
+                    paymentIntentId: 'free_access_bypass',
+                    description: 'TekTrakker Monthly Subscription (Free Access)'
+                });
+                
+                functions.logger.info(`Processed free access renewal for ${doc.id}`);
+                continue;
+            }
+
+            totalAmount += (orgData.additionalUserSlots || 0) * userFee;
+            totalAmount += (orgData.additionalDivisionsSlots || 0) * divFee;
+            
             const totalAmountCents = Math.round(totalAmount * 100);
             
             const payload: any = {
@@ -906,7 +1163,7 @@ export const processAutomatedBilling = functions.runWith({ secrets: [kortSecretK
             };
 
             try {
-                const orgMerchantId = orgData.kortAccountId || 'acct_zDruOrRgOZVtafF9TPC2J';
+                const orgMerchantId = orgData.kortAccountId || getPlatformMerchantId();
                 const response = await fetch(`${getTilledApiUrl()}/v1/payment-intents`, {
                     method: 'POST',
                     headers: {
@@ -1013,19 +1270,20 @@ export const confirmKortACHPayment = functions.runWith({ secrets: [kortSecretKey
             body: JSON.stringify({
                 type: 'ach_debit',
                 billing_details: {
-                    name: billingDetails.name || 'Customer',
+                    name: String(billingDetails.name || 'Customer').trim(),
                     address: {
-                        street: billingDetails.street || '',
-                        city: billingDetails.city || '',
-                        state: billingDetails.state || '',
-                        zip: billingDetails.zip || '',
-                        country: billingDetails.country || 'US'
+                        street: String(billingDetails.street || '').trim(),
+                        city: String(billingDetails.city || '').trim(),
+                        state: String(billingDetails.state || '').trim(),
+                        zip: String(billingDetails.zip || '').trim(),
+                        country: normalizeCountryCode(billingDetails.country)
                     }
                 },
                 ach_debit: {
                     account_type: achDetails.accountType || 'checking',
-                    account_number: achDetails.accountNumber,
-                    routing_number: achDetails.routingNumber
+                    account_number: String(achDetails.accountNumber).replace(/\D/g, ''),
+                    routing_number: String(achDetails.routingNumber).replace(/\D/g, ''),
+                    account_holder_name: String(billingDetails.name || 'Customer').trim().substring(0, 22)
                 }
             })
         });
@@ -1044,7 +1302,7 @@ export const confirmKortACHPayment = functions.runWith({ secrets: [kortSecretKey
             method: 'POST',
             headers,
             body: JSON.stringify({
-                payment_method: paymentMethodId
+                payment_method_id: paymentMethodId
             })
         });
 
@@ -1054,10 +1312,17 @@ export const confirmKortACHPayment = functions.runWith({ secrets: [kortSecretKey
         }
 
         const confirmData = await confirmResponse.json() as any;
+        const status = confirmData.status;
+
+        if (status !== 'succeeded' && status !== 'processing') {
+            const errorMsg = confirmData.last_payment_error?.message || `Payment failed with status: ${status}`;
+            throw new Error(`Payment failed: ${errorMsg}`);
+        }
+
         return {
             success: true,
             id: paymentIntentId,
-            status: confirmData.status
+            status: status
         };
 
     } catch (error: any) {
@@ -1111,6 +1376,39 @@ export const testKortSubscriptionPayment = functions.runWith({ secrets: [kortSec
             totalAmount += aiWorkerFee;
         }
 
+        const userFee = platformSettings?.excessUserFee !== undefined ? platformSettings.excessUserFee : 25;
+        const divFee = platformSettings?.divisionFee !== undefined ? platformSettings.divisionFee : 79;
+
+        if (orgData.isFreeAccess) {
+            const today = new Date();
+            const nextMonth = new Date(today);
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+            await orgRef.update({
+                nextBillingDate: nextMonth.toISOString(),
+                subscriptionStatus: 'active',
+                failedPaymentAttempts: 0,
+                lastBillingError: admin.firestore.FieldValue.delete()
+            });
+
+            await db.collection('platformInvoices').add({
+                organizationId: organizationId,
+                amount: 0,
+                date: today.toISOString(),
+                status: 'paid',
+                paymentIntentId: 'free_access_bypass',
+                description: 'TekTrakker Monthly Subscription (Free Access Simulator)'
+            });
+
+            return {
+                success: true,
+                message: `Processed free access subscription simulation successfully`
+            };
+        }
+
+        totalAmount += (orgData.additionalUserSlots || 0) * userFee;
+        totalAmount += (orgData.additionalDivisionsSlots || 0) * divFee;
+
         const totalAmountCents = Math.round(totalAmount * 100);
 
         const payload: any = {
@@ -1127,7 +1425,7 @@ export const testKortSubscriptionPayment = functions.runWith({ secrets: [kortSec
             }
         };
 
-        const orgMerchantId = orgData.kortAccountId || 'acct_zDruOrRgOZVtafF9TPC2J';
+        const orgMerchantId = orgData.kortAccountId || getPlatformMerchantId();
         const response = await fetch(`${getTilledApiUrl()}/v1/payment-intents`, {
             method: 'POST',
             headers: {
@@ -1179,3 +1477,563 @@ export const testKortSubscriptionPayment = functions.runWith({ secrets: [kortSec
         throw new functions.https.HttpsError('internal', error.message || 'Subscription payment simulation failed.');
     }
 });
+
+export const reconcileKortPayments = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, context) => {
+    // 1. Ensure request is authenticated
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated.');
+    }
+
+    const { organizationId } = data;
+    if (!organizationId) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing organizationId.');
+    }
+
+    const secretKey = kortSecretKey.value();
+    const partnerAccountId = kortAccountId.value();
+
+    if (!secretKey || !partnerAccountId) {
+        throw new functions.https.HttpsError('failed-precondition', 'Kort Payments is not fully configured on the server.');
+    }
+
+    try {
+        const db = admin.firestore();
+        
+        // 2. Resolve the organization's kortAccountId
+        const orgDoc = await db.collection('organizations').doc(organizationId).get();
+        if (!orgDoc.exists) {
+            throw new Error('Organization not found.');
+        }
+        
+        const orgData = orgDoc.data() || {};
+        const accountId = orgData.kortAccountId;
+        if (!accountId) {
+            throw new Error('Organization does not have a connected Kort account.');
+        }
+
+        // 3. Fetch successful payment intents in the last 15 days
+        const fifteenDaysAgo = new Date();
+        fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+        const createdMinEpoch = Math.floor(fifteenDaysAgo.getTime() / 1000);
+
+        // Fetch payment-intents from Tilled API
+        const tilledApiUrl = getTilledApiUrl();
+        const response = await fetch(`${tilledApiUrl}/v1/payment-intents?limit=100&created[gte]=${createdMinEpoch}`, {
+            method: 'GET',
+            headers: {
+                'tilled-api-key': secretKey,
+                'tilled-account': accountId
+            }
+        });
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(`Kort API Fetch Error: ${JSON.stringify(errData)}`);
+        }
+
+        const piListResponse = await response.json() as any;
+        const intents = piListResponse.data || [];
+        const succeededIntents = intents.filter((pi: any) => pi.status === 'succeeded');
+
+        if (succeededIntents.length === 0) {
+            return {
+                success: true,
+                message: 'No successful transactions found to reconcile in the last 15 days.',
+                reconciledCount: 0,
+                reconciledList: []
+            };
+        }
+
+        // 4. Fetch all Unpaid jobs/invoices for this organization
+        const unpaidJobsSnapshot = await db.collection('jobs')
+            .where('organizationId', '==', organizationId)
+            .where('invoice.status', 'in', ['Unpaid', 'Pending', 'Partially Paid'])
+            .get();
+
+        const unpaidJobs = unpaidJobsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ref: doc.ref,
+            data: doc.data()
+        }));
+
+        if (unpaidJobs.length === 0) {
+            return {
+                success: true,
+                message: 'No unpaid invoices found in database to reconcile.',
+                reconciledCount: 0,
+                reconciledList: []
+            };
+        }
+
+        const reconciledList: any[] = [];
+
+        // 5. Run matching loop
+        for (const pi of succeededIntents) {
+            const piId = pi.id;
+            const piAmountDollars = pi.amount / 100;
+            const metadata = pi.metadata || {};
+            const jobId = metadata.jobId;
+
+            let matchedJob: any = null;
+
+            // Direct ID match
+            if (jobId && jobId !== 'unknown') {
+                matchedJob = unpaidJobs.find(job => job.id === jobId);
+            }
+
+            // Fuzzy Match Fallback (if no metadata, e.g. manual dashboard entries)
+            if (!matchedJob) {
+                // Find unpaid jobs with EXACT amount match
+                const amountMatches = unpaidJobs.filter(job => {
+                    const invAmt = Number(job.data.invoice?.totalAmount) || Number(job.data.invoice?.amount) || 0;
+                    return Math.abs(invAmt - piAmountDollars) < 0.01;
+                });
+
+                if (amountMatches.length === 1) {
+                    // Unique amount match
+                    matchedJob = amountMatches[0];
+                } else if (amountMatches.length > 1) {
+                    // Multiple jobs with exact same amount. Try matching customer name or cardholder name
+                    const cardholderName = (pi.last_payment_error?.payment_method?.card?.name || 
+                                           pi.charges?.data?.[0]?.billing_details?.name || 
+                                           '').toLowerCase();
+                    
+                    if (cardholderName) {
+                        const nameMatches = amountMatches.filter(job => {
+                            const custName = (job.data.customerName || '').toLowerCase();
+                            return custName.includes(cardholderName) || cardholderName.includes(custName);
+                        });
+                        if (nameMatches.length === 1) {
+                            matchedJob = nameMatches[0];
+                        }
+                    }
+                }
+            }
+
+            if (matchedJob) {
+                // Check if this payment intent was already recorded to avoid duplicate syncs
+                const alreadyPaid = matchedJob.data.invoice?.paymentIntentId === piId && matchedJob.data.invoice?.status === 'Paid';
+                if (!alreadyPaid) {
+                    const paidDate = pi.charges?.data?.[0]?.created 
+                        ? new Date(pi.charges.data[0].created * 1000).toISOString()
+                        : new Date().toISOString();
+
+                    await matchedJob.ref.update({
+                        'invoice.status': 'Paid',
+                        'invoice.paidDate': paidDate,
+                        'invoice.paymentIntentId': piId,
+                        'invoice.paymentMethod': 'Credit Card'
+                    });
+
+                    reconciledList.push({
+                        invoiceId: matchedJob.data.invoice?.id || matchedJob.id,
+                        customerName: matchedJob.data.customerName,
+                        amount: piAmountDollars,
+                        paymentIntentId: piId
+                    });
+
+                    // Remove this job from our unpaid local list so we don't double match it
+                    const index = unpaidJobs.indexOf(matchedJob);
+                    if (index > -1) {
+                        unpaidJobs.splice(index, 1);
+                    }
+                }
+            }
+        }
+
+        return {
+            success: true,
+            reconciledCount: reconciledList.length,
+            reconciledList: reconciledList,
+            message: reconciledList.length > 0
+                ? `Successfully reconciled ${reconciledList.length} invoice(s).`
+                : 'Transactions were checked, but no new matching records required syncing.'
+        };
+
+    } catch (error: any) {
+        functions.logger.error("Kort Reconciliation Error:", error);
+        throw new functions.https.HttpsError('internal', error.message || 'Payment reconciliation failed.');
+    }
+});
+
+// --- AUTOMATED CUSTOMER MEMBERSHIP BILLING (CRON JOB) ---
+export const processCustomerMembershipBilling = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).pubsub.schedule('0 1 * * *').timeZone('America/New_York').onRun(async (context) => {
+    const secretKey = kortSecretKey.value();
+    const partnerAccountId = kortAccountId.value();
+    if (!secretKey || !partnerAccountId) {
+        functions.logger.error('Kort API keys missing. Cannot run customer membership billing.');
+        return;
+    }
+
+    const db = admin.firestore();
+    const today = new Date();
+    // Zero out hours/minutes for date comparison
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    try {
+        // Find all active monthly service agreements
+        const agreementsSnap = await db.collection('serviceAgreements')
+            .where('status', '==', 'Active')
+            .where('billingCycle', '==', 'Monthly')
+            .get();
+
+        functions.logger.info(`Found ${agreementsSnap.size} active monthly service agreements.`);
+
+        for (const doc of agreementsSnap.docs) {
+            const agreement = doc.data();
+            const agreementId = doc.id;
+            
+            // Check next billing date
+            let nextBillingDate: Date;
+            if (agreement.nextBillingDate) {
+                nextBillingDate = new Date(agreement.nextBillingDate);
+            } else {
+                // Initialize next billing date based on startDate
+                const startDate = new Date(agreement.startDate || agreement.createdAt || today);
+                nextBillingDate = new Date(startDate);
+                // Advance nextBillingDate month-by-month until it is >= today
+                while (nextBillingDate < todayZero) {
+                    nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+                }
+                
+                // Save the initialized nextBillingDate back to the agreement
+                await db.collection('serviceAgreements').doc(agreementId).update({
+                    nextBillingDate: nextBillingDate.toISOString()
+                });
+            }
+
+            // Zero out time for exact day check
+            const nextBillingZero = new Date(nextBillingDate.getFullYear(), nextBillingDate.getMonth(), nextBillingDate.getDate());
+
+            // If nextBillingDate is today or in the past, bill the customer!
+            if (nextBillingZero <= todayZero) {
+                functions.logger.info(`Billing agreement ${agreementId} for customer ${agreement.customerId} (${agreement.customerName})`);
+
+                const price = agreement.price || 29.00;
+                const orgId = agreement.organizationId;
+                
+                // Get organization data for merchant ID
+                const orgDoc = await db.collection('organizations').doc(orgId).get();
+                const orgData = orgDoc.exists ? orgDoc.data() : {};
+                const orgMerchantId = orgData?.kortAccountId || getPlatformMerchantId();
+
+                // Get customer data to see if they have vaulted card
+                const customerId = agreement.customerId;
+                const customerDoc = await db.collection('customers').doc(customerId).get();
+                const customerData = customerDoc.exists ? customerDoc.data() : {};
+
+                // Generate new Job and Invoice record
+                const newJobId = `job-membership-${agreementId}-${Date.now()}`;
+                const invoiceId = `INV-sa-${agreementId}-${Date.now()}`;
+                
+                const newJob: any = {
+                    id: newJobId,
+                    organizationId: orgId,
+                    customerId: customerId,
+                    customerName: agreement.customerName,
+                    address: customerData?.address || "Address Not Provided",
+                    tasks: ["Gold Plan Monthly Membership"],
+                    jobStatus: "Complete",
+                    appointmentTime: today.toISOString(),
+                    source: "ManualBilling",
+                    createdAt: today.toISOString(),
+                    invoice: {
+                        id: invoiceId,
+                        status: "Unpaid",
+                        items: [
+                            {
+                                id: `item-membership-${Date.now()}`,
+                                name: `${agreement.planName || 'Gold Plan'} Membership Fee`,
+                                description: `Monthly membership fee for ${agreement.planName || 'Gold Plan'} - billing cycle resuming via Kort.`,
+                                quantity: 1,
+                                unitPrice: price,
+                                total: price,
+                                type: "Service",
+                                taxable: false
+                            }
+                        ],
+                        amount: price,
+                        totalAmount: price,
+                        subtotal: price,
+                        taxAmount: 0,
+                        taxRate: 0,
+                        billToName: agreement.customerName,
+                        billToAddress: customerData?.address || "Address Not Provided",
+                        paidDate: null
+                    }
+                };
+
+                let paymentIntentId = "";
+
+                // Attempt auto-billing if card details are vaulted
+                const vaultedPaymentMethodId = customerData?.vaultedPaymentMethodId;
+                const kortCustomerId = customerData?.kortCustomerId;
+
+                if (vaultedPaymentMethodId && kortCustomerId && orgMerchantId) {
+                    try {
+                        const amountCents = Math.round(price * 100);
+                        const payload = {
+                            amount: amountCents,
+                            currency: 'usd',
+                            payment_method_id: vaultedPaymentMethodId,
+                            customer_id: kortCustomerId,
+                            payment_method_types: customerData?.vaultedPaymentType ? [customerData.vaultedPaymentType] : ['card'],
+                            confirm: true,
+                            off_session: true,
+                            metadata: {
+                                customerId: customerId,
+                                serviceAgreementId: agreementId,
+                                type: 'membership_recurrent',
+                                jobId: newJobId
+                            }
+                        };
+
+                        const response = await fetch(`${getTilledApiUrl()}/v1/payment-intents`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'tilled-api-key': secretKey,
+                                'tilled-account': orgMerchantId
+                            },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (response.ok) {
+                            const piData = await response.json() as any;
+                            if (piData.status === 'succeeded' || piData.status === 'processing') {
+                                paymentIntentId = piData.id;
+                                newJob.invoice.status = 'Paid';
+                                newJob.invoice.paidDate = today.toISOString();
+                                newJob.invoice.paymentIntentId = paymentIntentId;
+                                newJob.invoice.paymentMethod = 'Credit Card';
+                                functions.logger.info(`Successfully auto-billed $${price} off-session for ${agreement.customerName}`);
+                            } else {
+                                functions.logger.warn(`Off-session payment intent status: ${piData.status}`);
+                            }
+                        } else {
+                            const errData = await response.json();
+                            functions.logger.error(`Off-session payment error payload: ${JSON.stringify(errData)}`);
+                        }
+                    } catch (payErr) {
+                        functions.logger.error(`Failed to process off-session charge for customer ${customerId}:`, payErr);
+                    }
+                } else {
+                    functions.logger.info(`No vaulted credentials found for customer ${customerId}. Created invoice INV-sa-${agreementId} for manual payment.`);
+                }
+
+                // Save Job/Invoice document to Firestore
+                await db.collection('jobs').doc(newJobId).set(newJob);
+
+                // Advance nextBillingDate by 1 month
+                const nextMonth = new Date(nextBillingDate);
+                nextMonth.setMonth(nextMonth.getMonth() + 1);
+                
+                await db.collection('serviceAgreements').doc(agreementId).update({
+                    nextBillingDate: nextMonth.toISOString()
+                });
+            }
+        }
+    } catch (err: any) {
+        functions.logger.error("Automated Customer Membership Billing Sweep Error:", err);
+    }
+});
+
+// --- HTTPS SIMULATION FOR CUSTOMER MEMBERSHIP BILLING ---
+export const testCustomerMembershipBilling = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, _context) => {
+    const secretKey = kortSecretKey.value();
+    const partnerAccountId = kortAccountId.value();
+    if (!secretKey || !partnerAccountId) {
+        throw new functions.https.HttpsError('failed-precondition', 'Kort Payments is not fully configured.');
+    }
+
+    const { serviceAgreementId } = data;
+    const db = admin.firestore();
+    const today = new Date();
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const diagnosticLogs: string[] = [];
+
+    try {
+        let docsToBill: admin.firestore.QueryDocumentSnapshot[] = [];
+        
+        if (serviceAgreementId) {
+            const doc = await db.collection('serviceAgreements').doc(serviceAgreementId).get();
+            if (!doc.exists) {
+                throw new Error("Service agreement not found.");
+            }
+            docsToBill.push(doc as any);
+        } else {
+            const snap = await db.collection('serviceAgreements')
+                .where('status', '==', 'Active')
+                .where('billingCycle', '==', 'Monthly')
+                .get();
+            docsToBill = snap.docs;
+        }
+
+        diagnosticLogs.push(`Found ${docsToBill.length} agreements to check.`);
+
+        for (const doc of docsToBill) {
+            const agreement = doc.data();
+            const agreementId = doc.id;
+            
+            // Check next billing date
+            let nextBillingDate: Date;
+            if (agreement.nextBillingDate) {
+                nextBillingDate = new Date(agreement.nextBillingDate);
+                diagnosticLogs.push(`Agreement ${agreementId} has nextBillingDate: ${agreement.nextBillingDate}`);
+            } else {
+                const startDate = new Date(agreement.startDate || agreement.createdAt || today);
+                nextBillingDate = new Date(startDate);
+                while (nextBillingDate < todayZero) {
+                    nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+                }
+                
+                await db.collection('serviceAgreements').doc(agreementId).update({
+                    nextBillingDate: nextBillingDate.toISOString()
+                });
+                diagnosticLogs.push(`Agreement ${agreementId} nextBillingDate initialized to: ${nextBillingDate.toISOString()}`);
+            }
+
+            const nextBillingZero = new Date(nextBillingDate.getFullYear(), nextBillingDate.getMonth(), nextBillingDate.getDate());
+
+            if (nextBillingZero <= todayZero) {
+                diagnosticLogs.push(`Billing agreement ${agreementId} (price: $${agreement.price})`);
+
+                const price = agreement.price || 29.00;
+                const orgId = agreement.organizationId;
+                
+                const orgDoc = await db.collection('organizations').doc(orgId).get();
+                const orgData = orgDoc.exists ? orgDoc.data() : {};
+                const orgMerchantId = orgData?.kortAccountId || getPlatformMerchantId();
+
+                const customerId = agreement.customerId;
+                const customerDoc = await db.collection('customers').doc(customerId).get();
+                const customerData = customerDoc.exists ? customerDoc.data() : {};
+
+                const newJobId = `job-membership-${agreementId}-${Date.now()}`;
+                const invoiceId = `INV-sa-${agreementId}-${Date.now()}`;
+                
+                const newJob: any = {
+                    id: newJobId,
+                    organizationId: orgId,
+                    customerId: customerId,
+                    customerName: agreement.customerName,
+                    address: customerData?.address || "Address Not Provided",
+                    tasks: ["Gold Plan Monthly Membership"],
+                    jobStatus: "Complete",
+                    appointmentTime: today.toISOString(),
+                    source: "ManualBilling",
+                    createdAt: today.toISOString(),
+                    invoice: {
+                        id: invoiceId,
+                        status: "Unpaid",
+                        items: [
+                            {
+                                id: `item-membership-${Date.now()}`,
+                                name: `${agreement.planName || 'Gold Plan'} Membership Fee`,
+                                description: `Monthly membership fee for ${agreement.planName || 'Gold Plan'} - billing cycle resuming via Kort.`,
+                                quantity: 1,
+                                unitPrice: price,
+                                total: price,
+                                type: "Service",
+                                taxable: false
+                            }
+                        ],
+                        amount: price,
+                        totalAmount: price,
+                        subtotal: price,
+                        taxAmount: 0,
+                        taxRate: 0,
+                        billToName: agreement.customerName,
+                        billToAddress: customerData?.address || "Address Not Provided",
+                        paidDate: null
+                    }
+                };
+
+                let paymentIntentId = "";
+
+                const vaultedPaymentMethodId = customerData?.vaultedPaymentMethodId;
+                const kortCustomerId = customerData?.kortCustomerId;
+
+                if (vaultedPaymentMethodId && kortCustomerId && orgMerchantId) {
+                    diagnosticLogs.push(`Customer ${customerId} has vaulted card. Attempting off-session payment...`);
+                    try {
+                        const amountCents = Math.round(price * 100);
+                        const payload = {
+                            amount: amountCents,
+                            currency: 'usd',
+                            payment_method_id: vaultedPaymentMethodId,
+                            customer_id: kortCustomerId,
+                            payment_method_types: customerData?.vaultedPaymentType ? [customerData.vaultedPaymentType] : ['card'],
+                            confirm: true,
+                            off_session: true,
+                            metadata: {
+                                customerId: customerId,
+                                serviceAgreementId: agreementId,
+                                type: 'membership_recurrent',
+                                jobId: newJobId
+                            }
+                        };
+
+                        const response = await fetch(`${getTilledApiUrl()}/v1/payment-intents`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'tilled-api-key': secretKey,
+                                'tilled-account': orgMerchantId
+                            },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (response.ok) {
+                            const piData = await response.json() as any;
+                            if (piData.status === 'succeeded' || piData.status === 'processing') {
+                                paymentIntentId = piData.id;
+                                newJob.invoice.status = 'Paid';
+                                newJob.invoice.paidDate = today.toISOString();
+                                newJob.invoice.paymentIntentId = paymentIntentId;
+                                newJob.invoice.paymentMethod = 'Credit Card';
+                                diagnosticLogs.push(`Successfully auto-billed $${price} for ${agreement.customerName}`);
+                            } else {
+                                diagnosticLogs.push(`Off-session payment intent status returned: ${piData.status}`);
+                            }
+                        } else {
+                            const errData = await response.json();
+                            diagnosticLogs.push(`Off-session payment API error: ${JSON.stringify(errData)}`);
+                        }
+                    } catch (payErr: any) {
+                        diagnosticLogs.push(`Failed to process off-session charge: ${payErr.message}`);
+                    }
+                } else {
+                    diagnosticLogs.push(`No vaulted credentials for customer ${customerId}. Created INV-sa-${agreementId} for manual payment.`);
+                }
+
+                await db.collection('jobs').doc(newJobId).set(newJob);
+
+                const nextMonth = new Date(nextBillingDate);
+                nextMonth.setMonth(nextMonth.getMonth() + 1);
+                
+                await db.collection('serviceAgreements').doc(agreementId).update({
+                    nextBillingDate: nextMonth.toISOString()
+                });
+                
+                diagnosticLogs.push(`Agreement ${agreementId} nextBillingDate advanced to: ${nextMonth.toISOString()}`);
+            } else {
+                diagnosticLogs.push(`Agreement ${agreementId} is not due yet (next billing is: ${nextBillingDate.toISOString()})`);
+            }
+        }
+
+        return {
+            success: true,
+            logs: diagnosticLogs
+        };
+
+    } catch (error: any) {
+        return {
+            success: false,
+            error: error.message,
+            logs: diagnosticLogs
+        };
+    }
+});
+
+

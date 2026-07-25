@@ -14,6 +14,7 @@ import InvoiceHeader from './invoice-editor/InvoiceHeader';
 import LineItemsList from './invoice-editor/LineItemsList';
 import InvoiceActions from './invoice-editor/InvoiceActions';
 import { useInvoiceLogic } from './invoice-editor/useInvoiceLogic';
+import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
 
 interface InvoiceEditorModalProps {
     isOpen: boolean;
@@ -24,12 +25,13 @@ interface InvoiceEditorModalProps {
 const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose, jobId }) => {
     const {
         currentJob,
+        customer,
         customerName, setCustomerName,
         address, setAddress,
         billToName, setBillToName,
         billToAddress, setBillToAddress,
         lineItems,
-        handleAddItem, handleUpdateItem, handleDeleteItem,
+        handleAddItem, handleUpdateItem, handleDeleteItem, handleMoveItem,
         totals,
         isSaving,
         handleSave,
@@ -59,11 +61,22 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         membershipEnrollment, setMembershipEnrollment,
         recommendations, setRecommendations,
         additionalFeeName, setAdditionalFeeName,
-        additionalFeePercent, setAdditionalFeePercent
+        additionalFeePercent, setAdditionalFeePercent,
+        retainagePercent, setRetainagePercent,
+        invoiceDate, setInvoiceDate,
+        dueDate, setDueDate,
+        paymentTerms, setPaymentTerms,
+        linkedJobs,
+        syncInvoiceWithLinked, setSyncInvoiceWithLinked,
+        handleImportFromLinkedJobs,
     } = useInvoiceLogic(jobId, isOpen, onClose);
 
     const { state } = useAppContext();
     const [isMembershipModalOpen, setIsMembershipModalOpen] = useState(false);
+    const [recipientModalConfig, setRecipientModalConfig] = useState<{
+        isOpen: boolean;
+        type: 'send' | 'receipt' | 'reminder';
+    }>({ isOpen: false, type: 'send' });
     
     // Default system plans merged with organization
     const DEFAULT_PLANS: Omit<MembershipPlan, 'organizationId'>[] = [
@@ -111,6 +124,14 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         
         setIsMembershipModalOpen(false);
     };
+    const isCommercial = useMemo(() => {
+        if (!currentJob) return false;
+        return !!(
+            (currentJob as any).isProjectLevel || 
+            customer?.customerType === 'Commercial' ||
+            customer?.customerType === 'Property Management'
+        );
+    }, [currentJob, customer]);
 
     if (!currentJob) return null;
 
@@ -126,7 +147,14 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     setBillToName={setBillToName}
                     billToAddress={billToAddress}
                     setBillToAddress={setBillToAddress}
+                    invoiceDate={invoiceDate}
+                    setInvoiceDate={setInvoiceDate}
+                    dueDate={dueDate}
+                    setDueDate={setDueDate}
+                    paymentTerms={paymentTerms}
+                    setPaymentTerms={setPaymentTerms}
                     currentJob={currentJob}
+                    customer={customer}
                 />
 
                 <LineItemsList
@@ -135,25 +163,57 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     handleDeleteItem={handleDeleteItem}
                     handleAddItem={handleAddItem}
                     setIsDiscountModalOpen={setIsDiscountModalOpen}
+                    contractedRate={customer?.pricingRules?.contractedRate}
+                    handleMoveItem={handleMoveItem}
                 />
 
-                {/* Additional Fees */}
-                <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
-                    <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                        💳 Additional Fees (e.g., Credit Card Processing)
-                    </h4>
-                    <div className="flex gap-4 items-center">
-                        <div className="flex-1">
-                            <Input label="Fee Name" value={additionalFeeName} onChange={e => setAdditionalFeeName(e.target.value)} placeholder="e.g. Processing Fee" />
+                {/* Additional Fees and Retainage */}
+                <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6 space-y-6">
+                    {isCommercial && (
+                        <div>
+                            <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                                📋 Retainage Holdback (B2B Progressive Billing)
+                            </h4>
+                            <div className="flex gap-4 items-center">
+                                <div className="flex-1">
+                                    <Input 
+                                        label="Retainage Percentage (%)" 
+                                        type="number" 
+                                        value={retainagePercent} 
+                                        onChange={e => setRetainagePercent(parseFloat(e.target.value) || 0)} 
+                                    />
+                                </div>
+                            </div>
                         </div>
-                        <div className="flex-1">
-                            <Input label="Fee Percentage (%)" type="number" value={additionalFeePercent} onChange={e => setAdditionalFeePercent(parseFloat(e.target.value) || 0)} />
+                    )}
+
+                    <div>
+                        <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                            💳 Additional Fees (e.g., Credit Card/ACH Processing)
+                        </h4>
+                        <div className="flex gap-4 items-center">
+                            <div className="flex-1">
+                                <Input 
+                                    label="Fee Name" 
+                                    value={additionalFeeName} 
+                                    onChange={e => setAdditionalFeeName(e.target.value)} 
+                                    placeholder="e.g. Processing Fee" 
+                                />
+                            </div>
+                            <div className="flex-1">
+                                <Input 
+                                    label="Fee Percentage (%)" 
+                                    type="number" 
+                                    value={additionalFeePercent} 
+                                    onChange={e => setAdditionalFeePercent(parseFloat(e.target.value) || 0)} 
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <div className="mt-8 flex flex-col items-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-6">
-                    {currentJob.invoice.amountPaid !== undefined && currentJob.invoice.amountPaid > 0 ? (
+                    {currentJob.invoice.status !== 'Failed' && currentJob.invoice.amountPaid !== undefined && currentJob.invoice.amountPaid > 0 ? (
                         <>
                             <div className="text-right text-sm">
                                 <span className="font-bold text-gray-500 uppercase tracking-widest mr-2">Grand Total:</span>
@@ -170,25 +230,57 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                         </>
                     ) : (
                         <div className="text-right">
+                            {currentJob.invoice.status === 'Failed' && (
+                                <div className="mb-2 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-600 dark:text-rose-400 text-right">
+                                    <span className="block font-black uppercase tracking-wider">⚠️ Payment Method Failed</span>
+                                    {currentJob.invoice.lastFailureReason && (
+                                        <span className="block text-[11px] font-normal text-rose-700 dark:text-rose-300 mt-0.5">Reason: {currentJob.invoice.lastFailureReason}</span>
+                                    )}
+                                </div>
+                            )}
                             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Grand Total Due</p>
-                            <p className="text-3xl font-black text-primary-600">${totals.total.toFixed(2)}</p>
+                            <p className="text-3xl font-black text-rose-600 dark:text-rose-500">${totals.total.toFixed(2)}</p>
                         </div>
                     )}
                 </div>
 
-                <InvoiceActions
-                    status={currentJob.invoice.status}
-                    isSaving={isSaving}
-                    handlePreview={() => setIsPreviewOpen(true)}
-                    handleSend={handleSendInvoice}
-                    handleReceipt={handleSendReceipt}
-                    handleSendReminder={handleSendReminder}
-                    handleMarkPaid={handleMarkPaid}
-                    handleMarkUnpaid={handleMarkUnpaid}
-                    handleMarkPending={handleMarkPending}
-                    handleSave={handleSave}
-                    handleUploadDocumentation={handleUploadDocumentation}
-                />
+                {linkedJobs.length > 0 && (
+                    <div className="my-4 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-150 dark:border-slate-850 space-y-3">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-2 border-b border-slate-200/50 dark:border-slate-800">
+                            <div className="text-left">
+                                <span className="text-xs font-black text-slate-700 dark:text-slate-350 uppercase tracking-widest block">
+                                    Linked Jobs Invoicing ({linkedJobs.length})
+                                </span>
+                                <span className="text-[10px] text-slate-400 dark:text-slate-550 font-medium block">
+                                    Consolidate or share billing details across linked service records.
+                                </span>
+                            </div>
+                            <Button
+                                variant="outline"
+                                onClick={handleImportFromLinkedJobs}
+                                className="text-[10px] uppercase font-black tracking-widest px-3 py-1.5 h-auto cursor-pointer"
+                            >
+                                Import Items from Linked Jobs
+                            </Button>
+                        </div>
+                        <label className="flex items-start gap-3 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={syncInvoiceWithLinked}
+                                onChange={e => setSyncInvoiceWithLinked(e.target.checked)}
+                                className="mt-0.5 rounded border-slate-350 dark:border-slate-700 text-indigo-650 focus:ring-indigo-650 w-4 h-4 cursor-pointer"
+                            />
+                            <div className="space-y-0.5 text-left">
+                                <p className="text-xs font-bold text-slate-850 dark:text-slate-200">
+                                    Sync/Share Invoice with all Linked Jobs
+                                </p>
+                                <p className="text-[10px] text-slate-450 dark:text-slate-500 font-medium">
+                                    Saving or marking this invoice paid will sync the items, totals, status, and signatures to all linked jobs.
+                                </p>
+                            </div>
+                        </label>
+                    </div>
+                )}
 
                 <div className="mt-4 flex justify-end">
                     <Button 
@@ -284,10 +376,25 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                         placeholder="e.g. Recommend replacing the capacitor within the next 6 months to prevent system failure..."
                     />
                 </div>
+
+                <InvoiceActions
+                    status={currentJob.invoice.status}
+                    isSaving={isSaving}
+                    remainingBalance={Math.max(0, totals.total - (currentJob?.invoice?.amountPaid || 0))}
+                    handlePreview={() => setIsPreviewOpen(true)}
+                    handleSend={() => setRecipientModalConfig({ isOpen: true, type: 'send' })}
+                    handleReceipt={() => setRecipientModalConfig({ isOpen: true, type: 'receipt' })}
+                    handleSendReminder={() => setRecipientModalConfig({ isOpen: true, type: 'reminder' })}
+                    handleMarkPaid={handleMarkPaid}
+                    handleMarkUnpaid={handleMarkUnpaid}
+                    handleMarkPending={handleMarkPending}
+                    handleSave={handleSave}
+                    handleUploadDocumentation={handleUploadDocumentation}
+                />
             </div>
             
             {isDiscountModalOpen && (
-                <Modal isOpen={true} onClose={() => setIsDiscountModalOpen(false)} title="Apply Discount">
+                <Modal isOpen={true} onClose={() => setIsDiscountModalOpen(false)} title="Apply Discount" zIndex="z-[300]">
                     <div className="space-y-4">
                         <Select 
                             label="Scope"
@@ -318,7 +425,7 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
             )}
 
             {isMembershipModalOpen && (
-                <Modal isOpen={true} onClose={() => setIsMembershipModalOpen(false)} title="Enroll Membership">
+                <Modal isOpen={true} onClose={() => setIsMembershipModalOpen(false)} title="Enroll Membership" zIndex="z-[300]">
                     <form 
                         onSubmit={e => {
                             e.preventDefault();
@@ -368,7 +475,7 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
             )}
 
             {isSigningOpen && (
-                <Modal isOpen={true} onClose={() => setIsSigningOpen(false)} title="Sign Invoice" size="md">
+                <Modal isOpen={true} onClose={() => setIsSigningOpen(false)} title="Sign Invoice" size="md" zIndex="z-[300]">
                     <div className="space-y-4">
                         <p className="text-sm text-gray-500">I authorize the work performed and agree to the total amount due.</p>
                         <SignaturePad ref={sigPadRef} className="w-full h-40 border rounded" /> 
@@ -381,7 +488,7 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
             )}
 
             {isImportProposalModalOpen && (
-                <Modal isOpen={true} onClose={() => setIsImportProposalModalOpen(false)} title="Import from Proposal">
+                <Modal isOpen={true} onClose={() => setIsImportProposalModalOpen(false)} title="Import from Proposal" zIndex="z-[300]">
                     <div className="space-y-4">
                         <p className="text-sm text-gray-500">Select a proposal to import its line items into this invoice.</p>
                         <Select
@@ -390,11 +497,14 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                             onChange={e => setSelectedProposalId(e.target.value)}
                         >
                             <option value="">-- Select a Proposal --</option>
-                            {relevantProposals.map((prop: Proposal) => (
-                                <option key={prop.id} value={prop.id}>
-                                    {prop.customerName} - {new Date(prop.createdAt).toLocaleDateString()} - ${prop.total.toFixed(2)}
-                                </option>
-                            ))}
+                            {relevantProposals.map((prop: Proposal) => {
+                                const isLinkedToOtherJob = prop.jobId && prop.jobId !== currentJob.id;
+                                return (
+                                    <option key={prop.id} value={prop.id}>
+                                        {prop.customerName} - {new Date(prop.createdAt).toLocaleDateString()} - ${prop.total.toFixed(2)}{isLinkedToOtherJob ? ` (Linked to Job #${prop.jobId})` : ''}
+                                    </option>
+                                );
+                            })}
                         </Select>
                         <Button 
                             onClick={() => selectedProposalId && handleImportFromProposal(selectedProposalId)}
@@ -405,6 +515,31 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                         </Button>
                     </div>
                 </Modal>
+            )}
+            {recipientModalConfig.isOpen && (
+                <RecipientSelectorModal
+                    isOpen={recipientModalConfig.isOpen}
+                    onClose={() => setRecipientModalConfig(prev => ({ ...prev, isOpen: false }))}
+                    customerId={currentJob.customerId}
+                    locationId={currentJob.locationId}
+                    title={
+                        recipientModalConfig.type === 'send'
+                            ? 'Select Invoice Recipients'
+                            : recipientModalConfig.type === 'receipt'
+                            ? 'Select Receipt Recipients'
+                            : 'Select Reminder Recipients'
+                    }
+                    onConfirm={(emails, attachPdf) => {
+                        setRecipientModalConfig(prev => ({ ...prev, isOpen: false }));
+                        if (recipientModalConfig.type === 'send') {
+                            handleSendInvoice(emails, attachPdf);
+                        } else if (recipientModalConfig.type === 'receipt') {
+                            handleSendReceipt(emails);
+                        } else if (recipientModalConfig.type === 'reminder') {
+                            handleSendReminder(emails);
+                        }
+                    }}
+                />
             )}
 
         </Modal>

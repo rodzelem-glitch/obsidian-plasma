@@ -4,6 +4,9 @@ const config: CapacitorConfig = {
   appId: 'com.tektrakker.tektrakker',
   appName: 'TekTrakker',
   webDir: 'dist',
+  android: {
+    adjustMarginsForEdgeToEdge: 'auto'
+  },
   plugins: {
     SplashScreen: {
       launchShowDuration: 3000,

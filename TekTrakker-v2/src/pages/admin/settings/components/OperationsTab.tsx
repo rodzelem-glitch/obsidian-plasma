@@ -3,7 +3,7 @@ import React from 'react';
 import Card from 'components/ui/Card';
 import Input from 'components/ui/Input';
 import Toggle from 'components/ui/Toggle';
-import { MapPinIcon, Gavel, Users, Zap, Bot, CreditCard } from 'lucide-react';
+import { MapPinIcon, Gavel, Users, Zap, Bot, CreditCard, FileText } from 'lucide-react';
 
 interface OperationsTabProps {
     address: string;
@@ -60,6 +60,18 @@ interface OperationsTabProps {
     setProposalStartNumber: (val: string) => void;
     allowPartialPayments: boolean;
     setAllowPartialPayments: (val: boolean) => void;
+    lateFeeEnabled: boolean;
+    setLateFeeEnabled: (val: boolean) => void;
+    lateFeeType: 'flat' | 'percent';
+    setLateFeeType: (val: 'flat' | 'percent') => void;
+    lateFeeValue: string;
+    setLateFeeValue: (val: string) => void;
+    lateFeeInterestRate: string;
+    setLateFeeInterestRate: (val: string) => void;
+    lateFeeGracePeriod: string;
+    setLateFeeGracePeriod: (val: string) => void;
+    autoSendMonthlyStatements: boolean;
+    setAutoSendMonthlyStatements: (val: boolean) => void;
 }
 
 const OperationsTab: React.FC<OperationsTabProps> = ({
@@ -88,7 +100,13 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
     invoiceStartNumber, setInvoiceStartNumber,
     proposalPrefix, setProposalPrefix,
     proposalStartNumber, setProposalStartNumber,
-    allowPartialPayments, setAllowPartialPayments
+    allowPartialPayments, setAllowPartialPayments,
+    lateFeeEnabled, setLateFeeEnabled,
+    lateFeeType, setLateFeeType,
+    lateFeeValue, setLateFeeValue,
+    lateFeeInterestRate, setLateFeeInterestRate,
+    lateFeeGracePeriod, setLateFeeGracePeriod,
+    autoSendMonthlyStatements, setAutoSendMonthlyStatements
 }) => {
     return (
         <div className="space-y-6">
@@ -203,6 +221,103 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
                             enabled={allowPartialPayments} 
                             onChange={setAllowPartialPayments} 
                         />
+                    </div>
+                </div>
+            </Card>
+
+            <Card>
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-indigo-600">
+                    <Gavel size={20} /> Late Fees & Interest Rates
+                </h3>
+                <p className="text-xs text-slate-500 mb-6 -mt-4 leading-relaxed">
+                    Automatically calculate late fees and interest rates for outstanding customer invoices that have missed their due date.
+                </p>
+                <div className="space-y-4">
+                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h4 className="font-bold text-slate-800 dark:text-slate-200">Enable Late Fees & Interest</h4>
+                                <p className="text-xs text-slate-400">Assess charges automatically when due dates are missed</p>
+                            </div>
+                            <Toggle 
+                                label="" 
+                                enabled={lateFeeEnabled} 
+                                onChange={setLateFeeEnabled} 
+                            />
+                        </div>
+                        {lateFeeEnabled && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 animate-fade-in border-t border-slate-200/50 pt-4">
+                                <div className="space-y-4">
+                                    <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Overdue Surcharge (One-Time)</h5>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label htmlFor="late-fee-type" className="block text-xs font-medium text-slate-555 mb-1">Fee Type</label>
+                                            <select
+                                                id="late-fee-type"
+                                                value={lateFeeType}
+                                                onChange={e => setLateFeeType(e.target.value as 'flat' | 'percent')}
+                                                className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                            >
+                                                <option value="flat">Flat Fee ($)</option>
+                                                <option value="percent">Percentage (%)</option>
+                                            </select>
+                                        </div>
+                                        <Input 
+                                            id="late-fee-value" 
+                                            label={lateFeeType === 'flat' ? 'Flat Amount ($)' : 'Percentage (%)'} 
+                                            type="number" 
+                                            step="0.01" 
+                                            value={lateFeeValue} 
+                                            onChange={e => setLateFeeValue(e.target.value)} 
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-4">
+                                    <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Grace Period & Monthly Accruals</h5>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <Input 
+                                            id="late-fee-grace" 
+                                            label="Grace Period (Days)" 
+                                            type="number" 
+                                            value={lateFeeGracePeriod} 
+                                            onChange={e => setLateFeeGracePeriod(e.target.value)} 
+                                        />
+                                        <Input 
+                                            id="late-fee-interest" 
+                                            label="Monthly Interest Rate (%)" 
+                                            type="number" 
+                                            step="0.01" 
+                                            value={lateFeeInterestRate} 
+                                            onChange={e => setLateFeeInterestRate(e.target.value)} 
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Card>
+
+            <Card>
+                <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-indigo-600">
+                    <FileText size={20} /> Automated Monthly Statements
+                </h3>
+                <p className="text-xs text-slate-500 mb-6 -mt-4 leading-relaxed">
+                    Automatically email Statement of Account ledgers to commercial customers with unpaid balances at the end of each month.
+                </p>
+                <div className="space-y-4">
+                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h4 className="font-bold text-slate-800 dark:text-slate-200">Auto-Send Monthly Statements</h4>
+                                <p className="text-xs text-slate-400">Automatically send statements to commercial accounts with outstanding balances on the last day of every month</p>
+                            </div>
+                            <Toggle 
+                                label="" 
+                                enabled={autoSendMonthlyStatements} 
+                                onChange={setAutoSendMonthlyStatements} 
+                            />
+                        </div>
                     </div>
                 </div>
             </Card>

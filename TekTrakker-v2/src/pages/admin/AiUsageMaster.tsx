@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useEffect } from 'react';
 import { db } from '../../lib/firebase';
@@ -13,7 +14,11 @@ import type { Organization } from '../../types';
 interface AiUsageRecord {
   organizationId: string;
   totalTokensUsed: number;
+  promptTokensUsed?: number;
+  candidatesTokensUsed?: number;
   virtualWorkerTokensUsed?: number;
+  virtualWorkerPromptTokensUsed?: number;
+  virtualWorkerCandidatesTokensUsed?: number;
   virtualWorkerLimitTokens?: number;
   standardLimitTokens?: number;
   lastUpdated: any;
@@ -119,10 +124,10 @@ const AiUsageMaster: React.FC = () => {
       const standLimit = parseInt(newStandardLimit.replace(/,/g, ''), 10);
       const vwLimit = parseInt(newVirtualWorkerLimit.replace(/,/g, ''), 10);
       
-      await db.collection('aiUsage').doc(selectedOrgId).set({
+      await db.collection('aiUsage').doc(selectedOrgId).set(cleanUndefinedFields({
         standardLimitTokens: isNaN(standLimit) ? null : standLimit,
         virtualWorkerLimitTokens: isNaN(vwLimit) ? null : vwLimit
-      }, { merge: true });
+      }), { merge: true });
       setIsLimitModalOpen(false);
     } catch (e) {
       console.error("Failed to update limit", e);
@@ -135,8 +140,28 @@ const AiUsageMaster: React.FC = () => {
   if (loading) return <div className="p-8 text-center text-gray-500">Loading metrics...</div>;
 
   const totalPlatformTokens = usageRecords.reduce((sum, r) => sum + (r.totalTokensUsed || 0) + (r.virtualWorkerTokensUsed || 0), 0);
-  // Estimate based loosely on 1.5 Pro ($5/1M in, $15/1M out -> roughly $10/1M blended)
-  const estimatedCost = (totalPlatformTokens / 1_000_000) * 10;
+  
+  const calculateRecordCost = (total: number, prompt?: number, candidates?: number) => {
+    const p = prompt || 0;
+    const c = candidates || 0;
+    const splitTotal = p + c;
+    const legacyTokens = Math.max(0, total - splitTotal);
+    return (p / 1_000_000) * 1.50 + (c / 1_000_000) * 9.00 + (legacyTokens / 1_000_000) * 2.50;
+  };
+
+  const estimatedCost = usageRecords.reduce((sum, r) => {
+    const stdCost = calculateRecordCost(
+      r.totalTokensUsed || 0,
+      r.promptTokensUsed,
+      r.candidatesTokensUsed
+    );
+    const vwCost = calculateRecordCost(
+      r.virtualWorkerTokensUsed || 0,
+      r.virtualWorkerPromptTokensUsed,
+      r.virtualWorkerCandidatesTokensUsed
+    );
+    return sum + stdCost + vwCost;
+  }, 0);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -158,7 +183,7 @@ const AiUsageMaster: React.FC = () => {
             <DollarSign size={18} className="text-emerald-500" />
           </div>
           <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">${estimatedCost.toFixed(2)}</p>
-          <p className="text-xs text-slate-500">Based on blended model rates ($10/1M)</p>
+          <p className="text-xs text-slate-500">Based on Gemini 3.5 Flash pricing ($1.50/1M input, $9.00/1M output, $2.50/1M legacy)</p>
         </Card>
 
         <Card className="flex flex-col gap-2 relative">
@@ -204,7 +229,7 @@ const AiUsageMaster: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 bg-slate-50/50 dark:bg-slate-800/50">
                         <div className="font-medium text-slate-700 dark:text-slate-300">{Number(stdTokens).toLocaleString()}</div>
-                        <div className="text-xs text-emerald-500 font-mono mb-2">~${((stdTokens / 1_000_000) * 10).toFixed(2)}</div>
+                        <div className="text-xs text-emerald-500 font-mono mb-2">~${calculateRecordCost(record.totalTokensUsed || 0, record.promptTokensUsed, record.candidatesTokensUsed).toFixed(2)}</div>
                         
                         {standLimit ? (
                             <div className="flex flex-col w-full min-w-[100px]">
@@ -221,7 +246,7 @@ const AiUsageMaster: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 bg-indigo-50/30 dark:bg-indigo-900/10 border-x border-indigo-100/50 dark:border-indigo-800/50">
                         <div className="font-medium text-indigo-700 dark:text-indigo-300">{Number(vwTokens).toLocaleString()}</div>
-                        <div className="text-xs text-emerald-500 font-mono mb-2">~${((vwTokens / 1_000_000) * 10).toFixed(2)}</div>
+                        <div className="text-xs text-emerald-500 font-mono mb-2">~${calculateRecordCost(record.virtualWorkerTokensUsed || 0, record.virtualWorkerPromptTokensUsed, record.virtualWorkerCandidatesTokensUsed).toFixed(2)}</div>
 
                         {vwLimit ? (
                             <div className="flex flex-col w-full min-w-[100px]">

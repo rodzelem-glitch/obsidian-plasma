@@ -15,14 +15,14 @@ import { uploadFileToStorage } from 'lib/storageService';
 import type { Expense, BusinessDocument } from 'types';
 import { Receipt, Plus, Trash2, FileText, Download, Paperclip, Camera as CameraIcon, Loader2, ArrowLeft } from 'lucide-react';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
-import { formatAddress } from 'lib/utils';
+import { formatAddress , cleanUndefinedFields } from 'lib/utils';
 import DOMPurify from 'dompurify';
 
 const SalesExpenses: React.FC = () => {
     const navigate = useNavigate();
-    const { state } = useAppContext();
+    const { state, dispatch } = useAppContext();
     const { confirm } = useConfirm();
-    const { currentUser } = state;
+    const { currentUser, isDemoMode } = state;
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [taxDocs, setTaxDocs] = useState<BusinessDocument[]>([]);
     const [viewingReceipt, setViewingReceipt] = useState<string[] | null>(null);
@@ -41,7 +41,8 @@ const SalesExpenses: React.FC = () => {
         vendor: '',
         receiptData: null,
         receiptUrl: null,
-        receiptUrls: []
+        receiptUrls: [],
+        expenseType: 'business'
     });
 
     const handleAttachToExisting = async (e: React.ChangeEvent<HTMLInputElement>, expId: string) => {
@@ -57,10 +58,33 @@ const SalesExpenses: React.FC = () => {
         setIsUploadingToExpenseId(expId);
         
         try {
-            const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg';
-            const path = `organizations/platform/users/${currentUser.id}/receipts/${Date.now()}_${safeName}`;
-            const downloadUrl = await uploadFileToStorage(path, file);
-            await db.collection('expenses').doc(expId).update({ receiptUrl: downloadUrl, receiptData: null });
+            let downloadUrl = '';
+            if (isDemoMode) {
+                downloadUrl = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = (err) => reject(err);
+                    reader.readAsDataURL(file);
+                });
+                const targetExp = expenses.find(exp => exp.id === expId);
+                if (targetExp) {
+                    dispatch({
+                        type: 'UPDATE_EXPENSE',
+                        payload: {
+                            ...targetExp,
+                            receiptUrl: downloadUrl,
+                            receiptUrls: [downloadUrl]
+                        }
+                    });
+                }
+                showToast.warn("Receipt attached successfully (Demo Mode).");
+            } else {
+                const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg';
+                const path = `organizations/platform/users/${currentUser.id}/receipts/${Date.now()}_${safeName}`;
+                downloadUrl = await uploadFileToStorage(path, file);
+                await db.collection('expenses').doc(expId).update(cleanUndefinedFields({ receiptUrl: downloadUrl, receiptData: null, receiptUrls: [downloadUrl] }));
+                showToast.warn("Receipt attached successfully.");
+            }
         } catch (err) {
             console.error("Failed to update receipt", err);
             showToast.warn("Upload failed. The file format might be unsupported or the server rejected the payload.");
@@ -101,25 +125,39 @@ const SalesExpenses: React.FC = () => {
 
             if (wasEmpty) {
                 setIsAnalyzing(true);
-                try {
-                    const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
-                    const res = await analyzeFn({ base64Images: [base64Strings[0]] });
-                    const extracted = (res.data as { data: { vendor?: string, amount?: string, date?: string, category?: string, description?: string } }).data;
-                    if (extracted) {
-                        const todayStr = new Date().toISOString().split('T')[0];
-                        setNewExpense(prev => ({
-                            ...prev,
-                            vendor: prev.vendor ? prev.vendor : (extracted.vendor || prev.vendor),
-                            amount: prev.amount && prev.amount !== 0 ? prev.amount : (extracted.amount ? parseFloat(extracted.amount) : prev.amount),
-                            date: prev.date && prev.date !== todayStr ? prev.date : (extracted.date || prev.date),
-                            category: prev.category && prev.category !== 'Travel' ? prev.category : (extracted.category || prev.category),
-                            description: prev.description ? prev.description : (extracted.description || prev.description)
-                        }));
-                    }
-                } catch (aiErr) {
-                    console.error('OCR Extraction failed:', aiErr);
-                } finally {
+                if (isDemoMode) {
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    setNewExpense(prev => ({
+                        ...prev,
+                        vendor: prev.vendor || 'Starbucks Coffee',
+                        amount: prev.amount && prev.amount !== 0 ? prev.amount : 14.58,
+                        date: prev.date || new Date().toISOString().split('T')[0],
+                        category: prev.category || 'Meals (50% deductible)',
+                        description: prev.description || 'Client coffee meeting'
+                    }));
                     setIsAnalyzing(false);
+                    showToast.warn("Mock receipt scanned successfully (Demo Mode).");
+                } else {
+                    try {
+                        const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
+                        const res = await analyzeFn({ base64Images: [base64Strings[0]] });
+                        const extracted = (res.data as { data: { vendor?: string, amount?: string, date?: string, category?: string, description?: string } }).data;
+                        if (extracted) {
+                            const todayStr = new Date().toISOString().split('T')[0];
+                            setNewExpense(prev => ({
+                                ...prev,
+                                vendor: prev.vendor ? prev.vendor : (extracted.vendor || prev.vendor),
+                                amount: prev.amount && prev.amount !== 0 ? prev.amount : (extracted.amount ? parseFloat(extracted.amount) : prev.amount),
+                                date: prev.date && prev.date !== todayStr ? prev.date : (extracted.date || prev.date),
+                                category: prev.category && prev.category !== 'Travel' ? prev.category : (extracted.category || prev.category),
+                                description: prev.description ? prev.description : (extracted.description || prev.description)
+                            }));
+                        }
+                    } catch (aiErr) {
+                        console.error('OCR Extraction failed:', aiErr);
+                    } finally {
+                        setIsAnalyzing(false);
+                    }
                 }
             }
         } catch (err) {
@@ -146,25 +184,39 @@ const SalesExpenses: React.FC = () => {
 
                 if (wasEmpty) {
                     setIsAnalyzing(true);
-                    try {
-                        const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
-                        const res = await analyzeFn({ base64Images: [dataUrl] });
-                        const extracted = (res.data as { data: { vendor?: string, amount?: string, date?: string, category?: string, description?: string } }).data;
-                        if (extracted) {
-                            const todayStr = new Date().toISOString().split('T')[0];
-                            setNewExpense(prev => ({
-                                ...prev,
-                                vendor: prev.vendor ? prev.vendor : (extracted.vendor || prev.vendor),
-                                amount: prev.amount && prev.amount !== 0 ? prev.amount : (extracted.amount ? parseFloat(extracted.amount) : prev.amount),
-                                date: prev.date && prev.date !== todayStr ? prev.date : (extracted.date || prev.date),
-                                category: prev.category && prev.category !== 'Travel' ? prev.category : (extracted.category || prev.category),
-                                description: prev.description ? prev.description : (extracted.description || prev.description)
-                            }));
-                        }
-                    } catch (aiErr) {
-                        console.error('OCR Extraction failed:', aiErr);
-                    } finally {
+                    if (isDemoMode) {
+                        await new Promise(resolve => setTimeout(resolve, 1500));
+                        setNewExpense(prev => ({
+                            ...prev,
+                            vendor: prev.vendor || 'Shell Gas Station',
+                            amount: prev.amount && prev.amount !== 0 ? prev.amount : 45.32,
+                            date: prev.date || new Date().toISOString().split('T')[0],
+                            category: prev.category || 'Car and truck expenses',
+                            description: prev.description || 'Fuel for sales trip'
+                        }));
                         setIsAnalyzing(false);
+                        showToast.warn("Mock receipt scanned successfully (Demo Mode).");
+                    } else {
+                        try {
+                            const analyzeFn = functions.httpsCallable('analyzeReceiptWithAI');
+                            const res = await analyzeFn({ base64Images: [dataUrl] });
+                            const extracted = (res.data as { data: { vendor?: string, amount?: string, date?: string, category?: string, description?: string } }).data;
+                            if (extracted) {
+                                const todayStr = new Date().toISOString().split('T')[0];
+                                setNewExpense(prev => ({
+                                    ...prev,
+                                    vendor: prev.vendor ? prev.vendor : (extracted.vendor || prev.vendor),
+                                    amount: prev.amount && prev.amount !== 0 ? prev.amount : (extracted.amount ? parseFloat(extracted.amount) : prev.amount),
+                                    date: prev.date && prev.date !== todayStr ? prev.date : (extracted.date || prev.date),
+                                    category: prev.category && prev.category !== 'Travel' ? prev.category : (extracted.category || prev.category),
+                                    description: prev.description ? prev.description : (extracted.description || prev.description)
+                                }));
+                            }
+                        } catch (aiErr) {
+                            console.error('OCR Extraction failed:', aiErr);
+                        } finally {
+                            setIsAnalyzing(false);
+                        }
                     }
                 }
             }
@@ -197,28 +249,40 @@ const SalesExpenses: React.FC = () => {
     useEffect(() => {
         if (!currentUser) return;
         
+        if (isDemoMode) {
+            const myDemoExpenses = state.expenses.filter(e => e.createdById === currentUser.id || e.paidById === currentUser.id);
+            setExpenses(myDemoExpenses);
+            
+            const myDocs = state.documents.filter(d => d.type === 'Tax Form' && d.title.includes(currentUser.lastName));
+            setTaxDocs(myDocs);
+            return;
+        }
+        
         // Fetch Expenses
         const unsubExp = db.collection('expenses')
-            .where('paidBy', '==', currentUser.firstName) // Simple match for now, ideally ID
+            .where('createdById', '==', currentUser.id)
             .where('organizationId', '==', 'platform')
             .onSnapshot(snap => {
                 const data = snap.docs.map(d => ({ ...d.data(), id: d.id } as Expense));
                 setExpenses(data);
+            }, err => {
+                console.error("Firestore unsubExp error", err);
             });
             
         // Fetch Tax Docs (Assuming manually uploaded by admin to platform org)
         const unsubDocs = db.collection('documents')
             .where('organizationId', '==', 'platform')
             .where('type', '==', 'Tax Form')
+            .where('userId', '==', currentUser.id)
             .onSnapshot(snap => {
-                // Filter client side for docs relevant to this user
                 const data = snap.docs.map(d => ({ ...d.data(), id: d.id } as BusinessDocument));
-                const myDocs = data.filter(d => d.title.includes(currentUser.lastName));
-                setTaxDocs(myDocs);
+                setTaxDocs(data);
+            }, err => {
+                console.error("Firestore unsubDocs error", err);
             });
 
         return () => { unsubExp(); unsubDocs(); };
-    }, [currentUser]);
+    }, [currentUser, isDemoMode, state.expenses, state.documents]);
 
     const handleSaveExpense = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -228,13 +292,15 @@ const SalesExpenses: React.FC = () => {
         let uploadedUrls: string[] = [];
 
         try {
-            if (newExpensePhotos.length > 0) {
+            if (!isDemoMode && newExpensePhotos.length > 0) {
                 for (let i = 0; i < newExpensePhotos.length; i++) {
                     const safeName = `expense_${Date.now()}_page${i+1}.jpg`;
                     const path = `organizations/platform/users/${currentUser.id}/receipts/${safeName}`;
                     const url = await uploadFileToStorage(path, newExpensePhotos[i]);
                     uploadedUrls.push(url);
                 }
+            } else if (isDemoMode && newExpensePhotos.length > 0) {
+                uploadedUrls = [...newExpensePhotos];
             }
 
             const expense: Expense = {
@@ -245,17 +311,28 @@ const SalesExpenses: React.FC = () => {
                 amount: Number(newExpense.amount),
                 description: newExpense.description || '',
                 vendor: newExpense.vendor || '',
-                paidBy: currentUser.firstName, 
+                paidBy: `${currentUser.firstName} ${currentUser.lastName}`, 
+                paidByName: `${currentUser.firstName} ${currentUser.lastName}`,
+                paidById: currentUser.id,
+                createdById: currentUser.id,
+                createdByName: `${currentUser.firstName} ${currentUser.lastName}`,
                 projectId: 'SalesExpense',
+                expenseType: newExpense.expenseType || 'business',
                 receiptData: null,
                 receiptUrl: uploadedUrls.length > 0 ? uploadedUrls[0] : null,
                 receiptUrls: uploadedUrls
             };
 
-            await db.collection('expenses').doc(expense.id).set(expense);
+            if (isDemoMode) {
+                dispatch({ type: 'ADD_EXPENSE', payload: expense });
+                showToast.warn("Expense logged successfully (Demo Mode).");
+            } else {
+                await db.collection('expenses').doc(expense.id).set(cleanUndefinedFields(expense));
+                showToast.warn("Expense logged successfully.");
+            }
             setIsAddModalOpen(false);
             setNewExpensePhotos([]);
-            setNewExpense({ date: new Date().toISOString().split('T')[0], category: 'Travel', amount: 0, description: '', vendor: '', receiptData: '', receiptUrls: [] });
+            setNewExpense({ date: new Date().toISOString().split('T')[0], category: 'Travel', amount: 0, description: '', vendor: '', receiptData: '', receiptUrls: [], expenseType: 'business' });
         } catch (e) {
             console.error(e);
             showToast.warn("Failed to save expense. Please try again.");
@@ -266,7 +343,14 @@ const SalesExpenses: React.FC = () => {
 
     const handleDeleteExpense = async (id: string) => {
         if (!(await confirm("Delete this expense?"))) return;
-        await db.collection('expenses').doc(id).delete();
+        
+        if (isDemoMode) {
+            dispatch({ type: 'DELETE_EXPENSE', payload: id });
+            showToast.warn("Expense deleted successfully (Demo Mode).");
+        } else {
+            await db.collection('expenses').doc(id).delete();
+            showToast.warn("Expense deleted successfully.");
+        }
     };
 
     const handleSaveW9 = async (e: React.FormEvent) => {
@@ -412,19 +496,20 @@ const SalesExpenses: React.FC = () => {
         `;
 
         try {
-            await db.collection('users').doc(currentUser.id).update({
+            await db.collection('users').doc(currentUser.id).update(cleanUndefinedFields({
                 taxW9Content: DOMPurify.sanitize(w9Html), 
-            });
+            }));
             
             // Save as a Document record too
-            await db.collection('documents').add({
+            await db.collection('documents').add(cleanUndefinedFields({
                 organizationId: 'platform',
                 title: `W-9 - ${w9Data.name}`,
                 type: 'Tax Form',
                 content: DOMPurify.sanitize(w9Html),
                 createdAt: new Date().toISOString(),
-                createdBy: currentUser.id
-            });
+                createdBy: currentUser.id,
+                userId: currentUser.id
+            }));
 
             showToast.warn("W-9 Generated and Saved.");
             setIsW9Open(false);

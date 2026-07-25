@@ -401,6 +401,34 @@ export const MOCK_DEMO_EXPENSES: Expense[] = [
         amount: 29.99,
         description: 'Monthly subscription for design software',
         date: new Date(Date.now() - 86400000 * 5).toISOString()
+    },
+    {
+        id: 'demo-expense-sales-1',
+        organizationId: 'platform',
+        paidByName: 'Sam Sales',
+        paidById: 'demo-sales-id',
+        createdById: 'demo-sales-id',
+        createdByName: 'Sam Sales',
+        paidBy: 'Sam Sales',
+        category: 'Travel',
+        amount: 120.00,
+        description: 'Flight to customer demo site',
+        date: new Date(Date.now() - 86400000 * 3).toISOString().split('T')[0],
+        expenseType: 'business'
+    },
+    {
+        id: 'demo-expense-sales-2',
+        organizationId: 'platform',
+        paidByName: 'Sam Sales',
+        paidById: 'demo-sales-id',
+        createdById: 'demo-sales-id',
+        createdByName: 'Sam Sales',
+        paidBy: 'Sam Sales',
+        category: 'Meals (50% deductible)',
+        amount: 45.50,
+        description: 'Client lunch with Bright Spark Electric',
+        date: new Date(Date.now() - 86400000 * 1).toISOString().split('T')[0],
+        expenseType: 'business'
     }
 ];
 

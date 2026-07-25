@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import React, { useState } from 'react';
 import Button from '../../../../components/ui/Button';
 import { useAppContext } from '../../../../context/AppContext';
@@ -45,21 +46,25 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
             if (!state.isDemoMode) {
                 // Save to Firestore. The real-time listener in AppContext/CustomerManagement
                 // will pick this up and update the UI automatically.
-                await db.collection('customers').doc(newCustomer.id).set(newCustomer);
+                await db.collection('customers').doc(newCustomer.id).set(cleanUndefinedFields(newCustomer));
             }
             
             // Dispatch locally to immediately update state (important for demo mode and E2E tests)
             dispatch({ type: 'ADD_CUSTOMER', payload: newCustomer });
 
-            // Notify Admins of the new customer
+            // Notify Admins of the new customer (non-blocking)
             if (!state.isDemoMode) {
-                const { notifyAdmins } = await import('../../../../lib/notificationService');
-                await notifyAdmins(state.currentOrganization.id, {
-                    title: "New Customer Added",
-                    body: `${name} has been added to the database.`,
-                    type: 'new_customer',
-                    data: { customerId: newCustomer.id }
-                });
+                try {
+                    const { notifyAdmins } = await import('../../../../lib/notificationService');
+                    await notifyAdmins(state.currentOrganization.id, {
+                        title: "New Customer Added",
+                        body: `${name} has been added to the database.`,
+                        type: 'new_customer',
+                        data: { customerId: newCustomer.id }
+                    });
+                } catch (notifError) {
+                    console.warn("Failed to notify admins of new customer:", notifError);
+                }
             }
 
             onCustomerCreated(newCustomer.id);
@@ -102,7 +107,7 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
                     className="p-2 border rounded-md"
                 />
             </div>
-            <Button onClick={handleAddCustomer} disabled={isSaving} className="mt-4">
+            <Button onClick={handleAddCustomer} data-tour="save-customer-btn" disabled={isSaving} className="mt-4">
                 {isSaving ? t('Adding...') : t('Add Customer')}
             </Button>
         </div>

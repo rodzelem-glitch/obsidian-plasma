@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { cleanUndefinedFields } from 'lib/utils';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
 import type { PlatformLead } from 'types';
@@ -54,15 +55,15 @@ const SalesPipelineBoard: React.FC = () => {
         setLeads(updatedLeads);
 
         try {
-            await db.collection('platformLeads').doc(id).update({ status });
+            await db.collection('platformLeads').doc(id).update(cleanUndefinedFields({ status }));
             // Log move
-            await db.collection('salesActivities').add({
+            await db.collection('salesActivities').add(cleanUndefinedFields({
                 leadId: id,
                 type: 'status',
                 content: `Moved to ${status}`,
                 timestamp: new Date().toISOString(),
                 repId: currentUser?.id
-            });
+            }));
         } catch (e) {
             console.error("Move failed", e);
         }

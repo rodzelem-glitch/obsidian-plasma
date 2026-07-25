@@ -4,6 +4,7 @@ import Card from 'components/ui/Card';
 import { CalendarIcon, Clock, FileText, ShieldCheck, Star, Award, User, CalendarPlus } from 'lucide-react';
 import type { Job, BusinessDocument, User as AppUser } from 'types';
 import DocumentPreview from 'components/ui/DocumentPreview';
+import { useAppContext } from 'context/AppContext';
 
 interface AppointmentsSectionProps {
     jobs: Job[];
@@ -19,6 +20,7 @@ const CertBadge: React.FC<{ label: string; icon: React.ReactNode }> = ({ label, 
 );
 
 const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documents, users = [], onEditJob }) => {
+    const { dispatch } = useAppContext();
     const [viewingPastDocument, setViewingPastDocument] = useState<{ title: string; htmlContent?: string; dataUrl?: string } | null>(null);
 
     const getJobDocuments = (jobId: string): BusinessDocument[] => {
@@ -122,6 +124,14 @@ const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documen
                                         </p>
                                         <div className="flex items-center gap-3 mt-2">
                                             <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 capitalize">{job.jobStatus}</span>
+                                            {job.poNumber && (
+                                                <button 
+                                                    onClick={() => dispatch({ type: 'SET_VIEWING_WORK_ORDER', payload: { workOrderNumber: job.poNumber, customerId: job.customerId } })}
+                                                    className="text-xs font-black px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-150 dark:border-emerald-900/30 uppercase tracking-wider hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-900/40 dark:hover:text-emerald-300 transition-colors cursor-pointer"
+                                                >
+                                                    PO/WO: {job.poNumber}
+                                                </button>
+                                            )}
                                             {(job.jobStatus === 'Scheduled' || job.jobStatus === 'In Progress') && (
                                                 <>
                                                 <button 

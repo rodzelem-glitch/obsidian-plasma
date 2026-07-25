@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useEffect } from 'react';
 import { db } from '../../lib/firebase';
@@ -115,9 +116,9 @@ const StorageUsageMaster: React.FC = () => {
       const limitGb = parseFloat(newLimitGigabytes);
       const limitBytes = isNaN(limitGb) ? null : Math.round(limitGb * 1024 * 1024 * 1024);
       
-      await db.collection('storageUsage').doc(selectedOrgId).set({
+      await db.collection('storageUsage').doc(selectedOrgId).set(cleanUndefinedFields({
         limitBytes: limitBytes
-      }, { merge: true });
+      }), { merge: true });
       setIsLimitModalOpen(false);
     } catch (e) {
       console.error("Failed to update limit", e);

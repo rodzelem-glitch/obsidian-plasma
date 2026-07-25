@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 // ... [Adding territories to FranchiseManager] ... Look below
 import React, { useState, useEffect } from 'react';
@@ -175,13 +176,13 @@ const FranchiseManager: React.FC = () => {
             };
 
             if (selectedFranchise) {
-                await db.collection('franchises').doc(selectedFranchise.id).update(dataToSave);
+                await db.collection('franchises').doc(selectedFranchise.id).update(cleanUndefinedFields(dataToSave));
             } else {
-                await db.collection('franchises').add({
+                await db.collection('franchises').add(cleanUndefinedFields({
                     ...dataToSave,
                     createdAt: new Date().toISOString(),
                     ownerUserId: null
-                });
+                }));
             }
             setIsEditing(false);
         } catch (e: unknown) {
@@ -239,7 +240,7 @@ const FranchiseManager: React.FC = () => {
         };
 
         try {
-            await db.collection('jobs').doc(jobId).set(invoiceData);
+            await db.collection('jobs').doc(jobId).set(cleanUndefinedFields(invoiceData));
             showToast.warn(`Drafted $${fee.toLocaleString()} Franchise invoice for ${selectedFranchise.name}. View paper trail in Master Billing.`);
         } catch {
             showToast.warn('Failed to bill franchise');

@@ -14,6 +14,7 @@ import TimeAndMileage from '../pages/TimeAndMileage';
 import PaymentsAndOrders from '../pages/PaymentsAndOrders';
 import IndustryToolsHub from '../pages/tools/IndustryToolsHub';
 import HRResources from '../pages/HRResources';
+import TrainingHub from '../pages/TrainingHub';
 
 import BillingGate from '../components/BillingGate';
 
@@ -33,6 +34,7 @@ const EmployeeRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMod
                 <Route path="/messages" element={<Messages />} />
                 <Route path="/timelog" element={<TimeAndMileage />} />
                 <Route path="/hr" element={<HRResources />} />
+                <Route path="/training" element={<TrainingHub user={user} />} />
                 <Route path="*" element={<Navigate to={getRedirectPath()} replace />} />
               </Routes>
           </EmployeeLayout>

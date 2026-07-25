@@ -264,7 +264,7 @@ export default function FranchisePage() {
                                     <h3 className="font-bold text-lg text-red-600">3. DEFAULT CLAUSE</h3>
                                     <p>If {franchiseName || '[Franchisee]'} is over 15 days in arrears, ALL end-users, data, and recurring revenue pipelines revert to TekTrakker master ownership. You expressly waive damage claims.</p>
 
-                                    <p className="text-xs text-slate-400 pt-8 italic leading-relaxed">Full digital contract applies. By signing this document, you acknowledge reading and understanding all reversion clauses.</p>
+                                    <p className="text-xs text-slate-400 pt-8 italic leading-relaxed">Full digital contract applies. <a href="/franchise-agreement/" target="_blank" className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold">Click here to read the full Master Service Agreement</a>. By signing this document, you acknowledge reading and understanding all reversion clauses.</p>
                                 </div>
 
                                 <div className="max-w-md mx-auto">

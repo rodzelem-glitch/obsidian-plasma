@@ -1,7 +1,8 @@
 
 import React from 'react';
-import { Trash2 as TrashIcon } from 'lucide-react';
+import { Trash2 as TrashIcon, ChevronUp, ChevronDown } from 'lucide-react';
 import { useLanguage } from 'context/LanguageContext';
+import { matchTier } from 'lib/utils';
 
 // This is the internal representation used in FieldProposal
 type InternalProposalItem = {
@@ -12,22 +13,23 @@ type InternalProposalItem = {
     unitPrice: number;
     total: number;
     type: 'Part' | 'Labor' | 'Part/Labor' | 'Service' | 'Fee' | 'Discount';
-    tier: 'Good' | 'Better' | 'Best';
+    tier: 'Basic' | 'Premium' | 'Platinum';
     taxable?: boolean;
     isPercentage?: boolean;
 };
 
-type Tier = 'Good' | 'Better' | 'Best';
+type Tier = 'Basic' | 'Premium' | 'Platinum';
 
 interface ProposalItemsListProps {
     items: InternalProposalItem[];
     activeTier: Tier;
     onUpdate: (id: string, field: keyof InternalProposalItem, value: any) => void;
     onDelete: (id: string) => void;
+    onMoveItem?: (id: string, direction: 'up' | 'down') => void;
 }
 
-const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier, onUpdate, onDelete }) => {
-    const tierItems = items.filter(i => i.tier === activeTier);
+const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier, onUpdate, onDelete, onMoveItem }) => {
+    const tierItems = items.filter(i => matchTier(i.tier, activeTier));
     const { t } = useLanguage();
 
     return (
@@ -41,9 +43,31 @@ const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier
                 <p className="text-sm text-slate-400 italic text-center py-4 md:py-8">{t("No items added to this option yet.")}</p>
             )}
             
-            {tierItems.map((item) => (
-                <div key={item.id} className="flex flex-col md:flex-row gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm group hover:border-primary-300 transition-colors">
-                    <div className="flex-1 space-y-2">
+            {tierItems.map((item, index) => (
+                <div key={item.id} className="flex flex-col md:flex-row gap-4 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm group hover:border-primary-300 transition-colors items-center">
+                    {onMoveItem && (
+                        <div className="flex flex-row md:flex-col gap-1 flex-shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => onMoveItem(item.id, 'up')}
+                                disabled={index === 0}
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                                title={t("Move up")}
+                            >
+                                <ChevronUp size={16} />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onMoveItem(item.id, 'down')}
+                                disabled={index === tierItems.length - 1}
+                                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                                title={t("Move down")}
+                            >
+                                <ChevronDown size={16} />
+                            </button>
+                        </div>
+                    )}
+                    <div className="flex-1 w-full space-y-2">
                         <div className="flex gap-2">
                             <input 
                                 className="flex-1 font-bold text-slate-900 dark:text-white bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 focus:ring-1 focus:ring-primary-500 placeholder-slate-400"
@@ -96,13 +120,33 @@ const ProposalItemsList: React.FC<ProposalItemsListProps> = ({ items, activeTier
                             <input 
                                 type="number" 
                                 className="w-full bg-slate-50 dark:bg-slate-900 border-none rounded text-right font-bold text-sm p-1 text-slate-900 dark:text-white"
-                                value={item.unitPrice}
+                                value={
+                                    item.type === 'Discount'
+                                        ? (item.isPercentage ? (item.unitPrice === 0 ? '' : item.unitPrice) : (item.unitPrice === 0 ? '' : Math.abs(item.unitPrice)))
+                                        : (item.unitPrice === 0 ? '' : item.unitPrice)
+                                }
                                 aria-label={item.isPercentage ? t('Percent (%)') : t('Unit Price')}
                                 title={item.isPercentage ? t('Percent (%)') : t('Unit Price')}
                                 onChange={e => onUpdate(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
                             />
                         </div>
                         
+                        {(item.type === 'Fee' || item.type === 'Discount') ? (
+                            <div className="flex flex-col items-center px-2">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase mb-1">{t("%")}</label>
+                                <input 
+                                    type="checkbox" 
+                                    checked={!!item.isPercentage} 
+                                    aria-label={t("Is Percentage")}
+                                    title={t("Is Percentage")}
+                                    onChange={e => onUpdate(item.id, 'isPercentage', e.target.checked)}
+                                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                                />
+                            </div>
+                        ) : (
+                            <div className="w-[32px] flex-shrink-0" aria-hidden="true"></div>
+                        )}
+
                         <div className="flex flex-col items-center px-2">
                             <label className="text-[9px] font-bold text-slate-400 uppercase mb-1">{t("Tax")}</label>
                             <input 

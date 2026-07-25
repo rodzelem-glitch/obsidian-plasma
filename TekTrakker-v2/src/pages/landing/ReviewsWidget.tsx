@@ -88,8 +88,11 @@ const ReviewsWidget: React.FC = () => {
       </div>
       
       <div className="mt-4 text-center">
-         <span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold flex items-center justify-center gap-1">
-             Powered by <a href="https://tektrakker.com" target="_blank" rel="noopener" className="text-blue-500 hover:text-blue-600 transition-colors">TekTrakker</a>
+         <span className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold flex items-center justify-center gap-1.5">
+             Powered by 
+             <a href="https://tektrakker.com" target="_blank" rel="noopener" className="inline-flex items-center">
+                 <img src="/tektrakker-logo-web.png" alt="TekTrakker" className="h-3.5 w-auto object-contain dark:brightness-0 dark:invert opacity-75 hover:opacity-100 transition-opacity" />
+             </a>
          </span>
       </div>
     </div>

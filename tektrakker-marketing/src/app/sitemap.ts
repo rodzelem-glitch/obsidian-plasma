@@ -11,6 +11,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
         '',
         '/about',
         '/pricing',
+        '/features',
         '/integrations',
         '/roi-calculator',
         '/payment-processing',
@@ -22,9 +23,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
         '/eula',
         '/homeowners',
         '/ai-worker',
-        '/ai-worker-commands'
+        '/ai-worker-commands',
+        '/architecture',
+        '/vs/servicetitan',
+        '/vs/jobber',
+        '/vs/housecall-pro'
     ].map((route) => ({
-        url: `${baseUrl}${route}`,
+        url: `${baseUrl}${route}/`,
         lastModified: new Date().toISOString().split('T')[0],
         changeFrequency: 'weekly' as const,
         priority: route === '' ? 1.0 : 0.8,
@@ -32,7 +37,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
     // Dynamic Industry routes
     const industryRoutes = Object.keys(industriesData).map((slug) => ({
-        url: `${baseUrl}/industries/${slug}`,
+        url: `${baseUrl}/industries/${slug}/`,
         lastModified: new Date().toISOString().split('T')[0],
         changeFrequency: 'monthly' as const,
         priority: 0.9,
@@ -40,7 +45,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
     // Dynamic Feature routes
     const featureRoutes = Object.keys(platformFeatures).map((slug) => ({
-        url: `${baseUrl}/features/${slug}`,
+        url: `${baseUrl}/features/${slug}/`,
         lastModified: new Date().toISOString().split('T')[0],
         changeFrequency: 'monthly' as const,
         priority: 0.9,

@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../lib/utils';
 
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -5,16 +6,17 @@ import { useAppContext } from 'context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
-import { DocumentTextIcon, BadgeIcon } from '@constants';
-import type { IncidentReport } from 'types';
+import { BadgeIcon } from '@constants';
+import type { IncidentReport, User } from 'types';
 import { db } from 'lib/firebase';
 import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import Textarea from 'components/ui/Textarea';
-import DOMPurify from 'dompurify';
 import showToast from 'lib/toast';
 import { uploadFileToStorage } from 'lib/storageService';
-import { Camera, Upload, Trash2, FileText, CheckCircle2, BookOpen, ShieldAlert, Award, ArrowLeft, ChevronRight, ClipboardList } from 'lucide-react';
+import { Camera, Upload, Trash2, FileText, CheckCircle2, BookOpen, ShieldAlert, Award, ArrowLeft, ChevronRight, ClipboardList, Download, ExternalLink } from 'lucide-react';
+import HRHandbookView from './admin/compliance/components/HRHandbookView';
+import Modal from 'components/ui/Modal';
 
 const HRResources: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -44,8 +46,159 @@ const HRResources: React.FC = () => {
     const [certFile, setCertFile] = useState<File | null>(null);
     const [certName, setCertName] = useState('');
 
-    const policies = state.documents.filter(d => d.type === 'Policy');
+    // Onboarding Steps State
+    const [activeModalStep, setActiveModalStep] = useState<string | null>(null);
+    const [uploadingStepId, setUploadingStepId] = useState<string | null>(null);
+    const [directDepositPref, setDirectDepositPref] = useState('');
+    const [onboardingFile, setOnboardingFile] = useState<File | null>(null);
+    const [sensitiveData, setSensitiveData] = useState<any>(null);
+
+    useEffect(() => {
+        if (!user?.id) return;
+        const fetchSensitive = async () => {
+            try {
+                const doc = await db.collection('users').doc(user.id).collection('private').doc('sensitive').get();
+                if (doc.exists) {
+                    setSensitiveData(doc.data());
+                }
+            } catch (err) {
+                console.error("Failed to load employee sensitive onboarding data:", err);
+            }
+        };
+        fetchSensitive();
+    }, [user?.id]);
+
+    useEffect(() => {
+        if (sensitiveData?.directDeposit?.preference) {
+            setDirectDepositPref(sensitiveData.directDeposit.preference);
+        }
+    }, [sensitiveData]);
+
     const myIncidents = state.incidentReports.filter(i => i.reporterId === user?.id);
+
+    const handleStartStep = (stepId: string) => {
+        if (stepId === 'handbookSigned') {
+            setView('handbook');
+        } else {
+            setActiveModalStep(stepId);
+            setOnboardingFile(null);
+        }
+    };
+
+    const handleOnboardingFileUpload = async (stepId: string) => {
+        if (!user || !onboardingFile) {
+            showToast.warn(t('Please select a file to upload.'));
+            return;
+        }
+        setUploadingStepId(stepId);
+        try {
+            const timestamp = Date.now();
+            const ext = onboardingFile.name.split('.').pop();
+            const path = `organizations/${user.organizationId}/users/${user.id}/onboarding/${stepId}-${timestamp}.${ext}`;
+            const url = await uploadFileToStorage(path, onboardingFile);
+
+            const formIdMap: Record<string, string> = {
+                'w4Completed': 'federal-w4',
+                'i9Completed': 'federal-i9',
+                'idUploaded': 'government-id'
+            };
+            const formId = formIdMap[stepId] || stepId;
+
+            const updatedSubmissions = {
+                ...(sensitiveData?.formSubmissions || {}),
+                [formId]: {
+                    timestamp: new Date().toISOString(),
+                    fileUrl: url,
+                    fileName: onboardingFile.name
+                }
+            };
+
+            const updatedHiringPacketStatus = {
+                ...(user.hiringPacketStatus || {}),
+                [stepId]: true
+            };
+
+            // Save sensitive documents to the private subcollection
+            await db.collection('users').doc(user.id).collection('private').doc('sensitive').set(cleanUndefinedFields({
+                formSubmissions: updatedSubmissions
+            }), { merge: true });
+
+            // Update status on the public user profile document
+            await db.collection('users').doc(user.id).update(cleanUndefinedFields({
+                hiringPacketStatus: updatedHiringPacketStatus
+            }));
+
+            setSensitiveData(prev => ({
+                ...prev,
+                formSubmissions: updatedSubmissions
+            }));
+
+            dispatch({
+                type: 'UPDATE_EMPLOYEE',
+                payload: {
+                    id: user.id,
+                    formSubmissions: updatedSubmissions,
+                    hiringPacketStatus: updatedHiringPacketStatus
+                } as any
+            });
+
+            showToast.success(t('Document uploaded successfully!'));
+            setOnboardingFile(null);
+            setActiveModalStep(null);
+        } catch (error) {
+            console.error(error);
+            showToast.error(t('Upload failed.'));
+        } finally {
+            setUploadingStepId(null);
+        }
+    };
+
+    const handleSaveDirectDeposit = async () => {
+        if (!user || !directDepositPref) {
+            showToast.warn(t('Please select a preference.'));
+            return;
+        }
+        try {
+            const updatedDirectDeposit = {
+                ...(sensitiveData?.directDeposit || {}),
+                preference: directDepositPref
+            };
+            const updatedHiringPacketStatus = {
+                ...(user.hiringPacketStatus || {}),
+                directDepositCompleted: true
+            };
+
+            // Save sensitive deposit info to the private subcollection
+            await db.collection('users').doc(user.id).collection('private').doc('sensitive').set(cleanUndefinedFields({
+                directDeposit: updatedDirectDeposit
+            }), { merge: true });
+
+            // Update status on the public user profile document
+            await db.collection('users').doc(user.id).update(cleanUndefinedFields({
+                hiringPacketStatus: updatedHiringPacketStatus
+            }));
+
+            setSensitiveData(prev => ({
+                ...prev,
+                directDeposit: updatedDirectDeposit
+            }));
+
+            dispatch({
+                type: 'UPDATE_EMPLOYEE',
+                payload: {
+                    id: user.id,
+                    directDeposit: updatedDirectDeposit,
+                    hiringPacketStatus: updatedHiringPacketStatus
+                } as any
+            });
+
+            showToast.success(t('Direct deposit preference saved!'));
+            setActiveModalStep(null);
+        } catch (error) {
+            console.error(error);
+            showToast.error(t('Failed to save preference.'));
+        }
+    };
 
     const handleSafetySubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -63,7 +216,7 @@ const HRResources: React.FC = () => {
                 status: 'Open',
                 attachmentUrls: incidentAttachments
             };
-            await db.collection('incidentReports').doc(report.id).set(report);
+            await db.collection('incidentReports').doc(report.id).set(cleanUndefinedFields(report));
             dispatch({ type: 'ADD_INCIDENT', payload: report });
             setIncidentDesc('');
             setIncidentAttachments([]);
@@ -112,9 +265,9 @@ const HRResources: React.FC = () => {
             };
 
             const updatedCerts = [...(user.certifications || []), newCert];
-            await db.collection('users').doc(user.id).update({
+            await db.collection('users').doc(user.id).update(cleanUndefinedFields({
                 certifications: updatedCerts
-            });
+            }));
 
             dispatch({ 
                 type: 'UPDATE_USER', 
@@ -203,20 +356,9 @@ const HRResources: React.FC = () => {
             )}
 
             {view === 'handbook' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {policies.length > 0 ? policies.map(doc => (
-                        <Card key={doc.id} className="hover:shadow-lg transition-shadow cursor-pointer border-t-4 border-primary-500">
-                            <DocumentTextIcon className="w-8 h-8 text-gray-400 mb-4" />
-                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{doc.title}</h3>
-                            <div className="text-sm text-gray-600 dark:text-gray-300 line-clamp-3 mb-4" dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(doc.content)}} />
-                            <Button variant="secondary" className="text-xs">{t("Read Full Policy")}</Button>
-                        </Card>
-                    )) : (
-                        <div className="col-span-full text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700">
-                            <p className="text-gray-500">{t("No policies or handbook documents available yet.")}</p>
-                        </div>
-                    )}
-                </div>
+                <Card className="p-6">
+                    <HRHandbookView employee={user as User} isSelf={true} />
+                </Card>
             )}
 
             {view === 'safety' && (
@@ -286,13 +428,19 @@ const HRResources: React.FC = () => {
                                     {inc.attachmentUrls && inc.attachmentUrls.length > 0 && (
                                         <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
                                             {inc.attachmentUrls.map((url, idx) => (
-                                                <img 
+                                                <a 
                                                     key={idx} 
-                                                    src={url} 
-                                                    alt="Evidence" 
-                                                    className="w-12 h-12 object-cover rounded border border-slate-200 dark:border-slate-700 flex-shrink-0" 
-                                                    onClick={() => window.open(url, '_blank')}
-                                                />
+                                                    href={url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    className="flex-shrink-0"
+                                                >
+                                                    <img 
+                                                        src={url} 
+                                                        alt="Evidence" 
+                                                        className="w-12 h-12 object-cover rounded border border-slate-200 dark:border-slate-700" 
+                                                    />
+                                                </a>
                                             ))}
                                         </div>
                                     )}
@@ -403,7 +551,11 @@ const HRResources: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="w-full sm:w-auto flex-shrink-0">
-                                        <Button variant={step.status ? 'secondary' : 'primary'} className="w-full sm:w-auto">
+                                        <Button 
+                                            variant={step.status ? 'secondary' : 'primary'} 
+                                            className="w-full sm:w-auto"
+                                            onClick={() => handleStartStep(step.id)}
+                                        >
                                             {step.status ? t('Review') : t('Start')}
                                         </Button>
                                     </div>
@@ -415,6 +567,7 @@ const HRResources: React.FC = () => {
                             <Button 
                                 className="w-full py-4 text-lg shadow-lg shadow-primary-500/20"
                                 disabled={!user?.hiringPacketStatus?.w4Completed || !user?.hiringPacketStatus?.i9Completed || !user?.hiringPacketStatus?.directDepositCompleted || !user?.hiringPacketStatus?.handbookSigned || !user?.hiringPacketStatus?.idUploaded}
+                                onClick={() => showToast.success(t("Hiring packet submitted successfully to HR!"))}
                             >
                                 {t("Submit Final Hiring Packet")}
                             </Button>
@@ -422,6 +575,224 @@ const HRResources: React.FC = () => {
                         </div>
                     </Card>
                 </div>
+            )}
+
+            {activeModalStep && (
+                <Modal 
+                    isOpen={true} 
+                    onClose={() => { setActiveModalStep(null); setOnboardingFile(null); }} 
+                    title={
+                        activeModalStep === 'w4Completed' ? t("IRS Form W-4 Tax Withholding") :
+                        activeModalStep === 'i9Completed' ? t("USCIS Form I-9 Work Eligibility") :
+                        activeModalStep === 'directDepositCompleted' ? t("Direct Deposit Configuration") :
+                        activeModalStep === 'idUploaded' ? t("Government ID Verification") : ""
+                    }
+                >
+                    <div className="space-y-6">
+                        {activeModalStep === 'w4Completed' && (
+                            <div className="space-y-4">
+                                <p className="text-sm text-slate-500 leading-relaxed">
+                                    {t("Download the official IRS Form W-4, fill it out, and upload the completed version below to configure your tax withholding.")}
+                                </p>
+                                <div className="flex gap-3">
+                                    <a 
+                                        href="https://www.irs.gov/pub/irs-pdf/fw4.pdf" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold transition-all border border-blue-200"
+                                    >
+                                        <Download size={14} /> {t("Download Blank W-4 PDF")}
+                                    </a>
+                                </div>
+                                {sensitiveData?.formSubmissions?.['federal-w4']?.fileUrl && (
+                                    <div className="p-3 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between text-xs text-green-700 font-semibold mt-2">
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle2 size={16} className="text-green-500" />
+                                            <span>{t("Uploaded:")} {sensitiveData.formSubmissions['federal-w4'].fileName}</span>
+                                        </div>
+                                        <a href={sensitiveData.formSubmissions['federal-w4'].fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline flex items-center gap-1">
+                                            <ExternalLink size={12} /> {t("View")}
+                                        </a>
+                                    </div>
+                                )}
+                                <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-6 text-center">
+                                    <label className="cursor-pointer block space-y-2">
+                                        <Upload className="mx-auto text-slate-400" size={24} />
+                                        <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                            {onboardingFile ? onboardingFile.name : t("Select Completed W-4 File")}
+                                        </span>
+                                        <input 
+                                            type="file" 
+                                            accept=".pdf,.png,.jpg,.jpeg" 
+                                            className="hidden" 
+                                            onChange={e => setOnboardingFile(e.target.files?.[0] || null)} 
+                                        />
+                                    </label>
+                                </div>
+                                <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                    <Button variant="secondary" onClick={() => { setActiveModalStep(null); setOnboardingFile(null); }}>
+                                        {t("Cancel")}
+                                    </Button>
+                                    <Button 
+                                        onClick={() => handleOnboardingFileUpload('w4Completed')} 
+                                        disabled={!onboardingFile || uploadingStepId === 'w4Completed'}
+                                    >
+                                        {uploadingStepId === 'w4Completed' ? t("Uploading...") : t("Submit Document")}
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeModalStep === 'i9Completed' && (
+                            <div className="space-y-4">
+                                <p className="text-sm text-slate-500 leading-relaxed">
+                                    {t("Download USCIS Form I-9, complete it, and upload it below to verify work eligibility in the United States.")}
+                                </p>
+                                <div className="flex gap-3">
+                                    <a 
+                                        href="https://www.uscis.gov/sites/default/files/document/forms/i-9-paper-version.pdf" 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold transition-all border border-blue-200"
+                                    >
+                                        <Download size={14} /> {t("Download Blank I-9 PDF")}
+                                    </a>
+                                </div>
+                                {sensitiveData?.formSubmissions?.['federal-i9']?.fileUrl && (
+                                    <div className="p-3 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between text-xs text-green-700 font-semibold mt-2">
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle2 size={16} className="text-green-500" />
+                                            <span>{t("Uploaded:")} {sensitiveData.formSubmissions['federal-i9'].fileName}</span>
+                                        </div>
+                                        <a href={sensitiveData.formSubmissions['federal-i9'].fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline flex items-center gap-1">
+                                            <ExternalLink size={12} /> {t("View")}
+                                        </a>
+                                    </div>
+                                )}
+                                <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-6 text-center">
+                                    <label className="cursor-pointer block space-y-2">
+                                        <Upload className="mx-auto text-slate-400" size={24} />
+                                        <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                            {onboardingFile ? onboardingFile.name : t("Select Completed I-9 File")}
+                                        </span>
+                                        <input 
+                                            type="file" 
+                                            accept=".pdf,.png,.jpg,.jpeg" 
+                                            className="hidden" 
+                                            onChange={e => setOnboardingFile(e.target.files?.[0] || null)} 
+                                        />
+                                    </label>
+                                </div>
+                                <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                    <Button variant="secondary" onClick={() => { setActiveModalStep(null); setOnboardingFile(null); }}>
+                                        {t("Cancel")}
+                                    </Button>
+                                    <Button 
+                                        onClick={() => handleOnboardingFileUpload('i9Completed')} 
+                                        disabled={!onboardingFile || uploadingStepId === 'i9Completed'}
+                                    >
+                                        {uploadingStepId === 'i9Completed' ? t("Uploading...") : t("Submit Document")}
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeModalStep === 'directDepositCompleted' && (
+                            <div className="space-y-4">
+                                <p className="text-sm text-slate-500 leading-relaxed">
+                                    {t("Choose how you would like to receive paychecks. Selecting paper check completes this step immediately, while direct deposit preference prepares payroll integration.")}
+                                </p>
+                                <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+                                    <label htmlFor="dd-direct-deposit" aria-label={t("Direct Deposit")} className="flex items-center gap-3 cursor-pointer">
+                                        <input 
+                                            id="dd-direct-deposit"
+                                            type="radio" 
+                                            name="ddPref" 
+                                            value="Direct Deposit" 
+                                            checked={directDepositPref === "Direct Deposit"} 
+                                            onChange={() => setDirectDepositPref("Direct Deposit")} 
+                                            className="text-primary-600 focus:ring-primary-500" 
+                                        />
+                                        <span className="text-sm">
+                                            <span className="font-bold text-slate-800 dark:text-slate-200 block">{t("Direct Deposit")}</span>
+                                            <span className="text-xs text-slate-500 block">{t("Deposit paychecks directly into checking/savings accounts.")}</span>
+                                        </span>
+                                    </label>
+                                    <label htmlFor="dd-paper-check" aria-label={t("Paper Check")} className="flex items-center gap-3 cursor-pointer">
+                                        <input 
+                                            id="dd-paper-check"
+                                            type="radio" 
+                                            name="ddPref" 
+                                            value="Paper Check" 
+                                            checked={directDepositPref === "Paper Check"} 
+                                            onChange={() => setDirectDepositPref("Paper Check")} 
+                                            className="text-primary-600 focus:ring-primary-500" 
+                                        />
+                                        <span className="text-sm">
+                                            <span className="font-bold text-slate-800 dark:text-slate-200 block">{t("Paper Check")}</span>
+                                            <span className="text-xs text-slate-500 block">{t("Receive physical checks on paydays.")}</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                    <Button variant="secondary" onClick={() => setActiveModalStep(null)}>
+                                        {t("Cancel")}
+                                    </Button>
+                                    <Button 
+                                        onClick={handleSaveDirectDeposit} 
+                                        disabled={!directDepositPref}
+                                    >
+                                        {t("Save Preference")}
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeModalStep === 'idUploaded' && (
+                            <div className="space-y-4">
+                                <p className="text-sm text-slate-500 leading-relaxed">
+                                    {t("Upload a clear photo or copy of your valid Government-issued ID (e.g., Driver's License or Passport) to verify identity for Form I-9 validation.")}
+                                </p>
+                                {sensitiveData?.formSubmissions?.['government-id']?.fileUrl && (
+                                    <div className="p-3 bg-green-50 border border-green-200 rounded-xl flex items-center justify-between text-xs text-green-700 font-semibold mt-2">
+                                        <div className="flex items-center gap-2">
+                                            <CheckCircle2 size={16} className="text-green-500" />
+                                            <span>{t("Uploaded ID:")} {sensitiveData.formSubmissions['government-id'].fileName}</span>
+                                        </div>
+                                        <a href={sensitiveData.formSubmissions['government-id'].fileUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline flex items-center gap-1">
+                                            <ExternalLink size={12} /> {t("View")}
+                                        </a>
+                                    </div>
+                                )}
+                                <div className="border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-6 text-center">
+                                    <label className="cursor-pointer block space-y-2">
+                                        <Upload className="mx-auto text-slate-400" size={24} />
+                                        <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider block">
+                                            {onboardingFile ? onboardingFile.name : t("Select ID Image/File")}
+                                        </span>
+                                        <input 
+                                            type="file" 
+                                            accept=".pdf,.png,.jpg,.jpeg" 
+                                            className="hidden" 
+                                            onChange={e => setOnboardingFile(e.target.files?.[0] || null)} 
+                                        />
+                                    </label>
+                                </div>
+                                <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                    <Button variant="secondary" onClick={() => { setActiveModalStep(null); setOnboardingFile(null); }}>
+                                        {t("Cancel")}
+                                    </Button>
+                                    <Button 
+                                        onClick={() => handleOnboardingFileUpload('idUploaded')} 
+                                        disabled={!onboardingFile || uploadingStepId === 'idUploaded'}
+                                    >
+                                        {uploadingStepId === 'idUploaded' ? t("Uploading...") : t("Submit ID")}
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </Modal>
             )}
         </div>
     );

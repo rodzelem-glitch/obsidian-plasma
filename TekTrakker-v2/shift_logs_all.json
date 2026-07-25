@@ -1,0 +1,2851 @@
+[
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1765381666682",
+    "fields": {
+      "userId": {
+        "stringValue": "HJzF14p8QnfaTsnJ8ZulGvJAR5D3"
+      },
+      "organizationId": {
+        "stringValue": "s5QJki0YeBNhBT0GWKPI"
+      },
+      "clockIn": {
+        "stringValue": "2025-12-10T15:47:46.682Z"
+      },
+      "id": {
+        "stringValue": "shift-1765381666682"
+      },
+      "clockOut": {
+        "stringValue": "2025-12-10T15:47:49.373Z"
+      }
+    },
+    "createTime": "2025-12-10T15:47:46.038542Z",
+    "updateTime": "2025-12-10T15:47:48.729188Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1766073812703",
+    "fields": {
+      "organizationId": {
+        "stringValue": "s5QJki0YeBNhBT0GWKPI"
+      },
+      "clockIn": {
+        "stringValue": "2025-12-18T16:03:32.703Z"
+      },
+      "userId": {
+        "stringValue": "HJzF14p8QnfaTsnJ8ZulGvJAR5D3"
+      },
+      "id": {
+        "stringValue": "shift-1766073812703"
+      }
+    },
+    "createTime": "2025-12-18T16:03:34.980690Z",
+    "updateTime": "2025-12-18T16:03:34.980690Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1766073819036",
+    "fields": {
+      "clockIn": {
+        "stringValue": "2025-12-18T16:03:39.036Z"
+      },
+      "organizationId": {
+        "stringValue": "s5QJki0YeBNhBT0GWKPI"
+      },
+      "userId": {
+        "stringValue": "HJzF14p8QnfaTsnJ8ZulGvJAR5D3"
+      },
+      "id": {
+        "stringValue": "shift-1766073819036"
+      }
+    },
+    "createTime": "2025-12-18T16:03:39.203117Z",
+    "updateTime": "2025-12-18T16:03:39.203117Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1766077371360",
+    "fields": {
+      "clockIn": {
+        "stringValue": "2025-12-18T17:02:51.360Z"
+      },
+      "organizationId": {
+        "stringValue": "s5QJki0YeBNhBT0GWKPI"
+      },
+      "userId": {
+        "stringValue": "HJzF14p8QnfaTsnJ8ZulGvJAR5D3"
+      },
+      "id": {
+        "stringValue": "shift-1766077371360"
+      }
+    },
+    "createTime": "2025-12-18T17:02:51.504498Z",
+    "updateTime": "2025-12-18T17:02:51.504498Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1766078726228",
+    "fields": {
+      "clockIn": {
+        "stringValue": "2025-12-18T17:25:26.228Z"
+      },
+      "organizationId": {
+        "stringValue": "s5QJki0YeBNhBT0GWKPI"
+      },
+      "userId": {
+        "stringValue": "HJzF14p8QnfaTsnJ8ZulGvJAR5D3"
+      },
+      "id": {
+        "stringValue": "shift-1766078726228"
+      },
+      "clockOut": {
+        "stringValue": "2025-12-18T17:25:32.272Z"
+      }
+    },
+    "createTime": "2025-12-18T17:25:27.687908Z",
+    "updateTime": "2025-12-18T17:25:32.418165Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1766080885763",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1766080885763"
+      },
+      "clockOut": {
+        "stringValue": "2025-12-18T18:01:27.457Z"
+      },
+      "userId": {
+        "stringValue": "HJzF14p8QnfaTsnJ8ZulGvJAR5D3"
+      },
+      "clockIn": {
+        "stringValue": "2025-12-18T18:01:25.763Z"
+      },
+      "organizationId": {
+        "stringValue": "s5QJki0YeBNhBT0GWKPI"
+      }
+    },
+    "createTime": "2025-12-18T18:01:25.903086Z",
+    "updateTime": "2025-12-18T18:01:27.578591Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1766124143279",
+    "fields": {
+      "organizationId": {
+        "stringValue": "test-org-1765818165750-1"
+      },
+      "clockIn": {
+        "stringValue": "2025-12-19T06:02:23.279Z"
+      },
+      "userId": {
+        "stringValue": "HJzF14p8QnfaTsnJ8ZulGvJAR5D3"
+      },
+      "id": {
+        "stringValue": "shift-1766124143279"
+      },
+      "clockOut": {
+        "stringValue": "2025-12-19T06:02:24.332Z"
+      }
+    },
+    "createTime": "2025-12-19T06:02:24.404055Z",
+    "updateTime": "2025-12-19T06:02:25.470201Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1766850349144",
+    "fields": {
+      "organizationId": {
+        "stringValue": "demo-org-1766848718439"
+      },
+      "clockIn": {
+        "stringValue": "2025-12-27T15:45:49.144Z"
+      },
+      "userId": {
+        "stringValue": "HJzF14p8QnfaTsnJ8ZulGvJAR5D3"
+      },
+      "id": {
+        "stringValue": "shift-1766850349144"
+      }
+    },
+    "createTime": "2025-12-27T15:45:48.887070Z",
+    "updateTime": "2025-12-27T15:45:48.887070Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1774793052957",
+    "fields": {
+      "userId": {
+        "stringValue": "kiosk-1774792116027"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": 120.53844916747298
+            },
+            "accuracy": {
+              "integerValue": "187"
+            },
+            "lat": {
+              "doubleValue": 14.906278926642626
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "integerValue": "187"
+            },
+            "lat": {
+              "doubleValue": 14.906278926642626
+            },
+            "lng": {
+              "doubleValue": 120.53844916747298
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-03-29T14:04:12.957Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "id": {
+        "stringValue": "shift-1774793052957"
+      },
+      "clockOut": {
+        "stringValue": "2026-03-29T14:04:40.040Z"
+      }
+    },
+    "createTime": "2026-03-29T14:04:14.335148Z",
+    "updateTime": "2026-03-29T14:04:40.579656Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1774793249587",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1774793249587"
+      },
+      "clockOut": {
+        "stringValue": "2026-03-29T14:08:00.585Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-03-29T14:07:29.587Z"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": 120.5375845
+            },
+            "lat": {
+              "doubleValue": 14.9071954
+            },
+            "accuracy": {
+              "doubleValue": 9.112000465393066
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 10.16100025177002
+            },
+            "lat": {
+              "doubleValue": 14.9072178
+            },
+            "lng": {
+              "doubleValue": 120.5375839
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "kiosk-1774792116027"
+      }
+    },
+    "createTime": "2026-03-29T14:07:30.221075Z",
+    "updateTime": "2026-03-29T14:08:01.241988Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1774794138586",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1774794138586"
+      },
+      "clockOut": {
+        "stringValue": "2026-03-29T14:22:37.746Z"
+      },
+      "userId": {
+        "stringValue": "kiosk-1774792116027"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-03-29T14:22:18.586Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 14.9072096
+            },
+            "accuracy": {
+              "doubleValue": 10.482000350952148
+            },
+            "lng": {
+              "doubleValue": 120.5375385
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": 120.5375329
+            },
+            "lat": {
+              "doubleValue": 14.907195
+            },
+            "accuracy": {
+              "doubleValue": 24.400999069213867
+            }
+          }
+        }
+      }
+    },
+    "createTime": "2026-03-29T14:22:19.894675Z",
+    "updateTime": "2026-03-29T14:22:38.434979Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775218904994",
+    "fields": {
+      "edits": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "reason": {
+                    "stringValue": "System problem with clock out."
+                  },
+                  "adminName": {
+                    "stringValue": "Ryan Vavrecan"
+                  },
+                  "newClockIn": {
+                    "stringValue": "2026-04-03T11:45:00.000Z"
+                  },
+                  "timestamp": {
+                    "stringValue": "2026-04-05T09:04:38.413Z"
+                  },
+                  "newClockOut": {
+                    "stringValue": "2026-04-03T23:45:00.000Z"
+                  },
+                  "originalClockOut": {
+                    "stringValue": "2026-04-04T14:13:06.356Z"
+                  },
+                  "originalClockIn": {
+                    "stringValue": "2026-04-03T12:21:44.994Z"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": 120.538697
+            },
+            "lat": {
+              "doubleValue": 14.906458
+            },
+            "accuracy": {
+              "integerValue": "500"
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-03T11:45:00.000Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.4566516
+            },
+            "lat": {
+              "doubleValue": 29.5260305
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "id": {
+        "stringValue": "shift-1775218904994"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-03T23:45:00.000Z"
+      },
+      "isApproved": {
+        "booleanValue": true
+      }
+    },
+    "createTime": "2026-04-03T12:21:45.334278Z",
+    "updateTime": "2026-04-19T18:42:46.891160Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775379306198",
+    "fields": {
+      "isApproved": {
+        "booleanValue": true
+      },
+      "id": {
+        "stringValue": "shift-1775379306198"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-05T08:55:18.241Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4041253
+            },
+            "accuracy": {
+              "doubleValue": 5.567
+            },
+            "lng": {
+              "doubleValue": -98.712415
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7124264
+            },
+            "lat": {
+              "doubleValue": 29.4040883
+            },
+            "accuracy": {
+              "doubleValue": 17.312
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-05T08:55:06.198Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      }
+    },
+    "createTime": "2026-04-05T08:55:06.663304Z",
+    "updateTime": "2026-04-19T18:42:45.864135Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775379347467",
+    "fields": {
+      "isApproved": {
+        "booleanValue": true
+      },
+      "id": {
+        "stringValue": "shift-1775379347467"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-05T08:56:05.950Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7124145
+            },
+            "accuracy": {
+              "doubleValue": 6.278
+            },
+            "lat": {
+              "doubleValue": 29.4041241
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4041236
+            },
+            "accuracy": {
+              "doubleValue": 4.651
+            },
+            "lng": {
+              "doubleValue": -98.7124142
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-05T08:55:47.467Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      }
+    },
+    "createTime": "2026-04-05T08:55:47.734414Z",
+    "updateTime": "2026-04-19T18:42:44.012450Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775406302908",
+    "fields": {
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "integerValue": "35"
+            },
+            "accuracy": {
+              "integerValue": "5"
+            },
+            "lng": {
+              "integerValue": "-80"
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-05T16:25:02.908Z"
+      },
+      "organizationId": {
+        "stringValue": "master_admin_org"
+      },
+      "userId": {
+        "stringValue": "IFg71sFDZUXX2AqMhA4cwUlFjeG3"
+      },
+      "id": {
+        "stringValue": "shift-1775406302908"
+      }
+    },
+    "createTime": "2026-04-05T16:25:05.155532Z",
+    "updateTime": "2026-04-05T16:25:05.155532Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775406333590",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1775406333590"
+      },
+      "organizationId": {
+        "stringValue": "master_admin_org"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "integerValue": "-80"
+            },
+            "lat": {
+              "integerValue": "35"
+            },
+            "accuracy": {
+              "integerValue": "5"
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-05T16:25:33.590Z"
+      },
+      "userId": {
+        "stringValue": "IFg71sFDZUXX2AqMhA4cwUlFjeG3"
+      }
+    },
+    "createTime": "2026-04-05T16:25:33.733620Z",
+    "updateTime": "2026-04-05T16:25:33.733620Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775406388283",
+    "fields": {
+      "userId": {
+        "stringValue": "IFg71sFDZUXX2AqMhA4cwUlFjeG3"
+      },
+      "organizationId": {
+        "stringValue": "master_admin_org"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "integerValue": "-80"
+            },
+            "accuracy": {
+              "integerValue": "5"
+            },
+            "lat": {
+              "integerValue": "35"
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-05T16:26:28.283Z"
+      },
+      "id": {
+        "stringValue": "shift-1775406388283"
+      }
+    },
+    "createTime": "2026-04-05T16:26:28.413009Z",
+    "updateTime": "2026-04-05T16:26:28.413009Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775406481764",
+    "fields": {
+      "organizationId": {
+        "stringValue": "master_admin_org"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "integerValue": "35"
+            },
+            "accuracy": {
+              "integerValue": "5"
+            },
+            "lng": {
+              "integerValue": "-80"
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-05T16:28:01.764Z"
+      },
+      "userId": {
+        "stringValue": "IFg71sFDZUXX2AqMhA4cwUlFjeG3"
+      },
+      "id": {
+        "stringValue": "shift-1775406481764"
+      }
+    },
+    "createTime": "2026-04-05T16:28:02.073444Z",
+    "updateTime": "2026-04-05T16:28:02.073444Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775406509807",
+    "fields": {
+      "organizationId": {
+        "stringValue": "master_admin_org"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "integerValue": "35"
+            },
+            "accuracy": {
+              "integerValue": "5"
+            },
+            "lng": {
+              "integerValue": "-80"
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-05T16:28:29.807Z"
+      },
+      "userId": {
+        "stringValue": "IFg71sFDZUXX2AqMhA4cwUlFjeG3"
+      },
+      "id": {
+        "stringValue": "shift-1775406509807"
+      }
+    },
+    "createTime": "2026-04-05T16:28:29.962749Z",
+    "updateTime": "2026-04-05T16:28:29.962749Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775406553047",
+    "fields": {
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "integerValue": "-80"
+            },
+            "accuracy": {
+              "integerValue": "5"
+            },
+            "lat": {
+              "integerValue": "35"
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-05T16:29:13.047Z"
+      },
+      "organizationId": {
+        "stringValue": "master_admin_org"
+      },
+      "userId": {
+        "stringValue": "IFg71sFDZUXX2AqMhA4cwUlFjeG3"
+      },
+      "id": {
+        "stringValue": "shift-1775406553047"
+      }
+    },
+    "createTime": "2026-04-05T16:29:15.157408Z",
+    "updateTime": "2026-04-05T16:29:15.157408Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775406581268",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1775406581268"
+      },
+      "userId": {
+        "stringValue": "IFg71sFDZUXX2AqMhA4cwUlFjeG3"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "integerValue": "35"
+            },
+            "accuracy": {
+              "integerValue": "5"
+            },
+            "lng": {
+              "integerValue": "-80"
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-05T16:29:41.268Z"
+      },
+      "organizationId": {
+        "stringValue": "master_admin_org"
+      }
+    },
+    "createTime": "2026-04-05T16:29:41.637076Z",
+    "updateTime": "2026-04-05T16:29:41.637076Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775455589929",
+    "fields": {
+      "isApproved": {
+        "booleanValue": true
+      },
+      "id": {
+        "stringValue": "shift-1775455589929"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-06T06:06:49.371Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 15.087
+            },
+            "lat": {
+              "doubleValue": 14.9072332
+            },
+            "lng": {
+              "doubleValue": 120.5375193
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 14.9072674
+            },
+            "accuracy": {
+              "doubleValue": 16.226
+            },
+            "lng": {
+              "doubleValue": 120.5375806
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-06T06:06:29.929Z"
+      }
+    },
+    "createTime": "2026-04-06T06:06:30.217645Z",
+    "updateTime": "2026-04-19T18:42:43.311151Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775736157184",
+    "fields": {
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.712439
+            },
+            "accuracy": {
+              "doubleValue": 4.202
+            },
+            "lat": {
+              "doubleValue": 29.404025
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 3.799
+            },
+            "lat": {
+              "doubleValue": 29.4040562
+            },
+            "lng": {
+              "doubleValue": -98.7124526
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-09T12:02:37.184Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "isApproved": {
+        "booleanValue": true
+      },
+      "id": {
+        "stringValue": "shift-1775736157184"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-09T12:02:53.120Z"
+      }
+    },
+    "createTime": "2026-04-09T12:02:37.776992Z",
+    "updateTime": "2026-04-19T18:42:42.605899Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1775736207705",
+    "fields": {
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-04-09T12:03:27.705Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7124536
+            },
+            "accuracy": {
+              "doubleValue": 5.891
+            },
+            "lat": {
+              "doubleValue": 29.4040591
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7124553
+            },
+            "lat": {
+              "doubleValue": 29.4040598
+            },
+            "accuracy": {
+              "doubleValue": 5.14
+            }
+          }
+        }
+      },
+      "isApproved": {
+        "booleanValue": true
+      },
+      "id": {
+        "stringValue": "shift-1775736207705"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-09T12:04:06.463Z"
+      }
+    },
+    "createTime": "2026-04-09T12:03:28.092842Z",
+    "updateTime": "2026-04-19T18:42:41.128924Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1776079069966",
+    "fields": {
+      "isApproved": {
+        "booleanValue": true
+      },
+      "id": {
+        "stringValue": "shift-1776079069966"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-14T02:08:41.825Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-04-13T11:17:49.966Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4040602
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lng": {
+              "doubleValue": -98.7126083
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 4.745
+            },
+            "lat": {
+              "doubleValue": 29.4040304
+            },
+            "lng": {
+              "doubleValue": -98.7125403
+            }
+          }
+        }
+      }
+    },
+    "createTime": "2026-04-13T11:17:52.521211Z",
+    "updateTime": "2026-04-19T18:42:39.848096Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1776264641707",
+    "fields": {
+      "edits": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "originalClockIn": {
+                    "stringValue": "2026-04-15T14:50:41.707Z"
+                  },
+                  "originalClockOut": {
+                    "stringValue": "2026-04-16T16:59:41.873Z"
+                  },
+                  "timestamp": {
+                    "stringValue": "2026-04-17T04:04:19.765Z"
+                  },
+                  "newClockOut": {
+                    "stringValue": "2026-04-16T05:28:00.000Z"
+                  },
+                  "adminName": {
+                    "stringValue": "Ryan Vavrecan"
+                  },
+                  "newClockIn": {
+                    "stringValue": "2026-04-15T14:50:00.000Z"
+                  },
+                  "reason": {
+                    "stringValue": "Correction "
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-04-15T14:50:00.000Z"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4041171
+            },
+            "accuracy": {
+              "doubleValue": 20.707
+            },
+            "lng": {
+              "doubleValue": -98.7124218
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4538808
+            },
+            "accuracy": {
+              "integerValue": "3"
+            },
+            "lng": {
+              "doubleValue": -98.6208286
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "id": {
+        "stringValue": "shift-1776264641707"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-16T05:28:00.000Z"
+      },
+      "isApproved": {
+        "booleanValue": true
+      }
+    },
+    "createTime": "2026-04-15T14:50:42.166849Z",
+    "updateTime": "2026-04-19T18:42:37.956011Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1776398675754",
+    "fields": {
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-04-17T04:04:35.754Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7124637
+            },
+            "lat": {
+              "doubleValue": 29.404069
+            },
+            "accuracy": {
+              "doubleValue": 13.1
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.701166
+            },
+            "lat": {
+              "doubleValue": 29.3839417
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            }
+          }
+        }
+      },
+      "clockOut": {
+        "stringValue": "2026-04-17T16:50:22.999Z"
+      },
+      "id": {
+        "stringValue": "shift-1776398675754"
+      },
+      "isApproved": {
+        "booleanValue": true
+      }
+    },
+    "createTime": "2026-04-17T04:04:35.887285Z",
+    "updateTime": "2026-04-19T18:42:36.955339Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1776444624005",
+    "fields": {
+      "isApproved": {
+        "booleanValue": true
+      },
+      "id": {
+        "stringValue": "shift-1776444624005"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-18T11:42:00.722Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-04-17T16:50:24.005Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.3839416
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lng": {
+              "doubleValue": -98.7011663
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7124331
+            },
+            "lat": {
+              "doubleValue": 29.4040998
+            },
+            "accuracy": {
+              "doubleValue": 14.86
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      }
+    },
+    "createTime": "2026-04-17T16:50:24.161171Z",
+    "updateTime": "2026-04-19T18:42:36.138022Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1776776960129",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1776776960129"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-22T04:02:09.120Z"
+      },
+      "isApproved": {
+        "booleanValue": true
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4025778
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lng": {
+              "doubleValue": -98.7126605
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7123935
+            },
+            "accuracy": {
+              "doubleValue": 8.02
+            },
+            "lat": {
+              "doubleValue": 29.4041915
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-21T13:09:20.129Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      }
+    },
+    "createTime": "2026-04-21T13:09:20.223577Z",
+    "updateTime": "2026-05-08T03:32:24.914673Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1776859303078",
+    "fields": {
+      "isApproved": {
+        "booleanValue": true
+      },
+      "id": {
+        "stringValue": "shift-1776859303078"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-23T04:52:13.900Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lat": {
+              "doubleValue": 29.4018291
+            },
+            "lng": {
+              "doubleValue": -98.7099044
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7124413
+            },
+            "accuracy": {
+              "doubleValue": 15.568
+            },
+            "lat": {
+              "doubleValue": 29.404096
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-22T12:01:43.078Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      }
+    },
+    "createTime": "2026-04-22T12:01:43.144140Z",
+    "updateTime": "2026-05-08T03:32:23.490431Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1777411207407",
+    "fields": {
+      "isApproved": {
+        "booleanValue": true
+      },
+      "id": {
+        "stringValue": "shift-1777411207407"
+      },
+      "clockOut": {
+        "stringValue": "2026-04-28T21:20:09.473Z"
+      },
+      "userId": {
+        "stringValue": "ix9IjxTAkOOcKu9gJZvcYBMDwMx1"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 5.538402144674592
+            },
+            "lat": {
+              "doubleValue": 29.854350402018408
+            },
+            "lng": {
+              "doubleValue": -98.40832824069524
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.40832824069524
+            },
+            "lat": {
+              "doubleValue": 29.854350402018408
+            },
+            "accuracy": {
+              "doubleValue": 6.634624178896394
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-04-28T21:20:07.407Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      }
+    },
+    "createTime": "2026-04-28T21:20:07.752840Z",
+    "updateTime": "2026-05-08T03:32:30.312743Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1778101889654",
+    "fields": {
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 9.935
+            },
+            "lat": {
+              "doubleValue": 29.4041074
+            },
+            "lng": {
+              "doubleValue": -98.7125851
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7125728
+            },
+            "lat": {
+              "doubleValue": 29.4041263
+            },
+            "accuracy": {
+              "doubleValue": 5.647
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-05-06T21:11:29.654Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "id": {
+        "stringValue": "shift-1778101889654"
+      },
+      "clockOut": {
+        "stringValue": "2026-05-08T02:06:51.306Z"
+      },
+      "isApproved": {
+        "booleanValue": true
+      }
+    },
+    "createTime": "2026-05-06T21:11:30.264114Z",
+    "updateTime": "2026-05-08T03:32:22.917779Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1778504523974",
+    "fields": {
+      "userId": {
+        "stringValue": "w52okELITLhrg90Io2VlRL1kv1z1"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 11.656999588012695
+            },
+            "lat": {
+              "doubleValue": 29.4517394
+            },
+            "lng": {
+              "doubleValue": -98.6199019
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.5298115
+            },
+            "accuracy": {
+              "doubleValue": 31.149
+            },
+            "lat": {
+              "doubleValue": 29.3554302
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-05-11T13:02:03.975Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "id": {
+        "stringValue": "shift-1778504523974"
+      },
+      "clockOut": {
+        "stringValue": "2026-05-11T17:33:49.770Z"
+      },
+      "isApproved": {
+        "booleanValue": true
+      }
+    },
+    "createTime": "2026-05-11T13:02:04.600691Z",
+    "updateTime": "2026-05-12T01:34:17.847079Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1778605648506",
+    "fields": {
+      "userId": {
+        "stringValue": "w52okELITLhrg90Io2VlRL1kv1z1"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.5320359
+            },
+            "accuracy": {
+              "doubleValue": 24.214
+            },
+            "lat": {
+              "doubleValue": 29.3925205
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.3906034
+            },
+            "accuracy": {
+              "doubleValue": 16.791
+            },
+            "lng": {
+              "doubleValue": -98.5361277
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-05-12T17:07:28.506Z"
+      },
+      "id": {
+        "stringValue": "shift-1778605648506"
+      },
+      "clockOut": {
+        "stringValue": "2026-05-12T23:06:39.541Z"
+      },
+      "isApproved": {
+        "booleanValue": true
+      }
+    },
+    "createTime": "2026-05-12T17:07:30.299614Z",
+    "updateTime": "2026-05-20T13:51:15.969791Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1779195830437",
+    "fields": {
+      "userId": {
+        "stringValue": "w52okELITLhrg90Io2VlRL1kv1z1"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.3906005
+            },
+            "accuracy": {
+              "doubleValue": 17.766
+            },
+            "lng": {
+              "doubleValue": -98.5362442
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.4737223
+            },
+            "accuracy": {
+              "doubleValue": 9.836
+            },
+            "lat": {
+              "doubleValue": 29.3991275
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-05-19T13:03:50.437Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "id": {
+        "stringValue": "shift-1779195830437"
+      },
+      "clockOut": {
+        "stringValue": "2026-05-19T20:49:11.432Z"
+      },
+      "isApproved": {
+        "booleanValue": true
+      }
+    },
+    "createTime": "2026-05-19T13:03:50.566009Z",
+    "updateTime": "2026-05-20T13:51:16.803644Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1781714015056",
+    "fields": {
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 16.655
+            },
+            "lat": {
+              "doubleValue": 29.4041411
+            },
+            "lng": {
+              "doubleValue": -98.7123356
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-06-17T16:30:00.000Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.3300085
+            },
+            "lat": {
+              "doubleValue": 29.5627726
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "isApproved": {
+        "booleanValue": true
+      },
+      "clockOut": {
+        "stringValue": "2026-06-18T22:30:00.000Z"
+      },
+      "id": {
+        "stringValue": "shift-1781714015056"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "edits": {
+        "arrayValue": {
+          "values": [
+            {
+              "mapValue": {
+                "fields": {
+                  "adminName": {
+                    "stringValue": "Ryan Vavrecan"
+                  },
+                  "newClockIn": {
+                    "stringValue": "2026-06-17T16:30:00.000Z"
+                  },
+                  "reason": {
+                    "stringValue": "Correct time"
+                  },
+                  "originalClockIn": {
+                    "stringValue": "2026-06-17T16:30:00.000Z"
+                  },
+                  "originalClockOut": {
+                    "stringValue": "2026-06-18T05:04:00.931Z"
+                  },
+                  "timestamp": {
+                    "stringValue": "2026-06-18T05:06:26.881Z"
+                  },
+                  "newClockOut": {
+                    "stringValue": "2026-06-18T22:30:00.000Z"
+                  }
+                }
+              }
+            },
+            {
+              "mapValue": {
+                "fields": {
+                  "adminName": {
+                    "stringValue": "Ryan Vavrecan"
+                  },
+                  "newClockIn": {
+                    "stringValue": "2026-06-17T16:30:00.000Z"
+                  },
+                  "reason": {
+                    "stringValue": "Forgot to clock in."
+                  },
+                  "originalClockIn": {
+                    "stringValue": "2026-06-17T16:33:35.056Z"
+                  },
+                  "originalClockOut": {
+                    "nullValue": null
+                  },
+                  "newClockOut": {
+                    "nullValue": null
+                  },
+                  "timestamp": {
+                    "stringValue": "2026-06-17T16:34:53.046Z"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "createTime": "2026-06-17T16:33:35.228847Z",
+    "updateTime": "2026-06-18T05:06:29.654991Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1781877427944",
+    "fields": {
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lat": {
+              "doubleValue": 29.4041217
+            },
+            "lng": {
+              "doubleValue": -98.7123343
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 3.252
+            },
+            "lat": {
+              "doubleValue": 29.4040946
+            },
+            "lng": {
+              "doubleValue": -98.7125873
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-06-19T13:57:07.944Z"
+      },
+      "id": {
+        "stringValue": "shift-1781877427944"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-19T16:31:58.930Z"
+      },
+      "isApproved": {
+        "booleanValue": true
+      }
+    },
+    "createTime": "2026-06-19T13:57:08.290351Z",
+    "updateTime": "2026-06-23T15:38:14.893615Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1781961001946",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1781961001946"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-21T16:49:23.947Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-06-20T13:10:01.946Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4040693
+            },
+            "accuracy": {
+              "doubleValue": 3.715
+            },
+            "lng": {
+              "doubleValue": -98.7125971
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7124945
+            },
+            "accuracy": {
+              "doubleValue": 4.336
+            },
+            "lat": {
+              "doubleValue": 29.4040755
+            }
+          }
+        }
+      }
+    },
+    "createTime": "2026-06-20T13:10:02.249807Z",
+    "updateTime": "2026-06-23T15:57:06.315967Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782063804176",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1782063804176"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-21T21:34:53.898Z"
+      },
+      "isApproved": {
+        "booleanValue": true
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 9.9350004196167
+            },
+            "lat": {
+              "doubleValue": 29.4041181
+            },
+            "lng": {
+              "doubleValue": -98.7125811
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 3.7899999618530273
+            },
+            "lat": {
+              "doubleValue": 29.4025752
+            },
+            "lng": {
+              "doubleValue": -98.7127013
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-06-21T17:43:24.176Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      }
+    },
+    "createTime": "2026-06-21T17:43:24.439871Z",
+    "updateTime": "2026-06-23T15:38:13.730495Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782094726540",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1782094726540"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-22T13:29:41.942Z"
+      },
+      "userId": {
+        "stringValue": "lm2lm3Bn5bVlGA29KkDTLKkJ1gZ2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-06-22T02:18:46.540Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": 120.538726
+            },
+            "accuracy": {
+              "integerValue": "500"
+            },
+            "lat": {
+              "doubleValue": 14.906467
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": 120.537559
+            },
+            "lat": {
+              "doubleValue": 14.9071068
+            },
+            "accuracy": {
+              "doubleValue": 16.293
+            }
+          }
+        }
+      }
+    },
+    "createTime": "2026-06-22T02:18:47.022591Z",
+    "updateTime": "2026-06-22T13:29:42.198031Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782137797015",
+    "fields": {
+      "isApproved": {
+        "booleanValue": true
+      },
+      "clockOut": {
+        "stringValue": "2026-06-22T21:09:33.027Z"
+      },
+      "id": {
+        "stringValue": "shift-1782137797015"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-06-22T14:16:37.015Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4040772
+            },
+            "accuracy": {
+              "doubleValue": 3.7899999618530273
+            },
+            "lng": {
+              "doubleValue": -98.7126072
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7123201
+            },
+            "lat": {
+              "doubleValue": 29.404142
+            },
+            "accuracy": {
+              "doubleValue": 7.914
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      }
+    },
+    "createTime": "2026-06-22T14:16:37.206111Z",
+    "updateTime": "2026-06-23T16:03:06.817087Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782240523021",
+    "fields": {
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-06-23T18:48:43.021Z"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4041373
+            },
+            "accuracy": {
+              "doubleValue": 8.087
+            },
+            "lng": {
+              "doubleValue": -98.7122989
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4034777
+            },
+            "accuracy": {
+              "doubleValue": 4.057
+            },
+            "lng": {
+              "doubleValue": -98.7126413
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "id": {
+        "stringValue": "shift-1782240523021"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-23T23:36:45.939Z"
+      }
+    },
+    "createTime": "2026-06-23T18:48:43.470559Z",
+    "updateTime": "2026-06-24T00:09:09.117231Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782304295044",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1782304295044"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-24T19:06:01.587Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.707494
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lat": {
+              "doubleValue": 29.4027
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-06-24T12:31:35.044Z"
+      }
+    },
+    "createTime": "2026-06-24T12:31:35.200351Z",
+    "updateTime": "2026-06-24T19:06:01.821327Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782503258012",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1782503258012"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-26T23:50:33.964Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.3807611
+            },
+            "accuracy": {
+              "doubleValue": 4.765
+            },
+            "lng": {
+              "doubleValue": -98.7007857
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7123146
+            },
+            "lat": {
+              "doubleValue": 29.4041413
+            },
+            "accuracy": {
+              "doubleValue": 14.31
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-06-26T19:47:38.012Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      }
+    },
+    "createTime": "2026-06-30T01:25:35.157279Z",
+    "updateTime": "2026-06-30T01:25:36.547135Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782503264061",
+    "fields": {
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-06-26T19:47:44.061Z"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7123123
+            },
+            "lat": {
+              "doubleValue": 29.4041413
+            },
+            "accuracy": {
+              "doubleValue": 8.048
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.700786
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lat": {
+              "doubleValue": 29.3807606
+            }
+          }
+        }
+      },
+      "id": {
+        "stringValue": "shift-1782503264061"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-26T23:45:48.937Z"
+      }
+    },
+    "createTime": "2026-06-30T01:25:35.198607Z",
+    "updateTime": "2026-06-30T01:25:36.361007Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782584073027",
+    "fields": {
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-06-27T18:14:33.027Z"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.404111
+            },
+            "accuracy": {
+              "doubleValue": 6.882999897003174
+            },
+            "lng": {
+              "doubleValue": -98.71232
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4041278
+            },
+            "accuracy": {
+              "doubleValue": 9.9350004196167
+            },
+            "lng": {
+              "doubleValue": -98.7126018
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "id": {
+        "stringValue": "shift-1782584073027"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-27T20:30:26.988Z"
+      }
+    },
+    "createTime": "2026-06-27T18:14:33.188271Z",
+    "updateTime": "2026-06-27T20:30:27.195823Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782737791044",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1782737791044"
+      },
+      "clockOut": {
+        "stringValue": "2026-06-30T01:25:11.562Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7125984
+            },
+            "accuracy": {
+              "doubleValue": 3.7899999618530273
+            },
+            "lat": {
+              "doubleValue": 29.4040814
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4041195
+            },
+            "accuracy": {
+              "doubleValue": 18.93
+            },
+            "lng": {
+              "doubleValue": -98.7123156
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-06-29T12:56:31.044Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      }
+    },
+    "createTime": "2026-06-29T12:56:31.243519Z",
+    "updateTime": "2026-06-30T01:25:37.619839Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782825873994",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1782825873994"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-01T01:08:39.025Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4041316
+            },
+            "accuracy": {
+              "doubleValue": 5.159999847412109
+            },
+            "lng": {
+              "doubleValue": -98.7124168
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4024331
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lng": {
+              "doubleValue": -98.7081807
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-06-30T13:24:33.994Z"
+      }
+    },
+    "createTime": "2026-06-30T13:24:34.425743Z",
+    "updateTime": "2026-07-01T01:08:39.147279Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782891034347",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1782891034347"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-03T18:27:23.009Z"
+      },
+      "userId": {
+        "stringValue": "lm2lm3Bn5bVlGA29KkDTLKkJ1gZ2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 14.906467
+            },
+            "accuracy": {
+              "integerValue": "212"
+            },
+            "lng": {
+              "doubleValue": 120.53872600000001
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-07-01T07:30:34.347Z"
+      }
+    },
+    "createTime": "2026-07-01T07:30:36.127743Z",
+    "updateTime": "2026-07-03T18:27:23.168495Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782923337999",
+    "fields": {
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-07-01T16:28:57.999Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.404118
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lng": {
+              "doubleValue": -98.7126052
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7123415
+            },
+            "lat": {
+              "doubleValue": 29.4040929
+            },
+            "accuracy": {
+              "doubleValue": 23.202999114990234
+            }
+          }
+        }
+      },
+      "id": {
+        "stringValue": "shift-1782923337999"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-02T00:35:51.918Z"
+      }
+    },
+    "createTime": "2026-07-01T16:28:58.236863Z",
+    "updateTime": "2026-07-02T00:35:52.142143Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1782999173031",
+    "fields": {
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-07-02T13:32:53.031Z"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4041007
+            },
+            "accuracy": {
+              "doubleValue": 14.173
+            },
+            "lng": {
+              "doubleValue": -98.7122688
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.712587
+            },
+            "accuracy": {
+              "doubleValue": 3.153
+            },
+            "lat": {
+              "doubleValue": 29.4041122
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "id": {
+        "stringValue": "shift-1782999173031"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-02T20:48:51.951Z"
+      }
+    },
+    "createTime": "2026-07-02T13:32:53.163231Z",
+    "updateTime": "2026-07-02T20:48:52.138143Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1783122379025",
+    "fields": {
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7184258
+            },
+            "lat": {
+              "doubleValue": 29.4056463
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 16.267
+            },
+            "lat": {
+              "doubleValue": 29.4041478
+            },
+            "lng": {
+              "doubleValue": -98.7123202
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-07-03T23:46:19.026Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "id": {
+        "stringValue": "shift-1783122379025"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-04T02:04:08.009Z"
+      }
+    },
+    "createTime": "2026-07-03T23:46:19.513327Z",
+    "updateTime": "2026-07-04T02:04:08.213967Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1783347651022",
+    "fields": {
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-07-06T14:20:51.022Z"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7123082
+            },
+            "lat": {
+              "doubleValue": 29.404159
+            },
+            "accuracy": {
+              "doubleValue": 4.339000225067139
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lat": {
+              "doubleValue": 29.4023599
+            },
+            "lng": {
+              "doubleValue": -98.7116873
+            }
+          }
+        }
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "id": {
+        "stringValue": "shift-1783347651022"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-06T19:13:58.982Z"
+      }
+    },
+    "createTime": "2026-07-06T14:20:51.194847Z",
+    "updateTime": "2026-07-06T19:13:59.220847Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1783431010052",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1783431010052"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-07T23:37:55.950Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4040639
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lng": {
+              "doubleValue": -98.7125819
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lat": {
+              "doubleValue": 29.4024862
+            },
+            "lng": {
+              "doubleValue": -98.7125855
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-07-07T13:30:10.052Z"
+      }
+    },
+    "createTime": "2026-07-07T13:30:10.221487Z",
+    "updateTime": "2026-07-07T23:37:56.159775Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1783516456016",
+    "fields": {
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-07-08T13:14:16.016Z"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7123356
+            },
+            "accuracy": {
+              "doubleValue": 4.71
+            },
+            "lat": {
+              "doubleValue": 29.4041093
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7117938
+            },
+            "lat": {
+              "doubleValue": 29.4024578
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            }
+          }
+        }
+      },
+      "id": {
+        "stringValue": "shift-1783516456016"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-09T00:34:45.049Z"
+      }
+    },
+    "createTime": "2026-07-08T13:14:16.563343Z",
+    "updateTime": "2026-07-09T00:34:45.434207Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1783659104845",
+    "fields": {
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7125787
+            },
+            "lat": {
+              "doubleValue": 29.4040781
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4040941
+            },
+            "accuracy": {
+              "doubleValue": 25.723
+            },
+            "lng": {
+              "doubleValue": -98.7123427
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-07-10T04:51:44.845Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "id": {
+        "stringValue": "shift-1783659104845"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-10T07:57:10.499Z"
+      }
+    },
+    "createTime": "2026-07-10T04:51:45.199743Z",
+    "updateTime": "2026-07-10T07:57:10.778895Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1783707097979",
+    "fields": {
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 3.79
+            },
+            "lat": {
+              "doubleValue": 29.4018861
+            },
+            "lng": {
+              "doubleValue": -98.7107463
+            }
+          }
+        }
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 9.252
+            },
+            "lat": {
+              "doubleValue": 29.4040734
+            },
+            "lng": {
+              "doubleValue": -98.7124066
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-07-10T18:11:37.979Z"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "id": {
+        "stringValue": "shift-1783707097979"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-10T20:57:55.953Z"
+      }
+    },
+    "createTime": "2026-07-10T18:11:38.315439Z",
+    "updateTime": "2026-07-10T20:57:56.151167Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1784290168003",
+    "fields": {
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "clockIn": {
+        "stringValue": "2026-07-17T12:09:28.003Z"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "accuracy": {
+              "doubleValue": 7.464
+            },
+            "lat": {
+              "doubleValue": 29.4041237
+            },
+            "lng": {
+              "doubleValue": -98.7124477
+            }
+          }
+        }
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lat": {
+              "doubleValue": 29.4040883
+            },
+            "accuracy": {
+              "doubleValue": 9.935
+            },
+            "lng": {
+              "doubleValue": -98.7126085
+            }
+          }
+        }
+      },
+      "id": {
+        "stringValue": "shift-1784290168003"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-18T00:00:35.897Z"
+      }
+    },
+    "createTime": "2026-07-17T12:09:28.223663Z",
+    "updateTime": "2026-07-18T00:00:36.146703Z"
+  },
+  {
+    "name": "projects/tektrakker/databases/(default)/documents/shiftLogs/shift-1784647240967",
+    "fields": {
+      "id": {
+        "stringValue": "shift-1784647240967"
+      },
+      "clockOut": {
+        "stringValue": "2026-07-21T20:05:14.944Z"
+      },
+      "userId": {
+        "stringValue": "WGmqGtbA7oarNuDdIjStQjGj56q2"
+      },
+      "organizationId": {
+        "stringValue": "org-1765817997819"
+      },
+      "endLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.7124745
+            },
+            "accuracy": {
+              "doubleValue": 8.636
+            },
+            "lat": {
+              "doubleValue": 29.4040891
+            }
+          }
+        }
+      },
+      "clockIn": {
+        "stringValue": "2026-07-21T15:20:40.967Z"
+      },
+      "startLocation": {
+        "mapValue": {
+          "fields": {
+            "lng": {
+              "doubleValue": -98.4612119
+            },
+            "lat": {
+              "doubleValue": 29.4116332
+            },
+            "accuracy": {
+              "doubleValue": 3.79
+            }
+          }
+        }
+      }
+    },
+    "createTime": "2026-07-21T15:20:41.346975Z",
+    "updateTime": "2026-07-21T20:05:15.261135Z"
+  }
+]

@@ -20,7 +20,13 @@ const TechPerformance: React.FC = () => {
             const completed = myJobs.filter(j => j.jobStatus === 'Completed').length;
             const revenue = myJobs.reduce((sum, j) => sum + (j.invoice?.status === 'Paid' ? (j.invoice.amount || 0) : 0), 0);
             const avgTicket = completed > 0 ? revenue / completed : 0;
-            return { ...tech, completed, revenue, avgTicket };
+            
+            // Calculate Average Time on Site
+            const completedJobsWithTime = myJobs.filter(j => j.jobStatus === 'Completed' && j.timeOnSiteMinutes !== undefined);
+            const totalMinutes = completedJobsWithTime.reduce((sum, j) => sum + (j.timeOnSiteMinutes || 0), 0);
+            const avgTimeOnSite = completedJobsWithTime.length > 0 ? totalMinutes / completedJobsWithTime.length : 0;
+
+            return { ...tech, completed, revenue, avgTicket, avgTimeOnSite };
         }).sort((a, b) => b.revenue - a.revenue);
     }, [state.users, state.jobs, state.currentOrganization]);
 

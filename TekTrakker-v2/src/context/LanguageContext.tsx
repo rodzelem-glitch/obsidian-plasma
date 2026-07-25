@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../lib/utils';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { translations, TranslationKeys } from '../constants/translations';
 import { useAppContext } from './AppContext';
@@ -43,9 +44,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ...state.currentUser.preferences,
           language: lang,
         };
-        await db.collection('users').doc(state.currentUser.id).set({
+        await db.collection('users').doc(state.currentUser.id).set(cleanUndefinedFields({
           preferences: updatedPrefs,
-        }, { merge: true });
+        }), { merge: true });
 
         dispatch({
           type: 'UPDATE_EMPLOYEE',

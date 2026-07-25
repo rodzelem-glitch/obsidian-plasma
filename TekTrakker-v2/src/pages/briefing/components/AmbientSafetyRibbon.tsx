@@ -34,7 +34,7 @@ export const AmbientSafetyRibbon: React.FC<AmbientSafetyRibbonProps> = ({ job, c
 
         const result = await callGeminiAI({
           prompt,
-          modelName: "gemini-3.5-flash"
+          modelName: "gemini-3.6-flash"
         });
 
         const tip = (result.data as { text: string }).text.trim();

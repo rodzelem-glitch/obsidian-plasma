@@ -1,4 +1,4 @@
-import { getBaseUrl } from 'lib/utils';
+import { getBaseUrl , cleanUndefinedFields } from 'lib/utils';
 import React, { useState, useEffect } from 'react';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
@@ -192,7 +192,7 @@ const MasterSocialMediaHub: React.FC = () => {
 
     const handleConnectLI = () => {
         setIsLIConnecting(true);
-        const clientId = '86fh8gh2o2gdzj'; 
+        const clientId = '8634ydvgwg2ik9'; 
         const redirectUri = window.location.origin + '/auth/callback';
         const stateStr = 'linkedin';
         const scope = 'w_member_social'; // or correct scope
@@ -299,12 +299,12 @@ const MasterSocialMediaHub: React.FC = () => {
     const handleSaveTemplate = async () => {
         if (!content.trim()) return setErrorMsg("Cannot save an empty template.");
         try {
-            await db.collection('masterData').doc('socialMediaTemplates').collection('templates').add({
+            await db.collection('masterData').doc('socialMediaTemplates').collection('templates').add(cleanUndefinedFields({
                 content,
                 mediaUrl,
                 name: (aiPrompt.substring(0, 30) || 'Manual Draft') + '...',
                 createdAt: new Date().toISOString()
-            });
+            }));
             setSuccessMsg("Draft saved successfully!");
             await fetchTemplates();
             setTimeout(() => setSuccessMsg(''), 3000);
@@ -323,14 +323,14 @@ const MasterSocialMediaHub: React.FC = () => {
         
         try {
             // Save the master level post log into master data namespace
-            await db.collection('masterData').doc('socialMedia').collection('posts').add({
+            await db.collection('masterData').doc('socialMedia').collection('posts').add(cleanUndefinedFields({
                 content,
                 mediaUrl,
                 platforms: { facebook: postToFB, instagram: postToIG, linkedin: postToLI, googleBusiness: postToGB, x: postToX, tiktok: postToTT },
                 status: 'published',
                 authorId: state.currentUser?.id,
                 createdAt: new Date().toISOString()
-            });
+            }));
 
             if (postToX) {
                 const token = localStorage.getItem('master_x_token');
@@ -614,7 +614,7 @@ const MasterSocialMediaHub: React.FC = () => {
                                 <div className="p-4 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800/50">
                                     <div className="flex items-center justify-between gap-1 mb-3">
                                         <div className="flex items-center gap-2 overflow-hidden flex-1">
-                                            <span className="font-bold text-sm text-[#0A66C2] truncate">LinkedIn Business</span>
+                                            <span className="font-bold text-sm text-[#0A66C2] truncate">LinkedIn Professional</span>
                                             {isLIConnected && <span className="hidden xl:inline-block text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold uppercase tracking-wider">Connected</span>}
                                         </div>
                                         {isLIConnected ? (

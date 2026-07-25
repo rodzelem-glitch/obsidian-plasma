@@ -1,6 +1,6 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { Mail, Send, RefreshCw, X, RefreshCcw, AlertTriangle, PenTool, Bell, Edit } from 'lucide-react';
+import { Mail, Send, RefreshCw, X, RefreshCcw, AlertTriangle, PenTool, Bell, Edit, Reply, ReplyAll } from 'lucide-react';
 import { functions, db } from '../../lib/firebase';
 import Button from '../../components/ui/Button';
 import showToast from '../../lib/toast';
@@ -8,7 +8,7 @@ import { useAppContext } from '../../context/AppContext';
 import DOMPurify from 'dompurify';
 
 const MasterInbox: React.FC = () => {
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
   const [token, setToken] = useState<string | null>(null);
   const [activeFolder, setActiveFolder] = useState<'inbox' | 'sentitems'>('inbox');
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,6 +25,8 @@ const MasterInbox: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [processedBodyHtml, setProcessedBodyHtml] = useState<string>('');
+  const [attachmentsLoading, setAttachmentsLoading] = useState<boolean>(false);
 
   const defaultSignature = `
 <br><br>
@@ -78,6 +80,56 @@ const MasterInbox: React.FC = () => {
     if (token) fetchInbox();
   }, [token, activeFolder]);
 
+  useEffect(() => {
+    if (!selectedMsg) {
+      setProcessedBodyHtml('');
+      return;
+    }
+
+    const rawContent = selectedMsg.body?.content || 'No content';
+    setProcessedBodyHtml(rawContent); // Immediate render of text
+
+    if (!selectedMsg.hasAttachments || !rawContent.includes('cid:')) {
+      return;
+    }
+
+    const fetchAndReplaceAttachments = async () => {
+      setAttachmentsLoading(true);
+      try {
+        const res = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${selectedMsg.id}/attachments`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          let updatedContent = rawContent;
+          if (data.value && data.value.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            data.value.forEach((attachment: any) => {
+              if (attachment.isInline && attachment.contentId && attachment.contentBytes) {
+                // Escape regex special characters in contentId
+                const escapedContentId = attachment.contentId.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+                // Replace src="cid:contentId" or src='cid:contentId'
+                const cidRegex = new RegExp(`src=["']cid:${escapedContentId}["']`, 'gi');
+                updatedContent = updatedContent.replace(cidRegex, `src="data:${attachment.contentType};base64,${attachment.contentBytes}"`);
+                
+                // Also handle cases where cid is referenced in CSS style background or elsewhere without src prefix
+                const rawCidRegex = new RegExp(`cid:${escapedContentId}`, 'gi');
+                updatedContent = updatedContent.replace(rawCidRegex, `data:${attachment.contentType};base64,${attachment.contentBytes}`);
+              }
+            });
+          }
+          setProcessedBodyHtml(updatedContent);
+        }
+      } catch (error) {
+        console.error("Error loading email attachments:", error);
+      } finally {
+        setAttachmentsLoading(false);
+      }
+    };
+
+    fetchAndReplaceAttachments();
+  }, [selectedMsg, token]);
+
   const handleConnect = async () => {
     if (isAuthenticating) return;
     setIsAuthenticating(true);
@@ -130,14 +182,15 @@ const MasterInbox: React.FC = () => {
     }
   };
 
-  const handleSendReply = async () => {
+  const handleSendReply = async (replyAll: boolean = false) => {
     if (!selectedMsg || !replyText) return;
     setSending(true);
     try {
       // Format reply with HTML breaks and append signature
       const formattedReply = replyText.replace(/\n/g, '<br>') + signatureHtml;
 
-      const res = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${selectedMsg.id}/reply`, {
+      const endpoint = replyAll ? 'replyAll' : 'reply';
+      const res = await fetch(`https://graph.microsoft.com/v1.0/me/messages/${selectedMsg.id}/${endpoint}`, {
         method: 'POST',
         headers: { 
           Authorization: `Bearer ${token}`,
@@ -149,7 +202,7 @@ const MasterInbox: React.FC = () => {
       });
 
       if (res.ok || res.status === 202) {
-        showToast.success("Reply sent!");
+        showToast.success(replyAll ? "Reply to all sent!" : "Reply sent!");
         setReplyText('');
         setSelectedMsg(null);
       } else {
@@ -240,11 +293,11 @@ const MasterInbox: React.FC = () => {
         localStorage.setItem('tt_ms_subscription_id', data.id);
         if (state.currentUser) {
             try {
-                await db.collection('office365_subscriptions').doc(data.id).set({
+                await db.collection('office365_subscriptions').doc(data.id).set(cleanUndefinedFields({
                     subscriptionId: data.id,
                     userId: state.currentUser.uid,
                     createdAt: new Date().toISOString()
-                });
+                }));
             } catch (err) {
                 console.error("Error saving subscription to Firestore", err);
             }
@@ -338,13 +391,18 @@ const MasterInbox: React.FC = () => {
           <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center gap-4 bg-white dark:bg-slate-900">
             <button className="md:hidden p-1 text-slate-500" title="Close Message" aria-label="Close Message" onClick={() => setSelectedMsg(null)}><X size={20}/></button>
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate">{selectedMsg.subject}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white truncate">{selectedMsg.subject}</h2>
+                {attachmentsLoading && (
+                  <span className="text-xs text-indigo-500 animate-pulse bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-full border border-indigo-100 dark:border-indigo-900/50 shrink-0">Loading inline images...</span>
+                )}
+              </div>
               <div className="text-sm text-slate-500 truncate">From: {selectedMsg.from?.emailAddress?.address}</div>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 text-sm whitespace-pre-wrap">
             {/* The body content from Graph API is HTML, so we dangerouslySetInnerHTML */}
-            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedMsg.body?.content || 'No content') }} />
+            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processedBodyHtml || selectedMsg.body?.content || 'No content') }} />
           </div>
           <div className="p-4 bg-slate-50 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700">
             <textarea 
@@ -353,10 +411,21 @@ const MasterInbox: React.FC = () => {
               placeholder="Write a reply..."
               className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none h-24 mb-3"
             />
-            <div className="flex justify-end">
-              <Button onClick={handleSendReply} disabled={!replyText || sending}>
-                {sending ? <RefreshCw size={16} className="animate-spin mr-2"/> : <Send size={16} className="mr-2" />}
-                Send Reply
+            <div className="flex justify-end gap-3">
+              <Button 
+                variant="secondary" 
+                onClick={() => handleSendReply(false)} 
+                disabled={!replyText || sending}
+              >
+                {sending ? <RefreshCw size={16} className="animate-spin mr-2"/> : <Reply size={16} className="mr-2" />}
+                Reply
+              </Button>
+              <Button 
+                onClick={() => handleSendReply(true)} 
+                disabled={!replyText || sending}
+              >
+                {sending ? <RefreshCw size={16} className="animate-spin mr-2"/> : <ReplyAll size={16} className="mr-2" />}
+                Reply All
               </Button>
             </div>
           </div>
@@ -450,8 +519,15 @@ const MasterInbox: React.FC = () => {
               <Button onClick={async () => {
                 try {
                   if (state.currentUser?.id) {
-                    await updateDoc(doc(db, 'users', state.currentUser.id), {
+                    await db.collection('users').doc(state.currentUser.id).update(cleanUndefinedFields({
                       emailSignatureHtml: signatureHtml
+                    }));
+                    dispatch({
+                      type: 'SET_CURRENT_USER',
+                      payload: {
+                        ...state.currentUser,
+                        emailSignatureHtml: signatureHtml
+                      }
                     });
                   }
                   localStorage.setItem('tt_admin_signature', signatureHtml);

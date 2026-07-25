@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { User } from 'types';
@@ -7,7 +6,8 @@ import { Logo } from '../ui/Logo';
 import VirtualWorker from '../ui/VirtualWorker';
 import TopNavActions from '../common/TopNavActions';
 import PageHeader from '../ui/PageHeader';
-import { RingCentralWidget } from '../common/RingCentralWidget';
+import OnboardingTour, { useOnboardingTour } from '../ui/OnboardingTour';
+import { useAppContext } from 'context/AppContext';
 
 interface AdminLayoutProps {
   user: User;
@@ -17,6 +17,7 @@ interface AdminLayoutProps {
 
 const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) => {
   const navigate = useNavigate();
+  const { state } = useAppContext();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isCollapsedPreference, setIsCollapsedPreference] = useState(() => {
      if (typeof window !== 'undefined') {
@@ -24,6 +25,9 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
      }
      return false;
   });
+
+  const { showTour, completeTour } = useOnboardingTour(user?.id);
+  const isPaymentsOnly = state.currentOrganization?.plan === 'payments_only';
 
   const handleToggleCollapse = () => {
       const newVal = !isCollapsedPreference;
@@ -50,6 +54,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
               <div className="flex items-center gap-3">
                   <button 
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                    data-tour="menu-toggle-btn"
                     className="text-gray-500 hover:text-primary-600 focus:outline-none"
                     aria-label="Toggle Menu"
                     title="Toggle Menu"
@@ -70,7 +75,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
             </div>
         </main>
       </div>
-      <RingCentralWidget />
+      {showTour && (
+          <OnboardingTour
+              isPaymentsOnly={isPaymentsOnly}
+              userId={user?.id || ''}
+              onComplete={completeTour}
+          />
+      )}
     </div>
   );
 };

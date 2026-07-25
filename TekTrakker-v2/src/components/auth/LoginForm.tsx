@@ -1,6 +1,6 @@
 import React from 'react';
 import { InputField } from './AuthFields';
-import { Users, Building2, UserCircle } from 'lucide-react';
+import { Users, Building2, UserCircle, Fingerprint } from 'lucide-react';
 
 interface LoginFormProps {
     email: string;
@@ -13,10 +13,13 @@ interface LoginFormProps {
     brandColor: string;
     setView: (view: any) => void;
     setUserType: (type: any) => void;
+    biometricEnabled?: boolean;
+    handleBiometricLogin?: () => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({
-    email, setEmail, password, setPassword, handleLogin, handleGoogleLogin, isLoading, brandColor, setView, setUserType
+    email, setEmail, password, setPassword, handleLogin, handleGoogleLogin, isLoading, brandColor, setView, setUserType,
+    biometricEnabled = false, handleBiometricLogin
 }) => (
     <form onSubmit={handleLogin} className="space-y-4">
         <InputField id="email" name="email" type="email" label="Email Address" value={email} onChange={(e: any) => setEmail(e.target.value)} required autoComplete="off" brandColor={brandColor} />
@@ -27,13 +30,27 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </div>
 
         <style>{`.login-btn { background-color: ${brandColor}; }`}</style>
-        <button 
-            type="submit" 
-            disabled={isLoading}
-            className="w-full py-4 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 login-btn"
-        >
-            {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Sign In'}
-        </button>
+        <div className="flex gap-2">
+            <button 
+                type="submit" 
+                disabled={isLoading}
+                className={`${biometricEnabled ? 'flex-1' : 'w-full'} py-4 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 hover:scale-[1.02] transition-transform flex items-center justify-center gap-2 login-btn`}
+            >
+                {isLoading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Sign In'}
+            </button>
+            {biometricEnabled && handleBiometricLogin && (
+                <button
+                    type="button"
+                    onClick={handleBiometricLogin}
+                    disabled={isLoading}
+                    title="Sign in with Biometrics"
+                    aria-label="Sign in with Biometrics"
+                    className="px-4 py-4 rounded-xl font-bold text-white bg-slate-800 border border-slate-700 hover:scale-[1.02] hover:bg-slate-750 transition-all flex items-center justify-center shrink-0"
+                >
+                    <Fingerprint size={24} className="text-blue-400" />
+                </button>
+            )}
+        </div>
 
         {handleGoogleLogin && (
             <button 

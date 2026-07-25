@@ -14,8 +14,22 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "TekTrakker | #1 Operating System for Trade Services",
-  description: "Stop drowning in paperwork. TekTrakker is the all-in-one software platform for HVAC, Plumbing, and Electrical businesses.",
+  description: "Stop drowning in paperwork. TekTrakker is the all-in-one software platform for HVAC, Plumbing, and Electrical businesses. Complete with AI-powered dispatching, geofenced time tracking, mobile estimates, invoicing, and a free homeowner consumer portal.",
   metadataBase: new URL('https://tektrakker.com'),
+  keywords: [
+    "Field Service Management Software",
+    "HVAC Dispatching Software",
+    "Plumbing CRM Software",
+    "Contractor Invoice App",
+    "ServiceTitan Alternative",
+    "Jobber Alternative",
+    "AI Dispatcher",
+    "Trade Services CRM",
+    "Geofenced Time Tracking",
+    "Contractor Estimating Tool",
+    "White-Label FSM Software",
+    "Property Owner Portal FSM"
+  ],
   alternates: {
     canonical: "/",
     languages: {
@@ -24,12 +38,13 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "TekTrakker | Operating System for Trade Services",
-    description: "Stop drowning in paperwork. TekTrakker is the all-in-one software platform for HVAC, Plumbing, and Electrical businesses.",
+    description: "Stop drowning in paperwork. TekTrakker is the all-in-one software platform for HVAC, Plumbing, and Electrical businesses. Complete with AI-powered dispatching, geofenced time tracking, mobile estimates, invoicing, and a free homeowner consumer portal.",
     url: "https://tektrakker.com",
     siteName: "TekTrakker",
     locale: "en_US",
     type: "website",
   },
+
 };
 
 const jsonLd = {
@@ -40,10 +55,10 @@ const jsonLd = {
   "applicationCategory": "BusinessApplication",
   "offers": {
     "@type": "Offer",
-    "price": "0",
+    "price": "49.00",
     "priceCurrency": "USD"
   },
-  "description": "Stop drowning in paperwork. TekTrakker is the all-in-one software platform for HVAC, Plumbing, and Electrical businesses.",
+  "description": "Stop drowning in paperwork. TekTrakker is the all-in-one software platform for HVAC, Plumbing, and Electrical businesses. Complete with AI-powered dispatching, geofenced time tracking, mobile estimates, invoicing, and a free homeowner consumer portal.",
   "url": "https://tektrakker.com"
 };
 
@@ -59,6 +74,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
+
       <body className="min-h-screen flex flex-col">
         {/* Google Analytics Placeholder */}
         <Script

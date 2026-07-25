@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { getFirestore, doc, collection, onSnapshot, setDoc } from 'firebase/firestore';
@@ -23,7 +24,7 @@ const SEED_TOOLS = [
     requestedCapability: 'Verify safety gear, power disconnection, and workspace safety before starting repairs',
     inputParameters: '{\n  "hasPPE": "boolean",\n  "powerDisconnected": "boolean",\n  "workspaceSafe": "boolean",\n  "notes": "string"\n}',
     dataMutations: 'Logs safety compliance checklist validation to job record.',
-    compiledSource: `/**\n * Synthesized Tool: complianceChecklist\n * Created for: Verify safety gear, power disconnection, and workspace safety before starting repairs\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(recordRef, {\n        id: recordRef.id,\n        toolName: "complianceChecklist",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
+    compiledSource: `/**\n * Synthesized Tool: complianceChecklist\n * Created for: Verify safety gear, power disconnection, and workspace safety before starting repairs\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(cleanUndefinedFields(recordRef), {\n        id: recordRef.id,\n        toolName: "complianceChecklist",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
     status: 'active' as const
   },
   {
@@ -31,7 +32,7 @@ const SEED_TOOLS = [
     requestedCapability: 'Log target microns, achieved microns, and leak-back test results',
     inputParameters: '{\n  "targetMicrons": "number",\n  "achievedMicrons": "number",\n  "leakPassed": "boolean",\n  "decayRate": "number"\n}',
     dataMutations: 'Logs vacuum pump pull-down parameters and decay ratings.',
-    compiledSource: `/**\n * Synthesized Tool: vacuumBaselines\n * Created for: Log target microns, achieved microns, and leak-back test results\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(recordRef, {\n        id: recordRef.id,\n        toolName: "vacuumBaselines",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
+    compiledSource: `/**\n * Synthesized Tool: vacuumBaselines\n * Created for: Log target microns, achieved microns, and leak-back test results\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(cleanUndefinedFields(recordRef), {\n        id: recordRef.id,\n        toolName: "vacuumBaselines",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
     status: 'active' as const
   },
   {
@@ -39,7 +40,7 @@ const SEED_TOOLS = [
     requestedCapability: 'Record parts, fittings, refrigerants, and other materials consumed on site',
     inputParameters: '{\n  "partName": "string",\n  "quantity": "number",\n  "unit": "string",\n  "isBillable": "boolean"\n}',
     dataMutations: 'Appends billable and non-billable inventory line items to job invoice sheet.',
-    compiledSource: `/**\n * Synthesized Tool: materialsConsumed\n * Created for: Record parts, fittings, refrigerants, and other materials consumed on site\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(recordRef, {\n        id: recordRef.id,\n        toolName: "materialsConsumed",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
+    compiledSource: `/**\n * Synthesized Tool: materialsConsumed\n * Created for: Record parts, fittings, refrigerants, and other materials consumed on site\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(cleanUndefinedFields(recordRef), {\n        id: recordRef.id,\n        toolName: "materialsConsumed",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
     status: 'active' as const
   },
   {
@@ -47,7 +48,7 @@ const SEED_TOOLS = [
     requestedCapability: 'Log customer authorization, sign-off type, and terms acceptance',
     inputParameters: '{\n  "customerName": "string",\n  "approvalType": "string",\n  "termsAccepted": "boolean",\n  "authorizedAmount": "number"\n}',
     dataMutations: 'Logs digital authorization parameters and sets job scope approval status.',
-    compiledSource: `/**\n * Synthesized Tool: customerApprovals\n * Created for: Log customer authorization, sign-off type, and terms acceptance\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(recordRef, {\n        id: recordRef.id,\n        toolName: "customerApprovals",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
+    compiledSource: `/**\n * Synthesized Tool: customerApprovals\n * Created for: Log customer authorization, sign-off type, and terms acceptance\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(cleanUndefinedFields(recordRef), {\n        id: recordRef.id,\n        toolName: "customerApprovals",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
     status: 'active' as const
   },
   {
@@ -55,7 +56,7 @@ const SEED_TOOLS = [
     requestedCapability: 'Register compressor serial number, model number, tonnage, and warranty eligibility',
     inputParameters: '{\n  "serialNumber": "string",\n  "modelNumber": "string",\n  "tonnage": "number",\n  "isEligible": "boolean"\n}',
     dataMutations: 'Registers compressor component warranties and links to customer asset records.',
-    compiledSource: `/**\n * Synthesized Tool: compressorWarranty\n * Created for: Register compressor serial number, model number, tonnage, and warranty eligibility\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(recordRef, {\n        id: recordRef.id,\n        toolName: "compressorWarranty",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
+    compiledSource: `/**\n * Synthesized Tool: compressorWarranty\n * Created for: Register compressor serial number, model number, tonnage, and warranty eligibility\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(cleanUndefinedFields(recordRef), {\n        id: recordRef.id,\n        toolName: "compressorWarranty",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
     status: 'active' as const
   }
 ];
@@ -68,7 +69,7 @@ const MARKETPLACE_SEEDS = [
     requestedCapability: 'Log system pressure levels, electronic leak detector results, and exact leak coordinates',
     inputParameters: '{\n  "suctionPressurePsi": "number",\n  "liquidPressurePsi": "number",\n  "leakDetected": "boolean",\n  "leakLocation": "string"\n}',
     dataMutations: 'Appends refrigerant leak inspection records under synthesizedData.',
-    compiledSource: `/**\n * Synthesized Tool: refrigerantLeakTest\n * Created for: Log system pressure levels, electronic leak detector results, and exact leak coordinates\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(recordRef, {\n        id: recordRef.id,\n        toolName: "refrigerantLeakTest",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
+    compiledSource: `/**\n * Synthesized Tool: refrigerantLeakTest\n * Created for: Log system pressure levels, electronic leak detector results, and exact leak coordinates\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(cleanUndefinedFields(recordRef), {\n        id: recordRef.id,\n        toolName: "refrigerantLeakTest",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
     status: 'active' as const,
     createdAt: new Date().toISOString(),
     promotedByOrg: 'global-community'
@@ -79,7 +80,7 @@ const MARKETPLACE_SEEDS = [
     requestedCapability: 'Verify air filter status, clean condenser coils, measure blower motor amps, and test thermostat calibration',
     inputParameters: '{\n  "filterReplaced": "boolean",\n  "coilsCleaned": "boolean",\n  "blowerAmps": "number",\n  "thermostatCalibrated": "boolean",\n  "notes": "string"\n}',
     dataMutations: 'Inserts HVAC annual tune-up maintenance logs to active ticket.',
-    compiledSource: `/**\n * Synthesized Tool: hvacTuneUpChecklist\n * Created for: Verify air filter status, clean condenser coils, measure blower motor amps, and test thermostat calibration\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(recordRef, {\n        id: recordRef.id,\n        toolName: "hvacTuneUpChecklist",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
+    compiledSource: `/**\n * Synthesized Tool: hvacTuneUpChecklist\n * Created for: Verify air filter status, clean condenser coils, measure blower motor amps, and test thermostat calibration\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(cleanUndefinedFields(recordRef), {\n        id: recordRef.id,\n        toolName: "hvacTuneUpChecklist",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
     status: 'active' as const,
     createdAt: new Date().toISOString(),
     promotedByOrg: 'global-community'
@@ -90,7 +91,7 @@ const MARKETPLACE_SEEDS = [
     requestedCapability: 'Log daily tailgate safety topic, attendance counts, and hazardous field conditions identified',
     inputParameters: '{\n  "safetyTopic": "string",\n  "attendeeCount": "number",\n  "hazardsIdentified": "boolean",\n  "correctiveAction": "string"\n}',
     dataMutations: 'Logs OSHA-aligned daily briefing tailgate meeting checklists.',
-    compiledSource: `/**\n * Synthesized Tool: safetyTailgateMeeting\n * Created for: Log daily tailgate safety topic, attendance counts, and hazardous field conditions identified\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(recordRef, {\n        id: recordRef.id,\n        toolName: "safetyTailgateMeeting",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
+    compiledSource: `/**\n * Synthesized Tool: safetyTailgateMeeting\n * Created for: Log daily tailgate safety topic, attendance counts, and hazardous field conditions identified\n * Generated autonomously by Antigravity Synthesis Engine.\n */\nimport * as admin from 'firebase-admin';\n\nexport async function executeSynthesizedTool(orgId: string, params: any) {\n    const db = admin.firestore();\n    const batch = db.batch();\n    \n    const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();\n    batch.set(cleanUndefinedFields(recordRef), {\n        id: recordRef.id,\n        toolName: "safetyTailgateMeeting",\n        loggedParams: params,\n        createdAt: new Date().toISOString()\n    });\n    \n    await batch.commit();\n    return { success: true, refId: recordRef.id };\n}`,
     status: 'active' as const,
     createdAt: new Date().toISOString(),
     promotedByOrg: 'global-community'
@@ -202,7 +203,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const batch = db.batch();
     
     const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
-    batch.set(recordRef, {
+    batch.set(cleanUndefinedFields(recordRef), {
         id: recordRef.id,
         toolName: "${camelName || 'customTool'}",
         loggedParams: params,
@@ -289,7 +290,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const batch = db.batch();
     
     const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
-    batch.set(recordRef, {
+    batch.set(cleanUndefinedFields(recordRef), {
         id: recordRef.id,
         toolName: "${camelName}",
         loggedParams: params,

@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
@@ -38,21 +39,41 @@ const HRHandbookView: React.FC<HRHandbookViewProps> = ({ employee, isSelf }) => 
 
         const legacyUpdate = docId === policies.find(p => p.type === 'Handbook')?.id ? { handbookSignedDate: timestamp } : {};
 
+        const doc = policies.find(p => p.id === docId);
+        const isHandbook = doc?.type === 'Handbook' || doc?.title?.toLowerCase().includes('handbook');
+        const updatedHiringPacketStatus = isHandbook ? {
+            w4Completed: employee.hiringPacketStatus?.w4Completed || false,
+            i9Completed: employee.hiringPacketStatus?.i9Completed || false,
+            directDepositCompleted: employee.hiringPacketStatus?.directDepositCompleted || false,
+            idUploaded: employee.hiringPacketStatus?.idUploaded || false,
+            handbookSigned: true,
+            ...(employee.hiringPacketStatus?.completedAt ? { completedAt: employee.hiringPacketStatus.completedAt } : {})
+        } : null;
+        
+        const packetUpdate = updatedHiringPacketStatus ? { hiringPacketStatus: updatedHiringPacketStatus } : {};
+
         try {
-            await db.collection('users').doc(employee.id).update({ 
+            await db.collection('users').doc(employee.id).update(cleanUndefinedFields({ 
                 signedPolicies: updatedSignedPolicies,
+                ...packetUpdate,
                 ...legacyUpdate 
-            });
+            }));
 
             dispatch({ 
                 type: 'UPDATE_EMPLOYEE', 
-                payload: { ...employee, signedPolicies: updatedSignedPolicies, ...legacyUpdate } 
+                payload: { 
+                    ...employee, 
+                    signedPolicies: updatedSignedPolicies, 
+                    ...packetUpdate,
+                    ...legacyUpdate 
+                } 
             });
             
             showToast.warn(t('Document Acknowledged.'));
             setViewDoc(null);
             setSignatureName('');
-        } catch {
+        } catch (err) {
+            console.error("Failed to save signature:", err);
             showToast.warn(t("Failed to save signature."));
         }
     };

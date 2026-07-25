@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
@@ -17,7 +18,7 @@ import { compressFile } from '../../lib/utils';
 import {
     FileText, Wand2, Download, Trash2, Save, Upload, Printer, Edit3, Copy, 
     Clipboard, DollarSign, BookOpen, Layers, Archive, Share2,
-    ChevronRight, ArrowLeft
+    ChevronRight, ArrowLeft, History
 } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
 import DOMPurify from 'dompurify';
@@ -25,6 +26,33 @@ import Form1099CopyA from '../../pages/master/components/sales-team/Form1099Copy
 
 const DocumentCreator: React.FC = () => {
     const { state, dispatch } = useAppContext();
+
+    const renderLinkedRecord = (doc: BusinessDocument) => {
+        if (doc.jobId) {
+            const job = state.jobs?.find(j => j.id === doc.jobId);
+            const name = job?.customerName || (doc.customerId ? state.customers?.find(c => c.id === doc.customerId)?.name : 'Job');
+            return (
+                <a 
+                    href={`/#/admin/records?tab=history&histId=${doc.jobId}`}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-bold transition-colors shadow-sm"
+                    title={`Job for ${name || 'Customer'}`}
+                >
+                    <History size={10} className="text-blue-400 shrink-0" />
+                    <span>Job #{doc.jobId.substring(0, 8)}</span>
+                </a>
+            );
+        }
+        if (doc.customerId) {
+            const customer = state.customers?.find(c => c.id === doc.customerId);
+            const name = customer ? (customer.name || `${customer.firstName || ''} ${customer.lastName || ''}`.trim()) : 'Customer';
+            return (
+                <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[10px] text-slate-600 dark:text-slate-300 font-medium">
+                    Customer: <span className="font-bold">{name}</span>
+                </span>
+            );
+        }
+        return <span className="text-slate-400 text-xs italic">-</span>;
+    };
 
     // --- MAIN STATE ---
     const [activeTab, setActiveTab] = useState<'Policies' | 'Repository' | 'Master Files' | 'Templates' | 'Tax Forms' | 'Hiring Packets' | null>(null);
@@ -122,7 +150,7 @@ const DocumentCreator: React.FC = () => {
         };
 
         try {
-            await db.collection('documents').doc(docToSave.id).set(docToSave, { merge: true });
+            await db.collection('documents').doc(docToSave.id).set(cleanUndefinedFields(docToSave), { merge: true });
             dispatch({ type: isUpdating ? 'UPDATE_DOCUMENT' : 'ADD_DOCUMENT', payload: docToSave });
             setIsEditorOpen(false);
             setEditingDoc(null);
@@ -162,7 +190,7 @@ const DocumentCreator: React.FC = () => {
             const systemInstruction = "You are a business operations assistant. Format your response as clean, well-structured HTML using elements like <h2>, <p>, <ul>, and <li> for easy readability. Do not include ```html blocks.";
             const fullPrompt = `${systemInstruction}\n\n${aiPrompt}`;
             
-            const result = await callGeminiAI({ prompt: fullPrompt, modelName: "gemini-3.5-flash" }); 
+            const result = await callGeminiAI({ prompt: fullPrompt, modelName: "gemini-3.6-flash" }); 
             const data = result.data as { text: string };
             
             setEditingDoc(prev => prev ? { ...prev, content: data.text } : null);
@@ -197,7 +225,7 @@ const DocumentCreator: React.FC = () => {
                 createdAt: new Date().toISOString(),
                 createdBy: state.currentUser?.id || 'system',
             };
-            await db.collection('documents').doc(newDoc.id).set(newDoc);
+            await db.collection('documents').doc(newDoc.id).set(cleanUndefinedFields(newDoc));
             dispatch({ type: 'ADD_DOCUMENT', payload: newDoc });
             setIsUploadModalOpen(false);
             setFileToUpload(null);
@@ -364,7 +392,7 @@ const DocumentCreator: React.FC = () => {
                 organizationId: state.currentOrganization?.id,
                 type: 'internal'
             };
-            await db.collection('messages').doc(msgObj.id as string).set(msgObj);
+            await db.collection('messages').doc(msgObj.id as string).set(cleanUndefinedFields(msgObj));
             showToast.warn("Document shared successfully!");
             setShareModalDoc(null);
             setShareMessageText('');
@@ -660,11 +688,12 @@ const DocumentCreator: React.FC = () => {
                     />
 
                     <div className="min-h-[400px]">
-                        <Table headers={['Title', 'Type', 'Created', 'Actions']}>
+                        <Table headers={['Title', 'Type', 'Linked Record', 'Created', 'Actions']}>
                             {getDocsForTab(activeTab).map(doc => (
                                 <tr id={`doc-row-${doc.id}`} key={doc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                     <td className="px-6 py-4 font-bold"><FileText size={16} className="inline-block mr-2 text-gray-400" />{doc.title}</td>
                                     <td className="px-6 py-4"><span className="px-2 py-1 rounded text-xs font-bold bg-blue-100 text-blue-800">{doc.type}</span></td>
+                                    <td className="px-6 py-4 text-xs font-medium text-slate-500">{renderLinkedRecord(doc)}</td>
                                     <td className="px-6 py-4 text-sm">{new Date(doc.createdAt).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 flex gap-1.5 flex-wrap">
                                         <Button size="sm" variant="outline" onClick={() => handleEdit(doc)}>View/Edit</Button>

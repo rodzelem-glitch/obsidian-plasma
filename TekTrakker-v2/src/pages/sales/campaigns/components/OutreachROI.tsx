@@ -22,7 +22,11 @@ const OutreachROI: React.FC = () => {
 
     useEffect(() => {
         if (!state.currentUser) return;
-        const unsub = db.collection('sales_campaigns').onSnapshot(snap => {
+        let query = db.collection('sales_campaigns');
+        if (state.currentUser.role === 'platform_sales') {
+            query = query.where('repId', '==', state.currentUser.id) as any;
+        }
+        const unsub = query.onSnapshot(snap => {
             const aggregate = snap.docs.reduce((acc, doc) => {
                 const data = doc.data();
                 const s = data.stats || { sent: 0, opened: 0, clicked: 0, responded: 0 };
@@ -31,15 +35,17 @@ const OutreachROI: React.FC = () => {
                     opened: acc.opened + (s.opened || 0),
                     clicked: acc.clicked + (s.clicked || 0),
                     responded: acc.responded + (s.responded || 0),
-                    converted: acc.converted + (s.converted || 0) // Assuming converted is tracked
+                    converted: acc.converted + (s.converted || 0)
                 };
             }, { sent: 0, opened: 0, clicked: 0, responded: 0, converted: 0 });
             
             setStats(aggregate);
             setIsLoading(false);
+        }, () => {
+            setIsLoading(false);
         });
         return () => unsub();
-    }, []);
+    }, [state.currentUser]);
 
     const formatPercent = (val: number, total: number) => total > 0 ? ((val / total) * 100).toFixed(1) + '%' : '0%';
 

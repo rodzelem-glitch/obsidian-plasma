@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
@@ -124,7 +125,7 @@ const GlobalUsers: React.FC = () => {
                 updates.organizationId = editingUser.organizationId || 'unaffiliated';
             }
 
-            await db.collection('users').doc(editingUser.id).update(updates);
+            await db.collection('users').doc(editingUser.id).update(cleanUndefinedFields(updates));
             setEditingUser(null);
             showToast.warn("User record updated.");
         } catch (e: any) {

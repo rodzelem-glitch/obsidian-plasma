@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useAppContext } from '../../context/AppContext';
@@ -103,7 +104,7 @@ const GovContracts: React.FC = () => {
         if (!state.currentOrganization) return;
         setSavingAlert(true);
         try {
-            await db.collection('organizations').doc(state.currentOrganization.id).collection('sam_alerts').add({
+            await db.collection('organizations').doc(state.currentOrganization.id).collection('sam_alerts').add(cleanUndefinedFields({
                 naicsCode,
                 keyword,
                 targetState,
@@ -111,7 +112,7 @@ const GovContracts: React.FC = () => {
                 targetZip,
                 email: state.currentUser?.email || '',
                 createdAt: new Date().toISOString()
-            });
+            }));
             showToast.success("Search alert saved! You will receive notifications when new matches appear.");
         } catch (e) {
             console.error("Failed to save alert", e);

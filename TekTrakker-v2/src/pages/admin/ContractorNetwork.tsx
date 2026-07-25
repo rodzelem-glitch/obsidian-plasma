@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UsersIcon, FileText, Search, PlusCircle, CheckCircle2, MapPin, DollarSign, Briefcase } from 'lucide-react';
@@ -86,7 +87,7 @@ const ContractorNetwork: React.FC = () => {
                 createdAt: new Date().toISOString()
             } as RFPNotice;
 
-            await db.collection('rfp_notices').doc(rfpId).set(newRFP);
+            await db.collection('rfp_notices').doc(rfpId).set(cleanUndefinedFields(newRFP));
             showToast.success('RFP posted successfully!');
             setIsCreateModalOpen(false);
         } catch (error) {

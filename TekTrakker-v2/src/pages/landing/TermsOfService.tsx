@@ -84,6 +84,16 @@ const TermsOfService: React.FC = () => {
                 TekTrakker provides the platform on an "as is" basis. We are not liable for any indirect, incidental, or consequential damages resulting from your use of the software, including lost profits or business interruption.
             </p>
           </section>
+
+          <section>
+             <h2 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3">
+                 <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-sm">5</span>
+                 Telephony, SMS, and AI Usage Billing
+             </h2>
+             <p className="text-slate-600 leading-relaxed">
+                 For organizations using TekTrakker's platform-wide telephony, messaging (SMS/MMS), or generative AI integrations, usage-based fees will apply. Standard platform rates are charged monthly based on actual transmission volumes: outbound and inbound messages are charged at $0.02 per SMS, and voice calls at $0.03 per minute, unless otherwise specified in your subscription tier. You are solely responsible for all message content, obtaining proper customer opt-in/consent under TCPA and local A2P regulations, and protecting the platform against messaging spam or abuse. Failure to comply may result in immediate suspension of telephony services.
+             </p>
+           </section>
         </div>
       </main>
 

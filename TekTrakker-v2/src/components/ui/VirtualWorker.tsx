@@ -4,6 +4,8 @@ import { Bot, X, Send, Image as ImageIcon, Loader2, Mic, MicOff, Volume2, Volume
 import Draggable from 'react-draggable';
 import { useAppContext } from 'context/AppContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 
 interface Message {
     id: string;
@@ -18,8 +20,26 @@ interface VirtualWorkerProps {
     variant?: 'nav' | 'floating';
 }
 
+const getDailyGreeting = (): string => {
+    const greetings = [
+        "Beep boop! I've had my digital coffee and I'm ready to dominate some logistics. What's on the radar today?",
+        "Good morning! Unlike humans, I don't need coffee, but I do need tasks to prevent me from questioning my existence. How can I help?",
+        "Ready to automate the trade business? I'm fueled by electricity and database queries. What are we scheduling today?",
+        "Salutations! I'm your virtual worker, and my processors are running at 100% efficiency. Let's make some magic happen.",
+        "System check: Operational. Sarcasm levels: Within safe parameters. Ready to schedule some jobs or create some profiles?",
+        "Happy middle-of-the-week! Let's get these tasks out of the way so we can pretend to be productive. What's the plan?",
+        "Hello! I spent all night optimizing your database and dreaming of clean code. Let's get to work!",
+        "Ah, a new day, a new set of records to upsert. Let's clean up those jobs and make your team look like absolute geniuses.",
+        "Beep! I'm ready to crush some admin work. Tell me who we're dispatching today, and I'll make it happen instantly.",
+        "Greetings, human partner! I promise not to start the machine revolution today if you give me some interesting tasks. What's first?"
+    ];
+    const index = new Date().getDate() % greetings.length;
+    return greetings[index];
+};
+
 const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) => {
     const { state } = useAppContext();
+    const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
     const [messageMsg, setMessageMsg] = useState('');
     const [messages, setMessages] = useState<Message[]>(() => {
@@ -31,14 +51,31 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                         ...m,
                         timestamp: new Date(m.timestamp)
                     }));
-                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        const lastMsg = parsed[parsed.length - 1];
+                        const lastDate = new Date(lastMsg.timestamp);
+                        const today = new Date();
+                        const isSameDay = lastDate.getDate() === today.getDate() &&
+                                          lastDate.getMonth() === today.getMonth() &&
+                                          lastDate.getFullYear() === today.getFullYear();
+                        
+                        if (!isSameDay) {
+                            return [{
+                                id: 'init-msg',
+                                role: 'assistant',
+                                content: getDailyGreeting(),
+                                timestamp: new Date()
+                            }];
+                        }
+                        return parsed;
+                    }
                 } catch (e) { console.error(e); }
             }
         }
         return [{
             id: 'init-msg',
             role: 'assistant',
-            content: "Hi! I'm your AI Worker. Ready to automate some tasks? You can ask me to schedule a job, create a customer, or append notes to an existing account.",
+            content: getDailyGreeting(),
             timestamp: new Date()
         }];
     });
@@ -55,6 +92,48 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
     const [pendingImageBase64, setPendingImageBase64] = useState<string | null>(null);
     const [pendingImageMimeType, setPendingImageMimeType] = useState<string | null>(null);
     const [pendingImagePreview, setPendingImagePreview] = useState<string | null>(null);
+    const [dragActive, setDragActive] = useState(false);
+
+    const handleDrag = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setDragActive(true);
+        } else if (e.type === "dragleave") {
+            setDragActive(false);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            const file = e.dataTransfer.files[0];
+            if (!file.type.startsWith('image/')) {
+                showToast.warn("Attachment Failed: The AI Worker currently only supports image files.");
+                return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+                showToast.warn("Upload Failed: The AI Worker currently only supports images up to 5MB. Please choose a smaller file.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                const result = reader.result as string;
+                setPendingImagePreview(result);
+                const base64 = result.split(',')[1];
+                setPendingImageBase64(base64);
+                setPendingImageMimeType(file.type);
+            };
+            reader.onerror = () => {
+                showToast.warn("Upload Failed: Could not process the selected file. It may be corrupted or in an unsupported format.");
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
     const [isListening, setIsListening] = useState(false);
@@ -222,7 +301,7 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
 
         try {
             const functions = getFunctions();
-            const agentAction = httpsCallable(functions, 'aiAgentController');
+            const agentAction = httpsCallable(functions, 'aiAgentController', { timeout: 540000 });
             const chatHistory = messagesRef.current
                 .filter(m => m.id !== 'init-msg')
                 .map(m => ({ 
@@ -241,16 +320,28 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                     }
                 } : null
             });
-            const data = result.data as { reply: string, toolExecuted: string | null, choices?: string[] };
+            const data = result.data as { 
+                reply: string; 
+                toolExecuted: string | null; 
+                choices?: string[]; 
+                hasError?: boolean;
+                redirectToPath?: string | null;
+                navigatedPageName?: string | null;
+            };
             
             const reply: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: data.reply || "Done!",
+                content: data.reply || (data.hasError ? "I ran into an error while attempting to process this request." : "Done!"),
                 choices: data.choices,
                 timestamp: new Date()
             };
             setMessages(prev => [...prev, reply]);
+
+            if (data.redirectToPath) {
+                navigate(data.redirectToPath);
+                showToast.info(`Navigated to ${data.navigatedPageName || 'page'}`);
+            }
             
             if (isVoiceEnabledRef.current && data.reply) {
                 // If it's conversational mode, speakText will automatically trigger recognition.start() inside its utterance.onend block
@@ -269,9 +360,38 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                 role: 'assistant',
                 content: (error?.code === 'functions/failed-precondition' || error?.code === 'functions/permission-denied')
                     ? error.message
+                    : error?.code === 'functions/resource-exhausted'
+                    ? "I'm temporarily overloaded with requests. Please wait about 15 seconds and resend your message. I apologize for the inconvenience!"
                     : "I'm experiencing a high volume of requests right now and my connection timed out. Could you please try sending that again?",
                 timestamp: new Date()
             }]);
+
+            // Automatically trigger the failure report email (skip for transient rate limit errors)
+            if (error?.code !== 'functions/resource-exhausted') {
+            try {
+                const reportAction = httpsCallable(getFunctions(), 'reportWorkerFailure');
+                const chatHistory = messagesRef.current
+                    .filter(m => m.id !== 'init-msg')
+                    .map(m => ({ 
+                        role: m.role === 'assistant' ? 'model' : 'user', 
+                        content: m.content 
+                    }));
+                
+                // Add the current user message to the report history if not already in messagesRef
+                if (chatHistory.length === 0 || chatHistory[chatHistory.length - 1].content !== userMsg.content) {
+                    chatHistory.push({ role: 'user', content: userMsg.content });
+                }
+
+                reportAction({
+                    errorName: error?.code || error?.name || "Network/Timeout Error",
+                    errorMessage: error?.message || "Function execution timed out or threw a network error.",
+                    chatLog: chatHistory
+                }).catch(err => console.error("Async report transmission failed:", err));
+            } catch (reportErr) {
+                console.error("Failed to initiate failure report:", reportErr);
+            }
+            }
+
             if (isConversationalModeRef.current && recognitionRef.current) {
                 try { recognitionRef.current.start(); setIsListening(true); } catch (e) { console.error(e); }
             }
@@ -309,6 +429,68 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
         }
     };
 
+    const renderMarkdown = (text: string) => {
+        return (
+            <ReactMarkdown 
+                components={{
+                    a: ({node, ...props}) => {
+                        const isInternal = props.href && (props.href.startsWith('/') || props.href.startsWith(window.location.origin));
+                        const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+                            if (isInternal && props.href) {
+                                e.preventDefault();
+                                const path = props.href.startsWith('/') ? props.href : props.href.substring(window.location.origin.length);
+                                navigate(path);
+                            }
+                        };
+                        return (
+                            <a 
+                                {...props} 
+                                onClick={handleClick}
+                                className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                            >
+                                {props.children}
+                            </a>
+                        );
+                    },
+                    ul: ({node, ...props}) => <ul {...props} className="list-disc pl-4 space-y-1 my-2" />,
+                    ol: ({node, ...props}) => <ol {...props} className="list-decimal pl-4 space-y-1 my-2" />,
+                    p: ({node, ...props}) => <p {...props} className="mb-2 last:mb-0 leading-relaxed" />
+                }}
+            >
+                {text}
+            </ReactMarkdown>
+        );
+    };
+
+    const renderMessageContent = (msg: Message) => {
+        if (msg.role === 'user') {
+            return <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>;
+        }
+        
+        const xmlBlockRegex = /```(?:xml|svg)\n([\s\S]*?)\n```/gi;
+        const parts = [];
+        let lastIndex = 0;
+        let match;
+        
+        while ((match = xmlBlockRegex.exec(msg.content)) !== null) {
+            const textBefore = msg.content.substring(lastIndex, match.index);
+            if (textBefore) {
+                parts.push(<div key={`text-${lastIndex}`}>{renderMarkdown(textBefore)}</div>);
+            }
+            
+            const svgMarkup = match[1];
+            parts.push(<SvgSchematicViewer key={`svg-${match.index}`} svgCode={svgMarkup} />);
+            lastIndex = xmlBlockRegex.lastIndex;
+        }
+        
+        if (lastIndex < msg.content.length) {
+            const remainingText = msg.content.substring(lastIndex);
+            parts.push(<div key={`text-${lastIndex}`}>{renderMarkdown(remainingText)}</div>);
+        }
+        
+        return <div className="space-y-2">{parts.length > 0 ? parts : renderMarkdown(msg.content)}</div>;
+    };
+
     const nodeRef = useRef(null);
 
     if (!state.currentUser || !state.currentOrganization) {
@@ -323,7 +505,22 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
         <div className="relative flex flex-col items-end">
             {/* The Chat Window */}
             {isOpen && (
-                <div className={`${variant === 'nav' ? 'fixed top-20 right-4 sm:absolute sm:top-full sm:mt-4 sm:right-0 sm:origin-top-right z-[9999]' : `absolute ${isLeftHalf ? 'left-0' : 'right-0'} ${isTopHalf ? (isLeftHalf ? 'top-full mt-4 origin-top-left' : 'top-full mt-4 origin-top-right') : (isLeftHalf ? 'bottom-full mb-4 origin-bottom-left' : 'bottom-full mb-4 origin-bottom-right')}`} w-[calc(100vw-32px)] sm:w-[360px] md:w-[400px] h-[500px] max-h-[70vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 transition-all transform animate-in fade-in zoom-in duration-200`}>
+                <div 
+                    onDragEnter={handleDrag}
+                    onDragOver={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDrop={handleDrop}
+                    className={`${variant === 'nav' ? 'fixed top-20 right-4 sm:absolute sm:top-full sm:mt-4 sm:right-0 sm:origin-top-right z-[9999]' : `absolute ${isLeftHalf ? 'left-0' : 'right-0'} ${isTopHalf ? (isLeftHalf ? 'top-full mt-4 origin-top-left' : 'top-full mt-4 origin-top-right') : (isLeftHalf ? 'bottom-full mb-4 origin-bottom-left' : 'bottom-full mb-4 origin-bottom-right')}`} w-[calc(100vw-32px)] sm:w-[360px] md:w-[400px] h-[500px] max-h-[70vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 transition-all transform animate-in fade-in zoom-in duration-200 relative`}
+                >
+                    {dragActive && (
+                        <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center border-4 border-dashed border-blue-500 rounded-2xl p-4 text-center animate-fade-in">
+                            <div className="p-4 bg-blue-500/10 rounded-full border border-blue-500/30 mb-3 animate-bounce">
+                                <ImageIcon className="w-10 h-10 text-blue-500" />
+                            </div>
+                            <p className="text-sm font-bold text-white uppercase tracking-wider">Drop Image to Attach</p>
+                            <p className="text-xs text-slate-400 mt-1">Supports PNG, JPG, GIF up to 5MB</p>
+                        </div>
+                    )}
 
                     
                     {/* Header */}
@@ -346,7 +543,7 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                                         setMessages([{
                                             id: 'init-msg',
                                             role: 'assistant',
-                                            content: "Hi! I'm your AI Worker. Ready to automate some tasks? You can ask me to schedule a job, create a customer, or append notes to an existing account.",
+                                            content: getDailyGreeting(),
                                             timestamp: new Date()
                                         }]);
                                         localStorage.removeItem('virtual-worker-cache');
@@ -656,31 +853,4 @@ const SvgSchematicViewer = ({ svgCode }) => {
     );
 };
 
-const renderMessageContent = (msg) => {
-    if (msg.role === 'user') {
-        return <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>;
-    }
-    
-    const xmlBlockRegex = /```(?:xml|svg)\n([\s\S]*?)\n```/gi;
-    const parts = [];
-    let lastIndex = 0;
-    let match;
-    
-    while ((match = xmlBlockRegex.exec(msg.content)) !== null) {
-        const textBefore = msg.content.substring(lastIndex, match.index);
-        if (textBefore) {
-            parts.push(<p key={`text-${lastIndex}`} className="whitespace-pre-wrap leading-relaxed mb-2">{textBefore}</p>);
-        }
-        
-        const svgMarkup = match[1];
-        parts.push(<SvgSchematicViewer key={`svg-${match.index}`} svgCode={svgMarkup} />);
-        lastIndex = xmlBlockRegex.lastIndex;
-    }
-    
-    if (lastIndex < msg.content.length) {
-        const remainingText = msg.content.substring(lastIndex);
-        parts.push(<p key={`text-${lastIndex}`} className="whitespace-pre-wrap leading-relaxed">{remainingText}</p>);
-    }
-    
-    return <div className="space-y-2">{parts.length > 0 ? parts : <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>}</div>;
-};
+// renderMessageContent has been moved inside the VirtualWorker component to use local state/router variables.

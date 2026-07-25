@@ -7,13 +7,14 @@ import type { Job } from 'types';
 interface InvoiceActionsProps {
     status: string;
     isSaving: boolean;
+    remainingBalance: number;
     handlePreview: () => void;
     handleSend: () => void;
     handleReceipt: () => void;
     handleSendReminder: () => void;
-    handleMarkPaid: (method?: string, proofUrl?: string) => void;
+    handleMarkPaid: (method?: string, proofUrl?: string, amount?: number, settleInFull?: boolean) => void;
     handleMarkUnpaid: () => void;
-    handleMarkPending: (method?: string, proofUrl?: string) => void;
+    handleMarkPending: (proofUrl?: string, paymentMethod?: string, amount?: number) => void;
     handleSave: () => void;
     handleUploadDocumentation: (urls: string[]) => void;
 }
@@ -21,6 +22,7 @@ interface InvoiceActionsProps {
 const InvoiceActions: React.FC<InvoiceActionsProps> = ({
     status,
     isSaving,
+    remainingBalance,
     handlePreview,
     handleSend,
     handleReceipt,
@@ -33,23 +35,34 @@ const InvoiceActions: React.FC<InvoiceActionsProps> = ({
 }) => {
     const [showPaymentMenu, setShowPaymentMenu] = useState(false);
     const [paymentMethod, setPaymentMethod] = useState('Credit Card');
+    const [paymentAmount, setPaymentAmount] = useState('');
+    const [settleInFull, setSettleInFull] = useState(true);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const docInputRef = useRef<HTMLInputElement>(null);
 
+    React.useEffect(() => {
+        if (showPaymentMenu) {
+            setPaymentAmount(remainingBalance.toFixed(2));
+            setSettleInFull(true);
+        }
+    }, [showPaymentMenu, remainingBalance]);
+
     const processPaymentAction = (type: 'paid' | 'pending') => {
         const file = fileInputRef.current?.files?.[0];
+        const parsedAmount = parseFloat(paymentAmount);
+        const amountNum = !isNaN(parsedAmount) && parsedAmount >= 0 ? parsedAmount : remainingBalance;
         if (file) {
             const reader = new FileReader();
             reader.onloadend = () => {
                 const proofUrl = reader.result as string;
-                if (type === 'paid') handleMarkPaid(paymentMethod, proofUrl);
-                else handleMarkPending(proofUrl, paymentMethod);
+                if (type === 'paid') handleMarkPaid(paymentMethod, proofUrl, amountNum, settleInFull);
+                else handleMarkPending(proofUrl, paymentMethod, amountNum);
                 setShowPaymentMenu(false);
             };
             reader.readAsDataURL(file);
         } else {
-            if (type === 'paid') handleMarkPaid(paymentMethod);
-            else handleMarkPending(undefined, paymentMethod);
+            if (type === 'paid') handleMarkPaid(paymentMethod, undefined, amountNum, settleInFull);
+            else handleMarkPending(undefined, paymentMethod, amountNum);
             setShowPaymentMenu(false);
         }
     };
@@ -135,6 +148,31 @@ const InvoiceActions: React.FC<InvoiceActionsProps> = ({
                             <option value="Bank Transfer">Bank Transfer (ACH)</option>
                             <option value="Venmo/Zelle">Venmo / Zelle</option>
                         </select>
+                    </div>
+
+                    <div className="flex-1 w-full md:w-auto">
+                        <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Payment Amount</p>
+                        <div className="flex flex-col gap-2">
+                            <input 
+                                type="number"
+                                step="0.01"
+                                value={paymentAmount}
+                                onChange={(e) => setPaymentAmount(e.target.value)}
+                                className="w-full md:w-[130px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-sm font-bold p-2 text-right focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                aria-label="Payment Amount"
+                            />
+                            {parseFloat(paymentAmount) < remainingBalance && (
+                                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                                    <input 
+                                        type="checkbox"
+                                        checked={settleInFull}
+                                        onChange={(e) => setSettleInFull(e.target.checked)}
+                                        className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                                    />
+                                    <span className="text-[9px] text-slate-500 font-bold uppercase leading-none">Settle in full</span>
+                                </label>
+                            )}
+                        </div>
                     </div>
 
                     <div className="flex-1 w-full md:w-auto">

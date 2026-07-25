@@ -118,7 +118,7 @@ const FieldProposal: React.FC = () => {
             setIsThinking(true);
             try {
                 const ai = new GoogleGenerativeAI(apiKey);
-                const model = ai.getGenerativeModel({ model: "gemini-3.5-flash" });
+                const model = ai.getGenerativeModel({ model: "gemini-3.6-flash" });
                 const prompt = `Expert Service Estimator: Generate tiered repair options for: "${problemDesc}". Return a JSON object with keys "good", "better", "best". Each key should contain an array of objects with properties: name, description, baseCost (number), avgLabor (number). Ensure valid JSON.`;
                 
                 const result = await model.generateContent(prompt);
@@ -370,7 +370,7 @@ const FieldProposal: React.FC = () => {
                                     onClick={() => handleOptionSelect(option)}
                                 >
                                     <h3 className="font-bold text-lg mb-2 brand-text">{option.name}</h3>
-                                    <p className="text-sm text-gray-600 mb-3">{option.description}</p>
+                                    <p className="text-sm text-gray-600 mb-3 whitespace-pre-wrap">{option.description}</p>
                                     <p className="text-xl font-bold text-gray-900">${calculateTotal(option).toFixed(2)}</p>
                                     <p className="text-xs text-gray-500">Includes materials & labor</p>
                                 </Card>
@@ -527,7 +527,7 @@ const FieldProposal: React.FC = () => {
                                 {selectedOption && (
                                     <div className="border p-4 rounded-lg mb-4 brand-border">
                                         <h4 className="font-semibold text-lg">{selectedOption.name}</h4>
-                                        <p className="text-gray-700">{selectedOption.description}</p>
+                                        <p className="text-gray-700 whitespace-pre-wrap">{selectedOption.description}</p>
                                         <p className="font-bold text-xl mt-2">Price: ${calculateTotal(selectedOption).toFixed(2)}</p>
                                     </div>
                                 )}

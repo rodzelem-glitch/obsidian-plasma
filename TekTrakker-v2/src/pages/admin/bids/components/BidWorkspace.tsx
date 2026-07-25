@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 import DOMPurify from 'dompurify';
 
@@ -389,18 +390,20 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
                 }
             });
 
-            await db.collection('mail').add({
+            await db.collection('mail_queue').add(cleanUndefinedFields({
                 to: [submitEmail],
+                replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
                 message: {
                     subject: `Proposal Submission: ${bid.solicitationNumber || 'N/A'} - ${bid.title}`,
                     text: submitMessage,
                     html: submitMessage.replace(/\n/g, '<br>'),
-                    attachments: attachments
+                    attachments: attachments,
+                    replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com'
                 },
                 organizationId: state.currentOrganization?.id,
                 type: 'BidSubmission',
                 createdAt: new Date().toISOString()
-            });
+            }));
 
             onUpdate({ status: 'Review', submittedDate: new Date().toISOString() });
             showToast.success('Bid package submitted successfully via email!');

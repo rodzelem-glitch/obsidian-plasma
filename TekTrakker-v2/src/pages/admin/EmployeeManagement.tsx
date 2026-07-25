@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -10,6 +11,8 @@ import { GitMerge, Plus } from 'lucide-react';
 import EmployeeRoster from './employees/components/EmployeeRoster';
 import MergeModal from './employees/components/MergeModal';
 import { globalConfirm } from "lib/globalConfirm";
+import showToast from 'lib/toast';
+import SubcontractorTechsModal from './employees/components/SubcontractorTechsModal';
 
 // All roles that should appear in the workforce roster
 const WORKFORCE_ROLES = ['employee', 'both', 'supervisor', 'Technician', 'Subcontractor', 'admin'];
@@ -20,12 +23,14 @@ const EmployeeManagement: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [currentEmployee, setCurrentEmployee] = useState<Partial<User>>({});
     const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+    const [viewingSubcontractor, setViewingSubcontractor] = useState<User | null>(null);
     
     const employees = useMemo(() => {
         const currentUser = state.currentUser;
         return state.users.filter(u => 
             u.organizationId === state.currentOrganization?.id && 
             WORKFORCE_ROLES.includes(u.role) &&
+            !u.subcontractorId && // Exclude subcontractor-owned techs
             (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id)
         );
     }, [state.users, state.currentOrganization, state.currentUser]);
@@ -49,13 +54,27 @@ const EmployeeManagement: React.FC = () => {
 
     const handleArchive = async (id: string) => {
         if(await globalConfirm('Archive User?')) {
-            await db.collection('users').doc(id).update({ status: 'archived' });
+            await db.collection('users').doc(id).update(cleanUndefinedFields({ status: 'archived' }));
         }
     };
     
     const handleDelete = async (id: string) => {
-        if(await globalConfirm('PERMANENTLY DELETE User?')) {
-            await db.collection('users').doc(id).delete();
+        const userToChange = state.users.find(u => u.id === id);
+        const isSub = userToChange?.role === 'Subcontractor';
+
+        if (isSub) {
+            if (await globalConfirm('Revoke Subcontractor Seat? This will deactivate their seat slot but preserve all signed NDA/Non-Compete and tax documents.')) {
+                await db.collection('users').doc(id).update(cleanUndefinedFields({
+                    status: 'Inactive',
+                    organizationId: 'unaffiliated',
+                    deactivatedAt: new Date().toISOString()
+                }));
+                showToast.success('Subcontractor seat revoked successfully.');
+            }
+        } else {
+            if (await globalConfirm('PERMANENTLY DELETE User?')) {
+                await db.collection('users').doc(id).delete();
+            }
         }
     };
 
@@ -73,6 +92,13 @@ const EmployeeManagement: React.FC = () => {
                 onClose={() => setIsMergeModalOpen(false)} 
                 employees={employees} 
             />
+            {viewingSubcontractor && (
+                <SubcontractorTechsModal 
+                    isOpen={true} 
+                    onClose={() => setViewingSubcontractor(null)} 
+                    subcontractor={viewingSubcontractor} 
+                />
+            )}
 
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 
@@ -93,6 +119,7 @@ const EmployeeManagement: React.FC = () => {
                 handleEdit={handleEdit}
                 handleArchive={handleArchive}
                 handleDelete={handleDelete}
+                onViewTechs={(sub) => setViewingSubcontractor(sub)}
             />
         </div>
     );

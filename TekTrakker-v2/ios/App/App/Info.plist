@@ -72,5 +72,12 @@
 			</array>
 		</dict>
 	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>remote-notification</string>
+	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>For quick and secure login to your TekTrakker account.</string>
 </dict>
 </plist>

@@ -6,6 +6,9 @@ import type { Address } from '../types/organization';
 import type { InspectionTemplate, BusinessDocument } from '../types';
 
 export interface Job {
+  archived?: boolean;
+  deleted?: boolean;
+  deletedAt?: string;
   id: string;
   organizationId: string;
   assignedPartnerId?: string | null; 
@@ -21,7 +24,9 @@ export interface Job {
   poNumber?: string | null;
   customerPhone?: string | null;
   customerEmail?: string | null;
-  jobStatus: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled';
+  jobStatus: 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled' | 'Needs Follow-up';
+  repairPostponed?: boolean;
+  repairPostponedReason?: string;
   proposalId?: string | null;
   appointmentTime: string; 
   specialInstructions: string;
@@ -29,7 +34,11 @@ export interface Job {
   assignedTechnicianName?: string | null;
   assignedCrew?: string[];
   assistants?: string[];
-  invoice: InvoiceDetails;
+  workOrderNumber?: string | null;
+  signatureMetadata?: any;
+  signatureHistory?: any[];
+  signatureUrl?: string | null;
+  invoice?: InvoiceDetails;
   invoiceSignature?: string | null;
   invoiceSignedDate?: string | null;
   jobEvents: any[];
@@ -47,11 +56,14 @@ export interface Job {
       arrival?: string;
       diagnosis?: string;
       work?: string;
+      thankYouNote?: string;
   };
   source?: string | null;
   hvacType?: string | null;
   hvacBrand?: string | null;
   projectId?: string | null;
+  linkedProposalIds?: string[];
+  divisionId?: string | null;
   createdAt?: string;
   createdById?: string;
   createdByName?: string;
@@ -68,6 +80,23 @@ export interface Job {
   requiredQualityChecklistIds?: string[];
   customerFeedback?: string;
   endTime?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  transitStartTime?: string;
+  timeOnSiteMinutes?: number;
+  timeEntries?: Array<{
+    checkInTime: string;
+    checkOutTime?: string | null;
+    timeOnSiteMinutes?: number | null;
+  }>;
+  linkedJobIds?: string[];
+  linkedInvoiceIds?: string[];
+  parentJobId?: string | null;
+  isFollowUp?: boolean;
+  isServicePlan?: boolean | null;
+  servicePlanType?: 'membership' | 'maintenanceAgreement' | string | null;
+  servicePlanId?: string | null;
+
 
   // Added for B2B document sharing
   embeddedData?: {
@@ -90,4 +119,43 @@ export interface Job {
     timestamp: string;
     imageUrl?: string;
   }>;
+  techRecommendations?: string;
+  visitType?: 'Diagnostic Only' | 'Diagnostic & Repair' | 'Repair' | 'Maintenance' | 'Service Call' | 'Other';
+  unitStates?: Array<{
+    assetId: string;
+    health?: 'Good' | 'Fair' | 'Poor' | 'Critical';
+    healthBefore?: 'Good' | 'Fair' | 'Poor' | 'Critical';
+    healthAfter?: 'Good' | 'Fair' | 'Poor' | 'Critical';
+    diagnosis?: string;
+    repair?: string;
+    recommendations?: string;
+  }>;
+  subcontractorWorkOrder?: {
+    nte: number;
+    ivrPin: string;
+    ivrNumber: string;
+    visitInstructions: string[];
+    specialInstructions: string;
+    terms: string[];
+    createdAt?: string;
+    sentAt?: string;
+    composedById?: string;
+    composedByName?: string;
+    subcontractorId?: string;
+    status?: 'pending' | 'accepted' | 'declined';
+    availabilityWindow?: {
+      date: string;
+      startTime: string;
+      endTime: string;
+      notes?: string;
+    };
+    organization?: {
+      name: string;
+      phone: string;
+      address: string;
+      logoUrl?: string;
+    };
+  };
+  subcontractorId?: string | null;
 }
+

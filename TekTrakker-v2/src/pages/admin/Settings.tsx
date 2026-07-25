@@ -1,4 +1,4 @@
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -7,9 +7,9 @@ import { useLanguage } from 'context/LanguageContext';
 import Button from 'components/ui/Button';
 import { db, functions } from 'lib/firebase';
 import {
-    Building, Globe, Activity, Scale, CreditCard, Palette, Zap, Database, FileText, Wrench, AlertTriangle
+    Building, Globe, Activity, Scale, CreditCard, Palette, Zap, Database, FileText, Wrench, AlertTriangle, Layers, Users, ShieldCheck
 } from 'lucide-react';
-import type { Organization, IndustryVertical, Address } from 'types';
+import type { Organization, IndustryVertical, Address, Division } from 'types';
 import Modal from 'components/ui/Modal';
 
 import ProfileTab from './settings/components/ProfileTab';
@@ -21,6 +21,9 @@ import BrandingTab from './settings/components/BrandingTab';
 import SubscriptionTab from './settings/components/SubscriptionTab';
 import DataTab from './settings/components/DataTab';
 import CapabilitiesTab from './settings/components/CapabilitiesTab';
+import { DivisionsTab } from './settings/components/DivisionsTab';
+import { DispatchTeamsTab } from './settings/components/DispatchTeamsTab';
+import SubcontractorComplianceTab from './settings/components/SubcontractorComplianceTab';
 import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
 import { syncOrgAIContext } from 'lib/aiContext';
@@ -39,14 +42,14 @@ const DEFAULT_GOOGLE_CLIENT_ID = "655867451194-3p9dkm7tjb15a2njggqa2jcc64i4vibh.
 const Settings: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { t } = useLanguage();
-    const [activeTab, setActiveTab] = useState<'profile' | 'social' | 'operations' | 'legal' | 'integrations' | 'branding' | 'subscription' | 'data' | 'capabilities'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'divisions' | 'social' | 'operations' | 'legal' | 'integrations' | 'branding' | 'subscription' | 'data' | 'capabilities' | 'dispatchTeams' | 'subcontractorCompliance'>('profile');
     const location = useLocation();
 
     // Support deep-linking via ?tab= query parameter
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
-        if (tab && ['profile', 'social', 'operations', 'legal', 'integrations', 'branding', 'subscription', 'data', 'capabilities'].includes(tab)) {
+        if (tab && ['profile', 'divisions', 'social', 'operations', 'legal', 'integrations', 'branding', 'subscription', 'data', 'capabilities', 'dispatchTeams', 'subcontractorCompliance'].includes(tab)) {
             setActiveTab(tab as typeof activeTab);
         }
     }, [location.search]);
@@ -59,6 +62,13 @@ const Settings: React.FC = () => {
     const [website, setWebsite] = useState('');
     const [industry, setIndustry] = useState<IndustryVertical>('HVAC');
     const [supportedTrades, setSupportedTrades] = useState<IndustryVertical[]>([]);
+    const [divisions, setDivisions] = useState<Division[]>([]);
+    const [taxId, setTaxId] = useState('');
+    const [ein, setEin] = useState('');
+    const [businessType, setBusinessType] = useState('');
+    const [incorporationState, setIncorporationState] = useState('');
+    const [formationDate, setFormationDate] = useState('');
+    const [businessDocuments, setBusinessDocuments] = useState<Array<{ id: string; name: string; url: string; uploadedAt: string }>>([]);
 
     // Social & Reviews
     const [socialLinks, setSocialLinks] = useState<any>({});
@@ -92,6 +102,14 @@ const Settings: React.FC = () => {
     const [achProcessingFeePercent, setAchProcessingFeePercent] = useState('1.0');
     const [achProcessingFeeFlat, setAchProcessingFeeFlat] = useState('0.00');
 
+    // Late Fees
+    const [lateFeeEnabled, setLateFeeEnabled] = useState(false);
+    const [autoSendMonthlyStatements, setAutoSendMonthlyStatements] = useState(false);
+    const [lateFeeType, setLateFeeType] = useState<'flat' | 'percent'>('percent');
+    const [lateFeeValue, setLateFeeValue] = useState('1.5');
+    const [lateFeeInterestRate, setLateFeeInterestRate] = useState('1.5');
+    const [lateFeeGracePeriod, setLateFeeGracePeriod] = useState('0');
+
     // HR
     const [customPositions, setCustomPositions] = useState<string[]>([]);
     const [requiredCerts, setRequiredCerts] = useState<string[]>([]);
@@ -109,13 +127,15 @@ const Settings: React.FC = () => {
     const [warrantyDisclaimer, setWarrantyDisclaimer] = useState('');
     const [defaultWorkmanshipMonths, setDefaultWorkmanshipMonths] = useState(12);
     const [defaultPartsMonths, setDefaultPartsMonths] = useState(12);
+    const [proposalProtectionMode, setProposalProtectionMode] = useState<'none' | 'summary' | 'nda'>('none');
+    const [proposalNdaContent, setProposalNdaContent] = useState('');
 
     // Integrations
     const [stripePublicKey, setStripePublicKey] = useState('');
     const [squareAppId, setSquareAppId] = useState('');
     const [squareLocId, setSquareLocId] = useState('');
     const [squareToken, setSquareToken] = useState('');
-    const [defaultPaymentGateway, setDefaultPaymentGateway] = useState<'stripe' | 'square' | 'kort'>('stripe');
+    const [defaultPaymentGateway, setDefaultPaymentGateway] = useState<'stripe' | 'square' | 'kort'>('kort');
     const [smtpHost, setSmtpHost] = useState('');
     const [smtpPort, setSmtpPort] = useState(587);
     const [smtpUser, setSmtpUser] = useState('');
@@ -185,6 +205,7 @@ const Settings: React.FC = () => {
     const [ringCentralClientSecret, setRingCentralClientSecret] = useState('');
     const [ringCentralJwtToken, setRingCentralJwtToken] = useState('');
     const [ringCentralLoginFlow, setRingCentralLoginFlow] = useState<'jwt' | 'oauth'>('jwt');
+    const [ringCentralCallMode, setRingCentralCallMode] = useState<'browser' | 'ringout'>('browser');
     const [rcPrimarySms, setRcPrimarySms] = useState(false);
     const [rcEnableVoiceAi, setRcEnableVoiceAi] = useState(false);
     const [rcRingsBeforeAi, setRcRingsBeforeAi] = useState('');
@@ -230,6 +251,13 @@ const Settings: React.FC = () => {
             setWebsite(org.website || '');
             setIndustry(org.industry || 'HVAC');
             setSupportedTrades(org.supportedTrades || []);
+            setDivisions(org.divisions || []);
+            setTaxId(org.taxId || '');
+            setEin((org as any).ein || '');
+            setBusinessType((org as any).businessType || '');
+            setIncorporationState((org as any).incorporationState || '');
+            setFormationDate((org as any).formationDate || '');
+            setBusinessDocuments((org as any).businessDocuments || []);
             setBrandingColor(org.primaryColor || '#0284c7');
             setLogoUrl(org.logoUrl || '');
             setLetterheadUrl(org.letterheadDataUrl || '');
@@ -276,6 +304,12 @@ const Settings: React.FC = () => {
             setAchProcessingFeeEnabled(org.achProcessingFeeEnabled || false);
             setAchProcessingFeePercent(org.achProcessingFeePercent?.toString() ?? '1.0');
             setAchProcessingFeeFlat(org.achProcessingFeeFlat?.toString() ?? '0.00');
+            setLateFeeEnabled((org as any).lateFeeEnabled || false);
+            setLateFeeType((org as any).lateFeeType || 'percent');
+            setLateFeeValue((org as any).lateFeeValue?.toString() ?? '1.5');
+            setLateFeeInterestRate((org as any).lateFeeInterestRate?.toString() ?? '1.5');
+            setLateFeeGracePeriod((org as any).lateFeeGracePeriod?.toString() ?? '0');
+            setAutoSendMonthlyStatements((org as any).autoSendMonthlyStatements || false);
             setCustomPositions(org.customPositions || []);
             setRequiredCerts(org.requiredCertifications || []);
             setTermsAndConditions(org.termsAndConditions || '');
@@ -288,11 +322,13 @@ const Settings: React.FC = () => {
             setWarrantyDisclaimer((org as any).warrantyDisclaimer || '');
             setDefaultWorkmanshipMonths((org as any).defaultWorkmanshipMonths ?? 12);
             setDefaultPartsMonths((org as any).defaultPartsMonths ?? 12);
+            setProposalProtectionMode((org as any).proposalProtectionMode || 'none');
+            setProposalNdaContent((org as any).proposalNdaContent || '');
             setStripePublicKey(org.stripePublicKey || '');
             setSquareAppId(org.squareApplicationId || '');
             setSquareLocId(org.squareLocationId || '');
             setKortAccountId((org as any).kortAccountId || '');
-            setDefaultPaymentGateway((org as any).defaultPaymentGateway || 'stripe');
+            setDefaultPaymentGateway((org as any).defaultPaymentGateway || 'kort');
             // Prevent clearing the token out locally if the public map naturally doesn't have it
             if ((org as any).squareToken) setSquareToken((org as any).squareToken);
             setSocialLinks(org.socialLinks || {});
@@ -325,6 +361,7 @@ const Settings: React.FC = () => {
                         if (sec.ringCentralClientSecret) setRingCentralClientSecret(sec.ringCentralClientSecret);
                         if (sec.ringCentralJwtToken) setRingCentralJwtToken(sec.ringCentralJwtToken);
                         if (sec.ringCentralLoginFlow) setRingCentralLoginFlow(sec.ringCentralLoginFlow);
+                        if (sec.ringCentralCallMode) setRingCentralCallMode(sec.ringCentralCallMode);
                         if (sec.rcPrimarySms !== undefined) setRcPrimarySms(sec.rcPrimarySms);
                         if (sec.rcEnableVoiceAi !== undefined) setRcEnableVoiceAi(sec.rcEnableVoiceAi);
                         if (sec.rcRingsBeforeAi) setRcRingsBeforeAi(sec.rcRingsBeforeAi);
@@ -392,7 +429,10 @@ const Settings: React.FC = () => {
         const userFee = state.platformSettings?.excessUserFee ?? 25;
         const additionalSlotsCost = (org.additionalUserSlots || 0) * userFee;
         
-        const totalMonthlyCost = baseMonthlyCost + additionalSlotsCost;
+        const divisionFee = state.platformSettings?.divisionFee ?? 79;
+        const additionalDivisionsCost = (org.additionalDivisionsSlots || 0) * divisionFee;
+        
+        const totalMonthlyCost = baseMonthlyCost + additionalSlotsCost + additionalDivisionsCost;
         const maxUsers = org.additionalUserSlots ? (planConfig?.maxUsers || 1) + org.additionalUserSlots : (planConfig?.maxUsers || 1);
         const discountPct = org.customDiscountPct || 0;
         
@@ -430,6 +470,8 @@ const Settings: React.FC = () => {
         const updatedOrgData = {
             name: orgName, phone, email, notificationEmails: notifyArray, website,
             socialLinks, reviewLinks, googleApiConnected, googleClientId, industry, supportedTrades,
+            divisions,
+            taxId, ein, businessType, incorporationState, formationDate, businessDocuments,
             primaryColor: brandingColor, logoUrl, letterheadDataUrl: letterheadUrl, footerImage: footerImageUrl, bannerUrl,
             financingLink,
             serviceTypes, specializations,
@@ -438,6 +480,7 @@ const Settings: React.FC = () => {
             licenseNumber, ueid, cageCode, primaryNaics, customPositions, requiredCertifications: requiredCerts,
             termsAndConditions, customerTerms, proposalTerms, proposalDisclaimer, invoiceTerms, membershipTerms, complianceFooter,
             warrantyDisclaimer, defaultWorkmanshipMonths, defaultPartsMonths,
+            proposalProtectionMode, proposalNdaContent,
             stripePublicKey, squareApplicationId: squareAppId, squareLocationId: squareLocId,
             kortAccountId,
             defaultPaymentGateway,
@@ -467,7 +510,13 @@ const Settings: React.FC = () => {
             cardProcessingFeeFlat: parseFloat(cardProcessingFeeFlat) || 0,
             achProcessingFeeEnabled,
             achProcessingFeePercent: parseFloat(achProcessingFeePercent) || 0,
-            achProcessingFeeFlat: parseFloat(achProcessingFeeFlat) || 0
+            achProcessingFeeFlat: parseFloat(achProcessingFeeFlat) || 0,
+            lateFeeEnabled,
+            lateFeeType,
+            lateFeeValue: parseFloat(lateFeeValue) || 0,
+            lateFeeInterestRate: parseFloat(lateFeeInterestRate) || 0,
+            lateFeeGracePeriod: parseInt(lateFeeGracePeriod) || 0,
+            autoSendMonthlyStatements
         };
 
         const secretsData = {
@@ -490,6 +539,7 @@ const Settings: React.FC = () => {
             ringCentralClientSecret,
             ringCentralJwtToken,
             ringCentralLoginFlow,
+            ringCentralCallMode,
             rcPrimarySms,
             rcEnableVoiceAi,
             rcRingsBeforeAi,
@@ -524,11 +574,11 @@ const Settings: React.FC = () => {
             const cleanSecretsData = JSON.parse(JSON.stringify(secretsData));
 
             // Update public profile (removing exposed secrets over time as they are nullified by the backend)
-            batch.set(orgRef, cleanOrgData, { merge: true });
+            batch.set(orgRef, cleanUndefinedFields(cleanOrgData), { merge: true });
 
             // Upsert Secrets Document
             const secretsRef = orgRef.collection('secrets').doc('config');
-            batch.set(secretsRef, cleanSecretsData, { merge: true });
+            batch.set(secretsRef, cleanUndefinedFields(cleanSecretsData), { merge: true });
 
             await batch.commit();
 
@@ -575,9 +625,9 @@ const Settings: React.FC = () => {
                                 headers: { 'Authorization': `Bearer ${tokenResponse.access_token}` }
                             });
                             if (res.ok) {
-                                await db.collection('organizations').doc(state.currentOrganization!.id).update({
+                                await db.collection('organizations').doc(state.currentOrganization!.id).update(cleanUndefinedFields({
                                     googleApiConnected: true, googleClientId: googleClientId
-                                });
+                                }));
                                 setGoogleApiConnected(true);
                                 dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...state.currentOrganization!, googleApiConnected: true, googleClientId } });
                                 showToast.success("Authenticated with Google!");
@@ -597,7 +647,7 @@ const Settings: React.FC = () => {
         if (!state.currentOrganization) return;
         if (await globalConfirm("Disconnect Google Business Profile?")) {
             try {
-                await db.collection('organizations').doc(state.currentOrganization.id).update({ googleApiConnected: false });
+                await db.collection('organizations').doc(state.currentOrganization.id).update(cleanUndefinedFields({ googleApiConnected: false }));
                 setGoogleApiConnected(false);
                 dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...state.currentOrganization, googleApiConnected: false } });
             } catch (e) { showToast.error("Failed to disconnect."); }
@@ -625,15 +675,17 @@ const Settings: React.FC = () => {
             });
 
             // Also instantly save the configuration block
-            await db.collection('organizations').doc(state.currentOrganization.id).collection('secrets').doc('config').set({
+            await db.collection('organizations').doc(state.currentOrganization.id).collection('secrets').doc('config').set(cleanUndefinedFields({
                 ringCentralClientId,
                 ringCentralClientSecret: ringCentralClientSecret || '',
                 ringCentralJwtToken,
+                ringCentralLoginFlow,
+                ringCentralCallMode,
                 rcEnableVoiceAi,
                 rcRingsBeforeAi,
                 rcSmsOnMissed,
                 rcSmsTemplate
-            }, { merge: true });
+            }), { merge: true });
 
             showToast.success("Successfully registered RingCentral webhook and saved settings!");
         } catch (error: any) {
@@ -666,7 +718,7 @@ const Settings: React.FC = () => {
         if (!state.currentOrganization) return;
         if (await globalConfirm("Disconnect QuickBooks Online? Syncing will stop.")) {
             try {
-                await db.collection('organizations').doc(state.currentOrganization.id).update({ quickbooksConnected: false });
+                await db.collection('organizations').doc(state.currentOrganization.id).update(cleanUndefinedFields({ quickbooksConnected: false }));
                 setQuickbooksConnected(false);
                 dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...state.currentOrganization, quickbooksConnected: false } });
             } catch (e) { showToast.error("Failed to disconnect."); }
@@ -700,20 +752,47 @@ const Settings: React.FC = () => {
         }
     };
 
+    const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file && state.currentOrganization) {
+            try {
+                const { uploadFileToStorage } = await import('lib/storageService');
+                const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'document.pdf';
+                const path = `organizations/${state.currentOrganization.id}/business_documents/${Date.now()}_${safeName}`;
+                const downloadUrl = await uploadFileToStorage(path, file);
+                const newDoc = {
+                    id: Math.random().toString(36).substring(2, 9),
+                    name: file.name || safeName,
+                    url: downloadUrl,
+                    uploadedAt: new Date().toISOString()
+                };
+                setBusinessDocuments(prev => [...prev, newDoc]);
+                showToast.success("Document uploaded successfully. Remember to commit changes.");
+            } catch (err) { showToast.error("Upload failed."); }
+        }
+    };
+
+    const handleDeleteDocument = (id: string) => {
+        setBusinessDocuments(prev => prev.filter(doc => doc.id !== id));
+        showToast.success("Document removed. Remember to commit changes.");
+    };
+
     const handleSendTestEmail = async () => {
         if (!email || !smtpHost || !smtpUser || !smtpPass) { showToast.warn("Incomplete SMTP config."); return; }
         setIsSendingTest(true);
         try {
-            await db.collection('mail').add({
+            await db.collection('mail_queue').add(cleanUndefinedFields({
                 to: [email],
+                replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
                 message: {
                     subject: `[SMTP TEST] ${orgName}`,
-                    html: `<h2>SMTP Connection Successful</h2>`
+                    html: `<h2>SMTP Connection Successful</h2>`,
+                    replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com'
                 },
                 status: 'pending',
                 organizationId: state.currentOrganization?.id,
                 transport: { host: smtpHost, port: Number(smtpPort), secure: Number(smtpPort) === 465, auth: { user: smtpUser, pass: smtpPass }, from: `"${orgName}" <${email}>` }
-            });
+            }));
             showToast.success("Test message queued!");
         } catch (e) { showToast.error("Failed to queue test."); } finally { setIsSendingTest(false); }
     };
@@ -750,13 +829,106 @@ const Settings: React.FC = () => {
         setIsSaving(true);
         try {
             const targets = state.customers.filter(c => c.name.trim().toLowerCase() === name.toLowerCase());
-            const master = targets[0];
+            if (targets.length <= 1) return;
+
+            // Sort targets to select the best master record:
+            // 1. Has userId (active portal user link)
+            // 2. Has more service locations, equipment, or files
+            // 3. Oldest record (createdAt)
+            const sortedTargets = [...targets].sort((a: any, b: any) => {
+                const aHasUser = a.userId && a.userId.length > 0 && !a.userId.includes('@');
+                const bHasUser = b.userId && b.userId.length > 0 && !b.userId.includes('@');
+                if (aHasUser && !bHasUser) return -1;
+                if (!aHasUser && bHasUser) return 1;
+
+                const aScore = (a.serviceLocations?.length || 0) + (a.equipment?.length || 0) + (a.files?.length || 0);
+                const bScore = (b.serviceLocations?.length || 0) + (b.equipment?.length || 0) + (b.files?.length || 0);
+                if (aScore !== bScore) return bScore - aScore;
+
+                const aTime = new Date(a.createdAt || 0).getTime();
+                const bTime = new Date(b.createdAt || 0).getTime();
+                return aTime - bTime;
+            });
+
+            const master = sortedTargets[0];
+            const duplicates = sortedTargets.slice(1);
+            const duplicateIds = duplicates.map(d => d.id);
+
             const batch = db.batch();
-            targets.slice(1).forEach(dup => { batch.delete(db.collection('customers').doc(dup.id)); });
+
+            // Merge arrays into master
+            const mergedEquipment = [...(master.equipment || [])];
+            const mergedLocations = [...(master.serviceLocations || [])];
+            const mergedFiles = [...(master.files || [])];
+            const mergedHistory = [...(master.serviceHistory || [])];
+
+            duplicates.forEach(dup => {
+                (dup.equipment || []).forEach(eq => {
+                    if (!mergedEquipment.some(e => e.id === eq.id)) mergedEquipment.push(eq);
+                });
+                (dup.serviceLocations || []).forEach(loc => {
+                    if (!mergedLocations.some(l => l.id === loc.id)) mergedLocations.push(loc);
+                });
+                (dup.files || []).forEach(f => {
+                    if (!mergedFiles.some(mf => mf.id === f.id)) mergedFiles.push(f);
+                });
+                (dup.serviceHistory || []).forEach(h => {
+                    mergedHistory.push(h);
+                });
+            });
+
+            const masterUpdates: any = {
+                equipment: mergedEquipment,
+                serviceLocations: mergedLocations,
+                files: mergedFiles,
+                serviceHistory: mergedHistory
+            };
+
+            // Pull missing basic fields from duplicates if master lacks them
+            if (!master.phone) {
+                const firstWithPhone = duplicates.find(d => d.phone);
+                if (firstWithPhone) masterUpdates.phone = firstWithPhone.phone;
+            }
+            if (!master.email) {
+                const firstWithEmail = duplicates.find(d => d.email);
+                if (firstWithEmail) masterUpdates.email = firstWithEmail.email;
+            }
+
+            // Update master in Firestore
+            batch.update(db.collection('customers').doc(master.id), cleanUndefinedFields(masterUpdates as any));
+
+            // Delete duplicates
+            duplicates.forEach(dup => {
+                batch.delete(db.collection('customers').doc(dup.id));
+            });
+
+            // Re-link jobs
+            const jobsToUpdate = (state.jobs || []).filter(j => duplicateIds.includes(j.customerId));
+            jobsToUpdate.forEach(job => {
+                batch.update(db.collection('jobs').doc(job.id), cleanUndefinedFields({ customerId: master.id }));
+            });
+
+            // Re-link proposals
+            const proposalsToUpdate = (state.proposals || []).filter(p => duplicateIds.includes(p.customerId));
+            proposalsToUpdate.forEach(prop => {
+                batch.update(db.collection('proposals').doc(prop.id), cleanUndefinedFields({ customerId: master.id }));
+            });
+
+            // Re-link service agreements
+            const agreementsToUpdate = (state.serviceAgreements || []).filter(sa => duplicateIds.includes(sa.customerId));
+            agreementsToUpdate.forEach(sa => {
+                batch.update(db.collection('serviceAgreements').doc(sa.id), cleanUndefinedFields({ customerId: master.id }));
+            });
+
             await batch.commit();
             setDuplicateResults(prev => prev.filter(p => p.name !== name));
-            showToast.success(`Merged into ${master.id}.`);
-        } catch (e) { showToast.error("Merge failed."); } finally { setIsSaving(false); }
+            showToast.success(`Merged duplicates into customer ${master.id}.`);
+        } catch (e) {
+            console.error("Customer merge failed:", e);
+            showToast.error("Merge failed.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const handleFlushCache = async () => { if (await globalConfirm("Clear local storage? You may need to sign in again.")) { localStorage.clear(); showToast.success("Cache cleared."); } };
@@ -787,9 +959,9 @@ const Settings: React.FC = () => {
         if (await globalConfirm("Are you sure you want to reactivate your subscription?")) {
             setIsSaving(true);
             try {
-                await db.collection('organizations').doc(state.currentOrganization.id).update({
+                await db.collection('organizations').doc(state.currentOrganization.id).update(cleanUndefinedFields({
                     subscriptionStatus: 'active'
-                });
+                }));
                 dispatch({
                     type: 'UPDATE_ORGANIZATION',
                     payload: { ...state.currentOrganization, subscriptionStatus: 'active' }
@@ -840,8 +1012,11 @@ const Settings: React.FC = () => {
                 {[
                     { id: 'profile', label: t('Identity'), icon: Building },
                     { id: 'social', label: t('Social & Reviews'), icon: Globe },
+                    { id: 'divisions', label: t('Divisions'), icon: Layers },
                     { id: 'operations', label: t('Operations'), icon: Activity },
                     { id: 'capabilities', label: t('Capabilities'), icon: Wrench },
+                    { id: 'subcontractorCompliance', label: t('Subcontractor Compliance'), icon: ShieldCheck },
+                    { id: 'dispatchTeams', label: t('Dispatch Teams'), icon: Users },
                     { id: 'legal', label: t('Legal/Docs'), icon: Scale },
                     { id: 'integrations', label: t('Integrations'), icon: CreditCard },
                     { id: 'branding', label: t('Branding'), icon: Palette },
@@ -855,13 +1030,16 @@ const Settings: React.FC = () => {
             </div>
 
             <div className="animate-fade-in">
-                {activeTab === 'profile' && <ProfileTab {...{ orgName, setOrgName, email, setEmail, phone, setPhone, website, setWebsite, notificationEmails, setNotificationEmails, industry, setIndustry, supportedTrades, handleTradeToggle, allIndustries: ALL_INDUSTRIES }} />}
+                {activeTab === 'profile' && <ProfileTab {...{ orgName, setOrgName, email, setEmail, phone, setPhone, website, setWebsite, notificationEmails, setNotificationEmails, industry, setIndustry, supportedTrades, handleTradeToggle, allIndustries: ALL_INDUSTRIES, taxId, setTaxId, ein, setEin, businessType, setBusinessType, incorporationState, setIncorporationState, formationDate, setFormationDate, businessDocuments, handleDocumentUpload, handleDeleteDocument }} />}
+                {activeTab === 'divisions' && <DivisionsTab {...{ divisions, setDivisions, supportedTrades, additionalDivisionsSlots: state.currentOrganization?.additionalDivisionsSlots }} />}
                 {activeTab === 'social' && <SocialTab {...{ socialLinks, setSocialLinks, reviewLinks, setReviewLinks }} />}
-                {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled, cardProcessingFeeEnabled, setCardProcessingFeeEnabled, cardProcessingFeePercent, setCardProcessingFeePercent, cardProcessingFeeFlat, setCardProcessingFeeFlat, achProcessingFeeEnabled, setAchProcessingFeeEnabled, achProcessingFeePercent, setAchProcessingFeePercent, achProcessingFeeFlat, setAchProcessingFeeFlat, invoicePrefix, setInvoicePrefix, invoiceStartNumber, setInvoiceStartNumber, proposalPrefix, setProposalPrefix, proposalStartNumber, setProposalStartNumber, allowPartialPayments, setAllowPartialPayments }} />}
+                {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled, cardProcessingFeeEnabled, setCardProcessingFeeEnabled, cardProcessingFeePercent, setCardProcessingFeePercent, cardProcessingFeeFlat, setCardProcessingFeeFlat, achProcessingFeeEnabled, setAchProcessingFeeEnabled, achProcessingFeePercent, setAchProcessingFeePercent, achProcessingFeeFlat, setAchProcessingFeeFlat, invoicePrefix, setInvoicePrefix, invoiceStartNumber, setInvoiceStartNumber, proposalPrefix, setProposalPrefix, proposalStartNumber, setProposalStartNumber, allowPartialPayments, setAllowPartialPayments, lateFeeEnabled, setLateFeeEnabled, lateFeeType, setLateFeeType, lateFeeValue, setLateFeeValue, lateFeeInterestRate, setLateFeeInterestRate, lateFeeGracePeriod, setLateFeeGracePeriod, autoSendMonthlyStatements, setAutoSendMonthlyStatements }} />}
                 {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
-                {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, customerTerms, setCustomerTerms, proposalTerms, setProposalTerms, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths }} />}
-                {activeTab === 'integrations' && <IntegrationsTab {...{ stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, kortAccountId, setKortAccountId, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, ringCentralLoginFlow, setRingCentralLoginFlow, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
+                {activeTab === 'subcontractorCompliance' && <SubcontractorComplianceTab />}
+                {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, customerTerms, setCustomerTerms, proposalTerms, setProposalTerms, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths, proposalProtectionMode, setProposalProtectionMode, proposalNdaContent, setProposalNdaContent }} />}
+                {activeTab === 'integrations' && <IntegrationsTab {...{ stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, kortAccountId, setKortAccountId, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, ringCentralLoginFlow, setRingCentralLoginFlow, ringCentralCallMode, setRingCentralCallMode, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
                 {activeTab === 'branding' && <BrandingTab {...{ brandingColor, setBrandingColor, financingLink, setFinancingLink, logoUrl, setLogoUrl, publicLogoUrl, setPublicLogoUrl, letterheadUrl, setLetterheadUrl, footerImageUrl, setFooterImageUrl, bannerUrl, setBannerUrl, handleFileUpload, publicProfileEnabled, setPublicProfileEnabled, publicDescription, setPublicDescription, publicCredentials, setPublicCredentials, publicServices, setPublicServices, acceptsSubcontracting, setAcceptsSubcontracting }} />}
+                {activeTab === 'dispatchTeams' && <DispatchTeamsTab />}
                 {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling, handleReactivate }} />}
                 {activeTab === 'data' && <DataTab {...{ handleExportData, handleDetectDuplicates, handleCleanupRecords, handleFlushCache, handleResetOverlays, handleImportFile: (e) => { e.target.value = ''; showToast.info('Bulk import is currently disabled. Contact support to migrate data.'); }, handleDownloadTemplate }} />}
             </div>
@@ -932,7 +1110,7 @@ const Settings: React.FC = () => {
                                                 try {
                                                     const newExpiry = new Date();
                                                     newExpiry.setDate(newExpiry.getDate() + 30);
-                                                    await db.collection('organizations').doc(org.id).update({
+                                                    await db.collection('organizations').doc(org.id).update(cleanUndefinedFields({
                                                         plan: plan.key,
                                                         subscriptionStatus: 'active',
                                                         subscriptionExpiryDate: newExpiry.toISOString().split('T')[0],
@@ -940,7 +1118,7 @@ const Settings: React.FC = () => {
                                                         previousPlan: currentPlan,
                                                         proratedChargeApplied: isUpgrade ? proratedCharge : 0,
                                                         proratedCreditApplied: isDowngrade ? proratedCredit : 0,
-                                                    });
+                                                    }));
                                                     dispatch({
                                                         type: 'UPDATE_ORGANIZATION',
                                                         payload: {

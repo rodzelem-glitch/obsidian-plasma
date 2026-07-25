@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -97,9 +98,9 @@ const FranchiseBilling: React.FC = () => {
         if (!user?.franchiseId) return;
         setIsSaving(true);
         try {
-            await db.collection('franchises').doc(user.franchiseId).update({
+            await db.collection('franchises').doc(user.franchiseId).update(cleanUndefinedFields({
                 billingConfig: franchiseSettings
-            });
+            }));
             showToast.warn('Billing parameters saved successfully. All embedded checkouts for your users will now route to your gateway.');
         } catch(e) {
             showToast.warn('Failed to save settings');

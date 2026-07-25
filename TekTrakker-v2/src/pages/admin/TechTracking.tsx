@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -14,12 +15,20 @@ const TechTracking: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { currentUser } = state;
     
+    console.log("[TechTracking-Debug] State Subcontractors:", state.subcontractors, "State Users:", state.users?.length, state.users);
+    
     const WORKFORCE_ROLES = new Set(['employee', 'both', 'supervisor', 'technician', 'subcontractor', 'admin']);
 
     const allTechs = useMemo(() => {
+        const linkedSubOrgIds = (state.subcontractors || [])
+            .filter(sub => sub.handshakeStatus === 'Linked' && sub.linkedOrgId)
+            .map(sub => sub.linkedOrgId as string);
+        const allowedOrgIds = new Set([state.currentOrganization?.id, ...linkedSubOrgIds].filter(Boolean));
+
         return (state.users as User[])
             .filter((u: User) => 
-                u.organizationId === state.currentOrganization?.id && 
+                allowedOrgIds.has(u.organizationId) && 
+                u.status !== 'archived' &&
                 WORKFORCE_ROLES.has((u.role || '').toLowerCase()) &&
                 (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id)
             )
@@ -32,9 +41,58 @@ const TechTracking: React.FC = () => {
                     isOnline = diffMins < 60; 
                 }
                 const activeJob = (state.jobs as Job[]).find(j => j.assignedTechnicianId === u.id && j.jobStatus === 'In Progress');
-                return { ...u, isOnline, diffMins, activeJob, hasLocation };
+
+                let companyLabel = '';
+                let subcontractorId = '';
+                let isSubcontractorTech = false;
+                
+                if (u.organizationId !== state.currentOrganization?.id) {
+                    const subOrg = state.subcontractors?.find((s: any) => 
+                        (s.organizationId === u.organizationId && s.linkedOrgId === state.currentOrganization?.id) ||
+                        (s.linkedOrgId === u.organizationId && s.organizationId === state.currentOrganization?.id)
+                    );
+                    if (subOrg) {
+                        companyLabel = subOrg.companyName || 'External Sub';
+                        subcontractorId = subOrg.id || '';
+                        isSubcontractorTech = true;
+                    }
+                } else if (u.role?.toLowerCase() === 'subcontractor') {
+                    const subOrg = state.subcontractors?.find((s: any) => 
+                        s.id === u.id || 
+                        s.email?.toLowerCase() === u.email?.toLowerCase()
+                    );
+                    if (subOrg) {
+                        companyLabel = subOrg.companyName || 'Subcontractor';
+                        subcontractorId = subOrg.id || '';
+                        isSubcontractorTech = true;
+                    }
+                } else if (u.subcontractorId) {
+                    const subOrg = state.subcontractors?.find((s: any) => s.id === u.subcontractorId);
+                    if (subOrg) {
+                        companyLabel = subOrg.companyName || 'Subcontractor';
+                        subcontractorId = subOrg.id || '';
+                        isSubcontractorTech = true;
+                    } else {
+                        const parentUser = (state.users as User[])?.find(usr => usr.id === u.subcontractorId);
+                        if (parentUser) {
+                            const subOrgByEmail = state.subcontractors?.find((s: any) => 
+                                s.id === parentUser.id ||
+                                s.email?.toLowerCase() === parentUser.email?.toLowerCase()
+                            );
+                            if (subOrgByEmail) {
+                                companyLabel = subOrgByEmail.companyName || 'Subcontractor';
+                                subcontractorId = subOrgByEmail.id || '';
+                                isSubcontractorTech = true;
+                            }
+                        }
+                    }
+                }
+
+                console.log(`[TechTracking-Debug] tech: ${u.firstName} ${u.lastName} | role: ${u.role} | org: ${u.organizationId} | isSubTech: ${isSubcontractorTech} | companyLabel: ${companyLabel} | subOrgId: ${subcontractorId}`);
+
+                return { ...u, isOnline, diffMins, activeJob, hasLocation, companyLabel, subcontractorId, isSubcontractorTech };
             });
-    }, [state.users, state.jobs, state.currentOrganization, currentUser]);
+    }, [state.users, state.jobs, state.currentOrganization, currentUser, state.subcontractors]);
 
     const [fleetPositions, setFleetPositions] = useState<any[]>([]);
 
@@ -55,8 +113,39 @@ const TechTracking: React.FC = () => {
         return () => unsubscribe();
     }, [state.currentOrganization?.id]);
 
+    const [expandedSubcontractorIds, setExpandedSubcontractorIds] = useState<string[]>([]);
+
+    const handleToggleSubcontractor = (subId: string) => {
+        setExpandedSubcontractorIds(prev => 
+            prev.includes(subId) ? prev.filter(id => id !== subId) : [...prev, subId]
+        );
+    };
+
+    const internalTechs = useMemo(() => {
+        return allTechs.filter(t => !t.isSubcontractorTech);
+    }, [allTechs]);
+
+    const subcontractorCrews = useMemo(() => {
+        return (state.subcontractors || []).map(sub => {
+            const subTechs = allTechs.filter(t => t.isSubcontractorTech && t.subcontractorId === sub.id);
+            return {
+                ...sub,
+                techs: subTechs
+            };
+        }).filter(crew => crew.techs.length > 0);
+    }, [state.subcontractors, allTechs]);
+
     const mappedTechs = useMemo(() => {
-        const techsWithLoc = allTechs.filter(t => t.hasLocation);
+        const techsWithLoc = allTechs.filter(t => {
+            if (!t.hasLocation) return false;
+            if (t.isSubcontractorTech) {
+                if (t.subcontractorId) {
+                    return expandedSubcontractorIds.includes(t.subcontractorId);
+                }
+                return false;
+            }
+            return true;
+        });
         const fleetTechs = fleetPositions.map(pos => ({
             id: `fleet-${pos.id}`,
             firstName: pos.name || 'Vehicle',
@@ -67,7 +156,7 @@ const TechTracking: React.FC = () => {
             speed: pos.speed
         }));
         return [...techsWithLoc, ...fleetTechs];
-    }, [allTechs, fleetPositions]);
+    }, [allTechs, fleetPositions, expandedSubcontractorIds]);
 
     const [mapCenter, setMapCenter] = useState<[number, number]>(() => {
         if (mappedTechs.length > 0 && mappedTechs[0].location) {
@@ -87,7 +176,7 @@ const TechTracking: React.FC = () => {
         const loc = await getCurrentLocation();
         if (loc) {
             const locationData = { lat: loc.latitude, lng: loc.longitude, timestamp: new Date().toISOString() };
-            await db.collection('users').doc(currentUser.id).update({ location: locationData });
+            await db.collection('users').doc(currentUser.id).update(cleanUndefinedFields({ location: locationData }));
             dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...currentUser, location: locationData } });
             setMapCenter([locationData.lat, locationData.lng]);
             showToast.warn('Location updated!');
@@ -113,7 +202,13 @@ const TechTracking: React.FC = () => {
             </header>
 
             <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden">
-                <TechList techs={[...allTechs, ...fleetPositions.map(p => ({ ...p, isFleet: true, firstName: p.name || 'Vehicle', lastName: p.id }))] as any} onTechSelect={jumpToTech} />
+                <TechList 
+                    internalTechs={[...internalTechs, ...fleetPositions.map(p => ({ ...p, isFleet: true, firstName: p.name || 'Vehicle', lastName: p.id }))] as any}
+                    subcontractorCrews={subcontractorCrews}
+                    expandedSubcontractorIds={expandedSubcontractorIds}
+                    onToggleSubcontractor={handleToggleSubcontractor}
+                    onTechSelect={jumpToTech}
+                />
                 <TrackingMap techs={mappedTechs} center={mapCenter} />
             </div>
         </div>

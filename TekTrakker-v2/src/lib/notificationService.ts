@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from './utils';
 import { db, auth } from './firebase';
 
 export interface NotificationPayload {
@@ -13,7 +14,7 @@ export interface NotificationPayload {
  */
 export const sendNotification = async (userId: string, payload: NotificationPayload, organizationId?: string) => {
     try {
-        if (userId === 'rodzelem@gmail.com') {
+        if (userId === 'rodzelem@gmail.com' || userId === 'ryanvavrecan@gmail.com') {
             // Forward to actual master admins instead of the email string
             const masterAdminsSnapshot = await db.collection('users')
                 .where('role', '==', 'master_admin')
@@ -36,13 +37,13 @@ export const sendNotification = async (userId: string, payload: NotificationPayl
             }
         }
 
-        await db.collection('notifications').add({
+        await db.collection('notifications').add(cleanUndefinedFields({
             userId,
             organizationId: orgId,
             ...payload,
             status: 'pending',
             createdAt: new Date().toISOString()
-        });
+        }));
     } catch (error) {
         console.error("Failed to send notification:", error);
     }
@@ -82,7 +83,7 @@ export const notifyAdmins = async (organizationId: string, payload: Notification
 /**
  * Centralized email sending utility that handles SMTP configurations and standard headers.
  */
-export const sendEmail = async (org: any, payload: { to: string | string[], message: { subject: string, html: string, text?: string, from?: string, replyTo?: string }, type?: string, [key: string]: any }) => {
+export const sendEmail = async (org: any, payload: { to: string | string[], message: { subject: string, html: string, text?: string, from?: string, replyTo?: string, attachments?: any[] }, type?: string, [key: string]: any }) => {
     try {
         // Sanitize payload (strip undefineds) and normalize emails
         const mailPayload: any = JSON.parse(JSON.stringify(payload));
@@ -107,12 +108,80 @@ export const sendEmail = async (org: any, payload: { to: string | string[], mess
             mailPayload.message.text = mailPayload.message.html.replace(/<[^>]*>?/gm, '');
         }
 
-        // In our new secure architecture, the frontend NEVER has access to the SMTP password.
-        // We write the request to the 'mail_queue' collection.
-        // A trusted Firebase Cloud Function will pick this up, securely inject the 'transport' passwords
-        // from the locked 'secrets/config' document, and then forward it to the final 'mail' collection.
-        
-        const result = await db.collection('mail_queue').add(mailPayload);
+        // Protect against Firestore 1MB document size limit when sending emails with heavy PDF attachments
+        if (Array.isArray(mailPayload.message?.attachments)) {
+            mailPayload.message.attachments = mailPayload.message.attachments.map((att: any) => {
+                const attCopy = { ...att };
+                if (attCopy.path && attCopy.content && attCopy.content.length > 500000) {
+                    console.info(`Attachment ${attCopy.filename} exceeds 500KB inline limit; relying on Storage path: ${attCopy.path}`);
+                    delete attCopy.content;
+                }
+                return attCopy;
+            });
+        }
+
+        const result = await db.collection('mail_queue').add(cleanUndefinedFields(mailPayload));
+
+        // Auto-log outgoing communication to 'messages' and customer communications subcollection (unless caller specified skipAutoLog)
+        if (!mailPayload.skipAutoLog) {
+            try {
+                const firstTo = Array.isArray(mailPayload.to) ? mailPayload.to[0] : (mailPayload.to || '');
+                const toRecipients = Array.isArray(mailPayload.to) ? mailPayload.to.join(', ') : (mailPayload.to || '');
+                const subjectStr = mailPayload.message?.subject || mailPayload.type || 'Email Sent';
+                const bodyStr = mailPayload.message?.text || mailPayload.message?.html?.replace(/<[^>]*>?/gm, '') || '';
+                const nowIso = new Date().toISOString();
+
+                let targetCustId = mailPayload.customerId || null;
+
+                // If targetCustId not directly in payload, lookup by email
+                if (!targetCustId && firstTo) {
+                    const custSnap = await db.collection('customers')
+                        .where('email', '==', firstTo.toLowerCase().trim())
+                        .limit(1)
+                        .get()
+                        .catch(() => null);
+                    if (custSnap && !custSnap.empty) {
+                        targetCustId = custSnap.docs[0].id;
+                    }
+                }
+
+                // 1. Record in global messages collection
+                const msgObj: any = {
+                    id: `msg-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                    senderId: 'staff',
+                    senderName: 'Staff System',
+                    receiverId: firstTo,
+                    customerId: targetCustId,
+                    to: toRecipients,
+                    content: bodyStr.slice(0, 500),
+                    subject: subjectStr,
+                    timestamp: nowIso,
+                    createdAt: nowIso,
+                    organizationId: org?.id || null,
+                    type: 'email'
+                };
+                await db.collection('messages').doc(msgObj.id).set(cleanUndefinedFields(msgObj)).catch(() => {});
+
+                // 2. Record in customer communications subcollection
+                if (targetCustId) {
+                    const commEntry = {
+                        id: `comm-auto-${Date.now()}`,
+                        type: mailPayload.type || 'email_out',
+                        title: subjectStr,
+                        subtitle: `To: ${toRecipients}`,
+                        content: bodyStr.slice(0, 500),
+                        badgeLabel: mailPayload.type || 'Email Sent',
+                        badgeColor: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
+                        timestamp: nowIso,
+                        senderName: 'System'
+                    };
+                    await db.collection('customers').doc(targetCustId).collection('communications').doc(commEntry.id).set(cleanUndefinedFields(commEntry)).catch(() => {});
+                }
+            } catch (logErr) {
+                console.warn("Non-fatal: Could not auto-log communication", logErr);
+            }
+        }
+
         return result;
     } catch (error) {
         console.error("[NotificationService] ERROR sending email:", error);

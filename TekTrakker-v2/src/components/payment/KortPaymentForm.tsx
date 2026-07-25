@@ -14,7 +14,7 @@ interface KortPaymentFormProps {
     accountId?: string;
     organizationId?: string;
     organization?: any;
-    onSuccess?: (paymentId: string) => void;
+    onSuccess?: (paymentId: string, fee?: number, feeName?: string) => void;
     onError?: (error: string) => void;
 }
 
@@ -35,6 +35,8 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
     const [billingState, setBillingState] = useState('TX');
     const [billingZip, setBillingZip] = useState('78701');
     const [billingCountry, setBillingCountry] = useState('US');
+
+    const isACHEnabled = true; // Enabled since ACH processing is live again
 
     // Calculate fee dynamically
     const cardEnabled = organization?.cardProcessingFeeEnabled || false;
@@ -63,23 +65,66 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
             return;
         }
 
-        if (typeof Payments === 'undefined') {
-            setError('Payments SDK failed to load. Please check your network connection.');
-            return;
-        }
-
         let ignore = false;
         let formInstance: any = null;
         let cardNumberField: any;
         let cardExpiryField: any;
         let cardCvcField: any;
 
+        const loadPaymentsSdk = (): Promise<any> => {
+            return new Promise((resolve, reject) => {
+                const globalPayments = (window as any).Payments || (window as any).Tilled;
+                if (globalPayments) {
+                    (window as any).Payments = globalPayments;
+                    resolve(globalPayments);
+                    return;
+                }
+
+                const existingScript = document.getElementById('tilled-payments-js');
+                if (existingScript) {
+                    const checkInterval = setInterval(() => {
+                        const sdk = (window as any).Payments || (window as any).Tilled;
+                        if (sdk) {
+                            clearInterval(checkInterval);
+                            (window as any).Payments = sdk;
+                            resolve(sdk);
+                        }
+                    }, 100);
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        reject(new Error('Payments SDK failed to load. Please check your network connection.'));
+                    }, 10000);
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.id = 'tilled-payments-js';
+                script.src = 'https://js.tilled.com/v2/tilled.js';
+                script.async = true;
+                script.onload = () => {
+                    const sdk = (window as any).Payments || (window as any).Tilled;
+                    if (sdk) {
+                        (window as any).Payments = sdk;
+                        resolve(sdk);
+                    } else {
+                        reject(new Error('Payments SDK failed to load. Please check your network connection.'));
+                    }
+                };
+                script.onerror = () => {
+                    reject(new Error('Payments SDK failed to load. Please check your network connection.'));
+                };
+                document.head.appendChild(script);
+            });
+        };
+
         const initForm = async () => {
             try {
-                // Initialize Kort Payments SDK
-                const payments = new Payments(publishableKey, activeAccountId, { sandbox: isSandbox });
-                setPaymentsInstance(payments);
+                const PaymentsSDK = await loadPaymentsSdk();
+                if (ignore) return;
 
+                // Initialize Kort Payments SDK
+                const payments = new PaymentsSDK(publishableKey, activeAccountId, { sandbox: isSandbox });
+                setPaymentsInstance(payments);
 
                 // ACH is processed entirely server-side, no SDK form needed
                 if (paymentMethod === 'ach_debit') {
@@ -237,7 +282,7 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
                 });
                 const achData = achResult.data as any;
                 if (achData.success) {
-                    if (onSuccess) onSuccess(achData.id || 'ach_payment');
+                    if (onSuccess) onSuccess(achData.id || 'ach_payment', fee, 'ACH Bank Transfer Fee');
                     return;
                 } else {
                     throw new Error('ACH payment failed.');
@@ -258,7 +303,8 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
                 if (!result.paymentIntent && !result.payment_intent && !result.id) {
                     console.log('Tilled successful result payload:', result);
                 }
-                onSuccess(intentId);
+                const feeName = paymentMethod === 'card' ? 'Credit Card Processing Fee' : 'ACH Bank Transfer Fee';
+                onSuccess(intentId, fee, feeName);
             }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (err: any) {
@@ -297,21 +343,22 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
                         ${totalAmount.toFixed(2)}
                     </span>
                 </div>
-                
-                <div className="flex gap-2 mb-6">
-                    <button 
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${paymentMethod === 'card' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
-                        onClick={() => { setPaymentMethod('card'); setError(null); }}
-                    >
-                        Credit Card
-                    </button>
-                    <button 
-                        className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${paymentMethod === 'ach_debit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
-                        onClick={() => { setPaymentMethod('ach_debit'); setError(null); }}
-                    >
-                        Bank Transfer (ACH)
-                    </button>
-                </div>
+                {isACHEnabled && (
+                    <div className="flex gap-2 mb-6">
+                        <button 
+                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${paymentMethod === 'card' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                            onClick={() => { setPaymentMethod('card'); setError(null); }}
+                        >
+                            Credit Card
+                        </button>
+                        <button 
+                            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${paymentMethod === 'ach_debit' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700'}`}
+                            onClick={() => { setPaymentMethod('ach_debit'); setError(null); }}
+                        >
+                            Bank Transfer (ACH)
+                        </button>
+                    </div>
+                )}
                 
                 <div className="mb-6 space-y-4">
                     <div>

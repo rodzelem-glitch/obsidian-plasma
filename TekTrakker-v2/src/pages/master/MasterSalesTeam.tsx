@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -96,14 +97,21 @@ const MasterSalesTeam: React.FC = () => {
     const payoutData = useMemo(() => {
         const pending = commissions.filter(c => c.status === 'Pending');
         const paid = commissions.filter(c => c.status === 'Paid');
+        
+        const pendingEarned = pending.filter(c => c.customerPaymentStatus === 'Paid');
+        const pendingUnearned = pending.filter(c => c.customerPaymentStatus !== 'Paid');
+        
         const buckets = { current: 0, days30: 0, days60: 0, days90: 0 };
         const now = new Date();
-        pending.forEach(c => {
+        pendingEarned.forEach(c => {
             const diff = Math.ceil((now.getTime() - new Date(c.dateEarned).getTime()) / 86400000);
             if (diff <= 30) buckets.current += c.amount; else if (diff <= 60) buckets.days30 += c.amount; else if (diff <= 90) buckets.days60 += c.amount; else buckets.days90 += c.amount;
         });
         return { 
-            totalPending: pending.reduce((s, c) => s + c.amount, 0), totalPaidYTD: paid.reduce((s, c) => s + c.amount, 0), buckets,
+            totalPending: pendingEarned.reduce((s, c) => s + c.amount, 0), 
+            totalAwaitingPayment: pendingUnearned.reduce((s, c) => s + c.amount, 0),
+            totalPaidYTD: paid.reduce((s, c) => s + c.amount, 0), 
+            buckets,
             displayList: payoutFilter === 'Pending' ? pending : paid
         };
     }, [commissions, payoutFilter]);
@@ -129,7 +137,7 @@ const MasterSalesTeam: React.FC = () => {
                 organizationId: 'platform'
             });
 
-            await db.collection('organizations').doc('platform').set({ id: 'platform', name: 'TekTrakker Platform', subscriptionStatus: 'active', plan: 'enterprise', email: 'platform@tektrakker.com', phone: '555-000-0000', createdAt: new Date().toISOString() }, { merge: true });
+            await db.collection('organizations').doc('platform').set(cleanUndefinedFields({ id: 'platform', name: 'TekTrakker Platform', subscriptionStatus: 'active', plan: 'enterprise', email: 'platform@tektrakker.com', phone: '555-000-0000', createdAt: new Date().toISOString() }), { merge: true });
             const user: User = { 
                 id: userId, 
                 uid: userId, 
@@ -147,7 +155,7 @@ const MasterSalesTeam: React.FC = () => {
                 notes: '',
                 ...(!state.isMasterAdmin && state.currentUser?.franchiseId ? { franchiseId: state.currentUser.franchiseId } : {})
             };
-            await db.collection('users').doc(userId).set(user);
+            await db.collection('users').doc(userId).set(cleanUndefinedFields(user));
             setIsAddRepModalOpen(false);
             showToast.warn(`Sales Rep Created Successfully! Instruct them to login using the credentials you just assigned.`);
             setNewRepData({ firstName: '', lastName: '', email: '', tempPassword: '', useCustomRules: false, customRules: DEFAULT_COMMISSION_RULES });
@@ -168,7 +176,7 @@ const MasterSalesTeam: React.FC = () => {
             } else {
                 updatePayload.customCommissionSettings = null;
             }
-            await db.collection('users').doc(editingRepId).update(updatePayload);
+            await db.collection('users').doc(editingRepId).update(cleanUndefinedFields(updatePayload));
             setIsAddRepModalOpen(false);
             setEditingRepId(null);
             setNewRepData({ firstName: '', lastName: '', email: '', tempPassword: '', useCustomRules: false, customRules: DEFAULT_COMMISSION_RULES });
@@ -181,7 +189,7 @@ const MasterSalesTeam: React.FC = () => {
         try {
             const batch = db.batch();
             const leads = await db.collection('platformLeads').where('repId', '==', duplicateId).get();
-            leads.forEach(d => batch.update(d.ref, { repId: masterId }));
+            leads.forEach(d => batch.update(d.ref, cleanUndefinedFields({ repId: masterId })));
             batch.delete(db.collection('users').doc(duplicateId));
             await batch.commit();
             setIsMergeModalOpen(false);
@@ -196,13 +204,13 @@ const MasterSalesTeam: React.FC = () => {
 
     const handleSaveContractContent = async () => {
         if (!viewContractRep) return;
-        await db.collection('users').doc(viewContractRep.id).update({ salesContractContent: editedContractContent });
+        await db.collection('users').doc(viewContractRep.id).update(cleanUndefinedFields({ salesContractContent: editedContractContent }));
         setIsEditingContract(false);
     };
 
     const handleSaveSettings = async () => {
         try {
-            await db.collection('settings').doc('commission_rules').set(commissionRules, { merge: true });
+            await db.collection('settings').doc('commission_rules').set(cleanUndefinedFields(commissionRules), { merge: true });
             setIsSettingsModalOpen(false);
             showToast.warn("Commission rules updated.");
         } catch (e) {
@@ -238,7 +246,7 @@ const MasterSalesTeam: React.FC = () => {
                 setIsAddRepModalOpen(true); 
             }} onDeleteRep={(id) => db.collection('users').doc(id).delete()} />}
             {activeTab === 'performance' && <PerformanceTab repStats={repStats} />}
-            {activeTab === 'payouts' && <PayoutsTab payoutData={payoutData} payoutFilter={payoutFilter} setPayoutFilter={setPayoutFilter} salesReps={salesReps} onMarkPaid={(id) => db.collection('platformCommissions').doc(id).update({ status: 'Paid', datePaid: new Date().toISOString() })} />}
+            {activeTab === 'payouts' && <PayoutsTab payoutData={payoutData} payoutFilter={payoutFilter} setPayoutFilter={setPayoutFilter} salesReps={salesReps} onMarkPaid={(id) => db.collection('platformCommissions').doc(id).update(cleanUndefinedFields({ status: 'Paid', datePaid: new Date().toISOString() }))} />}
 
             {isSettingsModalOpen && (
                 <Modal isOpen={true} onClose={() => setIsSettingsModalOpen(false)} title="Commission Rules">

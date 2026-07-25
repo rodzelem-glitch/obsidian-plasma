@@ -14,7 +14,7 @@ import {
     MessageSquare, Link as LinkIcon, AlertTriangle, ArrowLeft, Wrench, Calendar, BadgeCheck, Briefcase,
     Facebook, Instagram, Linkedin, Twitter, Youtube
 } from 'lucide-react';
-import { formatAddress } from 'lib/utils';
+import { formatAddress , cleanUndefinedFields } from 'lib/utils';
 import { useAppContext } from 'context/AppContext';
 import { useReviewEligibility } from 'hooks/useReviewEligibility';
 
@@ -40,10 +40,12 @@ const ProviderProfile: React.FC = () => {
     const [contactPhone, setContactPhone] = useState('');
     const [contactMessage, setContactMessage] = useState('');
     const [isSending, setIsSending] = useState(false);
+    const [contactSmsConsent, setContactSmsConsent] = useState(false);
 
     const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
     const [bookingDate, setBookingDate] = useState('');
     const [bookingTime, setBookingTime] = useState('');
+    const [bookingSmsConsent, setBookingSmsConsent] = useState(false);
 
     const { eligibility, checkEligibility } = useReviewEligibility(currentUser, orgId);
 
@@ -101,6 +103,7 @@ const ProviderProfile: React.FC = () => {
         setContactEmail('');
         setContactPhone('');
         setContactMessage('');
+        setContactSmsConsent(false);
     }
 
     const handleOpenBookingModal = () => {
@@ -120,6 +123,7 @@ const ProviderProfile: React.FC = () => {
         setContactMessage('');
         setBookingDate('');
         setBookingTime('');
+        setBookingSmsConsent(false);
     }
 
     const handleLinkAccount = async () => {
@@ -151,7 +155,7 @@ const ProviderProfile: React.FC = () => {
                 marketingConsent: primaryCustomerProfile?.marketingConsent || { sms: true, email: true, agreedAt: new Date().toISOString(), source: 'MarketplaceLink' }
             };
             
-            const docRef = await db.collection('customers').add(newCustomerRecord);
+            const docRef = await db.collection('customers').add(cleanUndefinedFields(newCustomerRecord));
             const newCustomer = { id: docRef.id, ...newCustomerRecord } as Customer;
 
             dispatch({ type: 'ADD_CUSTOMER', payload: newCustomer });
@@ -196,7 +200,7 @@ const ProviderProfile: React.FC = () => {
                     handshakeStatus: 'Pending',
                     status: 'Active'
                 };
-                await db.collection('subcontractors').doc(subId).set(newSub);
+                await db.collection('subcontractors').doc(subId).set(cleanUndefinedFields(newSub));
                 dispatch({ type: 'ADD_SUBCONTRACTOR', payload: newSub as any });
 
                 await manageHandshake({
@@ -238,7 +242,7 @@ const ProviderProfile: React.FC = () => {
                 responded: false
             };
 
-            const docRef = await db.collection('reviews').add(newReview);
+            const docRef = await db.collection('reviews').add(cleanUndefinedFields(newReview));
             setReviews([{ id: docRef.id, ...newReview } as Review, ...reviews]);
             checkEligibility();
             setIsReviewModalOpen(false);
@@ -277,7 +281,8 @@ const ProviderProfile: React.FC = () => {
                     phone: contactPhone,
                     message: contactMessage,
                     type: 'marketplace_contact',
-                    formType: 'marketplace_contact'
+                    formType: 'marketplace_contact',
+                    smsOptIn: contactSmsConsent
                 }),
             });
 
@@ -345,7 +350,8 @@ const ProviderProfile: React.FC = () => {
                     preferredDate: bookingDate,
                     preferredTime: bookingTime,
                     type: 'booking_request',
-                    formType: 'booking_request'
+                    formType: 'booking_request',
+                    smsOptIn: bookingSmsConsent
                 }),
             });
 
@@ -614,6 +620,20 @@ const ProviderProfile: React.FC = () => {
                         onChange={e => setContactPhone(e.target.value)}
                         placeholder="(555) 123-4567"
                     />
+                    {contactPhone && (
+                        <label className="flex items-start gap-2 text-xs text-slate-500 cursor-pointer mt-2">
+                            <input 
+                                type="checkbox" 
+                                checked={contactSmsConsent}
+                                onChange={e => setContactSmsConsent(e.target.checked)}
+                                className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
+                                required
+                            />
+                            <span>
+                                I consent to receive text messages (SMS) from the provider regarding my inquiry. Msg & data rates may apply. Message frequency varies. Reply STOP to cancel. View our <a href="/#/privacy" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">Privacy Policy</a>.
+                            </span>
+                        </label>
+                    )}
                     <Textarea 
                         label="Your Message"
                         value={contactMessage} 
@@ -658,6 +678,20 @@ const ProviderProfile: React.FC = () => {
                         onChange={e => setContactPhone(e.target.value)}
                         placeholder="(555) 123-4567"
                     />
+                    {contactPhone && (
+                        <label className="flex items-start gap-2 text-xs text-slate-500 cursor-pointer mt-2">
+                            <input 
+                                type="checkbox" 
+                                checked={bookingSmsConsent}
+                                onChange={e => setBookingSmsConsent(e.target.checked)}
+                                className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
+                                required
+                            />
+                            <span>
+                                I consent to receive text messages (SMS) from the provider regarding my booking request. Msg & data rates may apply. Message frequency varies. Reply STOP to cancel. View our <a href="/#/privacy" target="_blank" rel="noreferrer" className="text-blue-500 hover:underline">Privacy Policy</a>.
+                            </span>
+                        </label>
+                    )}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <Input 
                             label="Preferred Date"

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
@@ -26,16 +25,32 @@ const CustomerManagement: React.FC = () => {
     }, [searchParams]);
     const [isCreating, setIsCreating] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [customerTypeFilter, setCustomerTypeFilter] = useState<'All' | 'Residential' | 'Commercial'>('All');
     const [sortBy, setSortBy] = useState('date_desc');
     const [page, setPage] = useState(1);
     const itemsPerPage = 20;
 
-    const filteredCustomers = state.customers.filter(c => 
-        (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const isAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both';
+    const myTeams = (state.teams || []).filter(t => t.memberIds?.includes(state.currentUser?.id || ''));
+
+    const filteredCustomers = state.customers.filter(c => {
+        if (!isAdmin && myTeams.length > 0) {
+            const teamCustomerIds = new Set(myTeams.flatMap(t => t.customerIds || []));
+            if (!teamCustomerIds.has(c.id)) return false;
+        }
+        
+        // Filter by Customer Type
+        if (customerTypeFilter === 'Residential') {
+            if (c.customerType !== 'Residential') return false;
+        } else if (customerTypeFilter === 'Commercial') {
+            if (c.customerType !== 'Commercial' && c.customerType !== 'Property Management') return false;
+        }
+
+        return (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
         (c.phone || '').includes(searchTerm) ||
         (c.email && c.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (c.address && c.address.toLowerCase().includes(searchTerm.toLowerCase()))
-    ).sort((a, b) => {
+        (c.address && c.address.toLowerCase().includes(searchTerm.toLowerCase()));
+    }).sort((a, b) => {
         switch (sortBy) {
             case 'name_asc':
                 return (a.name || '').localeCompare(b.name || '');
@@ -74,14 +89,22 @@ const CustomerManagement: React.FC = () => {
 
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 
-                <Button onClick={() => setIsCreating(!isCreating)} className="w-auto flex items-center gap-2">
+                <Button onClick={() => setIsCreating(!isCreating)} data-tour="quick-add-customer-btn" className="w-auto flex items-center gap-2">
                     <PlusCircle size={18} /> {t("Quick Add")}
                 </Button>
             </header>
 
             {isCreating && <QuickAddCustomer onCustomerCreated={handleCustomerCreated} />}
 
-            <CustomerSearch searchTerm={searchTerm} onSearchTermChange={handleSearchTermChange} />
+            <CustomerSearch 
+                searchTerm={searchTerm} 
+                onSearchTermChange={handleSearchTermChange} 
+                customerTypeFilter={customerTypeFilter}
+                onCustomerTypeFilterChange={(type) => {
+                    setCustomerTypeFilter(type);
+                    setPage(1);
+                }}
+            />
 
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 px-2 gap-2">
                 <span className="text-xs text-gray-500">{t("Showing")} {paginatedCustomers.length} {t("of")} {filteredCustomers.length} {t("results")}</span>

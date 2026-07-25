@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { db, functions } from '../../lib/firebase';
 import { useAppContext } from '../../context/AppContext';
@@ -49,7 +50,7 @@ const CompanyCamGallery: React.FC<CompanyCamGalleryProps> = ({ jobId, orgId, add
                 const batch = db.batch();
                 fetchedPhotos.forEach((photo: any) => {
                     const ref = db.collection(`organizations/${orgId}/jobs/${jobId}/companycam_photos`).doc(photo.id.toString());
-                    batch.set(ref, {
+                    batch.set(cleanUndefinedFields(ref), {
                         ...photo,
                         syncedAt: new Date().toISOString()
                     });

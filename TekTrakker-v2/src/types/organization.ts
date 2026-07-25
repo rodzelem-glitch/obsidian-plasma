@@ -8,6 +8,20 @@ export interface Address {
     zip: string;
 }
 
+export interface Division {
+    id: string;
+    name: string;
+    trade: IndustryVertical;
+    createdAt?: string;
+}
+
+export interface SubcontractorComplianceSettings {
+    enforceComplianceBeforeAssignment?: boolean;
+    notifyOnLink?: boolean;
+    expiryWarningDays?: number;
+    requiredDocuments?: Record<string, boolean>;
+}
+
 export interface Organization {
     id: string;
     name: string;
@@ -33,6 +47,8 @@ export interface Organization {
     termsAndConditions?: string | null;
     customerTerms?: string | null;
     proposalTerms?: string | null;
+    proposalProtectionMode?: 'none' | 'summary' | 'nda';
+    proposalNdaContent?: string | null;
     membershipTerms?: string | null;
     footerImage?: string | null;
     subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled' | 'paused';
@@ -46,7 +62,10 @@ export interface Organization {
     paymentMethodAttached?: boolean;
     notificationEmails?: string[];
     supportedTrades?: IndustryVertical[];
+    divisions?: Division[];
+    additionalDivisionsSlots?: number;
     reviewLink?: string;
+    subcontractorComplianceSettings?: SubcontractorComplianceSettings;
     stripePublicKey?: string | null;
     stripeAccountId?: string | null;
     squareApplicationId?: string | null;
@@ -131,4 +150,14 @@ export interface Organization {
         source: string;
         gclid?: string;
     };
+    lateFeeEnabled?: boolean;
+    lateFeeType?: 'flat' | 'percent';
+    lateFeeValue?: number;
+    lateFeeInterestRate?: number;
+    lateFeeGracePeriod?: number;
+    ein?: string;
+    businessType?: string;
+    incorporationState?: string;
+    formationDate?: string;
+    businessDocuments?: Array<{ id: string; name: string; url: string; uploadedAt: string }>;
 }

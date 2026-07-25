@@ -24,10 +24,14 @@ const ProposalsSection: React.FC<ProposalsSectionProps> = ({ proposals, onViewPr
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="font-black text-lg text-primary-600">${prop.total.toFixed(0)}</span>
-                            {prop.status === 'Sent' ? (
+                            {prop.status === 'Sent' || prop.status === 'Opened' ? (
                                 <Button onClick={() => onViewProposal(prop)} className="px-4 py-1 text-xs font-black uppercase bg-emerald-600 hover:bg-emerald-700">Review & Accept</Button>
                             ) : (
-                                <span onClick={() => onViewProposal(prop)} className={`px-2 py-1 rounded-full text-[10px] font-black uppercase cursor-pointer ${prop.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
+                                <span onClick={() => onViewProposal(prop)} className={`px-2 py-1 rounded-full text-[10px] font-black uppercase cursor-pointer ${
+                                    prop.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700' : 
+                                    prop.status === 'Opened' ? 'bg-indigo-100 text-indigo-700' : 
+                                    'bg-slate-100 text-slate-700'
+                                }`}>
                                     {prop.status}
                                 </span>
                             )}

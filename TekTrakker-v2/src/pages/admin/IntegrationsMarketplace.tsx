@@ -1,8 +1,9 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../context/AppContext';
 import { doc, getDoc, setDoc, addDoc, collection } from 'firebase/firestore';
-import { db, functions } from '../../lib/firebase';
+import { db, functions, firebase } from '../../lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import showToast from 'lib/toast';
 import {
@@ -43,8 +44,6 @@ const INTEGRATIONS: Integration[] = [
   { id: 'netsuite', name: 'NetSuite (Oracle)', description: 'Sync financials, customers, and work orders with your Oracle NetSuite ERP.', category: 'Accounting', icon: FileText, iconColor: 'text-red-700', fields: [{ key: 'netsuiteAccountId', label: 'Account ID' }, { key: 'netsuiteConsumerKey', label: 'Consumer Key' }, { key: 'netsuiteConsumerSecret', label: 'Consumer Secret', type: 'password' }, { key: 'netsuiteTokenId', label: 'Token ID' }, { key: 'netsuiteTokenSecret', label: 'Token Secret', type: 'password' }], isStubbed: true },
   // Payment Gateways
   { id: 'kort', name: 'TekTrakker Payment Processing', description: 'Process credit cards natively within your platform. Enjoy lower rates and deep integration.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-emerald-500', fields: [{ key: 'kortAccountId', label: 'Merchant Account ID', placeholder: 'acct_...' }] },
-  { id: 'stripe', name: 'Stripe', description: 'Connect Stripe to process credit card payments natively inside invoices. Accept all major credit cards securely.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-indigo-500', fields: [{ key: 'stripePublicKey', label: 'Publishable Key', placeholder: 'pk_live_...' }] },
-  { id: 'square', name: 'Square', description: 'Connect Square to process card payments or sync transactions.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-slate-800 dark:text-slate-200', fields: [{ key: 'squareAppId', label: 'Application ID', placeholder: 'sq0idp-...' }, { key: 'squareLocId', label: 'Location ID', placeholder: 'L...' }, { key: 'squareToken', label: 'Square Personal Access Token', type: 'password', placeholder: 'EAAAE...' }] },
   // Financing
   { id: 'hearth', name: 'Hearth', description: 'Offer customers instant financing options directly on proposals and invoices.', category: 'Financing', icon: CreditCard, iconColor: 'text-teal-600', fields: [{ key: 'hearthApiKey', label: 'API Key', type: 'password', placeholder: 'hearth_...' }], learnMoreUrl: 'https://www.gethearth.com' },
   // Marketing & CRM
@@ -97,7 +96,7 @@ const INTEGRATIONS: Integration[] = [
   { id: 'angi', name: 'Angi (Angie\'s List)', description: 'Import verified homeowner leads from the Angi marketplace into your dispatch board.', category: 'Marketing & CRM', icon: Globe, iconColor: 'text-red-500', fields: [{ key: 'angiAccountId', label: 'Account ID' }, { key: 'angiApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'nextdoor', name: 'Nextdoor for Business', description: 'Neighborhood-level advertising and local recommendations from trusted neighbors.', category: 'Marketing & CRM', icon: Globe, iconColor: 'text-green-500', fields: [{ key: 'nextdoorBusinessId', label: 'Business ID' }, { key: 'nextdoorApiKey', label: 'API Key', type: 'password' }] },
   { id: 'gusto', name: 'Gusto Payroll', description: 'Sync employee profiles, push hours, and run payroll using Gusto. Supports BYO developer credentials to bypass platform SOC2 requirements.', category: 'HR & Payroll', icon: Users, iconColor: 'text-orange-500', fields: [{ key: 'gustoClientId', label: 'Gusto Client ID' }, { key: 'gustoClientSecret', label: 'Gusto Client Secret', type: 'password' }, { key: 'gustoCompanyUuid', label: 'Gusto Company UUID (Optional)' }] },
-  { id: 'adp', name: 'ADP Workforce', description: 'Enterprise payroll processing, tax filing, and HR compliance management.', category: 'HR & Payroll', icon: Users, iconColor: 'text-red-600', fields: [{ key: 'adpClientId', label: 'Client ID' }, { key: 'adpClientSecret', label: 'Client Secret', type: 'password' }], isStubbed: true },
+  { id: 'adp', name: 'ADP Workforce', description: 'Enterprise payroll processing, tax filing, and HR compliance management.', category: 'HR & Payroll', icon: Users, iconColor: 'text-red-600', fields: [{ key: 'adpClientId', label: 'Client ID' }, { key: 'adpClientSecret', label: 'Client Secret', type: 'password' }] },
   { id: 'paychex', name: 'Paychex', description: 'Payroll, benefits, and HR services for growing field service companies.', category: 'HR & Payroll', icon: Users, iconColor: 'text-blue-700', fields: [{ key: 'paychexCompanyId', label: 'Company ID' }, { key: 'paychexClientId', label: 'Client ID' }, { key: 'paychexClientSecret', label: 'Client Secret', type: 'password' }], isStubbed: true },
   { id: 'indeed', name: 'Indeed', description: 'Post job listings and receive applicants directly into your hiring pipeline.', category: 'HR & Payroll', icon: Users, iconColor: 'text-blue-500', fields: [{ key: 'indeedEmployerId', label: 'Employer ID' }, { key: 'indeedApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'ziprecruiter', name: 'ZipRecruiter', description: 'AI-powered job matching to find qualified HVAC technicians and plumbers fast.', category: 'HR & Payroll', icon: Users, iconColor: 'text-emerald-600', fields: [{ key: 'ziprecruiterApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
@@ -116,8 +115,7 @@ const INTEGRATIONS: Integration[] = [
   { id: 'cinch', name: 'Cinch Home Services', description: 'Home warranty work order management and automatic claim submission.', category: 'Warranty', icon: ShieldCheck, iconColor: 'text-indigo-600', fields: [{ key: 'cinchContractorId', label: 'Contractor ID' }, { key: 'cinchApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'schedule_engine', name: 'Schedule Engine', description: 'After-hours call handling and live booking with AI-powered scheduling.', category: 'Communications', icon: Headphones, iconColor: 'text-orange-500', fields: [{ key: 'scheduleEngineApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'twilio', name: 'Twilio', description: 'Provide Twilio credentials to send "On My Way" texts and appointment reminders.', category: 'Communications', icon: MessageSquare, iconColor: 'text-red-500', fields: [{ key: 'twilioSid', label: 'Account SID' }, { key: 'twilioToken', label: 'Auth Token', type: 'password' }, { key: 'twilioNumber', label: 'Origin Phone Number', placeholder: '+15551234567' }] },
-  { id: 'smtp', name: 'Custom SMTP Server', description: 'Ensure maximum inbox deliverability for invoices and proposals by sending from your own email servers.', category: 'Communications', icon: Mail, iconColor: 'text-slate-500', fields: [{ key: 'smtpHost', label: 'SMTP Host', placeholder: 'smtp.gmail.com' }, { key: 'smtpPort', label: 'SMTP Port', placeholder: '587' }, { key: 'smtpUser', label: 'Username (Email)' }, { key: 'smtpPass', label: 'Password or App Password', type: 'password' }] },
-  { id: 'ringcentral', name: 'RingCentral VoIP', description: 'Enable screen-pops, automated missed-call SMS, and Virtual Worker AI Voice Answering for your inbound numbers.', category: 'Communications', icon: PhoneCall, iconColor: 'text-orange-500', fields: [{ key: 'ringCentralLoginFlow', label: 'Widget Login Flow Option', type: 'select', placeholder: 'Select Widget Login Flow', options: [{ value: 'jwt', label: 'Automatic JWT Login' }, { value: 'oauth', label: 'Interactive OAuth Login' }] }, { key: 'ringCentralClientId', label: 'Widget Client ID (Browser App)', placeholder: 'Enter Browser-Based App Client ID' }, { key: 'rcBackendClientId', label: 'Backend Client ID (Server Web App)', placeholder: 'Enter Server Web App Client ID' }, { key: 'ringCentralClientSecret', label: 'Backend Client Secret', type: 'password', placeholder: 'Enter Server Web App Client Secret' }, { key: 'ringCentralJwtToken', label: 'Backend JWT Token', type: 'password', placeholder: 'Enter RingCentral JWT Token' }, { key: 'rcPrimarySms', label: 'Use as Primary SMS Provider (Replaces Twilio)', type: 'checkbox' }, { key: 'rcEnableVoiceAi', label: 'Enable AI Voice Answering', type: 'checkbox' }, { key: 'rcRingsBeforeAi', label: 'Rings before AI Answers', type: 'number', placeholder: 'e.g., 3' }, { key: 'rcSmsOnMissed', label: 'Send SMS on Missed Call', type: 'checkbox' }, { key: 'rcSmsTemplate', label: 'Missed Call SMS Template', placeholder: 'Sorry we missed you! Book online at...' }] },
+  { id: 'ringcentral', name: 'RingCentral VoIP', description: 'Enable screen-pops, automated missed-call SMS, and Virtual Worker AI Voice Answering for your inbound numbers.', category: 'Communications', icon: PhoneCall, iconColor: 'text-orange-500', fields: [{ key: 'ringCentralLoginFlow', label: 'Widget Login Flow Option', type: 'select', placeholder: 'Select Widget Login Flow', options: [{ value: 'jwt', label: 'Automatic JWT Login' }, { value: 'oauth', label: 'Interactive OAuth Login' }] }, { key: 'ringCentralCallMode', label: 'Default Call Mode', type: 'select', placeholder: 'Select Default Call Mode', options: [{ value: 'browser', label: 'Browser / Softphone (WebRTC)' }, { value: 'ringout', label: 'RingOut (Cellphone callback)' }] }, { key: 'ringCentralClientId', label: 'Widget Client ID (Browser App)', placeholder: 'Enter Browser-Based App Client ID' }, { key: 'rcBackendClientId', label: 'Backend Client ID (Server Web App)', placeholder: 'Enter Server Web App Client ID' }, { key: 'ringCentralClientSecret', label: 'Backend Client Secret', type: 'password', placeholder: 'Enter Server Web App Client Secret' }, { key: 'ringCentralJwtToken', label: 'Backend JWT Token', type: 'password', placeholder: 'Enter RingCentral JWT Token' }, { key: 'rcPrimarySms', label: 'Use as Primary SMS Provider (Replaces Twilio)', type: 'checkbox' }, { key: 'rcEnableVoiceAi', label: 'Enable AI Voice Answering', type: 'checkbox' }, { key: 'rcRingsBeforeAi', label: 'Rings before AI Answers', type: 'number', placeholder: 'e.g., 3' }, { key: 'rcSmsOnMissed', label: 'Send SMS on Missed Call', type: 'checkbox' }, { key: 'rcSmsTemplate', label: 'Missed Call SMS Template', placeholder: 'Sorry we missed you! Book online at...' }] },
   { id: 'xoi', name: 'XOi Technologies', description: 'AI-powered video documentation and remote visual assistance for field technicians.', category: 'On-The-Job', icon: Camera, iconColor: 'text-indigo-500', fields: [{ key: 'xoiCompanyId', label: 'Company ID' }, { key: 'xoiApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'profit_rhino', name: 'Profit Rhino', description: 'Dynamic flat-rate pricing engine with real-time material cost updates.', category: 'Estimations', icon: Hammer, iconColor: 'text-amber-600', fields: [{ key: 'profitRhinoApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
   { id: 'salesrabbit', name: 'SalesRabbit', description: 'Door-to-door sales tracking with territory mapping and lead management.', category: 'Marketing & CRM', icon: TrendingUp, iconColor: 'text-green-600', fields: [{ key: 'salesRabbitApiKey', label: 'API Key', type: 'password' }], isStubbed: true },
@@ -218,8 +216,9 @@ const IntegrationsMarketplace: React.FC = () => {
 
       // Handle specific integrations that require instant cloud function execution
       if (integration.id === 'ringcentral') {
-        const { ringCentralClientId, rcBackendClientId, ringCentralClientSecret, ringCentralJwtToken } = fieldValues;
+        const { ringCentralClientId, rcBackendClientId, ringCentralClientSecret, ringCentralJwtToken, ringCentralCallMode } = fieldValues;
         const loginFlow = fieldValues.ringCentralLoginFlow || 'jwt';
+        const callMode = ringCentralCallMode || 'browser';
         
         // Save the configuration block first
         await setDoc(doc(db, 'organizations', orgId, 'secrets', 'config'), {
@@ -228,6 +227,7 @@ const IntegrationsMarketplace: React.FC = () => {
             ringCentralClientSecret: ringCentralClientSecret || '',
             ringCentralJwtToken: ringCentralJwtToken || '',
             ringCentralLoginFlow: loginFlow,
+            ringCentralCallMode: callMode,
             rcEnableVoiceAi: fieldValues.rcEnableVoiceAi === 'true',
             rcRingsBeforeAi: fieldValues.rcRingsBeforeAi || '3',
             rcSmsOnMissed: fieldValues.rcSmsOnMissed === 'true',
@@ -290,10 +290,10 @@ const IntegrationsMarketplace: React.FC = () => {
 
       if (integration.id === 'gusto') {
         const { gustoCompanyUuid } = fieldValues;
-        await db.collection('organizations').doc(orgId).update({
+        await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({
             gustoCompanyUuid: gustoCompanyUuid || null,
             gustoOnboardingUrl: gustoCompanyUuid ? 'https://sandbox.gusto.com' : null
-        });
+        }));
         dispatch({
           type: 'UPDATE_ORGANIZATION',
           payload: {
@@ -313,15 +313,17 @@ const IntegrationsMarketplace: React.FC = () => {
   const handleDisable = async (integrationId: string, name: string) => {
     if (!orgId) return;
     try {
+      await db.collection('organizations').doc(orgId).collection('settings').doc('marketplace_integrations').update(cleanUndefinedFields({
+        [`integrations.${integrationId}`]: firebase.firestore.FieldValue.delete()
+      }));
       const updated = { ...enabledIntegrations };
       delete updated[integrationId];
-      await setDoc(doc(db, 'organizations', orgId, 'settings', 'marketplace_integrations'), { integrations: updated }, { merge: true });
       setEnabledIntegrations(updated);
       if (integrationId === 'gusto') {
-        await db.collection('organizations').doc(orgId).update({
+        await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({
             gustoCompanyUuid: null,
             gustoOnboardingUrl: null
-        });
+        }));
         dispatch({
           type: 'UPDATE_ORGANIZATION',
           payload: {
@@ -487,6 +489,27 @@ const IntegrationsMarketplace: React.FC = () => {
                       </div>
                     )}
 
+                    {integration.id === 'twilio' && (
+                      <div className="mb-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-400">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <strong>Twilio BYOK Webhook Setup:</strong> To use your own phone number for messaging and voice calls, configure the following webhooks (HTTP POST) in your Twilio Console for this number:
+                            <div className="mt-2 space-y-1.5 font-mono text-[10px]">
+                              <div>
+                                <span className="font-sans font-semibold text-slate-500 dark:text-slate-400">Incoming Messages Webhook:</span>
+                                <code className="block mt-0.5 p-1 bg-blue-100 dark:bg-blue-950 rounded select-all text-blue-600 dark:text-blue-400">https://us-central1-tektrakker.cloudfunctions.net/twilioInboundSms</code>
+                              </div>
+                              <div>
+                                <span className="font-sans font-semibold text-slate-500 dark:text-slate-400">Incoming Voice Webhook:</span>
+                                <code className="block mt-0.5 p-1 bg-blue-100 dark:bg-blue-950 rounded select-all text-blue-600 dark:text-blue-400">https://us-central1-tektrakker.cloudfunctions.net/twilioInboundVoice</code>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-3">
                       {integration.id === 'kort' ? (
                           !fieldValues.kortAccountId && !onboardingUrl ? (
@@ -578,7 +601,36 @@ const IntegrationsMarketplace: React.FC = () => {
                                   </div>
                               </div>
                           )
-                      ) : (
+                      ) : (integration.id === 'stripe' || integration.id === 'square') ? (
+                          <div className="space-y-4">
+                            <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-xl flex items-start gap-3">
+                              <AlertCircle size={20} className="text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+                              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                                <span className="font-bold text-amber-800 dark:text-amber-400 block mb-1">Integration Restrictive Hold</span>
+                                Direct integrations with Stripe and Square are restricted by default to prioritize TekTrakker Payments (Kort). To request activation of this gateway, please contact your account representative or submit a support request.
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => window.open(`mailto:support@tektrakker.com?subject=Payment Gateway Activation Request - Org: ${orgId || 'Unknown'}&body=Hi TekTrakker Team,%0D%0A%0D%0AI would like to request payment gateway activation for ${integration.name} on my TekTrakker organization (ID: ${orgId || 'Unknown'}).`, '_blank')}
+                              className="w-full text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-lg transition-colors inline-flex items-center justify-center gap-1.5"
+                            >
+                              <Mail size={14} /> Request Gateway Activation
+                            </button>
+                            {integration.fields.map(field => (
+                              <div key={field.key} className="opacity-50 pointer-events-none">
+                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">{field.label}</label>
+                                <input
+                                  type="text"
+                                  disabled
+                                  value={fieldValues[field.key] || ''}
+                                  placeholder={field.placeholder || ''}
+                                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 text-sm cursor-not-allowed"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
                         integration.fields.map(field => (
                           <div key={field.key} className={field.type === 'checkbox' ? 'flex items-center gap-3 pt-2' : ''}>
                             {field.type === 'checkbox' ? (
@@ -629,7 +681,7 @@ const IntegrationsMarketplace: React.FC = () => {
                       )}
                     </div>
                     <div className="flex gap-2 mt-4">
-                      <button onClick={() => handleSave(integration)} disabled={saving} className="flex-1 px-4 py-2.5 text-xs font-bold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors">
+                      <button onClick={() => handleSave(integration)} disabled={saving || integration.id === 'stripe' || integration.id === 'square'} className="flex-1 px-4 py-2.5 text-xs font-bold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors">
                         {saving ? 'Saving...' : isEnabled ? 'Update' : 'Enable & Save'}
                       </button>
                       <button onClick={() => setConfiguring(null)} className="px-4 py-2.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">

@@ -10,7 +10,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
     error?: string;
 }
 
-const Input: React.FC<InputProps> = ({ label, className, id, value, isBlock, icon, error, onFocus, onInput, ...props }) => {
+const Input: React.FC<InputProps> = ({ label, className, id, value, isBlock = true, icon, error, onFocus, onInput, ...props }) => {
     const inputId = useMemo(() => {
         return id || (label 
             ? `input-${label.replace(/\s+/g, '-').toLowerCase()}-${Math.random().toString(36).substr(2, 9)}` 

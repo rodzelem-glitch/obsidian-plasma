@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -95,7 +96,7 @@ const ApplicantTracking: React.FC = () => {
         if (!selectedApplicant) return;
         updateApplicant(selectedApplicant.id, { status });
         if (state.isDemoMode) return showToast.warn(t('Demo: Status updated!'));
-        await db.collection('applicants').doc(selectedApplicant.id).update({ status });
+        await db.collection('applicants').doc(selectedApplicant.id).update(cleanUndefinedFields({ status }));
     };
 
     const handleDelete = async () => {
@@ -111,7 +112,7 @@ const ApplicantTracking: React.FC = () => {
         if (!selectedApplicant) return;
         updateApplicant(selectedApplicant.id, { notes });
         if (state.isDemoMode) return; // No alert needed for note saving
-        await db.collection('applicants').doc(selectedApplicant.id).update({ notes });
+        await db.collection('applicants').doc(selectedApplicant.id).update(cleanUndefinedFields({ notes }));
     };
 
     const handleSendOffer = async (details: OfferDetails) => {
@@ -120,7 +121,7 @@ const ApplicantTracking: React.FC = () => {
         handleUpdateStatus('Offer Sent');
         if (state.isDemoMode) return showToast.warn(t('Demo: Offer sent!'));
         // In live mode, you would also generate and send an email
-        // await db.collection('mail').add({ ... });
+        // await db.collection('mail').add(cleanUndefinedFields({ ... }));
     };
 
     const handleHire = async () => {
@@ -129,7 +130,7 @@ const ApplicantTracking: React.FC = () => {
         setIsDetailModalOpen(false);
         if (state.isDemoMode) return showToast.warn(t('Demo: Applicant hired!'));
         // In live mode, create a new user/employee record
-        // await db.collection('users').add({ ... });
+        // await db.collection('users').add(cleanUndefinedFields({ ... }));
     };
 
     return (

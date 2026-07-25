@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
@@ -82,7 +83,7 @@ const MarketingROI: React.FC = () => {
 
             const result = await callGeminiAI({ 
                 prompt,
-                modelName: "gemini-3.5-flash" 
+                modelName: "gemini-3.6-flash" 
             });
             const data = result.data as { text: string };
             setAiInsights(data.text);
@@ -100,9 +101,9 @@ const MarketingROI: React.FC = () => {
         const updatedSpends = { ...(state.currentOrganization.marketingSpend || {}), [source]: numVal };
         
         try {
-            await db.collection('organizations').doc(state.currentOrganization.id).update({
+            await db.collection('organizations').doc(state.currentOrganization.id).update(cleanUndefinedFields({
                 marketingSpend: updatedSpends
-            });
+            }));
             dispatch({ 
                 type: 'UPDATE_ORGANIZATION', 
                 payload: { ...state.currentOrganization, marketingSpend: updatedSpends } 

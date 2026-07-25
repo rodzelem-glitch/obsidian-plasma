@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from './utils';
 import { storage, db, firebase } from './firebase';
 
 /**
@@ -84,6 +85,23 @@ export const uploadFileToStorage = async (path: string, fileData: File | string)
         return downloadURL;
     } catch (error) {
         console.error("Error uploading file to storage:", error);
+        if (fileData instanceof File) {
+            console.log("Storage upload failed. Falling back to local FileReader (Base64 Data URL).");
+            return new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    if (typeof reader.result === 'string') {
+                        resolve(reader.result);
+                    } else {
+                        reject(new Error("Failed to convert file to data URL"));
+                    }
+                };
+                reader.onerror = () => reject(reader.error || new Error("FileReader error"));
+                reader.readAsDataURL(fileData);
+            });
+        } else if (typeof fileData === 'string' && fileData.startsWith('data:')) {
+            return fileData;
+        }
         throw error;
     }
 };

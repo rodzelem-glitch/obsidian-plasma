@@ -1,7 +1,7 @@
 {
   "name": "tektrakker-v2",
   "private": true,
-  "version": "8.8",
+  "version": "8.55",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -30,6 +30,7 @@
     "@capacitor/push-notifications": "^8.0.2",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
+    "@capgo/capacitor-native-biometric": "^8.4.11",
     "@capgo/capacitor-navigation-bar": "^8.1.5",
     "@capgo/capacitor-printer": "^8.0.12",
     "@capgo/capacitor-social-login": "^8.3.17",

@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Users, Calendar, ClipboardCheck, Truck, DollarSign, Briefcase } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
+import { Helmet } from 'react-helmet-async';
 
 const commands = [
     {
@@ -84,6 +85,13 @@ const VirtualWorkerCommands: React.FC = () => {
 
     return (
         <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans">
+            <Helmet>
+                <title>AI Virtual Worker Commands & Capabilities Guide | TekTrakker</title>
+                <meta name="description" content="Learn how to command your TekTrakker AI Virtual Worker. Examples of scheduling prompts, dispatch requests, mileage audit commands, and financial reporting." />
+                <meta name="keywords" content="AI Assistant Commands, AI Dispatch Prompts, Field Service Automation Prompt Examples" />
+                <meta property="og:title" content="AI Virtual Worker Commands Directory | TekTrakker" />
+                <meta property="og:description" content="Reference guide of natural language prompts to control dispatching, invoicing, tracking, and fleet audits." />
+            </Helmet>
             {/* Navbar */}
             <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/90">
                 <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">

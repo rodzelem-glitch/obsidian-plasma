@@ -333,16 +333,6 @@ const OmniPreviewBoard: React.FC<OmniPreviewBoardProps> = ({ baseContent, platfo
                     </div>
                 </div>
             </div>
-            
-            <style dangerouslySetInnerHTML={{__html: `
-            .hide-scrollbar::-webkit-scrollbar {
-                display: none;
-            }
-            .hide-scrollbar {
-                -ms-overflow-style: none; /* IE and Edge */
-                scrollbar-width: none; /* Firefox */
-            }
-            `}}></style>
         </div>
     );
 };

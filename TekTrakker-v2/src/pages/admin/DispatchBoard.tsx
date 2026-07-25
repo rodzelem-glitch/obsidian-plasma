@@ -1,6 +1,7 @@
 import showToast from "lib/toast";
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { hasPermission, formatAddress , cleanUndefinedFields } from 'lib/utils';
 import { useLanguage } from 'context/LanguageContext';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -9,6 +10,49 @@ import { ChevronLeftIcon, ChevronRightIcon } from '../../constants/constants';
 import { Users, AlertTriangle, CloudLightning, ThermometerSun } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import JobDetailModal from '../../components/modals/JobDetailModal';
+
+const getStateTimezone = (stateCode: string): string => {
+    const code = (stateCode || '').trim().toUpperCase();
+    
+    // Eastern Time Zone States
+    const easternStates = [
+        'ME', 'VT', 'NH', 'MA', 'RI', 'CT', 'NY', 'NJ', 'PA', 'DE', 'MD', 'DC', 'VA', 'WV', 'NC', 'SC', 'GA', 'FL', 'OH', 'MI', 'IN', 'KY'
+    ];
+    // Central Time Zone States
+    const centralStates = [
+        'ND', 'SD', 'NE', 'KS', 'OK', 'TX', 'MN', 'IA', 'MO', 'AR', 'LA', 'WI', 'IL', 'TN', 'MS', 'AL'
+    ];
+    // Mountain Time Zone States
+    const mountainStates = [
+        'MT', 'WY', 'CO', 'NM', 'ID', 'UT', 'AZ'
+    ];
+    // Pacific Time Zone States
+    const pacificStates = [
+        'WA', 'OR', 'NV', 'CA'
+    ];
+    
+    if (easternStates.includes(code)) return 'America/New_York';
+    if (centralStates.includes(code)) return 'America/Chicago';
+    if (mountainStates.includes(code)) return 'America/Denver';
+    if (pacificStates.includes(code)) return 'America/Los_Angeles';
+    if (code === 'AK') return 'America/Anchorage';
+    if (code === 'HI') return 'Pacific/Honolulu';
+    
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+};
+
+const getFriendlyTimezoneName = (timezone: string): string => {
+    const tz = timezone.toLowerCase();
+    if (tz.includes('new_york')) return 'Eastern Time';
+    if (tz.includes('chicago')) return 'Central Time';
+    if (tz.includes('denver')) return 'Mountain Time';
+    if (tz.includes('los_angeles')) return 'Pacific Time';
+    if (tz.includes('anchorage')) return 'Alaska Time';
+    if (tz.includes('honolulu')) return 'Hawaii Time';
+    
+    return timezone.split('/').pop()?.replace(/_/g, ' ') || timezone;
+};
+
 
 const DispatchBoard: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -25,6 +69,46 @@ const DispatchBoard: React.FC = () => {
     const timelineEndHour = 22;
     const totalHours = timelineEndHour - timelineStartHour;
 
+    const orgTimeZone = useMemo(() => {
+        const stateCode = state.currentOrganization?.address?.state;
+        if (stateCode) {
+            return getStateTimezone(stateCode);
+        }
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    }, [state.currentOrganization]);
+
+    const [currentHourState, setCurrentHourState] = useState(new Date().getHours());
+    const [currentOrgDateState, setCurrentOrgDateState] = useState(new Date().toLocaleDateString('en-CA'));
+
+    useEffect(() => {
+        const updateOrgTime = () => {
+            try {
+                const hourFormatter = new Intl.DateTimeFormat('en-US', {
+                    timeZone: orgTimeZone,
+                    hour: 'numeric',
+                    hour12: false
+                });
+                const hourStr = hourFormatter.format(new Date());
+                setCurrentHourState(parseInt(hourStr, 10));
+
+                const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: orgTimeZone,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                });
+                setCurrentOrgDateState(dateFormatter.format(new Date()));
+            } catch (e) {
+                setCurrentHourState(new Date().getHours());
+                setCurrentOrgDateState(new Date().toLocaleDateString('en-CA'));
+            }
+        };
+
+        updateOrgTime();
+        const interval = setInterval(updateOrgTime, 60000); // Update every minute
+        return () => clearInterval(interval);
+    }, [orgTimeZone]);
+
     const technicians = useMemo(() => {
         const currentOrgId = state.currentOrganization?.id;
         const WORKFORCE_ROLES = new Set(['employee', 'both', 'supervisor', 'technician', 'subcontractor', 'admin']);
@@ -33,11 +117,19 @@ const DispatchBoard: React.FC = () => {
             WORKFORCE_ROLES.has((u.role || '').toLowerCase())
         );
 
-        if (state.currentUser?.role === 'supervisor') {
-            return allTechs.filter((u: User) => u.reportsTo === state.currentUser?.id || u.id === state.currentUser?.id);
+        const isAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both';
+        if (!isAdmin && state.currentUser) {
+            const myTeams = (state.teams || []).filter(t => t.memberIds?.includes(state.currentUser!.id));
+            if (myTeams.length > 0) {
+                const teamMemberIds = new Set(myTeams.flatMap(t => t.memberIds || []));
+                teamMemberIds.add(state.currentUser.id);
+                return allTechs.filter(u => teamMemberIds.has(u.id));
+            } else if (state.currentUser.role === 'supervisor') {
+                return allTechs.filter((u: User) => u.reportsTo === state.currentUser?.id || u.id === state.currentUser?.id);
+            }
         }
         return allTechs;
-    }, [state.users, state.currentUser, state.currentOrganization]);
+    }, [state.users, state.currentUser, state.currentOrganization, state.teams]);
 
     // Linked Partners for lookup
     const linkedPartners = useMemo(() => state.subcontractors.filter(s => s.handshakeStatus === 'Linked' && s.linkedOrgId), [state.subcontractors]);
@@ -79,7 +171,7 @@ const DispatchBoard: React.FC = () => {
 
     const jobs = useMemo(() => {
         const combinedJobs = [...(state.jobs || []), ...(state.externalJobs || [])];
-        return combinedJobs.filter((j: Job) => {
+        const dateFiltered = combinedJobs.filter((j: Job) => {
             if (!j.appointmentTime) return false;
 
             const [sy, sm, sd] = selectedDate.split('-').map(Number);
@@ -89,7 +181,21 @@ const DispatchBoard: React.FC = () => {
             const jobDate = new Date(j.appointmentTime);
             return jobDate >= viewStart && jobDate < viewEnd;
         });
-    }, [state.jobs, state.externalJobs, selectedDate, numDays]);
+
+        const isAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both';
+        if (!isAdmin && state.currentUser) {
+            const myTeams = (state.teams || []).filter(t => t.memberIds?.includes(state.currentUser!.id));
+            if (myTeams.length > 0) {
+                const teamMemberIds = new Set(myTeams.flatMap(t => t.memberIds || []));
+                const teamCustomerIds = new Set(myTeams.flatMap(t => t.customerIds || []));
+                return dateFiltered.filter((j: Job) => 
+                    (j.assignedTechnicianId && teamMemberIds.has(j.assignedTechnicianId)) ||
+                    (j.customerId && teamCustomerIds.has(j.customerId))
+                );
+            }
+        }
+        return dateFiltered;
+    }, [state.jobs, state.externalJobs, selectedDate, numDays, state.currentUser, state.teams]);
 
     const getJobStyle = (job: Job) => {
         const start = new Date(job.appointmentTime);
@@ -135,6 +241,10 @@ const DispatchBoard: React.FC = () => {
     };
 
     const handleResizeMouseDown = (e: React.MouseEvent, job: Job) => {
+        if (!hasPermission(state.currentUser, 'manage_dispatch')) {
+            showToast.warn("You do not have permission to modify job duration.");
+            return;
+        }
         e.stopPropagation();
         e.preventDefault();
 
@@ -177,7 +287,7 @@ const DispatchBoard: React.FC = () => {
             if (finalDuration > totalViewMinutes) finalDuration = totalViewMinutes;
 
             try {
-                await db.collection('jobs').doc(job.id).update({ duration: finalDuration });
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({ duration: finalDuration }));
                 showToast.success(`Job duration updated to ${finalDuration} minutes`);
             } catch (error) {
                 console.error("Failed to save resized duration:", error);
@@ -196,6 +306,11 @@ const DispatchBoard: React.FC = () => {
 
     const handleDrop = async (e: React.DragEvent, techId: string) => {
         e.preventDefault();
+        if (!hasPermission(state.currentUser, 'manage_dispatch')) {
+            showToast.warn("You do not have permission to reschedule or dispatch jobs.");
+            setDraggedJobId(null);
+            return;
+        }
         const jobId = draggedJobId;
         if (!jobId) return;
 
@@ -232,12 +347,16 @@ const DispatchBoard: React.FC = () => {
             const updatedJob: Job = { ...job, ...updates };
 
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
-            await db.collection('jobs').doc(jobId).update(updates);
+            await db.collection('jobs').doc(jobId).update(cleanUndefinedFields(updates));
         }
         setDraggedJobId(null);
     };
 
     const handleAutoReschedule = async () => {
+        if (!hasPermission(state.currentUser, 'manage_dispatch')) {
+            showToast.warn("You do not have permission to reschedule jobs.");
+            return;
+        }
         setIsRescheduling(true);
         const [sy, sm, sd] = selectedDate.split('-').map(Number);
         const dayStart = new Date(sy, sm - 1, sd);
@@ -270,7 +389,7 @@ const DispatchBoard: React.FC = () => {
 
             dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
             try {
-                await db.collection('jobs').doc(job.id).update(updates);
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
                 batchSize++;
             } catch (e) { console.error(e); }
         }
@@ -307,7 +426,12 @@ const DispatchBoard: React.FC = () => {
                         <Users size={20} />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t("Dispatch Board")}</h2>
+                        <h2 className="text-xl font-bold text-gray-900 dark:text-white flex flex-wrap items-center gap-2">
+                            {t("Dispatch Board")}
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                                HQ: {state.currentOrganization?.address?.city || 'Denver'}, {state.currentOrganization?.address?.state || 'CO'} ({getFriendlyTimezoneName(orgTimeZone)})
+                            </span>
+                        </h2>
                         <div className="flex gap-2 mt-1 text-[10px] uppercase font-bold text-gray-500 overflow-x-auto whitespace-nowrap scrollbar-hide pb-1">
                             <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-500"></div> {t("Install")}</span>
                             <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-orange-500"></div> {t("Repair")}</span>
@@ -388,9 +512,9 @@ const DispatchBoard: React.FC = () => {
                         >
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs ${activeTechId === tech.id ? 'bg-white/20' : 'bg-gray-100 dark:bg-gray-700 text-gray-600'
                                 }`}>
-                                {tech.firstName[0]}{tech.lastName[0]}
+                                {(tech.firstName || '')[0] || (tech.email || '')[0] || '?'}{(tech.lastName || '')[0] || ''}
                             </div>
-                            <span className="text-[10px] font-bold max-w-[80px] truncate">{tech.firstName}</span>
+                            <span className="text-[10px] font-bold max-w-[80px] truncate">{tech.firstName || tech.email || t('Unassigned')}</span>
                         </button>
                     ))}
                 </div>
@@ -407,24 +531,27 @@ const DispatchBoard: React.FC = () => {
                                 <p className="text-sm text-gray-500">{t("No jobs scheduled for this technician today.")}</p>
                             </div>
                         ) : (
-                            activeTechJobs.sort((a, b) => new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime()).map(job => (
-                                <div key={job.id} className={`mx-3 p-4 rounded-2xl border bg-white dark:bg-gray-800 shadow-sm border-l-8 ${getJobColor(job)}`}>
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div>
-                                            <p className="text-[10px] font-black text-gray-400 uppercase">{new Date(job.appointmentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                                            <p className="font-bold text-gray-900 dark:text-white">{job.customerName}</p>
+                            activeTechJobs.sort((a, b) => new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime()).map(job => {
+                                const customer = state.customers?.find(c => c.id === job.customerId);
+                                return (
+                                    <div key={job.id} className={`mx-3 p-4 rounded-2xl border bg-white dark:bg-gray-800 shadow-sm border-l-8 ${getJobColor(job)}`}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <p className="text-[10px] font-black text-gray-400 uppercase">{new Date(job.appointmentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                                <p className="font-bold text-gray-900 dark:text-white">{customer?.name || job.customerName}</p>
+                                            </div>
+                                            <div className="bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded-lg text-[10px] font-bold text-primary-600">
+                                                {job.jobStatus}
+                                            </div>
                                         </div>
-                                        <div className="bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded-lg text-[10px] font-bold text-primary-600">
-                                            {job.jobStatus}
+                                        <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">{job.tasks[0]}</p>
+                                        <div className="flex justify-between items-center text-[10px] text-gray-500 bg-gray-50 dark:bg-gray-700/50 -mx-4 -mb-4 p-3 rounded-b-2xl border-t border-gray-100 dark:border-gray-800">
+                                            <span className="truncate max-w-[200px]">{formatAddress(job.address || customer?.address)}</span>
+                                            <button onClick={() => setViewingJob(job)} className="text-primary-600 font-bold">{t("Details")} &rsaquo;</button>
                                         </div>
                                     </div>
-                                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">{job.tasks[0]}</p>
-                                    <div className="flex justify-between items-center text-[10px] text-gray-500 bg-gray-50 dark:bg-gray-700/50 -mx-4 -mb-4 p-3 rounded-b-2xl border-t border-gray-100 dark:border-gray-800">
-                                        <span className="truncate max-w-[200px]">{job.address}</span>
-                                        <button onClick={() => setViewingJob(job)} className="text-primary-600 font-bold">{t("Details")} &rsaquo;</button>
-                                    </div>
-                                </div>
-                            ))
+                                );
+                            })
                         )}
                     </div>
                 </Card>
@@ -439,17 +566,30 @@ const DispatchBoard: React.FC = () => {
                                 const [y, m, d] = selectedDate.split('-').map(Number);
                                 const dateHeader = new Date(y, m - 1, d + dayIndex);
                                 const isFirstDay = dayIndex === 0;
+                                const isSameDayStr = dateHeader.toLocaleDateString('en-CA') === currentOrgDateState;
                                 return (
                                     <div key={dayIndex} className={`flex-1 flex flex-col ${!isFirstDay ? 'border-l-2 border-indigo-500/30' : ''}`}>
                                         <div className="bg-gray-100 dark:bg-gray-800/80 py-1 text-center text-xs font-black text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
                                             {dateHeader.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                                         </div>
                                         <div className="flex">
-                                            {Array.from({ length: totalHours }).map((_, i) => (
-                                                <div key={i} className="flex-1 py-1 text-center text-[9px] font-bold text-gray-400 border-l border-gray-200 dark:border-gray-800 first:border-l-0">
-                                                    {timelineStartHour + i}
-                                                </div>
-                                            ))}
+                                            {Array.from({ length: totalHours }).map((_, i) => {
+                                                const hourVal = timelineStartHour + i;
+                                                const isHighlighted = isSameDayStr && hourVal === currentHourState;
+                                                return (
+                                                    <div 
+                                                        key={i} 
+                                                        className={`flex-1 py-1 text-center text-[9px] font-bold border-l border-gray-200 dark:border-gray-800 first:border-l-0 transition-all ${
+                                                            isHighlighted 
+                                                                ? 'bg-indigo-500/20 dark:bg-indigo-500/30 text-indigo-600 dark:text-indigo-400 font-extrabold shadow-inner relative after:content-["•"] after:text-indigo-500 after:absolute after:bottom-[-2px] after:left-1/2 after:-translate-x-1/2' 
+                                                                : 'text-gray-400'
+                                                        }`}
+                                                        title={isHighlighted ? `Current Hour (HQ Timezone: ${orgTimeZone})` : ''}
+                                                    >
+                                                        {hourVal}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 );
@@ -459,51 +599,68 @@ const DispatchBoard: React.FC = () => {
                             {technicians.map((tech: User) => (
                                 <div key={tech.id} className="flex min-h-[90px] relative hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
                                     <div className="w-40 p-3 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-10 flex flex-col justify-center sticky left-0 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                        <p className="font-bold text-gray-900 dark:text-white truncate text-sm">{tech.firstName} {tech.lastName}</p>
-                                        <p className="text-[10px] text-gray-500 uppercase font-black">{t(tech.role.replace('_', ' '))}</p>
+                                        <p className="font-bold text-gray-900 dark:text-white truncate text-sm">{tech.firstName || tech.lastName ? `${tech.firstName || ''} ${tech.lastName || ''}`.trim() : tech.email || 'Unknown'}</p>
+                                        <p className="text-[10px] text-gray-500 uppercase font-black">{t((tech.role || '').replace('_', ' '))}</p>
                                     </div>
 
                                     <div className={`flex-1 relative bg-grid-pattern ${numDays === 3 ? 'bg-[length:calc(100%/96)_100%]' : 'bg-[length:calc(100%/32)_100%]'}`} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, tech.id)}>
                                         <div className="absolute inset-0 flex pointer-events-none">
-                                            {Array.from({ length: numDays }).map((_, dayIndex) => (
-                                                <div key={dayIndex} className={`flex-1 flex ${dayIndex > 0 ? 'border-l-2 border-indigo-500/30' : ''}`}>
-                                                    {Array.from({ length: totalHours }).map((_, i) => (
-                                                        <div key={i} className="flex-1 border-r border-gray-100 dark:border-gray-700/50"></div>
-                                                    ))}
-                                                </div>
-                                            ))}
+                                            {Array.from({ length: numDays }).map((_, dayIndex) => {
+                                                const [y, m, d] = selectedDate.split('-').map(Number);
+                                                const colDate = new Date(y, m - 1, d + dayIndex);
+                                                const isColSameDay = colDate.toLocaleDateString('en-CA') === currentOrgDateState;
+                                                const isFirstCol = dayIndex === 0;
+                                                return (
+                                                    <div key={dayIndex} className={`flex-1 flex ${!isFirstCol ? 'border-l-2 border-indigo-500/30' : ''}`}>
+                                                        {Array.from({ length: totalHours }).map((_, i) => {
+                                                            const isHourHighlighted = isColSameDay && (timelineStartHour + i) === currentHourState;
+                                                            return (
+                                                                <div 
+                                                                    key={i} 
+                                                                    className={`flex-1 border-r border-gray-100 dark:border-gray-700/50 transition-colors ${
+                                                                        isHourHighlighted ? 'bg-indigo-500/5 dark:bg-indigo-500/10' : ''
+                                                                    }`}
+                                                                ></div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
 
-                                        {jobs.filter((j: Job) => j.assignedTechnicianId === tech.id).map((job: Job) => (
-                                            <div // NOSONAR
-                                                key={job.id}
-                                                draggable
-                                                onClick={() => setViewingJob(job)}
-                                                onDragStart={(e) => handleDragStart(e, job.id)}
-                                                className={`absolute top-2 bottom-2 rounded-lg p-2 text-[10px] font-medium text-white overflow-hidden cursor-pointer hover:scale-[1.02] shadow-md border-l-4 z-10 transition-all ${getJobColor(job)}`}
+                                        {jobs.filter((j: Job) => j.assignedTechnicianId === tech.id).map((job: Job) => {
+                                            const customer = state.customers?.find(c => c.id === job.customerId);
+                                            return (
+                                                <div // NOSONAR
+                                                    key={job.id}
+                                                    draggable
+                                                    onClick={() => setViewingJob(job)}
+                                                    onDragStart={(e) => handleDragStart(e, job.id)}
+                                                    className={`absolute top-2 bottom-2 rounded-lg p-2 text-[10px] font-medium text-white overflow-hidden cursor-pointer hover:scale-[1.02] shadow-md border-l-4 z-10 transition-all ${getJobColor(job)}`}
 
-                                                style={getJobStyle(job)} // NOSONAR
-                                            >
-                                                <div className="font-bold truncate drop-shadow-md">{job.customerName}</div>
-                                                <div className="truncate opacity-90">{job.tasks[0]}</div>
-                                                {job.assignedPartnerId === state.currentOrganization?.id && (
-                                                    <div className="text-[8px] uppercase font-black bg-white/20 px-1 rounded mt-1 inline-block">{t("Partner Job")}</div>
-                                                )}
-                                                {job.assistants && job.assistants.length > 0 && (
-                                                    <div className="absolute bottom-1 right-1 flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-bold">
-                                                        <Users size={10} /> +{job.assistants.length}
-                                                    </div>
-                                                )}
-                                                {/* Resize Handle */}
-                                                <div
-                                                    className="absolute top-0 right-0 bottom-0 w-3 cursor-ew-resize hover:bg-white/10 z-20 flex items-center justify-center group/resize"
-                                                    onMouseDown={(e) => handleResizeMouseDown(e, job)}
-                                                    onClick={(e) => e.stopPropagation()}
+                                                    style={getJobStyle(job)} // NOSONAR
                                                 >
-                                                    <div className="w-[2px] h-4 bg-white/40 group-hover/resize:bg-white/80 rounded"></div>
+                                                    <div className="font-bold truncate drop-shadow-md">{customer?.name || job.customerName}</div>
+                                                    <div className="truncate opacity-90">{job.tasks[0]}</div>
+                                                    {job.assignedPartnerId === state.currentOrganization?.id && (
+                                                        <div className="text-[8px] uppercase font-black bg-white/20 px-1 rounded mt-1 inline-block">{t("Partner Job")}</div>
+                                                    )}
+                                                    {job.assistants && job.assistants.length > 0 && (
+                                                        <div className="absolute bottom-1 right-1 flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                                                            <Users size={10} /> +{job.assistants.length}
+                                                        </div>
+                                                    )}
+                                                    {/* Resize Handle */}
+                                                    <div
+                                                        className="absolute top-0 right-0 bottom-0 w-3 cursor-ew-resize hover:bg-white/10 z-20 flex items-center justify-center group/resize"
+                                                        onMouseDown={(e) => handleResizeMouseDown(e, job)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <div className="w-[2px] h-4 bg-white/40 group-hover/resize:bg-white/80 rounded"></div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             ))}
@@ -517,7 +674,6 @@ const DispatchBoard: React.FC = () => {
                 onClose={() => setViewingJob(null)}
                 job={viewingJob as Job}
                 isAdmin={true}
-                onPrint={() => window.print()}
             />
         </div>
     );

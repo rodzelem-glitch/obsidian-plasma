@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState } from 'react';
@@ -62,13 +63,13 @@ const MergeModal: React.FC<MergeModalProps> = ({ isOpen, onClose, employees }) =
             const batch = db.batch();
             
             const jobsSnap = await db.collection('jobs').where('assignedTechnicianId', '==', finalDuplicateId).where('organizationId', '==', orgId).get();
-            jobsSnap.forEach(doc => batch.update(doc.ref, { assignedTechnicianId: finalMasterId, assignedTechnicianName: finalMasterUser?.firstName || 'Assigned' }));
+            jobsSnap.forEach(doc => batch.update(doc.ref, cleanUndefinedFields({ assignedTechnicianId: finalMasterId, assignedTechnicianName: finalMasterUser?.firstName || 'Assigned' })));
             
             const shiftsSnap = await db.collection('shiftLogs').where('userId', '==', finalDuplicateId).where('organizationId', '==', orgId).get();
-            shiftsSnap.forEach(doc => batch.update(doc.ref, { userId: finalMasterId }));
+            shiftsSnap.forEach(doc => batch.update(doc.ref, cleanUndefinedFields({ userId: finalMasterId })));
 
             const vehicleLogsSnap = await db.collection('vehicleLogs').where('userId', '==', finalDuplicateId).where('organizationId', '==', orgId).get();
-            vehicleLogsSnap.forEach(doc => batch.update(doc.ref, { userId: finalMasterId }));
+            vehicleLogsSnap.forEach(doc => batch.update(doc.ref, cleanUndefinedFields({ userId: finalMasterId })));
             
             const duplicateRef = db.collection('users').doc(finalDuplicateId);
             batch.delete(duplicateRef);

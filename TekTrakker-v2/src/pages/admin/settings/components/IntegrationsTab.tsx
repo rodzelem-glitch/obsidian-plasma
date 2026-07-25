@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 // import { getFunctions, httpsCallable } from "firebase/functions";
 import { db, functions } from "lib/firebase";
@@ -83,6 +84,8 @@ interface IntegrationsTabProps {
     setRingCentralJwtToken: (val: string) => void;
     ringCentralLoginFlow: 'jwt' | 'oauth';
     setRingCentralLoginFlow: (val: 'jwt' | 'oauth') => void;
+    ringCentralCallMode: 'browser' | 'ringout';
+    setRingCentralCallMode: (val: 'browser' | 'ringout') => void;
     rcPrimarySms: boolean;
     setRcPrimarySms: (val: boolean) => void;
     rcEnableVoiceAi: boolean;
@@ -187,6 +190,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
     rcBackendClientId, setRcBackendClientId,
     ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken,
     ringCentralLoginFlow, setRingCentralLoginFlow,
+    ringCentralCallMode, setRingCentralCallMode,
     rcPrimarySms, setRcPrimarySms,
     rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate,
     rcMappings, setRcMappings,
@@ -218,7 +222,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                 window.open(data.onboardingUrl, '_blank');
                 if (data.accountId) {
                     setKortAccountId(data.accountId);
-                    await db.collection('organizations').doc(orgId).update({ kortAccountId: data.accountId });
+                    await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({ kortAccountId: data.accountId }));
                     if (state.currentOrganization) {
                         dispatch({
                             type: 'UPDATE_ORGANIZATION',
@@ -291,7 +295,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                                 setDefaultPaymentGateway(val);
                                 if (orgId) {
                                     try {
-                                        await db.collection('organizations').doc(orgId).update({ defaultPaymentGateway: val });
+                                        await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({ defaultPaymentGateway: val }));
                                         if (state.currentOrganization) {
                                             dispatch({
                                                 type: 'UPDATE_ORGANIZATION',
@@ -307,8 +311,8 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                             }}
                             className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary-500"
                         >
-                            <option value="stripe">Stripe</option>
-                            <option value="square">Square</option>
+                            <option value="stripe" disabled={defaultPaymentGateway !== 'stripe'}>Stripe (Activation required)</option>
+                            <option value="square" disabled={defaultPaymentGateway !== 'square'}>Square (Activation required)</option>
 
                             <option value="kort">TekTrakker Payments (Recommended)</option>
                         </select>
@@ -401,7 +405,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                                             if (!window.confirm("Are you sure you want to disconnect this merchant account? This will stop native payment processing.")) return;
                                             try {
                                                 setKortAccountId('');
-                                                await db.collection('organizations').doc(orgId).update({ kortAccountId: null });
+                                                await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({ kortAccountId: null }));
                                                 if (state.currentOrganization) {
                                                     dispatch({
                                                         type: 'UPDATE_ORGANIZATION',
@@ -485,7 +489,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                                 onClick={async () => {
                                     if (!window.confirm("Disconnect Gusto? Syncing will stop.")) return;
                                     try {
-                                        await db.collection('organizations').doc(orgId).update({ gustoCompanyUuid: null, gustoOnboardingUrl: null });
+                                        await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({ gustoCompanyUuid: null, gustoOnboardingUrl: null }));
                                         dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...state.currentOrganization, gustoCompanyUuid: undefined, gustoOnboardingUrl: undefined } });
                                         showToast.success("Gusto disconnected successfully.");
                                     } catch (e) {
@@ -641,11 +645,10 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
             </div>
             )}
 
-            {(!!twilioSid || !!smtpHost) && (
+            {!!twilioSid && (
             <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
-                <h3 className="text-lg font-black mb-4 flex items-center gap-2 text-slate-800 dark:text-white"><Mail size={20}/> Email & SMS Delivery</h3>
+                <h3 className="text-lg font-black mb-4 flex items-center gap-2 text-slate-800 dark:text-white"><MessageSquare size={20}/> SMS Delivery</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
-                    {!!twilioSid && (
                     <IntegrationModule 
                         id="twilio" 
                         title="Twilio" 
@@ -656,36 +659,32 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                         expandedId={expandedGridId} setExpandedId={setExpandedGridId}
                     >
                         <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Provide Twilio credentials to send "On My Way" texts and appointment reminders.</p>
+                        <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-200 dark:border-slate-800 mb-4 space-y-2">
+                            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">BYOK Webhook Setup (Required):</h4>
+                            <p className="text-[10px] text-slate-500 leading-relaxed">
+                                In your Twilio Console, configure your Phone Number's webhooks (HTTP POST) to the following:
+                            </p>
+                            <div className="space-y-1.5 font-mono text-[10px]">
+                                <div>
+                                    <span className="text-slate-400 block font-sans font-semibold">Incoming Messages Webhook:</span>
+                                    <code className="bg-slate-100 dark:bg-slate-800 p-1 rounded block select-all text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                        https://us-central1-tektrakker.cloudfunctions.net/twilioInboundSms
+                                    </code>
+                                </div>
+                                <div>
+                                    <span className="text-slate-400 block font-sans font-semibold">Incoming Voice Webhook:</span>
+                                    <code className="bg-slate-100 dark:bg-slate-800 p-1 rounded block select-all text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                        https://us-central1-tektrakker.cloudfunctions.net/twilioInboundVoice
+                                    </code>
+                                </div>
+                            </div>
+                        </div>
                         <div className="space-y-4">
                             <Input label="Account SID" value={twilioSid} onChange={e => setTwilioSid(e.target.value)} />
                             <Input label="Auth Token" type="password" value={twilioToken} onChange={e => setTwilioToken(e.target.value)} />
                             <Input label="Origin Phone Number" value={twilioNumber} onChange={e => setTwilioNumber(e.target.value)} placeholder="+15551234567" />
                         </div>
                     </IntegrationModule>
-                    )}
-                    
-                    {!!smtpHost && (
-                    <IntegrationModule 
-                        id="smtp" 
-                        title="Custom SMTP Server" 
-                        category="Email Delivery" 
-                        icon={Mail}
-                        iconColor="text-slate-500"
-                        isConnected={!!smtpHost}
-                        expandedId={expandedGridId} setExpandedId={setExpandedGridId}
-                    >
-                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Ensure maximum inbox deliverability for invoices and proposals by sending from your own email servers (e.g. Outlook, Google Workspace).</p>
-                        <div className="space-y-4">
-                            <Input label="SMTP Host" value={smtpHost} onChange={e => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" />
-                            <Input label="SMTP Port" type="number" value={smtpPort} onChange={e => setSmtpPort(parseInt(e.target.value))} placeholder="587" />
-                            <Input label="Username (Email)" value={smtpUser} onChange={e => setSmtpUser(e.target.value)} />
-                            <Input label="Password or App Password" type="password" value={smtpPass} onChange={e => setSmtpPass(e.target.value)} />
-                            <Button onClick={handleSendTestEmail} disabled={isSendingTest} variant="secondary" className="text-xs w-full mt-2 font-black uppercase tracking-widest text-[10px]" type="button">
-                                {isSendingTest ? 'Sending...' : 'Test Connection'}
-                            </Button>
-                        </div>
-                    </IntegrationModule>
-                    )}
                 </div>
             </div>
             )}
@@ -886,6 +885,18 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                             >
                                 <option value="jwt">Automatic JWT Login (Fastest, requires JWT auth grant approval)</option>
                                 <option value="oauth">Interactive OAuth Login (Popup dialer login fallback)</option>
+                            </select>
+                        </div>
+                        <div className="mb-4">
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Default Call Mode</label>
+                            <select 
+                                aria-label="Default Call Mode"
+                                value={ringCentralCallMode} 
+                                onChange={e => setRingCentralCallMode(e.target.value as 'browser' | 'ringout')} 
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-primary-500"
+                            >
+                                <option value="browser">Browser / Softphone (WebRTC in-app calling)</option>
+                                <option value="ringout">RingOut (Callback to mobile/cellphone)</option>
                             </select>
                         </div>
                         {ringCentralLoginFlow === 'jwt' && (

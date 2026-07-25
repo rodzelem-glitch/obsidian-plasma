@@ -19,6 +19,7 @@ const RosterTable: React.FC<RosterTableProps> = ({ stats }) => {
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Revenue</th>
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Jobs</th>
                             <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Avg Ticket</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Avg Time on Site</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -29,6 +30,14 @@ const RosterTable: React.FC<RosterTableProps> = ({ stats }) => {
                                 <td className="px-6 py-4 text-green-600 dark:text-green-400 font-bold">${tech.revenue.toLocaleString()}</td>
                                 <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{tech.completed}</td>
                                 <td className="px-6 py-4 text-blue-600 dark:text-blue-400 font-bold">${tech.avgTicket.toFixed(0)}</td>
+                                <td className="px-6 py-4 text-purple-600 dark:text-purple-400 font-bold">
+                                    {tech.avgTimeOnSite > 0 
+                                        ? tech.avgTimeOnSite >= 60 
+                                            ? `${Math.floor(tech.avgTimeOnSite / 60)}h ${Math.round(tech.avgTimeOnSite % 60)}m`
+                                            : `${Math.round(tech.avgTimeOnSite)}m`
+                                        : 'N/A'
+                                    }
+                                </td>
                             </tr>
                         ))}
                     </tbody>

@@ -1,5 +1,6 @@
 
 import type { Organization, User, Customer, Job, Project, Proposal, MembershipPlan, ServiceAgreement, BusinessDocument } from '../../types';
+import { MOCK_DEMO_PROPOSALS } from './proposals';
 
 // --- APEX SERVICE SOLUTIONS - High-Revenue Demo Data ---
 
@@ -218,6 +219,19 @@ export const APEX_MOCK_CUSTOMERS: Customer[] = [
             { id: 'eq-c3-2', brand: 'Carrier', model: 'REF-1000', serial: 'SN-REF-802', type: 'Walk-in Cooler', location: 'Warehouse Section B' },
             { id: 'eq-c3-3', brand: 'Hoshizaki', model: 'IM-200', serial: 'SN-IM-301', type: 'Ice Machine', location: 'Breakroom' }
         ]
+    },
+    {
+        id: 'demo-cust-2',
+        organizationId: 'apex-org-456',
+        name: 'Tractor Supply - Converse, TX',
+        firstName: 'Store',
+        lastName: 'Manager',
+        email: 'converse@tractorsupply.demo',
+        phone: '(210) 318-4197',
+        address: '8318 FM 78, Converse, TX 78109',
+        customerType: 'Commercial',
+        notes: 'Commercial Tractor Supply store location.',
+        equipment: []
     }
 ];
 
@@ -397,6 +411,23 @@ export const APEX_MOCK_PROJECTS: Project[] = [
             { id: 'pt2-2', description: 'Procure long-lead items', status: 'Pending', isBenchmark: false, dueDate: '2024-10-10' }
         ],
         createdAt: '2024-07-20T14:00:00Z'
+    },
+    {
+        id: 'demo-project-1',
+        organizationId: 'apex-org-456',
+        name: 'New Furnace Installation',
+        customerId: 'demo-cust-2',
+        customerName: 'Tractor Supply - Converse, TX',
+        status: 'In Progress',
+        startDate: '2026-06-01T09:00:00Z',
+        endDate: '2026-06-30T17:00:00Z',
+        budget: 100000,
+        description: 'HVAC repair and rooftop units labor breakdown.',
+        address: '8318 FM 78, Converse, TX 78109',
+        managerId: 'apex-sales-manager-id',
+        teamIds: ['apex-lead-tech-id'],
+        projectTasks: [],
+        createdAt: '2026-06-01T10:00:00Z'
     }
 ];
 
@@ -449,7 +480,30 @@ export const APEX_MOCK_PROPOSALS: Proposal[] = [
             { id: 'ap2-item-2', name: 'Controls Upgrade', description: 'Upgrade RTU controls to new digital thermostats.', quantity: 4, price: 4000, total: 16000, type: 'Part', taxable: true, tier: 'Better' },
             { id: 'ap2-item-3', name: 'Extended Warranty', description: 'Adds 2 years to standard warranty.', quantity: 1, price: 900, total: 900, type: 'Fee', tier: 'Best' }
         ]
-    }
+    },
+    {
+        id: 'APEX-PROP-PROJ-001',
+        organizationId: 'apex-org-456',
+        customerId: 'apex-cust-2',
+        customerName: 'Sterling Residences',
+        status: 'Draft',
+        total: 45000,
+        subtotal: 42000,
+        taxAmount: 3000,
+        createdAt: '2026-06-24T10:00:00Z',
+        isProjectLevel: true,
+        title: 'Rooftop HVAC Replacement Project',
+        laborItems: [
+            { id: 'l-1', unitName: 'RTU #1', scope: 'RTU replacement labor', hours: 40, rate: 150, value: 6000 }
+        ],
+        partItems: [
+            { id: 'p-1', unitName: 'RTU #1', partName: '15-Ton Carrier RTU', quantity: 1, vendorCost: 25000, markupPct: 20, customerUnitPrice: 30000, customerLineTotal: 30000, availability: 'In Stock' }
+        ],
+        allowanceItems: [
+            { id: 'a-1', description: 'Crane Service mobilization', basis: 'Flat crane fee', amount: 9000 }
+        ]
+    },
+    ...MOCK_DEMO_PROPOSALS.map(p => ({ ...p, organizationId: 'apex-org-456' }))
 ];
 
 export const APEX_MOCK_PLANS: MembershipPlan[] = [

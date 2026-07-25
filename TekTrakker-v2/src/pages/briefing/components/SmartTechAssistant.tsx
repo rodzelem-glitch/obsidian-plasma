@@ -1,6 +1,7 @@
-﻿
+import { cleanUndefinedFields } from '../../../lib/utils';
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, X, Loader2, Maximize, Minimize, Image as ImageIcon, Wrench, Cpu, ArrowLeft, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Send, X, Loader2, Maximize, Minimize, Image as ImageIcon, Wrench, Cpu, ArrowLeft, CheckCircle2, ChevronRight, FileText } from 'lucide-react';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
 import Textarea from 'components/ui/Textarea';
@@ -9,6 +10,7 @@ import { collection, addDoc, query, orderBy, limit, onSnapshot, doc, getDoc, upd
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { uploadFileToStorage } from 'lib/storageService';
 import { useAppContext } from 'context/AppContext';
+import showToast from 'lib/toast';
 
 interface SmartTechAssistantProps {
     isOpen: boolean;
@@ -37,6 +39,34 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [error, setError] = useState<string | null>(null);
 
+    const [dragActive, setDragActive] = useState(false);
+
+    const handleDrag = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setDragActive(true);
+        } else if (e.type === "dragleave") {
+            setDragActive(false);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            const file = e.dataTransfer.files[0];
+            if (!file.type.startsWith('image/')) {
+                showToast.warn("Attachment Failed: The Smart Tech Assistant currently only supports image files.");
+                return;
+            }
+            setImageFile(file);
+            setImagePreview(URL.createObjectURL(file));
+        }
+    };
+
     // Dynamic Technician Tools Phase 2 states
     const [activeTab, setActiveTab] = useState<'chat' | 'tools'>('chat');
     const [customTools, setCustomTools] = useState<any[]>([]);
@@ -44,6 +74,10 @@ const SmartTechAssistant: React.FC<SmartTechAssistantProps> = ({ isOpen, onClose
     const [formValues, setFormValues] = useState<Record<string, any>>({});
     const [isRunningTool, setIsRunningTool] = useState(false);
     const [toolSuccess, setToolSuccess] = useState(false);
+    const [lastExecutedTool, setLastExecutedTool] = useState<any | null>(null);
+    const [lastExecutedParams, setLastExecutedParams] = useState<Record<string, any> | null>(null);
+    const [lastExecutedRecordId, setLastExecutedRecordId] = useState<string>('');
+    const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
     useEffect(() => {
         if (!state.currentUser) return;
         if (state.isDemoMode || !jobId || !organizationId) {
@@ -112,7 +146,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const batch = db.batch();
     
     const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
-    batch.set(recordRef, {
+    batch.set(cleanUndefinedFields(recordRef), {
         id: recordRef.id,
         toolName: "complianceChecklist",
         loggedParams: params,
@@ -148,7 +182,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const batch = db.batch();
     
     const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
-    batch.set(recordRef, {
+    batch.set(cleanUndefinedFields(recordRef), {
         id: recordRef.id,
         toolName: "vacuumBaselines",
         loggedParams: params,
@@ -184,7 +218,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const batch = db.batch();
     
     const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
-    batch.set(recordRef, {
+    batch.set(cleanUndefinedFields(recordRef), {
         id: recordRef.id,
         toolName: "materialsConsumed",
         loggedParams: params,
@@ -220,7 +254,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const batch = db.batch();
     
     const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
-    batch.set(recordRef, {
+    batch.set(cleanUndefinedFields(recordRef), {
         id: recordRef.id,
         toolName: "customerApprovals",
         loggedParams: params,
@@ -256,7 +290,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const batch = db.batch();
     
     const recordRef = db.collection('organizations').doc(orgId).collection('synthesizedData').doc();
-    batch.set(recordRef, {
+    batch.set(cleanUndefinedFields(recordRef), {
         id: recordRef.id,
         toolName: "compressorWarranty",
         loggedParams: params,
@@ -381,7 +415,7 @@ Followed by a friendly message confirming what you saved. Supported HVAC keys: c
 
             const result = await callGeminiAI({
                 prompt: completePrompt,
-                modelName: "gemini-3.1-pro-preview",
+                modelName: "gemini-3.6-flash",
                 image: imagePayload
             });
 
@@ -527,12 +561,122 @@ Followed by a friendly message confirming what you saved. Supported HVAC keys: c
                 }
             }
 
+            setLastExecutedTool(selectedTool);
+            setLastExecutedParams(parsedPayload);
+            setLastExecutedRecordId(recordId);
             setToolSuccess(true);
         } catch (err: any) {
             console.error("Failed to run custom tool:", err);
             setError("Execution failed: " + err.message);
         } finally {
             setIsRunningTool(false);
+        }
+    };
+
+    const handleGeneratePDFReport = async () => {
+        if (!lastExecutedTool || !lastExecutedParams) return;
+        setIsGeneratingPDF(true);
+        try {
+            // @ts-ignore - html2pdf has no types available right now
+            const html2pdf = (await import('html2pdf.js')).default;
+            
+            const activeJob = state.jobs.find((j: any) => j.id === jobId) || state.jobs.find((j: any) => j.id === state.activeJobIdForWorkflow);
+            const customerName = activeJob?.customerName || 'N/A';
+            const jobAddress = activeJob?.address || 'N/A';
+            const orgName = state.currentOrganization?.name || 'TekTrakker Service Provider';
+            const orgEmail = state.currentOrganization?.email || 'N/A';
+            const orgPhone = state.currentOrganization?.phone || 'N/A';
+            
+            // Build rows for parameters table
+            const rows = Object.entries(lastExecutedParams).map(([key, val]) => {
+                const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                return `
+                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                        <td style="padding: 12px 10px; font-weight: 600; color: #334155; text-align: left;">${label}</td>
+                        <td style="padding: 12px 10px; text-align: right; font-family: monospace; color: #0f172a;">${String(val)}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            const container = document.createElement('div');
+            container.innerHTML = `
+                <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; background: #ffffff; line-height: 1.5;">
+                    <!-- Header -->
+                    <div style="border-bottom: 2px solid #7c3aed; padding-bottom: 20px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                           <h1 style="color: #7c3aed; margin: 0; font-size: 24px; font-weight: 800; tracking-wide; text-align: left;">TEKTRAKKER REPORT</h1>
+                           <p style="margin: 4px 0 0 0; font-size: 11px; color: #64748b; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; text-align: left;">Dynamically Synthesized Widget Data</p>
+                        </div>
+                        <div style="text-align: right;">
+                           <p style="margin: 0; font-weight: bold; font-size: 14px; color: #0f172a;">${orgName}</p>
+                           <p style="margin: 4px 0 0 0; font-size: 11px; color: #64748b;">${orgEmail} | ${orgPhone}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Meta Information -->
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 30px; font-size: 12px; background: #f8fafc; border: 1px solid #f1f5f9; padding: 15px; border-radius: 12px;">
+                        <div style="flex: 1; text-align: left;">
+                           <p style="margin: 0 0 6px 0; color: #64748b; font-weight: bold; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em;">Customer / Site</p>
+                           <p style="margin: 0; font-weight: bold; color: #0f172a; font-size: 13px;">${customerName}</p>
+                           <p style="margin: 4px 0 0 0; color: #475569;">${jobAddress}</p>
+                        </div>
+                        <div style="flex: 1; text-align: right;">
+                           <p style="margin: 0 0 6px 0; color: #64748b; font-weight: bold; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em;">Execution Details</p>
+                           <p style="margin: 0; color: #475569;"><strong>Job ID:</strong> #${jobId ? jobId.slice(0, 8) : 'N/A'}</p>
+                           <p style="margin: 4px 0 0 0; color: #475569;"><strong>Date Executed:</strong> ${new Date().toLocaleDateString()}</p>
+                           <p style="margin: 4px 0 0 0; color: #475569;"><strong>Record ID:</strong> ${lastExecutedRecordId || 'N/A'}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Tool info banner -->
+                    <div style="border-left: 4px solid #7c3aed; background: #faf5ff; padding: 15px 20px; border-radius: 4px 12px 12px 4px; margin-bottom: 35px; text-align: left;">
+                       <h3 style="color: #7c3aed; margin: 0 0 4px 0; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Tool Name: ${lastExecutedTool.toolName}</h3>
+                       <p style="margin: 0; font-size: 12px; color: #581c87; font-weight: 500; font-style: italic;">"${lastExecutedTool.requestedCapability}"</p>
+                    </div>
+                    
+                    <!-- Parameters Table -->
+                    <h3 style="font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; text-align: left;">Captured Parameters</h3>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 50px;">
+                       <thead>
+                           <tr style="background: #f8fafc; border-bottom: 1.5px solid #cbd5e1;">
+                               <th style="text-align: left; padding: 10px 10px; font-weight: 700; color: #475569; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em;">Parameter Name</th>
+                               <th style="text-align: right; padding: 10px 10px; font-weight: 700; color: #475569; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em;">Logged Value</th>
+                           </tr>
+                       </thead>
+                       <tbody>
+                           ${rows}
+                       </tbody>
+                    </table>
+                    
+                    <!-- Signatures -->
+                    <div style="border-top: 1.5px dashed #e2e8f0; padding-top: 25px; margin-top: 50px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; color: #64748b;">
+                       <div style="text-align: left;">
+                           <p style="margin: 0; font-weight: bold;">TekTrakker Autonomous Audit Log</p>
+                           <p style="margin: 3px 0 0 0;">Report compiled safely in sandboxed tenant environment.</p>
+                       </div>
+                       <div style="width: 220px; text-align: right;">
+                           <div style="border-bottom: 1px solid #94a3b8; height: 35px; margin-bottom: 6px;"></div>
+                           <p style="margin: 0; font-weight: bold; color: #0f172a; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em;">Technician Signature</p>
+                       </div>
+                    </div>
+                </div>
+            `;
+            
+            const opt: any = {
+                margin: 10,
+                filename: `Report-${lastExecutedTool.toolName}-${lastExecutedRecordId || Date.now()}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            await html2pdf().from(container).set(opt).save();
+            showToast.success("PDF Report generated and downloaded successfully!");
+        } catch (err: any) {
+            console.error("PDF generation failed:", err);
+            showToast.error("Failed to generate PDF: " + err.message);
+        } finally {
+            setIsGeneratingPDF(false);
         }
     };
 
@@ -615,7 +759,22 @@ Followed by a friendly message confirming what you saved. Supported HVAC keys: c
                 {/* Tab content area */}
                 <div className="flex-1 flex flex-col min-h-0">
                     {activeTab === 'chat' ? (
-                        <>
+                        <div 
+                            onDragEnter={handleDrag}
+                            onDragOver={handleDrag}
+                            onDragLeave={handleDrag}
+                            onDrop={handleDrop}
+                            className="flex-1 flex flex-col min-h-0 relative"
+                        >
+                            {dragActive && (
+                                <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center border-4 border-dashed border-purple-500 rounded-b-2xl p-4 text-center animate-fade-in">
+                                    <div className="p-4 bg-purple-500/10 rounded-full border border-purple-500/30 mb-3 animate-bounce">
+                                        <ImageIcon className="w-10 h-10 text-purple-600" />
+                                    </div>
+                                    <p className="text-sm font-bold text-white uppercase tracking-wider">Drop Image to Attach</p>
+                                    <p className="text-xs text-slate-400 mt-1">Supports PNG, JPG, GIF</p>
+                                </div>
+                            )}
                             {/* Standard Chat Interface */}
                             <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50 dark:bg-slate-900">
                                 {messages.length === 0 && (
@@ -713,7 +872,7 @@ Followed by a friendly message confirming what you saved. Supported HVAC keys: c
                                     </Button>
                                 </div>
                             </div>
-                        </>
+                        </div>
                     ) : (
                         /* Physical Technician In-App Tools Dashboard */
                         <div className="flex-1 overflow-y-auto p-5 bg-slate-50 dark:bg-slate-900 flex flex-col">
@@ -746,21 +905,41 @@ Followed by a friendly message confirming what you saved. Supported HVAC keys: c
                                                     The physical tool executed safely within your sandboxed tenant container. Custom parameters have been committed under `/synthesizedData` and logged directly to the job chat thread.
                                                 </p>
                                             </div>
-                                            <div className="flex gap-3 w-full max-w-xs mt-4">
+                                            <div className="flex flex-col gap-2 w-full max-w-xs mt-4">
                                                 <Button 
-                                                    onClick={() => setToolSuccess(false)}
-                                                    variant="secondary"
-                                                    className="flex-1 py-2 text-xs uppercase tracking-wider font-extrabold"
-                                                >
-                                                    Run Again
-                                                </Button>
-                                                <Button 
-                                                    onClick={handleBackToTools}
+                                                    onClick={handleGeneratePDFReport}
+                                                    disabled={isGeneratingPDF}
                                                     variant="primary"
-                                                    className="flex-1 py-2 text-xs uppercase tracking-wider font-extrabold bg-purple-600 hover:bg-purple-700"
+                                                    className="w-full py-2.5 text-xs uppercase tracking-wider font-extrabold bg-purple-600 hover:bg-purple-700 flex items-center justify-center gap-1.5"
                                                 >
-                                                    Back to Tools
+                                                    {isGeneratingPDF ? (
+                                                        <>
+                                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                            Generating PDF...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <FileText className="w-3.5 h-3.5" />
+                                                            Download PDF Report
+                                                        </>
+                                                    )}
                                                 </Button>
+                                                <div className="flex gap-2 w-full">
+                                                    <Button 
+                                                        onClick={() => setToolSuccess(false)}
+                                                        variant="secondary"
+                                                        className="flex-1 py-2 text-xs uppercase tracking-wider font-extrabold"
+                                                    >
+                                                        Run Again
+                                                    </Button>
+                                                    <Button 
+                                                        onClick={handleBackToTools}
+                                                        variant="secondary"
+                                                        className="flex-1 py-2 text-xs uppercase tracking-wider font-extrabold"
+                                                    >
+                                                        Back to Tools
+                                                    </Button>
+                                                </div>
                                             </div>
                                         </div>
                                     ) : (

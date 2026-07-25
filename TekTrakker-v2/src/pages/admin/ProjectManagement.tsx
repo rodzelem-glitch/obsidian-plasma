@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -8,7 +9,7 @@ import Select from 'components/ui/Select';
 import { db } from 'lib/firebase';
 import { getNextInvoiceNumber } from 'lib/numbering';
 import type { Project, Permit, Subcontractor, EquipmentRental, ProjectTask, Job, Expense, Sprint } from 'types';
-import { Search, Trash2, Briefcase, ClipboardList, DollarSign, File, HardHat, Truck, Box, LayoutGrid, List } from 'lucide-react';
+import { Search, Trash2, Briefcase, ClipboardList, DollarSign, File, HardHat, Truck, Box, LayoutGrid, List, FileText } from 'lucide-react';
 import InvoiceEditorModal from 'components/modals/InvoiceEditorModal';
 
 import FinancialsTab from './projects/components/tabs/FinancialsTab';
@@ -19,6 +20,7 @@ import SubsTab from './projects/components/tabs/SubsTab';
 import RentalsTab from './projects/components/tabs/RentalsTab';
 import EquipmentTab from './projects/components/tabs/EquipmentTab';
 import SprintBoard from './projects/components/tabs/SprintBoard';
+import ProposalsTab from './projects/components/tabs/ProposalsTab';
 
 import ProjectModal from './projects/modals/ProjectModal';
 import TaskModal from './projects/modals/TaskModal';
@@ -35,7 +37,7 @@ import { useLanguage } from 'context/LanguageContext';
 const ProjectManagement: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { t } = useLanguage();
-    const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'permits' | 'subs' | 'rentals' | 'financials' | 'equipment'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'permits' | 'subs' | 'rentals' | 'financials' | 'equipment' | 'proposals'>('overview');
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
     const [projectSearch, setProjectSearch] = useState('');
 
@@ -105,7 +107,7 @@ const ProjectManagement: React.FC = () => {
         if (!form.name || !form.customerId || !state.currentOrganization) { showToast.warn(t("Project Name and Customer are required.")); return; }
         const customer = state.customers.find(c => c.id === form.customerId);
         const project: Project = { ...form, organizationId: state.currentOrganization.id, customerName: customer?.name || 'Unknown', id: form.id || `proj-${Date.now()}`, createdAt: form.createdAt || new Date().toISOString() } as Project;
-        await db.collection('projects').doc(project.id).set(JSON.parse(JSON.stringify(project)), { merge: true });
+        await db.collection('projects').doc(project.id).set(cleanUndefinedFields(JSON.parse(JSON.stringify(project))), { merge: true });
         dispatch({ type: form.id ? 'UPDATE_PROJECT' : 'ADD_PROJECT', payload: project });
         setSelectedProject(project);
         setIsProjectModalOpen(false);
@@ -122,7 +124,7 @@ const ProjectManagement: React.FC = () => {
         if (!selectedProject || !form.number) return;
         const permit: Permit = { ...form, id: form.id || `perm-${Date.now()}` } as Permit;
         const updatedPermits = form.id ? (selectedProject.permits || []).map(p => p.id === permit.id ? permit : p) : [...(selectedProject.permits || []), permit];
-        await db.collection('projects').doc(selectedProject.id).update({ permits: JSON.parse(JSON.stringify(updatedPermits)) });
+        await db.collection('projects').doc(selectedProject.id).update(cleanUndefinedFields({ permits: JSON.parse(JSON.stringify(updatedPermits)) }));
         dispatch({ type: 'UPDATE_PROJECT', payload: { ...selectedProject, permits: updatedPermits } });
         setIsPermitModalOpen(false);
     };
@@ -131,7 +133,7 @@ const ProjectManagement: React.FC = () => {
         if (!state.currentOrganization || !subData.companyName) return;
         const subId = subData.id || `sub-${Date.now()}`;
         const sub: Subcontractor = { ...subData, organizationId: state.currentOrganization.id, id: subId } as Subcontractor;
-        await db.collection('subcontractors').doc(sub.id).set(JSON.parse(JSON.stringify(sub)), { merge: true });
+        await db.collection('subcontractors').doc(sub.id).set(cleanUndefinedFields(JSON.parse(JSON.stringify(sub))), { merge: true });
         dispatch({ type: subData.id ? 'UPDATE_SUBCONTRACTOR' : 'ADD_SUBCONTRACTOR', payload: sub });
         setIsSubModalOpen(false);
     };
@@ -139,7 +141,7 @@ const ProjectManagement: React.FC = () => {
     const handleSaveRental = async (form: Partial<EquipmentRental>) => {
         if (!state.currentOrganization || !form.equipmentName) return;
         const rental: EquipmentRental = { ...form, organizationId: state.currentOrganization.id, projectId: selectedProject?.id, id: form.id || `rent-${Date.now()}` } as EquipmentRental;
-        await db.collection('rentals').doc(rental.id).set(JSON.parse(JSON.stringify(rental)), { merge: true });
+        await db.collection('rentals').doc(rental.id).set(cleanUndefinedFields(JSON.parse(JSON.stringify(rental))), { merge: true });
         dispatch({ type: form.id ? 'UPDATE_RENTAL' : 'ADD_RENTAL', payload: rental });
         setIsRentalModalOpen(false);
     };
@@ -174,7 +176,7 @@ const ProjectManagement: React.FC = () => {
             }));
         }
 
-        await db.collection('projects').doc(selectedProject.id).update(JSON.parse(JSON.stringify(updatedProject)));
+        await db.collection('projects').doc(selectedProject.id).update(cleanUndefinedFields(JSON.parse(JSON.stringify(updatedProject))));
         dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
         setIsWBSNodeModalOpen(false);
     };
@@ -209,7 +211,7 @@ const ProjectManagement: React.FC = () => {
             updatedProject.projectTasks = upsertTask(updatedProject.projectTasks);
         }
 
-        await db.collection('projects').doc(selectedProject.id).update(JSON.parse(JSON.stringify(updatedProject)));
+        await db.collection('projects').doc(selectedProject.id).update(cleanUndefinedFields(JSON.parse(JSON.stringify(updatedProject))));
         dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
         setIsTaskModalOpen(false);
     };
@@ -221,7 +223,7 @@ const ProjectManagement: React.FC = () => {
             ? (selectedProject.sprints || []).map(s => s.id === sprint.id ? sprint : s) 
             : [...(selectedProject.sprints || []), sprint];
         const updatedProject = { ...selectedProject, sprints: updatedSprints };
-        await db.collection('projects').doc(selectedProject.id).update({ sprints: JSON.parse(JSON.stringify(updatedSprints)) });
+        await db.collection('projects').doc(selectedProject.id).update(cleanUndefinedFields({ sprints: JSON.parse(JSON.stringify(updatedSprints)) }));
         dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
         setIsSprintModalOpen(false);
     };
@@ -244,14 +246,14 @@ const ProjectManagement: React.FC = () => {
             })) || []
         })) || [];
 
-        await db.collection('projects').doc(selectedProject.id).update(JSON.parse(JSON.stringify(updatedProject)));
+        await db.collection('projects').doc(selectedProject.id).update(cleanUndefinedFields(JSON.parse(JSON.stringify(updatedProject))));
         dispatch({ type: 'UPDATE_PROJECT', payload: updatedProject });
     };
 
     const handleSaveExpense = async (form: Partial<Expense>) => {
         if (!selectedProject || !state.currentOrganization || !form.amount) return;
         const expense: Expense = { ...form, organizationId: state.currentOrganization.id, projectId: selectedProject.id, id: form.id || `exp-${Date.now()}` } as Expense;
-        await db.collection('expenses').doc(expense.id).set(JSON.parse(JSON.stringify(expense)), { merge: true });
+        await db.collection('expenses').doc(expense.id).set(cleanUndefinedFields(JSON.parse(JSON.stringify(expense))), { merge: true });
         dispatch({ type: form.id ? 'UPDATE_EXPENSE' : 'ADD_EXPENSE', payload: expense });
         setIsExpenseModalOpen(false);
     };
@@ -267,7 +269,7 @@ const ProjectManagement: React.FC = () => {
         const nextInvId = await getNextInvoiceNumber(state.currentOrganization.id);
         const jobId = `job-inv-${Date.now()}`;
         const newInvoice: Job = { id: jobId, organizationId: state.currentOrganization.id, projectId: selectedProject.id, customerName: selectedProject.customerName, customerId: selectedProject.customerId, address: selectedProject.address || '', tasks: [`Project Invoice: ${selectedProject.name}`], jobStatus: 'Completed', appointmentTime: new Date().toISOString(), source: 'ProjectManager', specialInstructions: '', invoice: { id: nextInvId, status: 'Unpaid', items: [], subtotal: 0, taxRate: (state.currentOrganization.taxRate || 8.25) / 100, taxAmount: 0, totalAmount: 0, amount: 0 }, jobEvents: [], createdAt: new Date().toISOString() };
-        await db.collection('jobs').doc(jobId).set(newInvoice);
+        await db.collection('jobs').doc(jobId).set(cleanUndefinedFields(newInvoice));
         dispatch({ type: 'ADD_JOB', payload: newInvoice });
         setEditingInvoiceId(jobId);
     };
@@ -295,24 +297,38 @@ const ProjectManagement: React.FC = () => {
             {selectedProject ? (
                 <>
                     {canSeeAllTasks && (
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                             <Card className="bg-blue-50 border-blue-200"><p className="text-xs font-bold text-blue-700 uppercase">{t("Budget Used")}</p><div className="mt-2"><p className="text-2xl font-black text-blue-900">${projectFinancials.totalExpenses.toLocaleString()}</p><div className="w-full bg-blue-200 rounded-full h-1.5 mt-2"><div className="bg-blue-600 h-1.5 rounded-full" ref={e => e && (e.style.width = `${Math.min((projectFinancials.totalExpenses / (selectedProject.budget || 1)) * 100, 100)}%`)}></div></div><p className="text-[10px] text-blue-600 mt-1">{t("of")} ${(selectedProject.budget || 0).toLocaleString()}</p></div></Card>
                             <Card className="bg-emerald-50 border-emerald-200"><p className="text-xs font-bold text-emerald-700 uppercase">{t("Billed / Paid")}</p><p className="text-2xl font-black text-emerald-900">${projectFinancials.totalBilled.toLocaleString()}</p><p className="text-[10px] text-emerald-600 mt-1 font-bold">{t("Collected:")} ${projectFinancials.totalCollected.toLocaleString()}</p></Card>
                             <Card className="bg-purple-50 border-purple-200"><p className="text-xs font-bold text-purple-700 uppercase">{t("Task Progress")}</p><div className="mt-2"><p className="text-2xl font-black text-purple-900">{progressStats.percent.toFixed(0)}%</p><div className="w-full bg-purple-200 rounded-full h-1.5 mt-2"><div className="bg-purple-600 h-1.5 rounded-full" ref={e => e && (e.style.width = `${progressStats.percent}%`)}></div></div><p className="text-[10px] text-purple-600 mt-1">{progressStats.completed} / {progressStats.total} {t("Tasks")}</p></div></Card>
-                            <Card className="bg-gray-50 border-gray-200"><p className="text-xs font-bold text-gray-500 uppercase">{t("Team Members")}</p><div className="flex -space-x-2 mt-2">{selectedProject.teamIds?.map(uid => { const u = employees.find(e => e.id === uid); return u ? <div key={uid} className="w-8 h-8 rounded-full bg-slate-300 border-2 border-white flex items-center justify-center text-xs font-bold text-slate-700" title={`${u.firstName} ${u.lastName}`}>{u.firstName[0]}</div> : null;})}{(!selectedProject.teamIds || selectedProject.teamIds.length === 0) && <span className="text-sm text-gray-400 italic">{t("None")}</span>}</div></Card>
+                            <Card className="bg-indigo-50 border-indigo-200 cursor-pointer hover:shadow-md transition-all text-left" onClick={() => setActiveTab('proposals')}>
+                                <p className="text-xs font-bold text-indigo-700 uppercase">{t("Commercial Bids")}</p>
+                                <div className="mt-2">
+                                    <p className="text-2xl font-black text-indigo-900">
+                                        {(state.proposals || []).filter((p: any) => p.isProjectLevel && p.projectId === selectedProject.id).length}
+                                    </p>
+                                    <p className="text-[10px] text-indigo-600 mt-1 font-semibold">{t("Click to view proposals")}</p>
+                                </div>
+                            </Card>
+                            <Card className="bg-gray-50 border-gray-200"><p className="text-xs font-bold text-gray-500 uppercase">{t("Team Members")}</p><div className="flex -space-x-2 mt-2">{selectedProject.teamIds?.map(uid => { const u = employees.find(e => e.id === uid); return u ? <div key={uid} className="w-8 h-8 rounded-full bg-slate-300 border-2 border-white flex items-center justify-center text-xs font-bold text-slate-700" title={`${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email}>{(u.firstName || '')[0] || (u.email || '')[0] || '?'}</div> : null;})}{(!selectedProject.teamIds || selectedProject.teamIds.length === 0) && <span className="text-sm text-gray-400 italic">{t("None")}</span>}</div></Card>
                         </div>
                     )}
 
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div className="flex flex-wrap gap-2 w-full mb-4">
+                        <div className="flex flex-wrap gap-2">
                             {[
-                                { id: 'overview', label: t('Overview'), icon: Briefcase }, { id: 'tasks', label: t('Tasks & Milestones'), icon: ClipboardList }, { id: 'financials', label: t('Financials'), icon: DollarSign },
-                                { id: 'permits', label: t('Permits'), icon: File }, { id: 'subs', label: t('Subcontractors'), icon: HardHat }, { id: 'rentals', label: t('Rentals'), icon: Truck },
+                                { id: 'overview', label: t('Overview'), icon: Briefcase }, 
+                                { id: 'tasks', label: t('Tasks & Milestones'), icon: ClipboardList }, 
+                                { id: 'financials', label: t('Financials'), icon: DollarSign },
+                                { id: 'proposals', label: t('Proposals'), icon: FileText },
+                                { id: 'permits', label: t('Permits'), icon: File }, 
+                                { id: 'subs', label: t('Subcontractors'), icon: HardHat }, 
+                                { id: 'rentals', label: t('Rentals'), icon: Truck },
                                 { id: 'equipment', label: t('Equipment'), icon: Box },
                             ].map(tab => (
                                 <button 
                                     key={tab.id} 
-                                    onClick={() => setActiveTab(tab.id as 'overview' | 'tasks' | 'permits' | 'subs' | 'rentals' | 'financials' | 'equipment')} 
+                                    onClick={() => setActiveTab(tab.id as any)} 
                                     className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold whitespace-nowrap rounded-xl transition-all shadow-sm ${
                                         activeTab === tab.id 
                                             ? 'bg-primary-600 text-white border-transparent' 
@@ -369,6 +385,7 @@ const ProjectManagement: React.FC = () => {
                         </div>
                     )}
                     {activeTab === 'financials' && canSeeAllTasks && <FinancialsTab financials={projectFinancials} onCreateInvoice={handleCreateInvoice} onManageInvoice={setEditingInvoiceId} onAddExpense={() => { setExpenseForm({ date: new Date().toISOString().split('T')[0], category: 'Materials', amount: 0 }); setIsExpenseModalOpen(true); }} onEditExpense={(e) => { setExpenseForm(e); setIsExpenseModalOpen(true); }} onDeleteExpense={handleDeleteExpense} />}
+                    {activeTab === 'proposals' && <ProposalsTab project={selectedProject} />}
                     {activeTab === 'permits' && canSeeAllTasks && <PermitsTab permits={selectedProject.permits || []} onPermitAdd={() => { setPermitForm({}); setIsPermitModalOpen(true); }} onPermitEdit={(p) => { setPermitForm(p); setIsPermitModalOpen(true); }} />}
                     {activeTab === 'subs' && canSeeAllTasks && <SubsTab subcontractors={state.subcontractors.filter(s => s.organizationId === activeOrgId)} assignedSubcontractorIds={selectedProject.assignedSubcontractorIds} onSubAdd={() => { setEditingSub(null); setIsSubModalOpen(true); }} onSubEdit={(s) => { setEditingSub(s); setIsSubModalOpen(true); }} />}
                     {activeTab === 'rentals' && canSeeAllTasks && <RentalsTab rentals={state.rentals.filter(r => r.projectId === selectedProject.id)} onRentalAdd={() => { setRentalForm({ projectId: selectedProject.id }); setIsRentalModalOpen(true); }} onRentalEdit={(r) => { setRentalForm(r); setIsRentalModalOpen(true); }} />}

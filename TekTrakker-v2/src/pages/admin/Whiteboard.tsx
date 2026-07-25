@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/firebase';
@@ -136,7 +137,7 @@ const Whiteboard: React.FC = () => {
                     }
                 } else {
                     // Create default first-time whiteboard structures
-                    db.collection('whiteboards').doc(orgId).set({
+                    db.collection('whiteboards').doc(orgId).set(cleanUndefinedFields({
                         elements: [
                             {
                                 id: 'welcome-sticky',
@@ -154,7 +155,7 @@ const Whiteboard: React.FC = () => {
                         ],
                         strokes: [],
                         updatedAt: new Date().toISOString()
-                    });
+                    }));
                 }
                 setIsLoading(false);
             }, (error) => {
@@ -168,11 +169,11 @@ const Whiteboard: React.FC = () => {
     const saveToFirestore = async (newElements: WhiteboardElement[], newStrokes: Stroke[]) => {
         if (!orgId) return;
         try {
-            await db.collection('whiteboards').doc(orgId).set({
+            await db.collection('whiteboards').doc(orgId).set(cleanUndefinedFields({
                 elements: newElements,
                 strokes: newStrokes,
                 updatedAt: new Date().toISOString()
-            }, { merge: true });
+            }), { merge: true });
         } catch (e) {
             console.error("Failed to write to whiteboard database:", e);
             showToast.error("Database sync failed.");
@@ -366,8 +367,66 @@ const Whiteboard: React.FC = () => {
         setMouseCoords(null);
     };
 
+    // Canvas Touch Handlers for Mobile Devices
+    const handleTouchStart = (e: React.TouchEvent) => {
+        if (e.touches.length === 0) return;
+        const touch = e.touches[0];
+        const simulatedEvent = {
+            preventDefault: () => e.preventDefault(),
+            stopPropagation: () => e.stopPropagation(),
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            button: 0,
+            target: e.target
+        } as any;
+        handleMouseDown(simulatedEvent);
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (e.touches.length === 0) return;
+        const touch = e.touches[0];
+        const simulatedEvent = {
+            preventDefault: () => {},
+            stopPropagation: () => {},
+            clientX: touch.clientX,
+            clientY: touch.clientY
+        } as any;
+        handleMouseMove(simulatedEvent);
+    };
+
+    const handleTouchEnd = () => {
+        handleMouseUp();
+    };
+
+    const handleElementTouchStart = (e: React.TouchEvent, el: WhiteboardElement) => {
+        if (activeTool !== 'select') return;
+        if (e.touches.length === 0) return;
+        e.stopPropagation();
+        bringToFront(el.id);
+        
+        const touch = e.touches[0];
+        const coords = getBoardCoords(touch.clientX, touch.clientY);
+        setDraggedId(el.id);
+        setDragOffset({
+            x: coords.x - el.x,
+            y: coords.y - el.y
+        });
+    };
+
+    const handleResizeTouchStart = (e: React.TouchEvent, el: WhiteboardElement) => {
+        if (e.touches.length === 0) return;
+        e.stopPropagation();
+        e.preventDefault();
+        
+        const touch = e.touches[0];
+        setResizingId(el.id);
+        setResizeStartSize({ width: el.width, height: el.height });
+        setResizeStartMouse({ x: touch.clientX, y: touch.clientY });
+    };
+
     // Zoom Handlers
-    const handleWheel = (e: React.WheelEvent) => {
+    const handleWheelRef = useRef<any>(null);
+    handleWheelRef.current = (e: WheelEvent) => {
         e.preventDefault();
         const zoomIntensity = 0.1;
         const mouseCoords = getBoardCoords(e.clientX, e.clientY);
@@ -382,6 +441,22 @@ const Whiteboard: React.FC = () => {
         setScale(nextScale);
         setPan({ x: nextPanX, y: nextPanY });
     };
+
+    useEffect(() => {
+        const board = boardRef.current;
+        if (!board) return;
+
+        const onWheel = (e: WheelEvent) => {
+            if (handleWheelRef.current) {
+                handleWheelRef.current(e);
+            }
+        };
+
+        board.addEventListener('wheel', onWheel, { passive: false });
+        return () => {
+            board.removeEventListener('wheel', onWheel);
+        };
+    }, []);
 
     // Add elements builders
     const getMaxZ = () => {
@@ -852,7 +927,9 @@ const Whiteboard: React.FC = () => {
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseLeave}
-                onWheel={handleWheel}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
             >
                 {/* SVG Dot grid + Interactive Elements Canvas container */}
                 <div 
@@ -935,6 +1012,7 @@ const Whiteboard: React.FC = () => {
                                     cursor: draggedId === el.id ? 'grabbing' : activeTool === 'select' ? 'grab' : 'default'
                                 }}
                                 onMouseDown={(e) => handleElementDragStart(e, el)}
+                                onTouchStart={(e) => handleElementTouchStart(e, el)}
                             >
                                 {/* CARD DELETE / EDIT HEADER OVERLAYS */}
                                 {activeTool === 'select' && (
@@ -942,6 +1020,7 @@ const Whiteboard: React.FC = () => {
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setEditingElementId(isEditing ? null : el.id); }}
                                             onMouseDown={(e) => e.stopPropagation()}
+                                            onTouchStart={(e) => e.stopPropagation()}
                                             className="p-1.5 bg-slate-800 border border-slate-700 text-indigo-400 hover:text-white rounded-lg shadow-lg active:scale-95 transition-all"
                                             title="Edit/Configure Card"
                                         >
@@ -950,6 +1029,7 @@ const Whiteboard: React.FC = () => {
                                         <button
                                             onClick={(e) => { e.stopPropagation(); deleteElement(el.id); }}
                                             onMouseDown={(e) => e.stopPropagation()}
+                                            onTouchStart={(e) => e.stopPropagation()}
                                             className="p-1.5 bg-slate-800 border border-slate-700 text-rose-500 hover:text-rose-400 rounded-lg shadow-lg active:scale-95 transition-all"
                                             title="Delete Card"
                                         >
@@ -1026,6 +1106,7 @@ const Whiteboard: React.FC = () => {
                                                                 checked={item.checked}
                                                                 onChange={() => toggleChecklistItem(el.id, item.id)}
                                                                 onMouseDown={(e) => e.stopPropagation()}
+                                                                onTouchStart={(e) => e.stopPropagation()}
                                                                 className="rounded border-slate-600 bg-slate-800 text-primary-600 focus:ring-primary-500 h-3.5 w-3.5 shrink-0"
                                                             />
                                                             <span className={`text-[11px] font-medium truncate ${item.checked ? 'line-through text-slate-500' : 'text-slate-300'}`}>
@@ -1035,6 +1116,7 @@ const Whiteboard: React.FC = () => {
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); deleteChecklistItem(el.id, item.id); }}
                                                             onMouseDown={(e) => e.stopPropagation()}
+                                                            onTouchStart={(e) => e.stopPropagation()}
                                                             className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors shrink-0"
                                                         >
                                                             <X size={10} />
@@ -1085,6 +1167,7 @@ const Whiteboard: React.FC = () => {
                                                 rel="noopener noreferrer"
                                                 className="px-2 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-[9px] font-bold transition-colors uppercase tracking-wider block shrink-0"
                                                 onMouseDown={(e) => e.stopPropagation()}
+                                                onTouchStart={(e) => e.stopPropagation()}
                                             >
                                                 Visit Link
                                             </a>
@@ -1117,6 +1200,7 @@ const Whiteboard: React.FC = () => {
                                                 }
                                             }}
                                             onMouseDown={(e) => e.stopPropagation()}
+                                            onTouchStart={(e) => e.stopPropagation()}
                                         >
                                             View Document
                                         </a>
@@ -1168,6 +1252,7 @@ const Whiteboard: React.FC = () => {
                                     <div
                                         className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize z-40 flex items-center justify-center group-hover/card:bg-slate-700/50 rounded-br-xl opacity-0 group-hover/card:opacity-100 transition-opacity"
                                         onMouseDown={(e) => handleResizeStart(e, el)}
+                                        onTouchStart={(e) => handleResizeTouchStart(e, el)}
                                     >
                                         <svg className="w-2.5 h-2.5 text-slate-400" viewBox="0 0 10 10" fill="none" stroke="currentColor">
                                             <line x1="1" y1="9" x2="9" y2="1" strokeWidth="1.5" />

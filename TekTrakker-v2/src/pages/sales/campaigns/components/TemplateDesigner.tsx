@@ -1,7 +1,9 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
 import { Mail, MessageSquare, Plus, Search, Trash2, Edit3, Sparkles, Loader2, Code, FileText, ImageIcon } from 'lucide-react';
+import { useAppContext } from 'context/AppContext';
 import Card from '../../../../components/ui/Card';
 import Button from '../../../../components/ui/Button';
 import Input from '../../../../components/ui/Input';
@@ -26,6 +28,10 @@ export interface Template {
 }
 
 const TemplateDesigner: React.FC = () => {
+    const { state } = useAppContext();
+    const currentUser = state.currentUser;
+    const isSalesRep = currentUser?.role === 'platform_sales';
+
     const [templates, setTemplates] = useState<Template[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<Partial<Template> | null>(null);
@@ -36,19 +42,27 @@ const TemplateDesigner: React.FC = () => {
     const [isWriting, setIsWriting] = useState(false);
 
     useEffect(() => {
-        const unsub = db.collection('sales_templates').onSnapshot(snap => {
+        if (!currentUser) return;
+        let query = db.collection('sales_templates');
+        if (isSalesRep) {
+            query = query.where('repId', '==', currentUser.id) as any;
+        }
+        const unsub = query.onSnapshot(snap => {
             const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Template));
             setTemplates(data);
             setIsLoading(false);
+        }, () => {
+            setTemplates([]);
+            setIsLoading(false);
         });
         return () => unsub();
-    }, []);
+    }, [currentUser, isSalesRep]);
 
     const handleSaveTemplate = async () => {
         if (!editingTemplate?.name || !editingTemplate?.content) return;
         
         const id = editingTemplate.id || `temp-${Date.now()}`;
-        const template: Template = {
+        const template: any = {
             id,
             name: editingTemplate.name,
             type: (editingTemplate.type || 'email') as 'email' | 'sms',
@@ -57,9 +71,12 @@ const TemplateDesigner: React.FC = () => {
             isHtml: editingTemplate.isHtml || false,
             lastModified: new Date().toISOString()
         };
+        if (isSalesRep && currentUser) {
+            template.repId = currentUser.id;
+        }
 
         try {
-            await db.collection('sales_templates').doc(id).set(template);
+            await db.collection('sales_templates').doc(id).set(cleanUndefinedFields(template));
             setIsModalOpen(false);
             setEditingTemplate(null);
         } catch (e) {
@@ -86,7 +103,7 @@ const TemplateDesigner: React.FC = () => {
 
             const result: any = await callGeminiAI({ 
                 prompt: systemContext,
-                modelName: 'gemini-3.5-flash'
+                modelName: 'gemini-3.6-flash'
             });
 
             setEditingTemplate(prev => ({ ...prev, content: result.data.text }));
@@ -179,7 +196,7 @@ const TemplateDesigner: React.FC = () => {
 
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
-                                    <label className="text-xs font-black uppercase text-slate-400">Content</label>
+                                    <div className="text-xs font-black uppercase text-slate-400">Content</div>
                                     <button onClick={handleAISmartWrite} disabled={isWriting} className="text-[10px] font-black text-primary-600 uppercase flex items-center gap-1">
                                         {isWriting ? <Loader2 className="animate-spin" size={12}/> : <Sparkles size={12}/>}
                                         AI Smart Write

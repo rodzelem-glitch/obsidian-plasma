@@ -9,7 +9,7 @@ import Modal from 'components/ui/Modal';
 import Textarea from 'components/ui/Textarea';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
-import { formatAddress } from 'lib/utils';
+import { formatAddress , cleanUndefinedFields } from 'lib/utils';
 import { globalConfirm } from "lib/globalConfirm";
 
 const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -126,7 +126,7 @@ const JobScheduling: React.FC = () => {
         }
 
         try {
-            await db.collection('jobs').doc(jobId).set(updatedJob, { merge: true });
+            await db.collection('jobs').doc(jobId).set(cleanUndefinedFields(updatedJob), { merge: true });
             dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
 
             // AUTO-SEND GOOGLE REVIEW EMAIL if marked Completed
@@ -176,13 +176,14 @@ const JobScheduling: React.FC = () => {
                     `;
 
                     // USE FIRESTORE TRIGGER EMAIL (SaaS Ready)
-                    await db.collection('mail').add({
+                    await db.collection('mail_queue').add(cleanUndefinedFields({
                         to: [emailToSend],
+                        replyTo: org.email || 'noreply@tektrakker.com',
                         message: {
                             subject: `How did we do? - ${orgName}`,
                             html: htmlContent,
                             text: `Thank you for choosing ${orgName}! Please leave us a review: ${googleReviewLink} or ${tektrakkerReviewLink}`,
-                            replyTo: org.email,
+                            replyTo: org.email || 'noreply@tektrakker.com',
                         },
                         organizationId: org.id,
                         status: 'pending',
@@ -197,7 +198,7 @@ const JobScheduling: React.FC = () => {
                             },
                             from: `"${smtp.fromName}" <${smtp.fromEmail}>`
                         } : undefined
-                    });
+                    }));
                 }
             }
 
@@ -349,71 +350,74 @@ const JobScheduling: React.FC = () => {
                                 <div className="h-px bg-gray-200 dark:bg-gray-700 w-full"></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {groupedJobs[dateStr].map(job => (
-                                    <div key={job.id} className="p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col gap-3 relative overflow-hidden">
-                                        <div className={`absolute top-0 left-0 w-1 h-full ${job.jobStatus === 'Completed' ? 'bg-green-500' : job.jobStatus === 'In Progress' ? 'bg-blue-500' : job.jobStatus === 'Cancelled' ? 'bg-red-500' : 'bg-primary-500'}`}></div>
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h3 className="font-bold text-gray-900 dark:text-white text-lg">{job.customerName}</h3>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate max-w-[250px]" title={formatAddress(job.address)}>{formatAddress(job.address)}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-lg font-black text-primary-600 dark:text-primary-400">
-                                                    {new Date(job.appointmentTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                {groupedJobs[dateStr].map(job => {
+                                    const customer = state.customers?.find(c => c.id === job.customerId);
+                                    return (
+                                        <div key={job.id} className="p-4 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col gap-3 relative overflow-hidden">
+                                            <div className={`absolute top-0 left-0 w-1 h-full ${job.jobStatus === 'Completed' ? 'bg-green-500' : job.jobStatus === 'In Progress' ? 'bg-blue-500' : job.jobStatus === 'Cancelled' ? 'bg-red-500' : 'bg-primary-500'}`}></div>
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <h3 className="font-bold text-gray-900 dark:text-white text-lg">{customer?.name || job.customerName}</h3>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate max-w-[250px]" title={formatAddress(customer?.address || job.address)}>{formatAddress(customer?.address || job.address)}</p>
                                                 </div>
-                                                <span className={`mt-1 inline-block px-2 py-0.5 text-[10px] font-bold rounded-full ${job.invoice?.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
-                                                    {job.invoice?.status || 'Unpaid'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="grid grid-cols-2 gap-2 text-sm bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg">
-                                            <div>
-                                                <span className="text-[10px] uppercase font-bold text-gray-400 block">System</span>
-                                                <span className="font-medium text-gray-700 dark:text-gray-300">{job.hvacBrand || '---'} {job.hvacType ? `(${job.hvacType})` : ''}</span>
-                                            </div>
-                                            <div>
-                                                <span className="text-[10px] uppercase font-bold text-gray-400 block">Role</span>
-                                                <span className="font-medium text-gray-700 dark:text-gray-300">
-                                                    {job.assignedTechnicianId === state.currentUser?.id ? 'Primary Tech' : 'Crew Member'}
-                                                </span>
-                                            </div>
-                                            {(job.assistants || []).length > 0 && (
-                                                <div className="col-span-2 mt-1">
-                                                    <span className="text-[10px] uppercase font-bold text-gray-400 block">Crew</span>
-                                                    <span className="font-medium text-indigo-600 dark:text-indigo-400">
-                                                        {(job.assistants || []).map(id => {
-                                                            const u = state.users.find((user: User) => user.id === id);
-                                                            return u ? `${u.firstName} ${u.lastName}` : 'Unknown';
-                                                        }).join(', ')}
+                                                <div className="text-right">
+                                                    <div className="text-lg font-black text-primary-600 dark:text-primary-400">
+                                                        {new Date(job.appointmentTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                                    </div>
+                                                    <span className={`mt-1 inline-block px-2 py-0.5 text-[10px] font-bold rounded-full ${job.invoice?.status === 'Paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                                                        {job.invoice?.status || 'Unpaid'}
                                                     </span>
                                                 </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex gap-2 items-center mt-2">
-                                            <select 
-                                                aria-label="Job Status"
-                                                value={job.jobStatus}
-                                                onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)}
-                                                className={`flex-1 border border-gray-300 dark:border-gray-600 rounded-lg py-2 px-3 text-sm font-semibold focus:ring-primary-500 focus:border-primary-500 ${job.jobStatus === 'Completed' ? 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
-                                            >
-                                                <option value="Scheduled">Scheduled</option>
-                                                <option value="In Progress">In Progress</option>
-                                                <option value="Completed">Completed</option>
-                                                <option value="Cancelled">Cancelled</option>
-                                            </select>
+                                            </div>
                                             
-                                            <button 
-                                                onClick={() => openSmsModal(job)} 
-                                                className="p-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
-                                                title="Send SMS"
-                                            >
-                                                <ChatBubbleIcon className="w-5 h-5" />
-                                            </button>
+                                            <div className="grid grid-cols-2 gap-2 text-sm bg-gray-50 dark:bg-gray-900/50 p-2 rounded-lg">
+                                                <div>
+                                                    <span className="text-[10px] uppercase font-bold text-gray-400 block">System</span>
+                                                    <span className="font-medium text-gray-700 dark:text-gray-300">{job.hvacBrand || '---'} {job.hvacType ? `(${job.hvacType})` : ''}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[10px] uppercase font-bold text-gray-400 block">Role</span>
+                                                    <span className="font-medium text-gray-700 dark:text-gray-300">
+                                                        {job.assignedTechnicianId === state.currentUser?.id ? 'Primary Tech' : 'Crew Member'}
+                                                    </span>
+                                                </div>
+                                                {(job.assistants || []).length > 0 && (
+                                                    <div className="col-span-2 mt-1">
+                                                        <span className="text-[10px] uppercase font-bold text-gray-400 block">Crew</span>
+                                                        <span className="font-medium text-indigo-600 dark:text-indigo-400">
+                                                            {(job.assistants || []).map(id => {
+                                                                const u = state.users.find((user: User) => user.id === id);
+                                                                return u ? `${u.firstName} ${u.lastName}` : 'Unknown';
+                                                            }).join(', ')}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="flex gap-2 items-center mt-2">
+                                                <select 
+                                                    aria-label="Job Status"
+                                                    value={job.jobStatus}
+                                                    onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)}
+                                                    className={`flex-1 border border-gray-300 dark:border-gray-600 rounded-lg py-2 px-3 text-sm font-semibold focus:ring-primary-500 focus:border-primary-500 ${job.jobStatus === 'Completed' ? 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
+                                                >
+                                                    <option value="Scheduled">Scheduled</option>
+                                                    <option value="In Progress">In Progress</option>
+                                                    <option value="Completed">Completed</option>
+                                                    <option value="Cancelled">Cancelled</option>
+                                                </select>
+                                                
+                                                <button 
+                                                    onClick={() => openSmsModal(job)} 
+                                                    className="p-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                                                    title="Send SMS"
+                                                >
+                                                    <ChatBubbleIcon className="w-5 h-5" />
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     ))}

@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 import React, { useMemo, useState, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -10,13 +11,25 @@ import Select from 'components/ui/Select';
 import { db } from 'lib/firebase';
 import type { RefrigerantTransaction } from 'types';
 import { globalConfirm } from 'lib/globalConfirm';
-import { Edit, Trash2, Database, ScanBarcode } from 'lucide-react';
+import { Edit, Trash2, Database, ScanBarcode, FileText } from 'lucide-react';
 import { BarcodeScannerButton } from 'components/ui/BarcodeScanner';
 
 const REFRIGERANTS = [
     'R22', 'R410A', 'R134a', 'R404A', 'R407C', 'R422B', 
     'R448A', 'R449A', 'R454B', 'R32', 'R290', 'R600a', 'Other'
 ];
+
+const normalizeRefType = (type: string) => {
+    if (!type) return '';
+    return type.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+};
+
+const getCanonicalRefType = (type: string): string => {
+    if (!type) return 'Unknown';
+    const normalized = type.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    const found = REFRIGERANTS.find(r => r.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === normalized);
+    return found || type;
+};
 
 interface LogEntry {
     id: string;
@@ -28,6 +41,8 @@ interface LogEntry {
     technician: string;
     cylinderNo: string;
     notes?: string;
+    jobId?: string;
+    customerId?: string;
 }
 
 const RefrigerantLog: React.FC = () => {
@@ -56,9 +71,9 @@ const RefrigerantLog: React.FC = () => {
             .onSnapshot(snap => {
                 setCylinders(snap.docs.map(d => ({ ...d.data(), id: d.id })));
             });
-
         return () => { txUnsub(); cylUnsub(); };
     }, [state.currentOrganization]);
+
 
     const [entry, setEntry] = useState({
         action: 'Purchase', // 'Purchase' or 'Usage'
@@ -78,39 +93,110 @@ const RefrigerantLog: React.FC = () => {
         const entries: LogEntry[] = [];
 
         transactions.forEach(tx => {
+            const amountVal = Number(tx.amount || (tx as any).amountLbs || 0);
+            
+            // Auto-heal/resolve missing or Unknown types if linked to a cylinder
+            let resolvedType = tx.type;
+            if (!resolvedType || resolvedType === 'Unknown') {
+                const linkedCyl = cylinders.find(c => c.id === tx.cylinderId || c.cylinderNo === tx.cylinderId);
+                if (linkedCyl) {
+                    resolvedType = linkedCyl.type;
+                }
+            }
+            
+            const canonicalType = getCanonicalRefType(resolvedType || 'Unknown');
+
             entries.push({
                 id: tx.id,
-                date: tx.date,
-                type: tx.action,
-                refType: tx.type || 'Unknown',
-                amount: tx.action === 'Usage' ? -Math.abs(tx.amount) : Math.abs(tx.amount),
+                date: tx.date || new Date().toISOString(),
+                type: tx.action || 'Purchase',
+                refType: canonicalType,
+                amount: tx.action === 'Usage' ? -Math.abs(amountVal) : Math.abs(amountVal),
                 reference: tx.action === 'Usage' ? `${tx.customerName || 'Customer'}` : (tx.notes || 'Vendor'),
                 technician: tx.technicianName || 'Admin',
                 cylinderNo: tx.cylinderId || 'N/A',
-                notes: tx.notes
+                notes: tx.notes,
+                customerId: tx.customerId || undefined,
+                jobId: (tx as any).jobId || undefined
             });
         });
 
         state.jobs.forEach(job => {
             if (job.refrigerantLog && job.refrigerantLog.length > 0) {
                 job.refrigerantLog.forEach((log: any, idx: number) => {
+                    const amountVal = Number(log.amount || log.amountLbs || 0);
+                    
+                    // Auto-heal/resolve missing or Unknown types if linked to a cylinder
+                    let resolvedType = log.type;
+                    if (!resolvedType || resolvedType === 'Unknown') {
+                        const linkedCyl = cylinders.find(c => c.id === (log.cylinderId || log.cylinderNumber) || c.cylinderNo === (log.cylinderId || log.cylinderNumber));
+                        if (linkedCyl) {
+                            resolvedType = linkedCyl.type;
+                        }
+                    }
+
+                    const canonicalType = getCanonicalRefType(resolvedType || 'Unknown');
+
                     entries.push({
                         id: `${job.id}-ref-${idx}`,
-                        date: job.appointmentTime,
+                        date: job.appointmentTime || new Date().toISOString(),
                         type: 'Usage',
-                        refType: log.type,
-                        amount: -Math.abs(log.amountLbs),
-                        reference: `${job.customerName}`,
+                        refType: canonicalType,
+                        amount: -Math.abs(amountVal),
+                        reference: `${job.customerName || 'Customer'}`,
                         technician: job.assignedTechnicianName || 'Unknown',
-                        cylinderNo: log.cylinderNumber || 'N/A',
-                        notes: `Job #${job.id}`
+                        cylinderNo: log.cylinderNumber || log.cylinderId || 'N/A',
+                        notes: `Job #${job.id}`,
+                        jobId: job.id,
+                        customerId: job.customerId
                     });
                 });
             }
         });
 
         return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [state.jobs, transactions]);
+    }, [state.jobs, transactions, cylinders]);
+
+    useEffect(() => {
+        if (cylinders.length === 0 || logEntries.length === 0 || state.isDemoMode) return;
+
+        const reconcileWeights = async () => {
+            for (const cyl of cylinders) {
+                const cylLogs = logEntries.filter(e => 
+                    (e.cylinderNo === cyl.cylinderNo || e.cylinderNo === cyl.id) &&
+                    normalizeRefType(e.refType) === normalizeRefType(cyl.type)
+                );
+                
+                // Sum up log amounts: Purchases are positive, Usages are negative
+                const netLogAmount = cylLogs.reduce((sum, e) => sum + e.amount, 0);
+                
+                const tareWeight = Number(cyl.tareWeight || 0);
+                const targetCurrentWeight = tareWeight + Math.max(0, netLogAmount);
+                const targetRemainingWeight = Math.max(0, netLogAmount);
+
+                const currentWeight = Number(cyl.currentWeight || 0);
+                const remainingWeight = Number(cyl.remainingWeight || 0);
+
+                const weightDiff = Math.abs(currentWeight - targetCurrentWeight);
+                const remainDiff = isNaN(remainingWeight) ? 999 : Math.abs(remainingWeight - targetRemainingWeight);
+
+                // If they are out of sync by more than a tiny margin, auto-heal!
+                if (weightDiff > 0.01 || remainDiff > 0.01) {
+                    try {
+                        await db.collection('refrigerantCylinders').doc(cyl.id).update(cleanUndefinedFields({
+                            currentWeight: targetCurrentWeight,
+                            remainingWeight: targetRemainingWeight,
+                            updatedAt: new Date().toISOString()
+                        }));
+                    } catch (err) {
+                        console.error("Auto-reconciliation failed for cylinder:", cyl.cylinderNo, err);
+                    }
+                }
+            }
+        };
+
+        reconcileWeights();
+    }, [cylinders, logEntries, state.isDemoMode]);
 
     const totals = useMemo(() => {
         const bal: Record<string, number> = {};
@@ -121,6 +207,77 @@ const RefrigerantLog: React.FC = () => {
         });
         return bal;
     }, [logEntries]);
+
+    const renderLinkedDocsForRefrigerant = (entry: LogEntry) => {
+        let files: any[] = [];
+        
+        if (entry.jobId) {
+            const job = state.jobs?.find(j => j.id === entry.jobId);
+            if (job?.files) {
+                files = [...files, ...job.files];
+            }
+        }
+        
+        if (files.length === 0 && entry.customerId) {
+            const customer = state.customers?.find(c => c.id === entry.customerId);
+            if (customer?.files) {
+                files = [...files, ...customer.files];
+            }
+        }
+        
+        if (files.length > 0) {
+            return (
+                <div className="flex flex-col gap-1 max-w-[150px]">
+                    {files.map((file: any, index: number) => (
+                        <a 
+                            key={file.id || index} 
+                            href={file.url || file.dataUrl} 
+                            target="_blank" 
+                            rel="noreferrer" 
+                            className="inline-flex items-center gap-1.5 text-[10px] text-primary-600 dark:text-primary-400 hover:underline font-bold truncate"
+                            title={file.label || file.fileName || `Doc ${index+1}`}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <FileText size={10} className="text-primary-500 shrink-0" />
+                            <span className="truncate">{file.label || file.fileName || `Doc ${index+1}`}</span>
+                        </a>
+                    ))}
+                </div>
+            );
+        }
+        
+        return <span className="text-slate-400 text-xs italic">-</span>;
+    };
+
+    const syncCylinderWeight = async (cylinderNo: string, deltaWeight: number, refType?: string) => {
+        if (!cylinderNo) return;
+        try {
+            const snap = await db.collection('refrigerantCylinders')
+                .where('organizationId', '==', state.currentOrganization?.id || '')
+                .get();
+            const cylDoc = snap.docs.find(d => {
+                const data = d.data();
+                const matchesTag = data.cylinderNo === cylinderNo || d.id === cylinderNo;
+                if (!matchesTag) return false;
+                if (refType) {
+                    return normalizeRefType(data.type) === normalizeRefType(refType);
+                }
+                return true;
+            });
+            if (cylDoc) {
+                const data = cylDoc.data();
+                const currentWeight = Number(data.currentWeight || 0);
+                const tareWeight = Number(data.tareWeight || 0);
+                const newWeight = currentWeight + deltaWeight;
+                await db.collection('refrigerantCylinders').doc(cylDoc.id).update(cleanUndefinedFields({
+                    currentWeight: Math.max(tareWeight, newWeight),
+                    remainingWeight: Math.max(0, newWeight - tareWeight)
+                }));
+            }
+        } catch (e) {
+            console.error("Failed to sync cylinder weight:", e);
+        }
+    };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -134,7 +291,7 @@ const RefrigerantLog: React.FC = () => {
         }
 
         const tx: RefrigerantTransaction = {
-            id: `reftx-${Date.now()}`,
+            id: isEditing && editingId && !editingId.includes('-ref-') ? editingId : `reftx-${Date.now()}`,
             organizationId: state.currentOrganization?.id || '',
             date: entry.date || new Date().toISOString().split('T')[0],
             action: entry.action || 'Purchase',
@@ -151,9 +308,63 @@ const RefrigerantLog: React.FC = () => {
 
         try {
             if (isEditing && editingId) {
-                await db.collection('refrigerantTransactions').doc(editingId).update(tx);
+                if (editingId.includes('-ref-')) {
+                    // Update job-linked refrigerant entry
+                    const parts = editingId.split('-ref-');
+                    const jobId = parts[0];
+                    const idx = parseInt(parts[1], 10);
+                    const job = state.jobs.find(j => j.id === jobId);
+                    if (job && job.refrigerantLog && job.refrigerantLog[idx]) {
+                        const oldLog = job.refrigerantLog[idx] as any;
+                        const updatedLog = [...job.refrigerantLog];
+                        updatedLog[idx] = {
+                            ...updatedLog[idx],
+                            type: entry.refType || 'R410A',
+                            amount: entry.amount || 0,
+                            amountLbs: entry.amount || 0,
+                            cylinderNumber: entry.cylinderNo || ''
+                        };
+                        await db.collection('jobs').doc(jobId).update(cleanUndefinedFields({
+                            refrigerantLog: updatedLog
+                        }));
+
+                        // Revert old job-linked usage (which was outflow, so we add old amount back)
+                        const oldAmt = Number(oldLog.amount || oldLog.amountLbs || 0);
+                        await syncCylinderWeight(oldLog.cylinderNumber || oldLog.cylinderId, oldAmt, oldLog.type);
+                        
+                        // Apply new job-linked usage (which is outflow, so we subtract new amount)
+                        await syncCylinderWeight(entry.cylinderNo, -entry.amount, entry.refType);
+
+                        showToast.success("Job-linked log updated successfully.");
+                    }
+                } else {
+                    // Update manual transaction
+                    const oldTx = transactions.find(t => t.id === editingId);
+                    await db.collection('refrigerantTransactions').doc(editingId).update(cleanUndefinedFields(tx));
+
+                    if (oldTx) {
+                        // Revert old transaction effect
+                        const oldAmt = Number(oldTx.amount || (oldTx as any).amountLbs || 0);
+                        const revertDelta = oldTx.action === 'Purchase' ? -oldAmt : oldAmt;
+                        const oldType = oldTx.type || cylinders.find(c => c.id === oldTx.cylinderId || c.cylinderNo === oldTx.cylinderId)?.type;
+                        await syncCylinderWeight(oldTx.cylinderId || (oldTx as any).cylinderNo, revertDelta, oldType);
+                    }
+
+                    // Apply new transaction effect
+                    const newDelta = entry.action === 'Purchase' ? entry.amount : -entry.amount;
+                    await syncCylinderWeight(entry.cylinderNo, newDelta, entry.refType);
+
+                    showToast.success("Manual log updated successfully.");
+                }
             } else {
-                await db.collection('refrigerantTransactions').doc(tx.id).set(tx);
+                // Create new manual transaction
+                await db.collection('refrigerantTransactions').doc(tx.id).set(cleanUndefinedFields(tx));
+
+                // Apply new transaction weight changes
+                const newDelta = entry.action === 'Purchase' ? entry.amount : -entry.amount;
+                await syncCylinderWeight(entry.cylinderNo, newDelta, entry.refType);
+
+                showToast.success("New activity logged successfully.");
             }
             setIsModalOpen(false);
             setIsEditing(false);
@@ -168,15 +379,60 @@ const RefrigerantLog: React.FC = () => {
     };
 
     const handleEdit = (entry: any) => {
+        if (entry.id.includes('-ref-')) {
+            // Job-linked log entry
+            const parts = entry.id.split('-ref-');
+            const jobId = parts[0];
+            const idx = parseInt(parts[1], 10);
+            const job = state.jobs.find(j => j.id === jobId);
+            if (!job || !job.refrigerantLog || !job.refrigerantLog[idx]) return;
+            const log = job.refrigerantLog[idx] as any;
+            
+            setEntry({
+                action: 'Usage',
+                date: new Date(job.appointmentTime || job.createdAt).toISOString().split('T')[0],
+                vendor: '',
+                customerId: job.customerId || '',
+                refType: log.type || 'R410A',
+                amount: Math.abs(Number(log.amount || log.amountLbs || 0)),
+                cylinderNo: log.cylinderNumber || log.cylinderId || '',
+                cost: 0,
+                notes: log.notes || `Job #${job.id}`
+            });
+            setEditingId(entry.id);
+            setIsEditing(true);
+            setIsModalOpen(true);
+            return;
+        }
+
+        // Manual transaction (reftx- or trans-)
         const tx = transactions.find(t => t.id === entry.id);
-        if (!tx) return;
+        if (!tx) {
+            // Fallback populate from table entry values
+            setEntry({
+                action: entry.type || 'Purchase',
+                date: new Date(entry.date).toISOString().split('T')[0],
+                vendor: entry.type === 'Purchase' ? entry.notes || '' : '',
+                customerId: '',
+                refType: entry.refType || 'R410A',
+                amount: Math.abs(Number(entry.amount) || 0),
+                cylinderNo: entry.cylinderNo || '',
+                cost: 0,
+                notes: entry.type === 'Usage' ? entry.notes || '' : ''
+            });
+            setEditingId(entry.id);
+            setIsEditing(true);
+            setIsModalOpen(true);
+            return;
+        }
+        
         setEntry({
-            action: tx.action,
-            date: tx.date,
+            action: tx.action || 'Purchase',
+            date: tx.date || new Date().toISOString().split('T')[0],
             vendor: tx.action === 'Purchase' ? tx.notes || '' : '',
             customerId: tx.customerId || '',
             refType: tx.type || 'R410A',
-            amount: Math.abs(tx.amount),
+            amount: Math.abs(Number(tx.amount || (tx as any).amountLbs || 0)),
             cylinderNo: tx.cylinderId || '',
             cost: 0,
             notes: tx.action === 'Usage' ? tx.notes || '' : ''
@@ -187,15 +443,48 @@ const RefrigerantLog: React.FC = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if (!id.startsWith('reftx-')) {
-            if (!await globalConfirm("This log is linked to a job. Deleting here won't affect the job record. Delete anyway?")) return;
-            // Job-linked logs don't have their own Firestore document - inform user
-            showToast.warn("Job-linked refrigerant logs cannot be deleted from here. To remove this, edit the job and delete it from its refrigerant log.");
+        if (id.includes('-ref-')) {
+            if (!await globalConfirm("Delete this refrigerant record from the job?")) return;
+            try {
+                const parts = id.split('-ref-');
+                const jobId = parts[0];
+                const idx = parseInt(parts[1], 10);
+                const job = state.jobs.find(j => j.id === jobId);
+                if (job && job.refrigerantLog && job.refrigerantLog[idx]) {
+                    const deletedLog = job.refrigerantLog[idx] as any;
+                    const updatedLog = [...job.refrigerantLog];
+                    updatedLog.splice(idx, 1);
+                    await db.collection('jobs').doc(jobId).update(cleanUndefinedFields({
+                        refrigerantLog: updatedLog
+                    }));
+
+                    // Revert old job-linked usage (which was outflow, so we add old amount back)
+                    const oldAmt = Number(deletedLog.amount || deletedLog.amountLbs || 0);
+                    await syncCylinderWeight(deletedLog.cylinderNumber || deletedLog.cylinderId, oldAmt, deletedLog.type);
+
+                    showToast.success("Job-linked log deleted successfully.");
+                }
+            } catch (e) {
+                showToast.warn("Delete failed");
+            }
             return;
         }
+
+        // Manual transaction (reftx- or trans-)
         if (!await globalConfirm("Delete this refrigerant record?")) return;
         try {
+            const txToDelete = transactions.find(t => t.id === id);
             await db.collection('refrigerantTransactions').doc(id).delete();
+
+            if (txToDelete) {
+                // Revert transaction weight changes
+                const oldAmt = Number(txToDelete.amount || (txToDelete as any).amountLbs || 0);
+                const revertDelta = txToDelete.action === 'Purchase' ? -oldAmt : oldAmt;
+                const oldType = txToDelete.type || cylinders.find(c => c.id === txToDelete.cylinderId || c.cylinderNo === txToDelete.cylinderId)?.type;
+                await syncCylinderWeight(txToDelete.cylinderId || (txToDelete as any).cylinderNo, revertDelta, oldType);
+            }
+
+            showToast.success("Refrigerant record deleted successfully.");
         } catch (e) {
             showToast.warn("Delete failed");
         }
@@ -229,7 +518,7 @@ const RefrigerantLog: React.FC = () => {
         };
 
         try {
-            await db.collection('refrigerantCylinders').doc(id).set(cylinder, { merge: true });
+            await db.collection('refrigerantCylinders').doc(id).set(cleanUndefinedFields(cylinder), { merge: true });
             setIsCylinderModalOpen(false);
             setEditingCylinder(null);
         } catch (err) {
@@ -330,7 +619,7 @@ const RefrigerantLog: React.FC = () => {
                                 {REFRIGERANTS.map(r => <option key={r} value={r}>{r}</option>)}
                             </Select>
                         </div>
-                        <Table headers={['Date', 'Type', 'Activity', 'Amount (lbs)', 'Cylinder #', 'Target / Vendor', 'Tech', 'Actions']}>
+                        <Table headers={['Date', 'Type', 'Activity', 'Amount (lbs)', 'Cylinder #', 'Target / Vendor', 'Tech', 'Linked Documents', 'Actions']}>
                             {displayedEntries.map(entry => (
                                 <tr key={entry.id} className={entry.type === 'Purchase' ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/80 cursor-default'}>
                                     <td className="px-6 py-4 text-sm text-slate-500 font-medium">{new Date(entry.date).toLocaleDateString()}</td>
@@ -342,21 +631,20 @@ const RefrigerantLog: React.FC = () => {
                                     <td className="px-6 py-4 text-xs font-mono text-slate-400">{entry.cylinderNo}</td>
                                     <td className="px-6 py-4 text-sm font-bold text-slate-700 dark:text-slate-300">{entry.reference}</td>
                                     <td className="px-6 py-4 text-xs font-medium text-slate-500">{entry.technician}</td>
+                                    <td className="px-6 py-4 text-xs font-medium text-slate-500">{renderLinkedDocsForRefrigerant(entry)}</td>
                                     <td className="px-6 py-4 text-right">
-                                        {entry.id.startsWith('reftx-') && (
-                                            <div className="flex justify-end gap-2">
-                                                <button onClick={() => handleEdit(entry)} className="text-blue-500 hover:text-blue-700" aria-label="Edit Record" title="Edit Record">
-                                                    <Edit size={16} />
-                                                </button>
-                                                <button onClick={() => handleDelete(entry.id)} className="text-red-500 hover:text-red-700" aria-label="Delete Record" title="Delete Record">
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        )}
+                                        <div className="flex justify-end gap-2">
+                                            <button onClick={() => handleEdit(entry)} className="text-blue-500 hover:text-blue-700" aria-label="Edit Record" title="Edit Record">
+                                                <Edit size={16} />
+                                            </button>
+                                            <button onClick={() => handleDelete(entry.id)} className="text-red-500 hover:text-red-700" aria-label="Delete Record" title="Delete Record">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
-                            {displayedEntries.length === 0 && <tr><td colSpan={7} className="p-6 md:p-12 text-center text-slate-400 italic">No refrigerant activity found.</td></tr>}
+                            {displayedEntries.length === 0 && <tr><td colSpan={9} className="p-6 md:p-12 text-center text-slate-400 italic">No refrigerant activity found.</td></tr>}
                         </Table>
                     </Card>
                 </>

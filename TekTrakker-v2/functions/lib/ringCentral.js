@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.registerRingCentralWebhook = exports.ringCentralWebhook = void 0;
+exports.onCustomerWriteSyncRingCentral = exports.syncCustomerToRingCentral = exports.fetchRingCentralCallLogs = exports.ringCentralRecording = exports.registerRingCentralWebhook = exports.ringCentralWebhook = void 0;
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
@@ -151,34 +151,33 @@ exports.ringCentralWebhook = functions.https.onRequest(async (req, res) => {
                         sessionId: event.body.sessionId || event.uuid,
                         routedTo: targetUserId
                     });
-                    // Notify Admins or the specifically mapped user
-                    const adminsSnap = targetUserId ?
-                        await db.collection('users').doc(targetUserId).get().then(doc => doc.exists ? [doc] : []) :
-                        await db.collection('users')
-                            .where('organizationId', '==', orgId)
-                            .where('role', 'in', ['admin', 'master_admin', 'both'])
-                            .get().then(snap => snap.docs);
+                    // Notify all Admins and employees of the organization
+                    const orgUsersSnap = await db.collection('users')
+                        .where('organizationId', '==', orgId)
+                        .get().then(snap => snap.docs);
                     const batch = db.batch();
-                    adminsSnap.forEach((adminDoc) => {
+                    orgUsersSnap.forEach((userDoc) => {
                         const notifyRef = db.collection('notifications').doc();
                         batch.set(notifyRef, {
-                            userId: adminDoc.id,
+                            userId: userDoc.id,
                             organizationId: orgId,
                             title: 'Incoming Call',
                             body: `Incoming call from ${customerName} (${fromNumber})`,
                             type: 'call_received',
                             status: 'pending',
-                            createdAt: new Date().toISOString()
+                            createdAt: new Date().toISOString(),
+                            senderId: customerId || fromNumber,
+                            data: { senderId: customerId || fromNumber }
                         });
                     });
                     await batch.commit();
                 }
             }
-            else if (party && party.status?.code === 'Disconnected' && party.status?.reason === 'Missed') {
-                // Handle Missed Call
-                let fromNumber = party.from?.phoneNumber;
+            else if (party && party.status?.code === 'Disconnected') {
+                const isMissed = party.status?.reason === 'Missed' || party.status?.reason === 'Abandoned';
+                let fromNumber = party.from?.phoneNumber || (party.direction === 'Outbound' ? party.to?.phoneNumber : '');
                 if (!fromNumber)
-                    return; // Can't SMS without a number
+                    return;
                 const orgsSnapshot = await db.collection('organizations').where('settings.ringCentralSubscriptionId', '==', event.subscriptionId).get();
                 if (!orgsSnapshot.empty) {
                     const orgId = orgsSnapshot.docs[0].id;
@@ -189,87 +188,130 @@ exports.ringCentralWebhook = functions.https.onRequest(async (req, res) => {
                             .get();
                         const batch = db.batch();
                         activeCallsSnap.docs.forEach(doc => {
-                            batch.update(doc.ref, { status: 'missed' });
+                            batch.update(doc.ref, { status: isMissed ? 'missed' : 'completed' });
                         });
                         await batch.commit();
                     }
                     // Find customer to link message to
                     let customerId = fromNumber;
                     let customerName = "Unknown Caller";
-                    const customerMatch = await findCustomerByPhone(orgId, fromNumber);
+                    let normFrom = fromNumber;
+                    if (normFrom.startsWith('+1'))
+                        normFrom = normFrom.substring(2);
+                    const customerMatch = await findCustomerByPhone(orgId, normFrom);
                     if (customerMatch) {
                         customerId = customerMatch.id;
                         customerName = customerMatch.name;
                     }
-                    const orgDoc = orgsSnapshot.docs[0];
-                    const ownerId = orgDoc.data().ownerId;
                     // Fetch secrets early to check routing
                     const configDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
                     const config = configDoc.exists ? configDoc.data() : null;
-                    let targetUserId = ownerId;
-                    const toNumber = party.to?.phoneNumber;
-                    if (toNumber && config?.rcMappings) {
-                        let normTo = toNumber;
-                        if (normTo.startsWith('+1'))
-                            normTo = normTo.substring(2);
-                        const match = config.rcMappings.find((m) => {
-                            let mNum = m.phoneNumber || '';
-                            if (mNum.startsWith('+1'))
-                                mNum = mNum.substring(2);
-                            return mNum === normTo;
-                        });
-                        if (match) {
-                            targetUserId = match.forwardToUserId || match.assignedUserId;
-                        }
-                    }
-                    // Write Missed Call to Messages collection
-                    await db.collection('messages').add({
-                        organizationId: orgId,
-                        senderId: customerId,
-                        senderName: customerName,
-                        receiverId: targetUserId || 'all', // Send directly to mapped user
-                        content: `Missed call from ${fromNumber}`,
-                        timestamp: new Date().toISOString(),
-                        createdAt: new Date().toISOString(),
-                        read: false,
-                        type: 'alert'
-                    });
                     if (config) {
-                        if (config?.rcSmsOnMissed && config?.rcSmsTemplate) {
-                            // Get a fresh access token using the stored JWT
+                        const rcUrl = config.ringCentralEnvironment === 'sandbox' ? "https://platform.devtest.ringcentral.com" : "https://platform.ringcentral.com";
+                        const clientId = config.rcBackendClientId || config.ringCentralClientId;
+                        const clientSecret = config.ringCentralClientSecret || '';
+                        const jwtToken = config.ringCentralJwtToken;
+                        if (clientId && jwtToken) {
                             try {
-                                const rcUrl = config.ringCentralEnvironment === 'sandbox' ? "https://platform.devtest.ringcentral.com" : "https://platform.ringcentral.com";
+                                // Get a fresh access token using the stored JWT
                                 const tokenResponse = await fetch(`${rcUrl}/restapi/oauth/token`, {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/x-www-form-urlencoded',
-                                        'Authorization': `Basic ${buffer_1.Buffer.from(`${config.rcBackendClientId || config.ringCentralClientId}:${config.ringCentralClientSecret || ''}`).toString('base64')}`
+                                        'Authorization': `Basic ${buffer_1.Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
                                     },
                                     body: new URLSearchParams({
                                         'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                                        'assertion': config.ringCentralJwtToken
+                                        'assertion': jwtToken
                                     }).toString()
                                 });
                                 if (tokenResponse.ok) {
                                     const { access_token } = await tokenResponse.json();
-                                    // Send the SMS
-                                    await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/sms`, {
-                                        method: 'POST',
+                                    // Query call log by sessionId
+                                    const sessionId = event.body.sessionId || event.uuid;
+                                    const callLogResponse = await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/call-log?telephonySessionId=${sessionId}`, {
                                         headers: {
-                                            'Authorization': `Bearer ${access_token}`,
-                                            'Content-Type': 'application/json'
-                                        },
-                                        body: JSON.stringify({
-                                            from: { phoneNumber: party.to?.phoneNumber },
-                                            to: [{ phoneNumber: fromNumber }],
-                                            text: config.rcSmsTemplate
-                                        })
+                                            'Authorization': `Bearer ${access_token}`
+                                        }
                                     });
-                                    console.log(`Sent missed call SMS to ${fromNumber}`);
+                                    if (callLogResponse.ok) {
+                                        const callLogData = await callLogResponse.json();
+                                        const records = callLogData.records || [];
+                                        if (records.length > 0) {
+                                            const callRecord = records[0];
+                                            const duration = callRecord.duration;
+                                            const result = callRecord.result;
+                                            const recording = callRecord.recording;
+                                            const direction = callRecord.direction;
+                                            let recordingId = null;
+                                            let recordingUrl = null;
+                                            if (recording && recording.id) {
+                                                recordingId = recording.id;
+                                                recordingUrl = `https://us-central1-tektrakker.cloudfunctions.net/ringCentralRecording?recordingId=${recording.id}&orgId=${orgId}`;
+                                            }
+                                            // Log call to messages collection for everyone
+                                            await db.collection('messages').add({
+                                                organizationId: orgId,
+                                                senderId: direction === 'Inbound' ? customerId : 'staff',
+                                                senderName: direction === 'Inbound' ? customerName : 'Staff',
+                                                receiverId: 'all', // Show for everyone
+                                                receiverName: direction === 'Inbound' ? 'Staff' : customerName,
+                                                content: `${direction} call ${result === 'Connected' ? `completed (${Math.floor(duration / 60)}m ${duration % 60}s)` : `failed (${result})`}.`,
+                                                type: 'call',
+                                                status: result.toLowerCase() === 'connected' ? 'connected' : (result.toLowerCase().includes('missed') ? 'missed' : 'no-answer'),
+                                                direction: direction.toLowerCase(),
+                                                duration,
+                                                recordingId,
+                                                recordingUrl,
+                                                timestamp: callRecord.startTime || new Date().toISOString(),
+                                                createdAt: new Date().toISOString(),
+                                                read: false
+                                            });
+                                            // Send SMS on missed if configured
+                                            if (isMissed && config.rcSmsOnMissed && config.rcSmsTemplate) {
+                                                try {
+                                                    await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/sms`, {
+                                                        method: 'POST',
+                                                        headers: {
+                                                            'Authorization': `Bearer ${access_token}`,
+                                                            'Content-Type': 'application/json'
+                                                        },
+                                                        body: JSON.stringify({
+                                                            from: { phoneNumber: party.to?.phoneNumber },
+                                                            to: [{ phoneNumber: fromNumber }],
+                                                            text: config.rcSmsTemplate
+                                                        })
+                                                    });
+                                                    console.log(`Sent missed call SMS to ${fromNumber}`);
+                                                }
+                                                catch (e) {
+                                                    console.error("Failed to send Missed Call SMS:", e);
+                                                }
+                                            }
+                                        }
+                                        else {
+                                            // Fallback if records is empty (RingCentral Call Log API latency)
+                                            await db.collection('messages').add({
+                                                organizationId: orgId,
+                                                senderId: party.direction === 'Inbound' ? customerId : 'staff',
+                                                senderName: party.direction === 'Inbound' ? customerName : 'Staff',
+                                                receiverId: 'all',
+                                                receiverName: party.direction === 'Inbound' ? 'Staff' : customerName,
+                                                content: `${party.direction} call disconnected. Status: ${party.status?.code || 'Disconnected'} | Reason: ${party.status?.reason || 'Unknown'}`,
+                                                type: 'call',
+                                                status: isMissed ? 'missed' : 'connected',
+                                                direction: party.direction?.toLowerCase() || 'inbound',
+                                                duration: 0,
+                                                timestamp: new Date().toISOString(),
+                                                createdAt: new Date().toISOString(),
+                                                read: false
+                                            });
+                                        }
+                                    }
                                 }
                             }
                             catch (e) {
-                                console.error("Failed to send Missed Call SMS:", e);
+                                console.error("Failed to process call log in Disconnected webhook:", e);
                             }
                         }
                     }
@@ -293,56 +335,35 @@ exports.ringCentralWebhook = functions.https.onRequest(async (req, res) => {
                     customerId = customerMatch.id;
                     customerName = customerMatch.name;
                 }
-                const orgDoc = orgsSnapshot.docs[0];
-                const ownerId = orgDoc.data().ownerId;
-                // Fetch secrets early to check routing
-                const configDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
-                const config = configDoc.exists ? configDoc.data() : null;
-                let targetUserId = ownerId;
-                const toNumber = event.body.to?.[0]?.phoneNumber;
-                if (toNumber && config?.rcMappings) {
-                    let normTo = toNumber;
-                    if (normTo.startsWith('+1'))
-                        normTo = normTo.substring(2);
-                    const match = config.rcMappings.find((m) => {
-                        let mNum = m.phoneNumber || '';
-                        if (mNum.startsWith('+1'))
-                            mNum = mNum.substring(2);
-                        return mNum === normTo;
-                    });
-                    if (match) {
-                        targetUserId = match.forwardToUserId || match.assignedUserId;
-                    }
-                }
-                // Write Inbound SMS to Messages collection
+                // Write Inbound SMS to Messages collection for everyone
                 await db.collection('messages').add({
                     organizationId: orgId,
                     senderId: customerId,
                     senderName: customerName,
-                    receiverId: targetUserId || 'all', // Send directly to mapped user
+                    receiverId: 'all', // Show for everyone
                     content: text,
                     timestamp: new Date().toISOString(),
                     createdAt: new Date().toISOString(),
                     read: false,
                     type: 'sms'
                 });
-                const adminsSnap = targetUserId ?
-                    await db.collection('users').doc(targetUserId).get().then(doc => doc.exists ? [doc] : []) :
-                    await db.collection('users')
-                        .where('organizationId', '==', orgId)
-                        .where('role', 'in', ['admin', 'master_admin', 'both'])
-                        .get().then(snap => snap.docs);
+                // Notify all Admins and employees of the organization
+                const orgUsersSnap = await db.collection('users')
+                    .where('organizationId', '==', orgId)
+                    .get().then(snap => snap.docs);
                 const batch = db.batch();
-                adminsSnap.forEach((adminDoc) => {
+                orgUsersSnap.forEach((userDoc) => {
                     const notifyRef = db.collection('notifications').doc();
                     batch.set(notifyRef, {
-                        userId: adminDoc.id,
+                        userId: userDoc.id,
                         organizationId: orgId,
                         title: 'New Text Message',
                         body: `From ${customerName} (${fromNumber}): ${text}`,
                         type: 'sms_received',
                         status: 'pending',
-                        createdAt: new Date().toISOString() // Using ISO string to match frontend types
+                        createdAt: new Date().toISOString(),
+                        senderId: customerId,
+                        data: { senderId: customerId }
                     });
                 });
                 await batch.commit();
@@ -444,6 +465,322 @@ exports.registerRingCentralWebhook = functions.https.onCall(async (data, context
     catch (error) {
         console.error("Register RingCentral Error:", error);
         throw new functions.https.HttpsError('internal', error.message || 'Failed to setup RingCentral integration.');
+    }
+});
+// 3. HTTPS Endpoint to Proxy Recording Streams securely
+exports.ringCentralRecording = functions.https.onRequest(async (req, res) => {
+    try {
+        const recordingId = req.query.recordingId;
+        const orgId = req.query.orgId;
+        if (!recordingId || !orgId) {
+            res.status(400).send('Missing recordingId or orgId');
+            return;
+        }
+        // Fetch secrets for organization
+        const configDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
+        if (!configDoc.exists) {
+            res.status(404).send('Organization config not found');
+            return;
+        }
+        const config = configDoc.data();
+        const rcUrl = config.ringCentralEnvironment === 'sandbox' ? "https://platform.devtest.ringcentral.com" : "https://platform.ringcentral.com";
+        const clientId = config.rcBackendClientId || config.ringCentralClientId;
+        const clientSecret = config.ringCentralClientSecret || '';
+        const jwtToken = config.ringCentralJwtToken;
+        if (!clientId || !jwtToken) {
+            res.status(401).send('RingCentral configuration incomplete');
+            return;
+        }
+        // Get access token
+        const tokenResponse = await fetch(`${rcUrl}/restapi/oauth/token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Basic ${buffer_1.Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+            },
+            body: new URLSearchParams({
+                'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                'assertion': jwtToken
+            }).toString()
+        });
+        if (!tokenResponse.ok) {
+            res.status(401).send('Failed to authenticate with RingCentral');
+            return;
+        }
+        const tokenData = await tokenResponse.json();
+        const accessToken = tokenData.access_token;
+        // Fetch recording audio content from RingCentral
+        const recordingResponse = await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/recording/${recordingId}/content`, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        if (!recordingResponse.ok) {
+            res.status(recordingResponse.status).send('Failed to fetch recording content from RingCentral');
+            return;
+        }
+        // Set response headers and send the audio stream back
+        res.setHeader('Content-Type', recordingResponse.headers.get('Content-Type') || 'audio/mpeg');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        const arrayBuffer = await recordingResponse.arrayBuffer();
+        const buffer = buffer_1.Buffer.from(arrayBuffer);
+        res.status(200).send(buffer);
+    }
+    catch (e) {
+        console.error("Fetch recording error:", e);
+        res.status(500).send('Internal server error');
+    }
+});
+// 4. Callable to query RingCentral API for recent Call Logs & Recordings
+exports.fetchRingCentralCallLogs = functions.https.onCall(async (data, context) => {
+    if (!context.auth)
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    const { orgId, phone } = data;
+    if (!orgId)
+        throw new functions.https.HttpsError('invalid-argument', 'Missing orgId.');
+    try {
+        const configDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
+        if (!configDoc.exists) {
+            return { records: [] };
+        }
+        const config = configDoc.data();
+        const rcUrl = config.ringCentralEnvironment === 'sandbox' ? "https://platform.devtest.ringcentral.com" : "https://platform.ringcentral.com";
+        const clientId = config.rcBackendClientId || config.ringCentralClientId;
+        const clientSecret = config.ringCentralClientSecret || '';
+        const jwtToken = config.ringCentralJwtToken;
+        if (!clientId || !jwtToken) {
+            return { records: [] };
+        }
+        const tokenResponse = await fetch(`${rcUrl}/restapi/oauth/token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Basic ${buffer_1.Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+            },
+            body: new URLSearchParams({
+                'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                'assertion': jwtToken
+            }).toString()
+        });
+        if (!tokenResponse.ok)
+            return { records: [] };
+        const tokenData = await tokenResponse.json();
+        const accessToken = tokenData.access_token;
+        const phoneDigits = (phone || '').replace(/\D/g, '');
+        const logEndpoint = `${rcUrl}/restapi/v1.0/account/~/extension/~/call-log?view=Detailed&perPage=100`;
+        const logRes = await fetch(logEndpoint, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        if (!logRes.ok)
+            return { records: [] };
+        const logData = await logRes.json();
+        const records = [];
+        (logData.records || []).forEach((r) => {
+            const fromDigits = (r.from?.phoneNumber || r.from?.extensionNumber || '').replace(/\D/g, '');
+            const toDigits = (r.to?.phoneNumber || r.to?.extensionNumber || '').replace(/\D/g, '');
+            const isPhoneMatch = !phoneDigits || fromDigits.includes(phoneDigits) || toDigits.includes(phoneDigits) || (phoneDigits.length >= 7 && (fromDigits.endsWith(phoneDigits.slice(-7)) || toDigits.endsWith(phoneDigits.slice(-7))));
+            if (isPhoneMatch) {
+                let recUrl = null;
+                if (r.recording && r.recording.id) {
+                    recUrl = `https://us-central1-tektrakker.cloudfunctions.net/ringCentralRecording?recordingId=${r.recording.id}&orgId=${orgId}`;
+                }
+                records.push({
+                    id: r.id || `rc-${r.sessionId}`,
+                    title: `RingCentral ${r.direction || 'Call'} (${r.result || 'Completed'})`,
+                    direction: r.direction || 'Inbound',
+                    duration: r.duration || 0,
+                    recordingUrl: recUrl,
+                    subject: `Call with ${r.from?.name || r.from?.phoneNumber || r.to?.name || r.to?.phoneNumber || 'Customer'}`,
+                    content: `RingCentral call ${r.direction?.toLowerCase() || ''} - ${r.result || 'Ended'}. Duration: ${Math.floor((r.duration || 0) / 60)}m ${(r.duration || 0) % 60}s`,
+                    timestamp: r.startTime || new Date().toISOString()
+                });
+            }
+        });
+        return { records };
+    }
+    catch (e) {
+        console.error("fetchRingCentralCallLogs error:", e);
+        return { records: [] };
+    }
+});
+// 5. Callable & Trigger to Sync Customer Caller ID & Address Book Contact to RingCentral
+exports.syncCustomerToRingCentral = functions.https.onCall(async (data, context) => {
+    if (!context.auth)
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in.');
+    const { orgId, customerId, syncAll } = data;
+    if (!orgId)
+        throw new functions.https.HttpsError('invalid-argument', 'Missing orgId.');
+    try {
+        const configDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
+        if (!configDoc.exists) {
+            return { success: false, reason: 'RingCentral secrets config missing' };
+        }
+        const config = configDoc.data();
+        const rcUrl = config.ringCentralEnvironment === 'sandbox' ? "https://platform.devtest.ringcentral.com" : "https://platform.ringcentral.com";
+        const clientId = config.rcBackendClientId || config.ringCentralClientId;
+        const clientSecret = config.ringCentralClientSecret || '';
+        const jwtToken = config.ringCentralJwtToken;
+        if (!clientId || !jwtToken) {
+            return { success: false, reason: 'RingCentral configuration incomplete' };
+        }
+        // OAuth Token
+        const tokenResponse = await fetch(`${rcUrl}/restapi/oauth/token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Basic ${buffer_1.Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+            },
+            body: new URLSearchParams({
+                'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                'assertion': jwtToken
+            }).toString()
+        });
+        if (!tokenResponse.ok)
+            return { success: false, reason: 'Failed to authenticate with RingCentral' };
+        const tokenData = await tokenResponse.json();
+        const accessToken = tokenData.access_token;
+        // Get existing contacts from RingCentral Address Book
+        const contactsRes = await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/address-book/contact?perPage=250`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        const contactsData = await contactsRes.json();
+        const existingContacts = contactsData.records || [];
+        // Fetch customer or all customers
+        let customersToSync = [];
+        if (syncAll) {
+            const snap = await db.collection('customers').where('organizationId', '==', orgId).get();
+            snap.forEach(d => customersToSync.push({ id: d.id, ...d.data() }));
+        }
+        else if (customerId) {
+            const custDoc = await db.collection('customers').doc(customerId).get();
+            if (custDoc.exists) {
+                customersToSync.push({ id: custDoc.id, ...custDoc.data() });
+            }
+        }
+        let syncedCount = 0;
+        for (const cust of customersToSync) {
+            const phoneDigits = (cust.phone || '').replace(/\D/g, '');
+            if (!phoneDigits || phoneDigits.length < 7)
+                continue;
+            const formattedPhone = phoneDigits.length === 10 ? `+1${phoneDigits}` : (phoneDigits.startsWith('1') ? `+${phoneDigits}` : `+${phoneDigits}`);
+            const nameParts = (cust.name || 'Customer').trim().split(/\s+/);
+            const firstName = nameParts[0] || 'TekTrakker';
+            const lastName = nameParts.slice(1).join(' ') || 'Customer';
+            const contactPayload = {
+                firstName: firstName,
+                lastName: lastName,
+                company: cust.company || 'TekTrakker Customer',
+                homePhone: formattedPhone,
+                notes: `Synced from TekTrakker CRM (ID: ${cust.id})`
+            };
+            // Check if contact with matching phone already exists
+            const existing = existingContacts.find(c => {
+                const p = (c.homePhone || c.mobilePhone || c.businessPhone || '').replace(/\D/g, '');
+                return p.includes(phoneDigits) || phoneDigits.includes(p);
+            });
+            if (existing && existing.id) {
+                await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/address-book/contact/${existing.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(contactPayload)
+                });
+            }
+            else {
+                await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/address-book/contact`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(contactPayload)
+                });
+            }
+            syncedCount++;
+        }
+        return { success: true, syncedCount };
+    }
+    catch (e) {
+        console.error("syncCustomerToRingCentral error:", e);
+        return { success: false, reason: e.message || 'Error syncing to RingCentral' };
+    }
+});
+// 6. Firestore Trigger on Customer Creation / Update to Auto-Sync Caller ID to RingCentral
+exports.onCustomerWriteSyncRingCentral = functions.firestore
+    .document('customers/{customerId}')
+    .onWrite(async (change, context) => {
+    const afterData = change.after.exists ? change.after.data() : null;
+    if (!afterData || !afterData.organizationId || !afterData.phone)
+        return;
+    const orgId = afterData.organizationId;
+    const phoneDigits = afterData.phone.replace(/\D/g, '');
+    if (!phoneDigits || phoneDigits.length < 7)
+        return;
+    try {
+        const configDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
+        if (!configDoc.exists)
+            return;
+        const config = configDoc.data();
+        const rcUrl = config.ringCentralEnvironment === 'sandbox' ? "https://platform.devtest.ringcentral.com" : "https://platform.ringcentral.com";
+        const clientId = config.rcBackendClientId || config.ringCentralClientId;
+        const clientSecret = config.ringCentralClientSecret || '';
+        const jwtToken = config.ringCentralJwtToken;
+        if (!clientId || !jwtToken)
+            return;
+        const tokenResponse = await fetch(`${rcUrl}/restapi/oauth/token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': `Basic ${buffer_1.Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+            },
+            body: new URLSearchParams({
+                'grant_type': 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                'assertion': jwtToken
+            }).toString()
+        });
+        if (!tokenResponse.ok)
+            return;
+        const tokenData = await tokenResponse.json();
+        const accessToken = tokenData.access_token;
+        const contactsRes = await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/address-book/contact?perPage=250`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        const contactsData = await contactsRes.json();
+        const existingContacts = contactsData.records || [];
+        const formattedPhone = phoneDigits.length === 10 ? `+1${phoneDigits}` : (phoneDigits.startsWith('1') ? `+${phoneDigits}` : `+${phoneDigits}`);
+        const nameParts = (afterData.name || 'Customer').trim().split(/\s+/);
+        const firstName = nameParts[0] || 'TekTrakker';
+        const lastName = nameParts.slice(1).join(' ') || 'Customer';
+        const contactPayload = {
+            firstName,
+            lastName,
+            company: afterData.company || 'TekTrakker Customer',
+            homePhone: formattedPhone,
+            notes: `Synced automatically from TekTrakker CRM`
+        };
+        const existing = existingContacts.find(c => {
+            const p = (c.homePhone || c.mobilePhone || c.businessPhone || '').replace(/\D/g, '');
+            return p.includes(phoneDigits) || phoneDigits.includes(p);
+        });
+        if (existing && existing.id) {
+            await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/address-book/contact/${existing.id}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(contactPayload)
+            });
+        }
+        else {
+            await fetch(`${rcUrl}/restapi/v1.0/account/~/extension/~/address-book/contact`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(contactPayload)
+            });
+        }
+    }
+    catch (err) {
+        console.error("onCustomerWriteSyncRingCentral trigger error:", err);
     }
 });
 //# sourceMappingURL=ringCentral.js.map

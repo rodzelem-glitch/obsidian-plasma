@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket, DollarSign, Terminal } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket, DollarSign, Terminal, PhoneCall } from 'lucide-react';
 import type { User } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
@@ -27,9 +27,10 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
       items: [
         { path: '/master/dashboard', label: 'Overview', icon: LayoutDashboard },
         { path: '/master/analytics', label: 'Platform Analytics', icon: BarChart2 },
+        { path: '/master/telephony', label: 'Telephony Analytics', icon: PhoneCall },
         { path: '/master/integration-requests', label: 'Integration Requests', icon: Network },
         { path: '/master/campaigns', label: 'Campaign Studio', icon: Megaphone },
-        
+        { path: '/master/drip-campaigns', label: 'Drip Sequences', icon: Rocket },
         { path: '/master/ai-usage', label: 'AI Usage Metrics', icon: BrainCircuit },
         { path: '/master/ai-reports', label: 'AI Worker Reports', icon: FileText },
         { path: '/master/storage-usage', label: 'Storage Metrics', icon: Database },

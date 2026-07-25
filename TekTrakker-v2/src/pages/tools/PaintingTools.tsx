@@ -1,4 +1,5 @@
 import showToast from "lib/toast";
+import { cleanUndefinedFields } from 'lib/utils';
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from '../../context/AppContext';
 import Card from '../../components/ui/Card';
@@ -62,7 +63,7 @@ const PaintingTools: React.FC = () => {
             const job = state.jobs.find(j => j.id === selectedJobId);
             if (job) {
                 const updatedReadings = [...(job.toolReadings || []), reading];
-                await db.collection('jobs').doc(selectedJobId).update({ toolReadings: updatedReadings });
+                await db.collection('jobs').doc(selectedJobId).update(cleanUndefinedFields({ toolReadings: updatedReadings }));
                 dispatch({ type: 'UPDATE_JOB', payload: { ...job, toolReadings: updatedReadings } });
             }
             setIsSaveModalOpen(false);

@@ -17,6 +17,26 @@ export function generateStaticParams() {
 
 export const dynamicParams = false;
 
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+    const resolvedParams = await params;
+    const industry = industriesData[resolvedParams.slug as keyof typeof industriesData];
+    if (!industry) {
+        return {
+            title: 'Industry Solution Not Found | TekTrakker',
+            description: 'The requested industry solution could not be found.'
+        };
+    }
+    return {
+        title: `${industry.title} | TekTrakker Platform`,
+        description: `${industry.subtitle}. ${industry.description.slice(0, 150)}...`,
+        openGraph: {
+            title: `${industry.title} | TekTrakker Platform`,
+            description: industry.subtitle,
+            type: 'website',
+        }
+    };
+}
+
 export default async function IndustryPage({ params }: { params: Promise<{ slug: string }> }) {
     const resolvedParams = await params;
     const industry = industriesData[resolvedParams.slug as keyof typeof industriesData];

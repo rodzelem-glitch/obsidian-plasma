@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -50,15 +51,15 @@ const SocialCalendar: React.FC<SocialCalendarProps> = ({ orgId, isMaster, templa
     const updateEventDate = async (id: string, newIsoStr: string) => {
         try {
             if (isMaster) {
-                await db.collection('masterSocialMediaTemplates').doc(id).update({
+                await db.collection('masterSocialMediaTemplates').doc(id).update(cleanUndefinedFields({
                     scheduledFor: newIsoStr,
                     status: 'scheduled'
-                });
+                }));
             } else if (orgId) {
-                await db.collection('organizations').doc(orgId).collection('socialMediaTemplates').doc(id).update({
+                await db.collection('organizations').doc(orgId).collection('socialMediaTemplates').doc(id).update(cleanUndefinedFields({
                     scheduledFor: newIsoStr,
                     status: 'scheduled'
-                });
+                }));
             }
             onDataChanged();
         } catch (error) {
@@ -180,9 +181,9 @@ const SocialCalendar: React.FC<SocialCalendarProps> = ({ orgId, isMaster, templa
                             <Button variant="danger" onClick={async () => {
                                 // Unschedule it
                                 if (isMaster) {
-                                    await db.collection('masterSocialMediaTemplates').doc(selectedEvent.id).update({ status: 'draft', scheduledFor: null });
+                                    await db.collection('masterSocialMediaTemplates').doc(selectedEvent.id).update(cleanUndefinedFields({ status: 'draft', scheduledFor: null }));
                                 } else if (orgId) {
-                                    await db.collection('organizations').doc(orgId).collection('socialMediaTemplates').doc(selectedEvent.id).update({ status: 'draft', scheduledFor: null });
+                                    await db.collection('organizations').doc(orgId).collection('socialMediaTemplates').doc(selectedEvent.id).update(cleanUndefinedFields({ status: 'draft', scheduledFor: null }));
                                 }
                                 onDataChanged();
                                 setSelectedEvent(null);

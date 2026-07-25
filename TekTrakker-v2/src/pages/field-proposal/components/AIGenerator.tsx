@@ -36,7 +36,7 @@ const AIGenerator: React.FC<AIGeneratorProps> = ({ onSuggestions }) => {
             const functions = getFunctions();
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             
-            const prompt = `Expert Service Estimator: Generate tiered repair options (Good, Better, Best) for the following problem description: "${problemDesc}". 
+            const prompt = `Expert Service Estimator: Generate tiered repair options (Basic, Premium, Platinum) for the following problem description: "${problemDesc}". 
             Break down each option into parts cost and labor hours for a field technician.
             Provide the response strictly as a valid JSON object with this exact structure:
             {
@@ -48,7 +48,7 @@ const AIGenerator: React.FC<AIGeneratorProps> = ({ onSuggestions }) => {
             // Using the project's recommended model for complex reasoning
             const result = await callGeminiAI({ 
                 prompt, 
-                modelName: "gemini-3.5-flash",
+                modelName: "gemini-3.6-flash",
                 config: {
                     responseMimeType: "application/json"
                 }

@@ -29,7 +29,7 @@ const WorkforceView: React.FC = () => {
         return state.users.filter(u => u.organizationId === state.currentOrganization?.id && u.role !== 'customer');
     }, [state.users, state.currentOrganization]);
 
-    const activeTechs = orgUsers.filter(u => u.role === 'employee' || u.role === 'both' || u.role === 'Technician');
+    const activeTechs = orgUsers.filter(u => ['employee', 'both', 'technician', 'subcontractor'].includes((u.role || '').toLowerCase()));
     const subcontractorsCount = state.subcontractors?.length || 0;
     
     const visibleUsers = useMemo(() => {

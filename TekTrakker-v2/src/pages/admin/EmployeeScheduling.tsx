@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -56,7 +57,7 @@ const EmployeeScheduling: React.FC = () => {
 
         try {
             setIsSaving(true);
-            await db.collection('workSchedules').doc(newSchedule.id).set(newSchedule, { merge: true });
+            await db.collection('workSchedules').doc(newSchedule.id).set(cleanUndefinedFields(newSchedule), { merge: true });
             dispatch({ type: 'UPDATE_SCHEDULE', payload: newSchedule });
         } catch (error) {
             console.error("Failed to update schedule:", error);
@@ -94,7 +95,7 @@ const EmployeeScheduling: React.FC = () => {
                                     endTime: '17:00',
                                     isOff: false
                                 };
-                                batch.set(ref, newSched, { merge: true });
+                                batch.set(cleanUndefinedFields(ref), newSched, { merge: true });
                                 dispatch({ type: 'UPDATE_SCHEDULE', payload: newSched });
                                 count++;
                             }
@@ -111,7 +112,7 @@ const EmployeeScheduling: React.FC = () => {
                                     endTime: '17:00',
                                     isOff: true
                                 };
-                                batch.set(ref, newSched, { merge: true });
+                                batch.set(cleanUndefinedFields(ref), newSched, { merge: true });
                                 dispatch({ type: 'UPDATE_SCHEDULE', payload: newSched });
                                 count++;
                             }

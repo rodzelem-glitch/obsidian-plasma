@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -113,9 +114,9 @@ const FormBuilder: React.FC = () => {
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             
             // Dynamically select model based on input type
-            let modelName = "gemini-3.5-flash"; // Default for text/reasoning
+            let modelName = "gemini-3.6-flash"; // Default for text/reasoning
             if (aiImportMode === 'image') {
-                modelName = "gemini-3.5-flash"; // For vision tasks
+                modelName = "gemini-3.6-flash"; // For vision tasks
             }
 
             let promptPayload: Record<string, unknown> = {
@@ -223,7 +224,7 @@ const FormBuilder: React.FC = () => {
                         createdAt: new Date().toISOString(),
                         updatedAt: new Date().toISOString(),
                     };
-                    await db.collection('inspectionTemplates').doc(newId).set(templateToSave);
+                    await db.collection('inspectionTemplates').doc(newId).set(cleanUndefinedFields(templateToSave));
                     dispatch({ type: 'ADD_INSPECTION_TEMPLATE', payload: templateToSave });
                 }
                 showToast.warn("Templates imported successfully!");
@@ -254,7 +255,7 @@ const FormBuilder: React.FC = () => {
                 isHiringPacket: editingTemplate.isHiringPacket || false,
             };
 
-            await db.collection('inspectionTemplates').doc(templateToSave.id).set(templateToSave, { merge: true });
+            await db.collection('inspectionTemplates').doc(templateToSave.id).set(cleanUndefinedFields(templateToSave), { merge: true });
             
             if (state.inspectionTemplates.some(t => t.id === templateToSave.id)) {
                 dispatch({ type: 'UPDATE_INSPECTION_TEMPLATE', payload: templateToSave });

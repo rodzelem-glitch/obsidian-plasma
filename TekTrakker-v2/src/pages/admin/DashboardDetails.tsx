@@ -11,7 +11,7 @@ import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import Textarea from 'components/ui/Textarea';
 import type { Job, PartOrder, InvoiceLineItem, ShopOrder, Customer } from 'types';
-import { formatAddress } from 'lib/utils';
+import { formatAddress , cleanUndefinedFields } from 'lib/utils';
 import { Trash2, Mail } from 'lucide-react';
 import { db } from 'lib/firebase';
 import { collection, addDoc } from 'firebase/firestore';
@@ -361,6 +361,7 @@ export const PartOrdersView: React.FC = () => {
 
 export const UnpaidInvoicesView: React.FC = () => {
     const { state } = useAppContext();
+    const navigate = useNavigate();
     const invoices = (state.jobs as Job[]).filter(j => j.invoice?.status === 'Unpaid' || j.invoice?.status === 'Pending');
 
     return (
@@ -368,7 +369,7 @@ export const UnpaidInvoicesView: React.FC = () => {
             <BackButton />
             
             <Card>
-                <Table headers={['Invoice ID', 'Customer', 'Date Scheduled', 'Amount', 'Status']}>
+                <Table headers={['Invoice ID', 'Customer', 'Date Scheduled', 'Amount', 'Status', 'Actions']}>
                     {invoices.map(job => (
                         <tr key={job.id}>
                             <td className="px-6 py-4 text-gray-600 dark:text-gray-300 font-mono text-sm">{job.invoice?.id || 'N/A'}</td>
@@ -383,10 +384,18 @@ export const UnpaidInvoicesView: React.FC = () => {
                                     {job.invoice?.status || 'Unknown'}
                                 </span>
                             </td>
+                            <td className="px-6 py-4 text-sm">
+                                <button 
+                                    onClick={() => navigate(`/admin/history?histId=${job.id}`)}
+                                    className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 font-bold hover:underline"
+                                >
+                                    View Job
+                                </button>
+                            </td>
                         </tr>
                     ))}
                      {invoices.length === 0 && (
-                        <tr><td colSpan={5} className="p-6 text-center text-gray-500">No unpaid invoices. Good job!</td></tr>
+                        <tr><td colSpan={6} className="p-6 text-center text-gray-500">No unpaid invoices. Good job!</td></tr>
                     )}
                 </Table>
             </Card>
@@ -644,13 +653,13 @@ export const AlertsCenterView: React.FC = () => {
         return n.userId === state.currentUser?.id ||
                n.userId === state.currentUser?.email ||
                n.userId === 'all' ||
-               (state.currentUser?.role === 'master_admin' && n.userId === 'rodzelem@gmail.com') ||
+               (state.currentUser?.role === 'master_admin' && (n.userId === 'rodzelem@gmail.com' || n.userId === 'ryanvavrecan@gmail.com')) ||
                (n.userId === 'all_admins' && (state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both'));
     });
 
     const markAsRead = async (id: string) => {
         dispatch({ type: 'MARK_NOTIFICATION_READ', payload: id });
-        await db.collection('notifications').doc(id).update({ read: true }).catch(console.error);
+        await db.collection('notifications').doc(id).update(cleanUndefinedFields({ read: true })).catch(console.error);
     };
 
     const handleAlertClick = (n: any) => {

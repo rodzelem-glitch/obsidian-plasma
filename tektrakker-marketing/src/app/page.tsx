@@ -266,7 +266,7 @@ const InteractiveFeatureShowcase = () => {
 
                         <div className="flex justify-center">
                             <Link 
-                                href={`/features/${FEATURES[activeIndex].id}`}
+                                href={`/features/${FEATURES[activeIndex].id}/`}
                                 className="inline-flex h-14 px-8 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-base hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl hover:shadow-slate-950/20 items-center justify-center gap-2"
                             >
                                 Explore Detailed Guide & Explore Visuals <ArrowRight size={18} />
@@ -704,6 +704,7 @@ export default function Home() {
                         <p className="text-xl text-slate-600 max-w-xl mb-10 leading-relaxed font-medium">You didn&apos;t start a business to work 16 hours a day. As the leading field service management software for modern contractors, TekTrakker eliminates the chaos of scheduling, chasing payments, and managing techs so you can finally breathe.</p>
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button onClick={() => setShowDemoOptions(true)} className="h-16 px-10 rounded-2xl bg-primary-700 text-white font-black text-lg hover:bg-primary-800 transition-all shadow-lg shadow-primary-700/20 hover:scale-[1.02] flex items-center justify-center gap-2">Start Exploring Now <ArrowRight size={20} /></button>
+                            <Link href="/pricing/" className="h-16 px-10 rounded-2xl bg-white text-slate-900 border border-slate-200 font-black text-lg hover:bg-slate-50 transition-all shadow-md hover:scale-[1.02] flex items-center justify-center gap-2">View Transparent Pricing <Zap size={18} className="text-blue-500" /></Link>
                         </div>
                         <div className="mt-6 flex flex-wrap gap-4 items-center">
                             <a href="https://apps.apple.com/ph/app/tektrakker/id6761885811" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 bg-black text-white px-4 py-2.5 rounded-xl hover:bg-slate-800 transition-colors border border-slate-700 shadow-md hover:scale-105 duration-200">
@@ -817,7 +818,7 @@ export default function Home() {
                         <p className="text-lg text-slate-600 mb-0">Don&apos;t manage your property with a shoebox of receipts. Access your free dedicated consumer portal to track warranties, view service history, pay bills, and instantly book verified professionals in your area.</p>
                     </div>
                     <div className="relative z-10 w-full md:w-auto shrink-0">
-                        <Link href="/homeowners" className="w-full md:w-auto px-8 py-4 bg-blue-600 text-white font-black text-lg rounded-xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
+                        <Link href="/homeowners/" className="w-full md:w-auto px-8 py-4 bg-blue-600 text-white font-black text-lg rounded-xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
                             Explore Property Owner Hub <ArrowRight size={20} />
                         </Link>
                     </div>
@@ -836,7 +837,7 @@ export default function Home() {
                         <p className="text-lg text-slate-600 mb-0">Tired of unpredictable rates and hidden fees eating into your margins? Whether you use our full Field Service Management suite or just our payment tools, our transparent flat rate of 2.79% + $0.25 for cards guarantees you keep more of your hard-earned money.</p>
                     </div>
                     <div className="relative z-10 w-full md:w-auto shrink-0">
-                        <Link href="/payment-processing" className="w-full md:w-auto px-8 py-4 bg-orange-600 text-white font-black text-lg rounded-xl hover:bg-orange-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
+                        <Link href="/payment-processing/" className="w-full md:w-auto px-8 py-4 bg-orange-600 text-white font-black text-lg rounded-xl hover:bg-orange-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
                             Learn More <ArrowRight size={20} />
                         </Link>
                     </div>
@@ -850,7 +851,7 @@ export default function Home() {
                     <div className="relative z-10 w-36 h-36 md:w-48 md:h-48 shrink-0 hidden md:flex items-center justify-center">
                         <Image src="/mascot.webp" alt="AI Mascot" width={192} height={192} className="w-full h-full object-contain filter drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] group-hover:scale-110 transition-transform duration-500 origin-bottom" />
                     </div>
-                    <Link href="/ai-worker" className="flex-1 relative z-10 text-white cursor-pointer block">
+                    <Link href="/ai-worker/" className="flex-1 relative z-10 text-white cursor-pointer block">
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold uppercase tracking-widest mb-4">
                             AI Powered Agent
                         </div>
@@ -867,7 +868,7 @@ export default function Home() {
                             height={64}
                             className="w-16 h-16 object-contain filter drop-shadow-[0_0_10px_rgba(99,102,241,0.5)] md:hidden mb-4" 
                         />
-                        <Link href="/ai-worker" className="w-full md:w-auto px-8 py-4 bg-indigo-600 text-white font-black text-lg rounded-xl hover:bg-indigo-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
+                        <Link href="/ai-worker/" className="w-full md:w-auto px-8 py-4 bg-indigo-600 text-white font-black text-lg rounded-xl hover:bg-indigo-700 transition-all shadow-xl hover:shadow-2xl flex items-center justify-center gap-2 group-hover:scale-105">
                             Meet Your AI Worker <ArrowRight size={20} />
                         </Link>
                     </div>
@@ -911,7 +912,7 @@ export default function Home() {
                         </p>
                     </div>
                     <div className="relative z-10 w-full md:w-auto shrink-0 flex flex-col gap-4">
-                        <Link href="/franchise" className="w-full md:w-auto px-10 py-5 bg-gradient-to-r from-yellow-500 to-yellow-600 text-slate-900 font-black text-lg rounded-2xl hover:from-yellow-400 hover:to-yellow-500 transition-all shadow-xl shadow-yellow-500/25 flex items-center justify-center gap-3 group-hover:scale-105 active:scale-95">
+                        <Link href="/franchise/" className="w-full md:w-auto px-10 py-5 bg-gradient-to-r from-yellow-500 to-yellow-600 text-slate-900 font-black text-lg rounded-2xl hover:from-yellow-400 hover:to-yellow-500 transition-all shadow-xl shadow-yellow-500/25 flex items-center justify-center gap-3 group-hover:scale-105 active:scale-95">
                             Explore Franchising <ArrowRight size={22} className="text-slate-900" />
                         </Link>
                     </div>
@@ -920,6 +921,66 @@ export default function Home() {
             </section>
 
             <PartnerTestimonial />
+
+            {/* Conversational Q&A Section for LLM/AI Engine Optimization */}
+            <section className="py-20 px-6 bg-slate-100 border-t border-slate-200">
+                <div className="max-w-4xl mx-auto text-left">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">TekTrakker Platform Q&A</h2>
+                        <p className="text-slate-600 mt-2 font-medium">Direct answers to help you understand our field service management features and platform capabilities.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: What is TekTrakker and how does it help trade service businesses?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed font-medium">
+                                A: TekTrakker is an all-in-one field service management (FSM) operating system designed specifically for trade service contractors like HVAC technicians, plumbers, and electricians. It automates administrative tasks, including scheduling, smart dispatching, mobile estimating, and automated invoicing, allowing business owners to eliminate paperwork and focus on growth.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: How does TekTrakker's AI dispatcher and Virtual Worker add-on function?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed font-medium">
+                                A: The autonomous AI Virtual Worker acts as an ambient office administrator. It monitors incoming emails and SMS requests, analyzes technician schedules and geofences, and automatically assigns jobs and maps routes. It can also draft customer invoices and pre-compile email/SMS responses with payment links.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: Is there a free consumer portal for property and homeowners?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed font-medium">
+                                A: Yes! The Property Owner Consumer Vault is a 100% free portal for homeowners and property managers. It allows them to track repair histories, store appliance warranties, pay invoices, and directly book services from your team without any transaction fees.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: How is TekTrakker priced, and are there per-user seat limits?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed font-medium">
+                                A: TekTrakker offers transparent, flat-rate pricing tiers. The Starter plan is $49/month (1 user limit), the Growth plan is $149/month (includes 5 users, excess users at $30/mo), and the Enterprise plan is $350/month with unlimited users. Unlike other platforms, there are no hidden booking fees or transaction commissions.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: Can I run TekTrakker under my own brand name and custom domain?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed font-medium">
+                                A: Yes. We offer a dedicated White-Label Franchise PAAS License. For a one-time Setup/DNS fee of $1,500 and a flat base monthly subscription of $999, you can fully brand the web and mobile applications with your own logo, colors, and domain.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: Does TekTrakker integrate with accounting platforms?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed font-medium">
+                                A: Yes, TekTrakker supports seamless bi-directional synchronization with QuickBooks Online. This ensures your invoices, customer profiles, payment status updates, and 1099 tax metadata are automatically matched without manual double-entry.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: How is TekTrakker's unlimited user flat-pricing sustainable compared to ServiceTitan or Jobber?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed font-medium">
+                                A: Traditional FSM platforms operate on legacy client-server databases or older cloud architectures that scale inefficiently, passing their high database costs and bloated sales team commissions onto you. TekTrakker is engineered from the ground up on modern, serverless Google Cloud architecture. Since we don't have high corporate overhead, bloated sales forces, or per-seat licensing friction, we pass 100% of these structural savings directly to our customers.
+                            </p>
+                        </div>
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+                            <h3 className="font-bold text-slate-900 mb-2">Q: How reliable is TekTrakker's infrastructure and how mature is its support?</h3>
+                            <p className="text-slate-600 text-sm leading-relaxed font-medium">
+                                A: TekTrakker operates with a 99.99% uptime record, using fully redundant data centers and offline-first mobile synchronization so your technicians never lose access to jobs, checklists, or maps. As a certified Service-Disabled Veteran-Owned Small Business (SDVOSB), we support our clients with dedicated, US-based support engineers who assist with onboarding, data migration, and live training.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
             </main>
 
             <LandingFooter onShowSupport={() => setShowSupportModal(true)} />

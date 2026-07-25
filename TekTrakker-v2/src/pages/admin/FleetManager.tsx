@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -69,10 +70,10 @@ const FleetManager: React.FC = () => {
 
         try {
             if (currentVehicle.id) {
-                await db.collection('vehicles').doc(vehicleToSave.id).update(vehicleToSave);
+                await db.collection('vehicles').doc(vehicleToSave.id).update(cleanUndefinedFields(vehicleToSave));
                 dispatch({ type: 'UPDATE_VEHICLE', payload: vehicleToSave });
             } else {
-                await db.collection('vehicles').doc(vehicleToSave.id).set(vehicleToSave);
+                await db.collection('vehicles').doc(vehicleToSave.id).set(cleanUndefinedFields(vehicleToSave));
                 dispatch({ type: 'ADD_VEHICLE', payload: vehicleToSave });
             }
             setIsModalOpen(false);

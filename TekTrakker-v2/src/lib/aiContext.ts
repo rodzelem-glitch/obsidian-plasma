@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from './utils';
 import { db } from './firebase';
 import type { Organization } from 'types';
 
@@ -62,10 +63,10 @@ export function buildOrgAIContext(org: Organization): string {
 export async function syncOrgAIContext(org: Organization): Promise<void> {
     if (!org?.id) return;
     const contextText = buildOrgAIContext(org);
-    await db.collection('organizations').doc(org.id).collection('ai_context').doc('profile').set({
+    await db.collection('organizations').doc(org.id).collection('ai_context').doc('profile').set(cleanUndefinedFields({
         context: contextText,
         updatedAt: new Date().toISOString(),
         orgId: org.id,
         orgName: org.name
-    }, { merge: true });
+    }), { merge: true });
 }

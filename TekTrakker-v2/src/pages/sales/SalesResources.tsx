@@ -1,4 +1,5 @@
 import showToast from "lib/toast";
+import { cleanUndefinedFields } from 'lib/utils';
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -92,9 +93,9 @@ const SalesResources: React.FC = () => {
 
         try {
             if (editingResource.id) {
-                await db.collection('salesResources').doc(resourceId).update(newResource);
+                await db.collection('salesResources').doc(resourceId).update(cleanUndefinedFields(newResource));
             } else {
-                await db.collection('salesResources').doc(resourceId).set(newResource);
+                await db.collection('salesResources').doc(resourceId).set(cleanUndefinedFields(newResource));
             }
             setIsModalOpen(false);
             setEditingResource({});
@@ -129,7 +130,7 @@ Format response as plain text without markdown blocks.`;
 
             const result: any = await callGeminiAI({ 
                 prompt: systemContext,
-                modelName: 'gemini-3.5-flash'
+                modelName: 'gemini-3.6-flash'
             });
 
             const content = result.data.text;

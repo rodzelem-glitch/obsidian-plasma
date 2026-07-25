@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from './utils';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
 
@@ -23,7 +24,7 @@ export const initializePushNotifications = async (userId: string) => {
   await PushNotifications.addListener('registration', token => {
     console.log('Push registration success, token: ' + token.value);
     import('./firebase').then(({ db }) => {
-      db.collection('users').doc(userId).update({ fcmToken: token.value });
+      db.collection('users').doc(userId).update(cleanUndefinedFields({ fcmToken: token.value }));
     });
   });
 

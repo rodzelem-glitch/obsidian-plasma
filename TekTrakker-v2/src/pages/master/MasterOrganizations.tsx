@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -175,7 +176,7 @@ const MasterOrganizations: React.FC = () => {
         if (!editingOrg) return;
         setIsSubmitting(true);
         try {
-            await db.collection('organizations').doc(editingOrg.id).update({
+            await db.collection('organizations').doc(editingOrg.id).update(cleanUndefinedFields({
                 name: orgForm.name,
                 email: orgForm.email,
                 phone: orgForm.phone,
@@ -194,7 +195,7 @@ const MasterOrganizations: React.FC = () => {
                 virtualWorkerBillingType: orgForm.virtualWorkerBillingType,
                 customDiscountPct: Number(orgForm.customDiscountPct) || 0,
                 subscriptionExpiryDate: orgForm.subscriptionExpiryDate || null
-            });
+            }));
             toast.success('Organization updated successfully!');
             setEditingOrg(null);
         } catch (error: any) {
@@ -217,7 +218,7 @@ const MasterOrganizations: React.FC = () => {
 
     const handleToggleVerified = async (org: Organization) => {
         try {
-            await db.collection('organizations').doc(org.id).update({ isVerified: !org.isVerified });
+            await db.collection('organizations').doc(org.id).update(cleanUndefinedFields({ isVerified: !org.isVerified }));
             toast.success(`Verification status updated for ${org.name}`);
         } catch (error) {
             toast.error("Failed to update verification status.");
@@ -226,7 +227,7 @@ const MasterOrganizations: React.FC = () => {
 
     const handleToggleLeadingPro = async (org: Organization) => {
         try {
-            await db.collection('organizations').doc(org.id).update({ isLeadingPro: !org.isLeadingPro });
+            await db.collection('organizations').doc(org.id).update(cleanUndefinedFields({ isLeadingPro: !org.isLeadingPro }));
             toast.success(`Leading Pro status updated for ${org.name}`);
         } catch (error) {
             toast.error("Failed to update Leading Pro status.");
@@ -235,7 +236,7 @@ const MasterOrganizations: React.FC = () => {
 
     const handleToggleVirtualWorker = async (org: Organization) => {
         try {
-            await db.collection('organizations').doc(org.id).update({ virtualWorkerEnabled: !org.virtualWorkerEnabled });
+            await db.collection('organizations').doc(org.id).update(cleanUndefinedFields({ virtualWorkerEnabled: !org.virtualWorkerEnabled }));
             toast.success(`Virtual Worker status updated for ${org.name}`);
         } catch (error) {
             toast.error("Failed to update Virtual Worker status.");

@@ -1,5 +1,7 @@
+import { cleanUndefinedFields } from '../../../lib/utils';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from 'lib/firebase';
+import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import Modal from 'components/ui/Modal';
@@ -29,6 +31,10 @@ export interface MailingList {
 }
 
 const MailingListManager: React.FC = () => {
+    const { state } = useAppContext();
+    const currentUser = state.currentUser;
+    const isSalesRep = currentUser?.role === 'platform_sales';
+
     const [lists, setLists] = useState<MailingList[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -41,22 +47,34 @@ const MailingListManager: React.FC = () => {
     const fileRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-        const unsub = db.collection('platform_mailing_lists').orderBy('createdAt', 'desc').onSnapshot(snap => {
+        if (!currentUser) return;
+        let query = db.collection('platform_mailing_lists');
+        if (isSalesRep) {
+            query = query.where('repId', '==', currentUser.id) as any;
+        }
+        const unsub = query.orderBy('createdAt', 'desc').onSnapshot(snap => {
             setLists(snap.docs.map(d => ({ id: d.id, ...d.data() } as MailingList)));
+            setIsLoading(false);
+        }, () => {
+            setLists([]);
             setIsLoading(false);
         });
         return () => unsub();
-    }, []);
+    }, [currentUser, isSalesRep]);
 
     const handleCreateList = async () => {
         if (!newListName.trim()) return;
-        await db.collection('platform_mailing_lists').add({
+        const newListData: any = {
             name: newListName.trim(),
             description: newListDesc.trim(),
             contacts: [],
             tags: [],
             createdAt: new Date().toISOString()
-        });
+        };
+        if (isSalesRep && currentUser) {
+            newListData.repId = currentUser.id;
+        }
+        await db.collection('platform_mailing_lists').add(cleanUndefinedFields(newListData));
         setNewListName('');
         setNewListDesc('');
         setShowCreateModal(false);
@@ -103,10 +121,10 @@ const MailingListManager: React.FC = () => {
         const deduped = newContacts.filter(c => !existingEmails.has(c.email));
         const merged = [...existing, ...deduped];
 
-        await db.collection('platform_mailing_lists').doc(listId).update({
+        await db.collection('platform_mailing_lists').doc(listId).update(cleanUndefinedFields({
             contacts: merged,
             updatedAt: new Date().toISOString()
-        });
+        }));
         showToast.success(`Imported ${deduped.length} contacts (${newContacts.length - deduped.length} duplicates skipped)`);
         if (fileRef.current) fileRef.current.value = '';
     };
@@ -117,7 +135,7 @@ const MailingListManager: React.FC = () => {
         const existing: MailingListContact[] = listDoc.data()?.contacts || [];
         if (existing.some(c => c.email === manualEmail.toLowerCase())) { showToast.warn('Already exists'); return; }
         existing.push({ email: manualEmail.toLowerCase(), name: manualName, source: 'manual', tags: [] });
-        await db.collection('platform_mailing_lists').doc(listId).update({ contacts: existing, updatedAt: new Date().toISOString() });
+        await db.collection('platform_mailing_lists').doc(listId).update(cleanUndefinedFields({ contacts: existing, updatedAt: new Date().toISOString() }));
         setManualEmail('');
         setManualName('');
         showToast.success('Contact added!');
@@ -126,10 +144,10 @@ const MailingListManager: React.FC = () => {
     const handleRemoveContact = async (listId: string, email: string) => {
         const listDoc = await db.collection('platform_mailing_lists').doc(listId).get();
         const existing: MailingListContact[] = listDoc.data()?.contacts || [];
-        await db.collection('platform_mailing_lists').doc(listId).update({
+        await db.collection('platform_mailing_lists').doc(listId).update(cleanUndefinedFields({
             contacts: existing.filter(c => c.email !== email),
             updatedAt: new Date().toISOString()
-        });
+        }));
     };
 
     const handleDeleteList = async (id: string) => {

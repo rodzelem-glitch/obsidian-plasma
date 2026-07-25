@@ -1,5 +1,5 @@
 import showToast from "lib/toast";
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
 import React, { useState, useMemo, useEffect } from 'react';
 import Card from 'components/ui/Card';
 import Select from 'components/ui/Select';
@@ -9,7 +9,7 @@ import Input from 'components/ui/Input';
 import Modal from 'components/ui/Modal';
 import Spinner from 'components/ui/Spinner';
 import { useAppContext } from 'context/AppContext';
-import { db } from 'lib/firebase';
+import { db, firebase } from 'lib/firebase';
 import { getNextInvoiceNumber } from 'lib/numbering';
 import type { PartOrder, InvoiceLineItem, Job, Proposal, ShopOrder, Customer } from 'types';
 import InvoiceEditorModal from 'components/modals/InvoiceEditorModal';
@@ -18,6 +18,8 @@ import { FileText, Briefcase, Wrench, Edit, Trash2, Plus, CreditCard, Send, Chec
 import DocumentPreview from 'components/ui/DocumentPreview';
 import { globalConfirm } from "lib/globalConfirm";
 import { uploadFileToStorage } from 'lib/storageService';
+import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
+import SelectExistingJobModal from 'components/modals/SelectExistingJobModal';
 
 
 const PaymentsAndOrders: React.FC = () => {
@@ -34,6 +36,11 @@ const PaymentsAndOrders: React.FC = () => {
     const [isCustomerSelectOpen, setIsCustomerSelectOpen] = useState(false);
     const [custSearch, setCustSearch] = useState('');
     const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
+    
+    // Existing Job Interception States
+    const [selectedCustomerForExisting, setSelectedCustomerForExisting] = useState<Customer | null>(null);
+    const [existingJobsForCustomer, setExistingJobsForCustomer] = useState<Job[]>([]);
+    const [isExistingJobModalOpen, setIsExistingJobModalOpen] = useState(false);
     
     // --- STATE: PARTS ---
     const [selectedJobId, setSelectedJobId] = useState<string>(state.jobs[0]?.id || '');
@@ -52,6 +59,10 @@ const PaymentsAndOrders: React.FC = () => {
 
     // --- STATE: PREVIEWER ---
     const [viewingDocument, setViewingDocument] = useState<{type: 'Invoice' | 'Proposal', data: Job | Proposal} | null>(null);
+    const [proposalReminderModal, setProposalReminderModal] = useState<{
+        isOpen: boolean;
+        proposal: Proposal | null;
+    }>({ isOpen: false, proposal: null });
 
     // --- FILTERED LISTS ---
     const filteredInvoices = useMemo(() => {
@@ -72,9 +83,14 @@ const PaymentsAndOrders: React.FC = () => {
 
     const filteredCustomers = useMemo(() => {
         if (!custSearch) return [];
+        const searchLower = custSearch.toLowerCase();
         return state.customers.filter(c => 
-            c.name.toLowerCase().includes(custSearch.toLowerCase()) || 
-            c.phone.includes(custSearch)
+            c.name.toLowerCase().includes(searchLower) || 
+            (c.phone && c.phone.includes(custSearch)) ||
+            c.serviceLocations?.some(loc => 
+                (loc.propertyName || '').toLowerCase().includes(searchLower) ||
+                (loc.address || '').toLowerCase().includes(searchLower)
+            )
         ).slice(0, 5);
     }, [state.customers, custSearch]);
 
@@ -88,10 +104,11 @@ const PaymentsAndOrders: React.FC = () => {
         setIsCustomerSelectOpen(true);
     };
 
-    const handleCreateInvoice = async (customer?: Customer) => {
+    const proceedCreateInvoice = async (customer?: Customer) => {
         if (isCreatingInvoice) return;
         setIsCreatingInvoice(true);
         setIsCustomerSelectOpen(false);
+        setIsExistingJobModalOpen(false);
 
         const nextInvId = await getNextInvoiceNumber(state.currentOrganization?.id || '');
         const id = `job-inv-${Date.now()}`;
@@ -107,6 +124,7 @@ const PaymentsAndOrders: React.FC = () => {
             jobStatus: 'Completed', 
             appointmentTime: new Date().toISOString(),
             specialInstructions: '',
+            divisionId: state.currentOrganization?.divisions?.[0]?.id || null,
             invoice: {
                 id: nextInvId,
                 status: 'Unpaid',
@@ -121,7 +139,7 @@ const PaymentsAndOrders: React.FC = () => {
         };
         
         try {
-            await db.collection('jobs').doc(id).set(newJob);
+            await db.collection('jobs').doc(id).set(cleanUndefinedFields(newJob));
             setEditingInvoiceId(id);
         } catch (e) {
             console.error(e);
@@ -131,9 +149,41 @@ const PaymentsAndOrders: React.FC = () => {
         }
     };
 
+    const handleCreateInvoice = async (customer?: Customer) => {
+        if (!customer) {
+            await proceedCreateInvoice(undefined);
+            return;
+        }
+
+        const customerJobs = state.jobs.filter(j => 
+            j.customerId === customer.id && 
+            !j.archived && 
+            !j.deleted && 
+            (!j.invoice || j.invoice.status !== 'Paid')
+        );
+
+        if (customerJobs.length > 0) {
+            setIsCustomerSelectOpen(false);
+            setSelectedCustomerForExisting(customer);
+            setExistingJobsForCustomer(customerJobs);
+            setIsExistingJobModalOpen(true);
+        } else {
+            await proceedCreateInvoice(customer);
+        }
+    };
+
+    const handleSelectExistingJob = (job: Job) => {
+        setIsExistingJobModalOpen(false);
+        setEditingInvoiceId(job.id);
+    };
+
     const handleDeleteInvoice = async (jobId: string) => {
         if (await globalConfirm("Delete this invoice record?")) {
-            await db.collection('jobs').doc(jobId).delete();
+            await db.collection('jobs').doc(jobId).update(cleanUndefinedFields({
+                deleted: true,
+                deletedAt: new Date().toISOString(),
+                expireAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000))
+            }));
             dispatch({ type: 'DELETE_JOB', payload: jobId });
         }
     };
@@ -146,6 +196,11 @@ const PaymentsAndOrders: React.FC = () => {
     };
 
     const handleEditProposal = (id: string) => {
+        const p = state.proposals.find(item => item.id === id);
+        if (p?.isProjectLevel) {
+            navigate(`/admin/project-proposals?editId=${id}`);
+            return;
+        }
         const isStaff = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'supervisor';
         const basePath = isStaff ? '/admin' : '/briefing';
         navigate(`${basePath}/proposal?proposalId=${id}`);
@@ -153,37 +208,47 @@ const PaymentsAndOrders: React.FC = () => {
 
     const handleDeleteProposal = async (id: string) => {
         if (await globalConfirm("Delete this proposal?")) {
-            await db.collection('proposals').doc(id).delete();
+            await db.collection('proposals').doc(id).update(cleanUndefinedFields({
+                deleted: true,
+                deletedAt: new Date().toISOString(),
+                expireAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000))
+            }));
             dispatch({ type: 'DELETE_PROPOSAL', payload: id });
         }
     };
 
-    const handleSendProposalReminder = async (proposal: Proposal) => {
-        const email = proposal.customerEmail;
-        if (!email) {
-            showToast.warn("Customer email missing for this proposal.");
-            return;
+    const handleSendProposalReminder = async (proposal: Proposal, selectedEmails?: string[]) => {
+        let emails = selectedEmails;
+        if (!emails) {
+            const email = proposal.customerEmail;
+            if (!email) {
+                showToast.warn("Customer email missing for this proposal.");
+                return;
+            }
+            emails = [email];
         }
 
-        if (!await globalConfirm(`Send proposal reminder to ${email}?`)) return;
+        if (!selectedEmails && !await globalConfirm(`Send proposal reminder to ${emails.join(', ')}?`)) return;
 
         try {
             const link = `${getBaseUrl()}/#/proposal-view/${proposal.id}`;
             const orgName = state.currentOrganization?.name || 'Service Provider';
             
-            await db.collection('mail').add({
-                to: [email],
+            await db.collection('mail_queue').add(cleanUndefinedFields({
+                to: emails,
+                replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
                 message: {
                     subject: `Following up: Proposal from ${orgName}`,
                     html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #e0e7ff;border-radius:8px;"><h2 style="color:#4f46e5;">Proposal Reminder</h2><p>Hi ${proposal.customerName},</p><p>We are following up on the proposal we sent you for <strong>$${(proposal.total ?? 0).toFixed(2)}</strong>. You can review the details and quickly accept it online so we can get started.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#4f46e5;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">Review & Accept Proposal</a></div><p>If you have any questions, please let us know.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
-                    text: `Reminder: Your proposal for $${(proposal.total ?? 0).toFixed(2)} is awaiting review. Review here: ${link}`
+                    text: `Reminder: Your proposal for $${(proposal.total ?? 0).toFixed(2)} is awaiting review. Review here: ${link}`,
+                    replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com'
                 },
                 organizationId: state.currentOrganization?.id,
                 type: 'ProposalReminder',
                 createdAt: new Date().toISOString()
-            });
+            }));
 
-            showToast.warn(`Reminder sent via email to ${email}!`);
+            showToast.warn(`Reminder sent via email to ${emails.join(', ')}!`);
         } catch (e) {
             console.error(e);
             showToast.warn("Error sending reminder.");
@@ -238,7 +303,7 @@ const PaymentsAndOrders: React.FC = () => {
                         amount: totalAmount // keep legacy amount in sync
                     }
                 };
-                await db.collection('jobs').doc(jobToUpdate.id).update(updatedJob);
+                await db.collection('jobs').doc(jobToUpdate.id).update(cleanUndefinedFields(updatedJob));
             }
             
             const status = fulfillmentMethod === 'Special Order' ? 'Pending Approval' : 'Fulfilled';
@@ -280,11 +345,11 @@ const PaymentsAndOrders: React.FC = () => {
                     createdByName: `${state.currentUser?.firstName} ${state.currentUser?.lastName}`,
                     status: 'Pending Review'
                 };
-                await db.collection('expenses').doc(newExpense.id).set(newExpense);
+                await db.collection('expenses').doc(newExpense.id).set(cleanUndefinedFields(newExpense));
                 newPartOrder.expenseId = newExpense.id;
             }
 
-            await db.collection('partOrders').doc(newPartOrder.id).set(newPartOrder);
+            await db.collection('partOrders').doc(newPartOrder.id).set(cleanUndefinedFields(newPartOrder));
             
             setOrderStatus(`Order submitted successfully.`);
             setPartsList('');
@@ -371,19 +436,33 @@ const PaymentsAndOrders: React.FC = () => {
                             </div>
                         </div>
 
-                        {filteredCustomers.map(c => (
-                            <div 
-                                key={c.id} 
-                                onClick={() => handleCreateInvoice(c)}
-                                className="p-3 bg-white dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600 cursor-pointer hover:border-blue-500 transition-colors flex items-center gap-3"
-                            >
-                                <div className="bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300 p-2 rounded-full"><User size={16}/></div>
-                                <div>
-                                    <p className="font-bold text-gray-900 dark:text-white">{c.name}</p>
-                                    <p className="text-xs text-gray-500">{c.address} • {c.phone}</p>
+                        {filteredCustomers.map(c => {
+                            const searchLower = custSearch.toLowerCase();
+                            const matchingLoc = custSearch ? c.serviceLocations?.find(loc => 
+                                (loc.propertyName || '').toLowerCase().includes(searchLower) ||
+                                (loc.address || '').toLowerCase().includes(searchLower)
+                            ) : null;
+                            const locName = matchingLoc ? (matchingLoc.propertyName || matchingLoc.address) : null;
+
+                            return (
+                                <div 
+                                    key={c.id} 
+                                    onClick={() => handleCreateInvoice(c)}
+                                    className="p-3 bg-white dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600 cursor-pointer hover:border-blue-500 transition-colors flex items-center gap-3"
+                                >
+                                    <div className="bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300 p-2 rounded-full"><User size={16}/></div>
+                                    <div>
+                                        <p className="font-bold text-gray-900 dark:text-white">{c.name}</p>
+                                        <p className="text-xs text-gray-500">{c.address} • {c.phone}</p>
+                                        {locName && (
+                                            <p className="text-xs text-blue-500 dark:text-blue-400 mt-0.5">
+                                                Matches location: {locName}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                     
                     <div className="flex justify-end">
@@ -529,10 +608,16 @@ const PaymentsAndOrders: React.FC = () => {
                                         <span className="text-xs text-gray-500 font-mono">#{job.invoice.id}</span>
                                     </div>
                                     <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(job.appointmentTime).toLocaleDateString()}</p>
-                                    <div className="mt-1">
+                                    <div className="mt-1 flex flex-col gap-1 items-start">
                                         <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${job.invoice.status === 'Paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
                                             {job.invoice.status}
                                         </span>
+                                        {job.invoice.opened && job.invoice.status !== 'Paid' && (
+                                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-0.5 flex items-center gap-1">
+                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                                                Opened
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                                 <div className="text-right flex flex-col items-end gap-2 w-full sm:w-auto">
@@ -572,9 +657,22 @@ const PaymentsAndOrders: React.FC = () => {
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <span className="font-bold text-gray-900 dark:text-white text-lg">{p.customerName}</span>
-                                        <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${p.status === 'Accepted' ? 'bg-green-100 text-green-800 border-green-200' : p.status === 'Rejected' ? 'bg-red-100 text-red-800 border-red-200' : 'bg-blue-100 text-blue-800 border-blue-200'}`}>
-                                            {p.status}
-                                        </span>
+                                        <div className="flex flex-col gap-0.5 items-start">
+                                            <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase border ${
+                                                p.status === 'Accepted' ? 'bg-green-100 text-green-800 border-green-200' : 
+                                                p.status === 'Rejected' ? 'bg-red-100 text-red-800 border-red-200' : 
+                                                p.status === 'Opened' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 
+                                                'bg-blue-100 text-blue-800 border-blue-200'
+                                            }`}>
+                                                {p.status}
+                                            </span>
+                                            {(p.status === 'Opened' || p.trackingHistory?.some((entry: any) => entry.status === 'Opened')) && p.status !== 'Accepted' && (
+                                                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1 mt-0.5">
+                                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                                                    Opened
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(p.createdAt).toLocaleDateString()}</p>
                                     <p className="text-xs text-gray-400 mt-1">Option: {p.selectedOption || 'Standard'}</p>
@@ -583,7 +681,7 @@ const PaymentsAndOrders: React.FC = () => {
                                     <span className="text-2xl font-bold text-gray-900 dark:text-white">${(p.total ?? 0).toFixed(2)}</span>
                                     <div className="flex gap-2 w-full sm:w-auto">
                                         {p.status !== 'Accepted' && (
-                                            <Button variant="secondary" onClick={() => handleSendProposalReminder(p)} className="px-3 py-1 text-xs border bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-800/40">
+                                            <Button variant="secondary" onClick={() => setProposalReminderModal({ isOpen: true, proposal: p })} className="px-3 py-1 text-xs border bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800 hover:bg-orange-100 dark:hover:bg-orange-800/40">
                                                 <Bell size={14} /> Remind
                                             </Button>
                                         )}
@@ -744,6 +842,37 @@ const PaymentsAndOrders: React.FC = () => {
                     data={viewingDocument.data}
                     onClose={() => setViewingDocument(null)}
                     isInternal={true}
+                />
+            )}
+
+            {proposalReminderModal.isOpen && proposalReminderModal.proposal && (
+                <RecipientSelectorModal
+                    isOpen={proposalReminderModal.isOpen}
+                    onClose={() => setProposalReminderModal({ isOpen: false, proposal: null })}
+                    customerId={proposalReminderModal.proposal.customerId}
+                    locationId={proposalReminderModal.proposal.locationId}
+                    title="Select Proposal Reminder Recipients"
+                    onConfirm={(emails) => {
+                        if (proposalReminderModal.proposal) {
+                            handleSendProposalReminder(proposalReminderModal.proposal, emails);
+                        }
+                        setProposalReminderModal({ isOpen: false, proposal: null });
+                    }}
+                />
+            )}
+
+            {isExistingJobModalOpen && selectedCustomerForExisting && (
+                <SelectExistingJobModal
+                    isOpen={isExistingJobModalOpen}
+                    onClose={() => {
+                        setIsExistingJobModalOpen(false);
+                        setSelectedCustomerForExisting(null);
+                        setExistingJobsForCustomer([]);
+                    }}
+                    customer={selectedCustomerForExisting}
+                    jobs={existingJobsForCustomer}
+                    onSelectJob={handleSelectExistingJob}
+                    onCreateNew={() => proceedCreateInvoice(selectedCustomerForExisting)}
                 />
             )}
         </div>

@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -61,10 +62,10 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
             if (jobSnap.exists) {
                 const jobData = jobSnap.data() as Job;
                 const existingNotes = jobData.notes || [];
-                await jobRef.update({
+                await jobRef.update(cleanUndefinedFields({
                     notes: [...existingNotes, newNote],
                     updatedAt: new Date().toISOString()
-                });
+                }));
                 toast.success(t("Voice transcript saved to job notes!"));
             }
         } catch (e) {
@@ -138,12 +139,12 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
             const functions = getFunctions();
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             
-            // Using gemini-3.5-flash for master-level tech advice
+            // Using gemini-3.6-flash for master-level tech advice
             const result = await callGeminiAI({ 
                 prompt: userMsg,
-                modelName: "gemini-3.5-flash",
+                modelName: "gemini-3.6-flash",
                 config: {
-                    systemInstruction: `You are TekTrakker Voice Supervisor, a master field technician coach. Context: ${context}. Address the technician completely naturally by their name (${technicianName}). Your advice will be read aloud over a two-way radio to answers questions. You MUST act like a senior tech advisor. Be highly technical, but keep your responses EXTREMELY short and punchy (1-2 sentences maximum). Give direct instructions or troubleshooting steps without any fluff. E.g. "Check the secondary voltage. If it's zero, trace back to the transformer."`
+                    systemInstruction: `You are TekTrakker AI Assist, a master field technician coach. Context: ${context}. Address the technician completely naturally by their name (${technicianName}). Your advice will be read aloud over a two-way radio to answers questions. You MUST act like a senior tech advisor. Be highly technical, but keep your responses EXTREMELY short and punchy (1-2 sentences maximum). Give direct instructions or troubleshooting steps without any fluff. E.g. "Check the secondary voltage. If it's zero, trace back to the transformer."`
                 }
             });
 
@@ -218,19 +219,19 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
 
             if (messagesRef.current.length > 2 && state.currentOrganization?.id) {
                 const finalTranscript = messagesRef.current.map(m => `${m.role === 'assistant' ? 'AI' : technicianName}: ${m.content}`).join('\n');
-                db.collection('organizations').doc(state.currentOrganization.id).collection('aiVoiceLogs').add({
+                db.collection('organizations').doc(state.currentOrganization.id).collection('aiVoiceLogs').add(cleanUndefinedFields({
                     jobId: job?.id || null,
                     jobName: job?.customerName || 'General Request',
                     technicianName: technicianName,
                     transcript: finalTranscript,
                     createdAt: new Date().toISOString()
-                }).catch(e => console.error("Silent auto-save failed:", e));
+                })).catch(e => console.error("Silent auto-save failed:", e));
             }
         };
     }, [state.currentOrganization?.id, job, technicianName]);
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={t("Live AI Supervisor")} size="lg">
+        <Modal isOpen={isOpen} onClose={onClose} title={t("AI Assist")} size="lg">
             <div className="flex flex-col h-[75vh]">
                 {/* Status Bar */}
                 <div className="bg-indigo-600 p-4 rounded-xl mb-4 text-white shadow-lg flex items-center gap-4">
@@ -240,7 +241,7 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
                     <div className="flex-1">
                         <p className="text-[10px] font-black uppercase opacity-70">{t("Voice Engine Status")}</p>
                         <p className="text-sm font-bold truncate">
-                            {isVoiceActive ? t('Listening for your question...') : isSpeaking ? t('AI Supervisor is speaking...') : t('Voice Mode Ready')}
+                            {isVoiceActive ? t('Listening for your question...') : isSpeaking ? t('AI Assist is speaking...') : t('Voice Mode Ready')}
                         </p>
                     </div>
                     <div className="flex gap-2">

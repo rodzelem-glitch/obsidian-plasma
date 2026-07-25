@@ -1,3 +1,5 @@
+import { isEmulatorMode } from './firebase';
+
 export type ConfirmFn = (message: string, title?: string, confirmText?: string, cancelText?: string) => Promise<boolean>;
 
 let confirmImpl: ConfirmFn = async (msg) => {
@@ -11,8 +13,7 @@ export const setGlobalConfirm = (fn: ConfirmFn) => {
 
 export const globalConfirm: ConfirmFn = (msg, title, confirmText, cancelText) => {
     const isDemo = window.location.href.includes('isDemo=true') || document.body.dataset.demoMode === 'true';
-    const isEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
-    if (isDemo && !isEmulator) {
+    if (isDemo && !isEmulatorMode) {
         alert("Action blocked: The demo environment is locked for edits.");
         return Promise.resolve(false);
     }

@@ -9,6 +9,7 @@ export const RingCentralWidget: React.FC = () => {
     const [clientId, setClientId] = useState<string | null>(null);
     const [jwtToken, setJwtToken] = useState<string | null>(null);
     const [loginFlow, setLoginFlow] = useState<string | null>(null);
+    const [callMode, setCallMode] = useState<string | null>(null);
 
     useEffect(() => {
         if (!state.currentOrganization || state.isDemoMode) return;
@@ -26,6 +27,9 @@ export const RingCentralWidget: React.FC = () => {
                     }
                     if (data.ringCentralLoginFlow) {
                         setLoginFlow(data.ringCentralLoginFlow);
+                    }
+                    if (data.ringCentralCallMode) {
+                        setCallMode(data.ringCentralCallMode);
                     }
                 }
             } catch (e) {
@@ -70,7 +74,8 @@ export const RingCentralWidget: React.FC = () => {
         // Initialize RingCentral Embeddable using official fallback credentials
         const script = document.createElement('script');
         script.id = 'rc-widget-script';
-        let srcUrl = `https://ringcentral.github.io/ringcentral-embeddable/adapter.js?clientId=${clientId}&appServer=https://platform.ringcentral.com`;
+        const activeCallMode = callMode || 'browser';
+        let srcUrl = `https://ringcentral.github.io/ringcentral-embeddable/adapter.js?clientId=${clientId}&appServer=https://platform.ringcentral.com&defaultCallWith=${activeCallMode}`;
         if (jwtToken && loginFlow !== 'oauth') {
             srcUrl += `&jwt=${jwtToken}`;
         }
@@ -97,7 +102,7 @@ export const RingCentralWidget: React.FC = () => {
                 rcWidget.remove();
             }
         };
-    }, [clientId, jwtToken, loginFlow]);
+    }, [clientId, jwtToken, loginFlow, callMode]);
 
     return null;
 };

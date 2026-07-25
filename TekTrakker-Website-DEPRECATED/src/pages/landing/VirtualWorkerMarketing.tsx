@@ -4,12 +4,20 @@ import { MarketingFooter } from '../../components/layout/MarketingFooter';
 import { Bot, Sparkles, Zap, Shield, ArrowRight, CheckCircle, Infinity as InfinityIcon, Clock, DollarSign, Calendar, Package, FileText, ArrowLeft } from 'lucide-react';
 import { Logo } from '../../components/ui/Logo';
 import LandingChatbot from '../../components/LandingChatbot';
+import { Helmet } from 'react-helmet-async';
 
 const VirtualWorkerMarketing: React.FC = () => {
     const navigate = useNavigate();
 
     return (
         <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-indigo-500 selection:text-white">
+            <Helmet>
+                <title>AI Dispatcher & Virtual Office Assistant for Contractors | TekTrakker</title>
+                <meta name="description" content="Supercharge your office with TekTrakker's autonomous AI Virtual Worker. Automate customer dispatch, route mapping, invoice drafts, and service agreements 24/7." />
+                <meta name="keywords" content="AI Dispatcher, HVAC AI Assistant, Automatic Time Tracking, Automated Contractor Dispatch" />
+                <meta property="og:title" content="AI Dispatcher & Virtual Office Assistant | TekTrakker" />
+                <meta property="og:description" content="Hire the Virtual Worker Add-On. It works 24/7/365, never takes a sick day, and understands your entire database instantly." />
+            </Helmet>
             {/* Navbar */}
             <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/80">
                 <div className="max-w-7xl mx-auto px-6 h-24 flex justify-between items-center">
@@ -127,7 +135,37 @@ const VirtualWorkerMarketing: React.FC = () => {
                     <h3 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 drop-shadow-sm tracking-tight pb-2">And So Much More!</h3>
                 </div>
             </section>
-            
+
+            {/* Conversational Q&A Section for LLM/AI Engine Optimization */}
+            <section className="py-20 px-6 bg-white border-t border-b border-slate-200">
+                <div className="max-w-4xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight">AI Virtual Worker: Frequently Asked Questions</h2>
+                        <p className="text-slate-600 mt-2">Find direct answers about how our AI dispatch and office automation agent functions.</p>
+                    </div>
+                    <div className="space-y-8">
+                        <div className="border-b border-slate-100 pb-6">
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Q: How does TekTrakker's AI dispatcher automate scheduling?</h3>
+                            <p className="text-slate-600 leading-relaxed">
+                                A: The AI Virtual Worker monitors your incoming emails, job requests, and SMS channels. It analyzes technician availability, current locations, and job durations to automatically assign the best technician, map optimized routes, and dispatch tickets—reducing office administration time by up to 80%.
+                            </p>
+                        </div>
+                        <div className="border-b border-slate-100 pb-6">
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Q: Can the AI dispatcher write invoices and draft customer responses?</h3>
+                            <p className="text-slate-600 leading-relaxed">
+                                A: Yes. When a technician marks a job as complete in the field, the AI Virtual Worker instantly drafts invoices, calculates tax/totals, and pre-compiles email or SMS responses containing secure Stripe/QuickBooks payment links for your review or auto-send.
+                            </p>
+                        </div>
+                        <div className="pb-6">
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Q: Does the AI Virtual Worker require programming or manual setup?</h3>
+                            <p className="text-slate-600 leading-relaxed">
+                                A: No programming is needed. Once activated, the AI dynamically indexes your existing price book, customer logs, past invoices, and service histories. It trains itself on your specific operating data in real-time, matching your exact company voice and guidelines.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section className="py-20 px-6 bg-slate-900 text-white relative">
                 <div className="max-w-5xl mx-auto text-center">
                     <h2 className="text-4xl font-black mb-6 tracking-tight">Transparent AI Pricing.</h2>

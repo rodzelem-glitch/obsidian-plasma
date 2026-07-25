@@ -40,14 +40,28 @@ if ('serviceWorker' in navigator) {
             if (typeof updateSW === 'function') {
                 return updateSW(reload);
             } else {
-                navigator.serviceWorker.getRegistrations().then(registrations => {
+                return navigator.serviceWorker.getRegistrations().then(registrations => {
+                    let hasWaiting = false;
                     for (let r of registrations) {
                         if (r.waiting) {
+                            hasWaiting = true;
                             r.waiting.postMessage({ type: 'SKIP_WAITING' });
                         }
                     }
                     if (reload) {
-                        setTimeout(() => window.location.reload(), 500);
+                        if (hasWaiting) {
+                            const reloadOnController = () => {
+                                navigator.serviceWorker.removeEventListener('controllerchange', reloadOnController);
+                                window.location.reload();
+                            };
+                            navigator.serviceWorker.addEventListener('controllerchange', reloadOnController);
+                            setTimeout(() => {
+                                navigator.serviceWorker.removeEventListener('controllerchange', reloadOnController);
+                                window.location.reload();
+                            }, 5000);
+                        } else {
+                            window.location.reload();
+                        }
                     }
                 });
             }
@@ -96,7 +110,10 @@ const handleChunkError = (event: ErrorEvent | PromiseRejectionEvent) => {
         msg.includes('loading chunk') || 
         msg.includes('importing a module script failed') ||
         msg.includes('dynamically imported module') ||
-        msg.includes('expected a javascript-or-wasm module script');
+        msg.includes('expected a javascript-or-wasm module script') ||
+        msg.includes('unsupported mime type') ||
+        msg.includes('bad-precaching-response') ||
+        msg.includes('precache');
 
     if (isChunkError) {
         const storageKey = 'version_reload_timestamp';
@@ -124,6 +141,11 @@ const handleChunkError = (event: ErrorEvent | PromiseRejectionEvent) => {
         }
     }
 };
+
+window.addEventListener('vite:preloadError', (event) => {
+    event.preventDefault();
+    handleChunkError(event as any);
+});
 
 window.addEventListener('error', handleChunkError);
 window.addEventListener('unhandledrejection', handleChunkError);
@@ -159,7 +181,42 @@ class GlobalErrorBoundary extends React.Component<{children: React.ReactNode}, {
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("Global React Crash:", error, errorInfo);
     (window as any).appHasErrors = true;
+    
+    // Self-heal chunk mismatch and dynamic import failures instantly
+    const msg = (error?.message || '').toLowerCase();
+    const isChunkError = 
+        msg.includes('loading chunk') || 
+        msg.includes('importing a module script failed') ||
+        msg.includes('dynamically imported module') ||
+        msg.includes('failed to fetch dynamically imported module') ||
+        msg.includes('expected a javascript-or-wasm module script');
+        
+    if (isChunkError) {
+        const storageKey = 'version_reload_timestamp';
+        const lastReload = sessionStorage.getItem(storageKey);
+        const now = Date.now();
+        
+        // Prevent endless reload loop if the network is genuinely down
+        if (!lastReload || now - parseInt(lastReload) > 10000) {
+            console.warn('React boundary detected chunk error. Force clearing service workers and reloading...');
+            sessionStorage.setItem(storageKey, now.toString());
+            
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    for (let registration of registrations) {
+                        registration.unregister();
+                    }
+                    window.location.reload();
+                }).catch(() => {
+                    window.location.reload();
+                });
+            } else {
+                window.location.reload();
+            }
+        }
+    }
   }
+
 
   render() {
     if (this.state.hasError) {

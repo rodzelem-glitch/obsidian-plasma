@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState } from 'react';
@@ -59,7 +60,7 @@ const ProjectTaskWorkflowModal = ({ isOpen, onClose, task, project }: { isOpen: 
                 updates.files = [...(project.files || []), newFile];
             }
 
-            await db.collection('projects').doc(project.id).update(updates);
+            await db.collection('projects').doc(project.id).update(cleanUndefinedFields(updates));
             dispatch({ type: 'UPDATE_PROJECT', payload: { ...project, ...updates } });
             setNotes(''); setFile(null); onClose();
         } catch (e) { showToast.warn("Failed to update task."); } finally { setIsSaving(false); }

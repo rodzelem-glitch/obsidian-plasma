@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../lib/utils';
 import React, { createContext, useReducer, useContext, useEffect, ReactNode, useRef, useMemo, useCallback, useState } from 'react';
 import { auth, db } from 'lib/firebase';
 import { useNavigate } from 'react-router-dom';
@@ -57,6 +58,7 @@ const PLATFORM_ORGANIZATION: Organization = {
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, initialState);
     const dataSubscriptions = useRef<(() => void)[]>([]);
+    const usersSubscription = useRef<(() => void) | null>(null);
     const [syncTrigger, setSyncTrigger] = useState(0);
     const demoInitRequested = useRef(false);
     const demoModeRef = useRef(false);
@@ -182,10 +184,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }, []);
 
     const exitDemo = useCallback(() => {
-        // CRITICAL: Keep demoInitRequested TRUE during the exit transition.
-        // This prevents the onAuthStateChanged callback from dispatching LOGOUT 
-        // when the auth effect re-evaluates after isDemoMode flips to false.
-        // We'll clear it after a safe delay once React has settled.
+        // Set synchronous guard flag immediately
         demoInitRequested.current = true;
         
         const preDemoPath = sessionStorage.getItem('preDemoPath');
@@ -198,37 +197,75 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
         // If they came from the marketing site, send them back there (cross-origin = full reload)
         if (preDemoReferrer && (preDemoReferrer.includes('tektrakker.com') && !preDemoReferrer.includes('app.tektrakker.com'))) {
-            // Full navigation out of SPA — safe to drop the guard
             demoInitRequested.current = false;
             window.location.replace(preDemoReferrer);
             return;
         }
 
-        // Navigate cleanly before dispatching EXIT_DEMO to prevent race conditions with ProtectedRoute
         const targetPath = preDemoPath || '/pro/apex';
-        
-        if (targetPath.startsWith('http')) {
-            demoInitRequested.current = false;
-            window.location.href = targetPath;
-        } else {
-            // Use React Router to navigate, stripping the /#/ since navigate handles the hash automatically
-            const cleanPath = targetPath.replace(/^(\/#\/|\/|#\/)/, '/');
-            navigate(cleanPath, { replace: true });
-        }
-        
-        // Dispatch EXIT_DEMO (not LOGOUT) to reset state without triggering auth-related side effects.
-        // EXIT_DEMO clears user/org data but the reducer already handles it identically to LOGOUT.
+
+        // Dispatch EXIT_DEMO to reset demo state but keep loading as true to avoid redirecting to login page
         dispatch({ type: 'EXIT_DEMO' });
 
-        // Release the guard after a safe delay so React's render cycle and any pending
-        // onAuthStateChanged callbacks have time to settle before we allow auth processing.
-        setTimeout(() => {
-            // Only release if we haven't already started a new demo (rapid switching)
-            if (!sessionStorage.getItem('activeDemoRole')) {
-                demoInitRequested.current = false;
+        const performSessionRestore = async () => {
+            const firebaseUser = auth.currentUser;
+            if (firebaseUser) {
+                try {
+                    const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
+                    if (userDoc.exists) {
+                        const userData = { id: firebaseUser.uid, ...userDoc.data() } as User;
+                        const isMasterAdmin = userData.role === 'master_admin' || userData.role === 'both';
+                        const isSales = userData.role === 'platform_sales';
+
+                        let orgData: any = undefined;
+                        if (userData.organizationId) {
+                            const orgDoc = await db.collection('organizations').doc(userData.organizationId).get();
+                            if (orgDoc.exists) orgData = { id: userData.organizationId, ...orgDoc.data() } as Organization;
+                        } else if (isMasterAdmin || isSales) {
+                            orgData = PLATFORM_ORGANIZATION;
+                        }
+
+                        dispatch({
+                            type: 'LOGIN_SUCCESS',
+                            payload: {
+                                user: userData,
+                                organization: orgData,
+                                isMasterAdmin
+                            }
+                        });
+
+                        // Re-route back to dashboard cleanly (pre-demo path or default path for role)
+                        const dest = getRedirectPath(userData, isMasterAdmin);
+                        const finalPath = preDemoPath ? targetPath : dest;
+
+                        if (finalPath.startsWith('http')) {
+                            window.location.href = finalPath;
+                        } else {
+                            const cleanPath = finalPath.replace(/^(\/#\/|\/|#\/)/, '/');
+                            navigate(cleanPath, { replace: true });
+                        }
+
+                        demoInitRequested.current = false;
+                        return;
+                    }
+                } catch (err) {
+                    console.error("[AppContext] Failed to restore real session on exit demo:", err);
+                }
             }
-        }, 1500);
-    }, [dispatch, navigate]);
+
+            // Fallback: No real user found or fetch failed. Force redirect to login page.
+            dispatch({ type: 'SET_LOADING', payload: false });
+            if (targetPath.startsWith('http')) {
+                window.location.href = targetPath;
+            } else {
+                const cleanPath = targetPath.replace(/^(\/#\/|\/|#\/)/, '/');
+                navigate(cleanPath, { replace: true });
+            }
+            demoInitRequested.current = false;
+        };
+
+        performSessionRestore();
+    }, [dispatch, navigate, getRedirectPath]);
 
     useEffect(() => {
         // Use the ref (not state) to decide whether to skip auth processing.
@@ -258,19 +295,39 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             if (user) {
                 dispatch({ type: 'SET_LOADING', payload: true });
                 try {
-                    // Profile Fetch with Timeout
+                    // Profile Fetch with Cache-First + Timeout
                     const fetchProfile = async () => {
-                        let userDoc = await db.collection('users').doc(user.uid).get();
+                        let userDoc;
+                        
+                        // 1. Try cache first for instant offline/weak connection load
+                        try {
+                            userDoc = await db.collection('users').doc(user.uid).get({ source: 'cache' });
+                            console.log("[AppContext] Cached user profile found:", userDoc.exists);
+                        } catch (cacheErr) {
+                            console.log("[AppContext] No user profile in cache. Reading from server...");
+                        }
+
+                        // 2. Fall back to standard server fetch if missing from cache
+                        if (!userDoc || !userDoc.exists) {
+                            try {
+                                userDoc = await db.collection('users').doc(user.uid).get();
+                            } catch (getErr) {
+                                console.warn("[AppContext] Initial profile fetch failed/blocked:", getErr);
+                                userDoc = { exists: false } as any;
+                            }
+                        }
                         
                         if (!userDoc.exists) {
-                            if (user.email === 'rodzelem@gmail.com') {
+                            if (user.email === 'rodzelem@gmail.com' || user.email === 'ryanvavrecan@gmail.com') {
                                 console.warn("Master UID profile missing! Cloning auth data to correct UID endpoint for Security Rules...");
                                 // This physically maps the SuperAdmin identity exactly to the UID so Security Rules `isMaster()` evaluates structurally true
-                                await db.collection('users').doc(user.uid).set({
-                                    id: user.uid, uid: user.uid, email: 'rodzelem@gmail.com',
+                                await db.collection('users').doc(user.uid).set(cleanUndefinedFields({
+                                    id: user.uid, uid: user.uid, email: user.email,
                                     role: 'master_admin', status: 'active',
-                                    firstName: 'Master', lastName: 'Admin', organizationId: 'platform'
-                                });
+                                    firstName: user.email === 'rodzelem@gmail.com' ? 'Master' : 'Ryan',
+                                    lastName: user.email === 'rodzelem@gmail.com' ? 'Admin' : 'Vavrecan',
+                                    organizationId: 'platform'
+                                }));
                                 userDoc = await db.collection('users').doc(user.uid).get();
                             } else {
                                 // Wait 2 seconds to allow Login.tsx's batch.commit() to propagate across Firestore CDNs
@@ -283,13 +340,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                             let userData = { id: user.uid, ...userDoc.data() } as User;
                             
                             // Agreesive Override: If the admin got trapped in a degraded fallback profile, forcibly elevate them.
-                            if (user.email === 'rodzelem@gmail.com' && userData.role !== 'master_admin') {
+                            if ((user.email === 'rodzelem@gmail.com' || user.email === 'ryanvavrecan@gmail.com') && userData.role !== 'master_admin') {
                                 console.warn("Degraded admin profile detected! Forcing Master Elevation...");
-                                await db.collection('users').doc(user.uid).set({
+                                await db.collection('users').doc(user.uid).set(cleanUndefinedFields({
                                     ...userData,
                                     role: 'master_admin',
                                     organizationId: 'platform'
-                                }, { merge: true });
+                                }), { merge: true });
                                 userData.role = 'master_admin';
                                 userData.organizationId = 'platform';
                             }
@@ -305,8 +362,52 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                                 orgData = PLATFORM_ORGANIZATION;
                             }
 
+                            // MFA Session Interception
+                            if ((userData as any).mfaEnabled) {
+                                const isMfaVerified = sessionStorage.getItem('mfa_verified_' + user.uid) === 'true';
+                                if (!isMfaVerified) {
+                                    console.log("[AppContext] Intercepted session initialization: MFA challenge required for user:", user.uid);
+                                    if (!isEffectActive || demoInitRequested.current) return;
+                                    dispatch({ type: 'SET_LOADING', payload: false });
+                                    return;
+                                }
+                            }
+
                             if (!isEffectActive || demoInitRequested.current) return;
                             dispatch({ type: 'LOGIN_SUCCESS', payload: { user: userData, organization: orgData, isMasterAdmin } });
+
+                            // Trigger background server sync to refresh profile data silently (SWR)
+                            db.collection('users').doc(user.uid).get({ source: 'server' }).then(async (serverDoc) => {
+                                if (serverDoc.exists && isEffectActive && !demoInitRequested.current) {
+                                    console.log("[AppContext] Background profile refresh succeeded.");
+                                    let serverUserData = { id: user.uid, ...serverDoc.data() } as User;
+                                    
+                                    if ((user.email === 'rodzelem@gmail.com' || user.email === 'ryanvavrecan@gmail.com') && serverUserData.role !== 'master_admin') {
+                                        await db.collection('users').doc(user.uid).set(cleanUndefinedFields({
+                                            ...serverUserData,
+                                            role: 'master_admin',
+                                            organizationId: 'platform'
+                                        }), { merge: true });
+                                        serverUserData.role = 'master_admin';
+                                        serverUserData.organizationId = 'platform';
+                                    }
+
+                                    const sMaster = serverUserData.role === 'master_admin';
+                                    const sSales = serverUserData.role === 'platform_sales';
+                                    let sOrg: Organization | undefined = undefined;
+
+                                    if (serverUserData.organizationId) {
+                                        const orgDoc = await db.collection('organizations').doc(serverUserData.organizationId).get();
+                                        if (orgDoc.exists) sOrg = { id: serverUserData.organizationId, ...orgDoc.data() } as Organization;
+                                    } else if (sMaster || sSales) {
+                                        sOrg = PLATFORM_ORGANIZATION;
+                                    }
+
+                                    dispatch({ type: 'LOGIN_SUCCESS', payload: { user: serverUserData, organization: sOrg, isMasterAdmin: sMaster } });
+                                }
+                            }).catch(err => {
+                                console.warn("[AppContext] Background profile refresh failed/ignored:", err);
+                            });
                         } else {
                             if (!isEffectActive || demoInitRequested.current) return;
                             // User exists in Auth but not in Firestore - likely a brand new registration
@@ -315,8 +416,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                         }
                     };
 
-                    // Race between fetch and 12s timeout
-                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 12000));
+                    // Race between fetch and 30s timeout (increased from 12s to tolerate slow cellular networks)
+                    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 30000));
                     try {
                         await Promise.race([fetchProfile(), timeoutPromise]);
                     } catch (raceErr) {
@@ -336,6 +437,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 }
             } else {
                 if (!isEffectActive || demoInitRequested.current) return;
+                
+                // Clear any cached MFA verification tokens from session storage upon sign out
+                for (let i = sessionStorage.length - 1; i >= 0; i--) {
+                    const key = sessionStorage.key(i);
+                    if (key && key.startsWith('mfa_verified_')) {
+                        sessionStorage.removeItem(key);
+                    }
+                }
+
                 dispatch({ type: 'SET_LOADING', payload: false });
                 dispatch({ type: 'LOGOUT' });
             }
@@ -345,6 +455,14 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             unsubscribeAuth();
         };
     }, [unsubscribeData, dispatch]);
+
+    const linkedSubcontractorOrgsKey = useMemo(() => {
+        return (state.subcontractors || [])
+            .filter(s => s.handshakeStatus === 'Linked' && s.linkedOrgId)
+            .map(s => s.linkedOrgId)
+            .sort()
+            .join(',');
+    }, [state.subcontractors]);
 
     useEffect(() => {
         const currentUser = state.currentUser;
@@ -371,8 +489,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             }));
         }
 
-        const isFranchiseAdmin = currentUser.role === 'franchise_admin';
-
         // Fetch all organizations for any admin-type user to see linked partner details.
         if (isMasterAdmin) {
             newSubscriptions.push(db.collection('organizations').onSnapshot(s => dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as Organization)) }), e => {
@@ -391,46 +507,45 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             }
         }
 
-        if (isMasterAdmin) {
-            // Master admins get all users
-            newSubscriptions.push(db.collection('users').onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) }), e => {
-                console.error("Users subscription failed:", e);
-                toast.error("Permission denied for Users list");
-            }));
-        } else if (isFranchiseAdmin && currentUser.franchiseId) {
-            // Franchise admins get all users within their franchise silhouette
-            newSubscriptions.push(db.collection('users').where('franchiseId', '==', currentUser.franchiseId).onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) }), e => console.warn(e)));
-        } else if (!isCustomer) {
-            // Other org members get users from their own org
-            const targetOrgId = isSales 
-                ? (currentOrganization?.id || currentUser.organizationId)
-                : currentUser.organizationId;
-            if (targetOrgId) {
-                newSubscriptions.push(db.collection('users').where('organizationId', '==', targetOrgId).onSnapshot(s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) }), e => console.warn(e)));
-            }
-        }
-
         const orgIdForCollections = (currentOrganization?.id && currentOrganization.id !== 'unaffiliated')
             ? currentOrganization.id
             : (currentUser.organizationId && currentUser.organizationId !== 'unaffiliated' ? currentUser.organizationId : undefined);
+
+        const handleMessageSnapshot = (s: any) => {
+            s.docChanges().forEach((change: any) => {
+                if (change.type === 'removed') {
+                    dispatch({ type: 'DELETE_MESSAGE', payload: change.doc.id });
+                }
+            });
+            dispatch({ type: 'MERGE_MESSAGES', payload: s.docs.map((d: any) => ({ ...d.data(), id: d.id })) as Message[] });
+        };
+
+        const handleNotificationSnapshot = (s: any) => {
+            s.docChanges().forEach((change: any) => {
+                if (change.type === 'removed') {
+                    dispatch({ type: 'DELETE_NOTIFICATION', payload: change.doc.id });
+                }
+            });
+            dispatch({ type: 'MERGE_NOTIFICATIONS', payload: s.docs.map((d: any) => ({ ...d.data(), id: d.id })) as Notification[] });
+        };
 
         // Platform-Level Admins & Sales Representatives must securely pipe cross-tenant messages dynamically
         if (currentUser.id && (isMasterAdmin || isSales)) {
             const maskedIdentity = currentUser.role === 'master_admin' ? 'rodzelem@gmail.com' : undefined;
             const receiverIds = Array.from(new Set([currentUser.id, currentUser.email, maskedIdentity, 'all', 'all_sales', 'all_admins'].filter(Boolean)));
             newSubscriptions.push(db.collection('messages').where('receiverId', 'in', receiverIds)
-                .onSnapshot(s => dispatch({ type: 'MERGE_MESSAGES', payload: s.docs.map(d => ({ ...d.data(), id: d.id })) as Message[] }), e => console.warn(e)));
+                .onSnapshot(handleMessageSnapshot, e => console.warn(e)));
                 
-            const senderIds = Array.from(new Set([currentUser.id, currentUser.email, maskedIdentity, 'all'].filter(Boolean)));
+            const senderIds = Array.from(new Set([currentUser.id, currentUser.email, maskedIdentity].filter(Boolean)));
             newSubscriptions.push(db.collection('messages').where('senderId', 'in', senderIds)
-                .onSnapshot(s => dispatch({ type: 'MERGE_MESSAGES', payload: s.docs.map(d => ({ ...d.data(), id: d.id })) as Message[] }), e => console.warn(e)));
+                .onSnapshot(handleMessageSnapshot, e => console.warn(e)));
                 
             if (isMasterAdmin) {
                 // Also get direct notifications addressed to the Master Admin
-                const notifUserIds = Array.from(new Set([currentUser.id, currentUser.email, 'rodzelem@gmail.com'].filter(Boolean)));
+                const notifUserIds = Array.from(new Set([currentUser.id, currentUser.email, 'rodzelem@gmail.com', 'ryanvavrecan@gmail.com'].filter(Boolean)));
                 newSubscriptions.push(db.collection('notifications').where('userId', 'in', notifUserIds)
                     .orderBy('createdAt', 'desc').limit(100)
-                    .onSnapshot(s => dispatch({ type: 'MERGE_NOTIFICATIONS', payload: s.docs.map(d => ({ ...d.data(), id: d.id })) as Notification[] }), e => console.warn(e)));
+                    .onSnapshot(handleNotificationSnapshot, e => console.warn(e)));
             }
         }
         
@@ -455,8 +570,61 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
             const customerPersonalData = ['jobs', 'proposals', 'appointments', 'serviceAgreements', 'messages', 'notifications', 'customers', 'documents', 'reviews', 'serviceLocations', 'equipment'];
 
+            const isSubcontractor = currentUser && currentUser.role === 'Subcontractor';
+            const subcontractorAllowed = ['jobs', 'messages', 'notifications', 'documents', 'inspectionTemplates', 'customers', 'inventory', 'refrigerantCylinders'];
+
             Object.entries(collections).forEach(([collection, actionType]) => {
                 if (isCustomer && internalOnly.includes(collection)) return;
+                if (isSubcontractor && !subcontractorAllowed.includes(collection)) return;
+
+                console.log("[AppContext-Debug] Subscribing to:", collection, "for org:", orgIdForCollections);
+
+                if (orgIdForCollections && collection === 'messages') {
+                    if (isSubcontractor) {
+                        const myIds = Array.from(new Set([currentUser.id, currentUser.email].filter(Boolean)));
+                        newSubscriptions.push(
+                            db.collection('messages')
+                                .where('organizationId', '==', orgIdForCollections)
+                                .where('receiverId', 'in', myIds)
+                                .onSnapshot(handleMessageSnapshot, e => console.warn("Subcontractor received messages failed:", e))
+                        );
+                        newSubscriptions.push(
+                            db.collection('messages')
+                                .where('organizationId', '==', orgIdForCollections)
+                                .where('senderId', 'in', myIds)
+                                .onSnapshot(handleMessageSnapshot, e => console.warn("Subcontractor sent messages failed:", e))
+                        );
+                        return;
+                    }
+
+                    // Securely subscribe to messages in the organization:
+                    // 1. Customer messages (shared)
+                    newSubscriptions.push(
+                        db.collection('messages')
+                            .where('organizationId', '==', orgIdForCollections)
+                            .where('type', 'in', ['sms', 'email', 'customer-log', 'call'])
+                            .onSnapshot(handleMessageSnapshot, e => console.warn("Customer messages subscription failed:", e))
+                    );
+
+                    // 2. Team messages where user is receiver or broadcast target
+                    const receiverIds = Array.from(new Set([currentUser.id, currentUser.email, 'all', 'all_sales', 'all_admins'].filter(Boolean)));
+                    newSubscriptions.push(
+                        db.collection('messages')
+                            .where('organizationId', '==', orgIdForCollections)
+                            .where('receiverId', 'in', receiverIds)
+                            .onSnapshot(handleMessageSnapshot, e => console.warn("Received team messages subscription failed:", e))
+                    );
+
+                    // 3. Team messages where user is sender
+                    const senderIds = Array.from(new Set([currentUser.id, currentUser.email].filter(Boolean)));
+                    newSubscriptions.push(
+                        db.collection('messages')
+                            .where('organizationId', '==', orgIdForCollections)
+                            .where('senderId', 'in', senderIds)
+                            .onSnapshot(handleMessageSnapshot, e => console.warn("Sent team messages subscription failed:", e))
+                    );
+                    return;
+                }
 
                 let query;
                 
@@ -468,7 +636,67 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                         query = db.collection(collection).where('email', '==', currentUser.email);
                     }
                 } else if (orgIdForCollections) {
-                    query = db.collection(collection).where('organizationId', '==', orgIdForCollections);
+                    if (collection === 'jobs' && isSubcontractor) {
+                        query = db.collection('jobs')
+                                  .where('organizationId', '==', orgIdForCollections)
+                                  .where('assignedTechnicianId', '==', currentUser.id);
+                    } else if (collection === 'documents' && isSubcontractor) {
+                        const subcontractorDocs = new Map<string, any>();
+                        const handleSubcontractorDocSnapshot = (s: any) => {
+                            s.docs.forEach((doc: any) => {
+                                subcontractorDocs.set(doc.id, { ...doc.data(), id: doc.id });
+                            });
+                            s.docChanges().forEach((change: any) => {
+                                if (change.type === 'removed') {
+                                    subcontractorDocs.delete(change.doc.id);
+                                }
+                            });
+                            dispatch({ type: 'SET_DOCUMENTS', payload: Array.from(subcontractorDocs.values()) });
+                        };
+
+                        newSubscriptions.push(
+                            db.collection('documents')
+                              .where('organizationId', '==', orgIdForCollections)
+                              .where('subcontractorId', '==', currentUser.id)
+                              .onSnapshot(handleSubcontractorDocSnapshot, e => console.warn("Subcontractor documents sync failed:", e))
+                        );
+
+                        newSubscriptions.push(
+                            db.collection('documents')
+                              .where('organizationId', '==', orgIdForCollections)
+                              .where('type', '==', 'Waiver Template')
+                              .onSnapshot(handleSubcontractorDocSnapshot, e => console.warn("Subcontractor waiver templates sync failed:", e))
+                        );
+                        return;
+                    } else if (collection === 'subcontractors') {
+                        const subDocs = new Map<string, any>();
+                        const handleSubSnapshot = (s: any) => {
+                            s.docs.forEach((doc: any) => {
+                                subDocs.set(doc.id, { ...doc.data(), id: doc.id });
+                            });
+                            s.docChanges().forEach((change: any) => {
+                                if (change.type === 'removed') {
+                                    subDocs.delete(change.doc.id);
+                                }
+                            });
+                            dispatch({ type: 'SET_SUBCONTRACTORS', payload: Array.from(subDocs.values()) });
+                        };
+
+                        newSubscriptions.push(
+                            db.collection('subcontractors')
+                              .where('organizationId', '==', orgIdForCollections)
+                              .onSnapshot(handleSubSnapshot, e => console.warn("Outgoing subcontractors subscription failed:", e))
+                        );
+
+                        newSubscriptions.push(
+                            db.collection('subcontractors')
+                              .where('linkedOrgId', '==', orgIdForCollections)
+                              .onSnapshot(handleSubSnapshot, e => console.warn("Incoming subcontractors subscription failed:", e))
+                        );
+                        return;
+                    } else {
+                        query = db.collection(collection).where('organizationId', '==', orgIdForCollections);
+                    }
                     
                     if (['messages', 'notifications'].includes(collection)) {
                         query = query.orderBy('createdAt', 'desc').limit(100);
@@ -478,7 +706,25 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 }
                 
                 newSubscriptions.push(query.onSnapshot(s => {
-                    const payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
+                    if (actionType === 'MERGE_MESSAGES') {
+                        handleMessageSnapshot(s);
+                        return;
+                    }
+                    if (actionType === 'MERGE_NOTIFICATIONS') {
+                        handleNotificationSnapshot(s);
+                        return;
+                    }
+                    let payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
+                    if (collection === 'jobs' || collection === 'proposals') {
+                        payload = payload.filter((item: any) => !item.deleted);
+                        
+                        // Scoping for standard users based on divisions
+                        const isScopedUser = currentUser && ['employee', 'Technician', 'Subcontractor'].includes(currentUser.role);
+                        const assignedDivs = currentUser?.assignedDivisions || [];
+                        if (isScopedUser && assignedDivs.length > 0) {
+                            payload = payload.filter((item: any) => !item.divisionId || assignedDivs.includes(item.divisionId));
+                        }
+                    }
                     dispatch({ type: actionType, payload } as unknown as Action);
                 }, (error) => {
                     console.error(`Subscription failed for ${collection}:`, error);
@@ -491,23 +737,17 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             // Since messages/notifications are siloed by organizationId, 
             // Master Admins need a direct listener for things specifically addressed to them or global aliases.
             if (isMasterAdmin) {
-                const globalMessageTargets = ['rodzelem@gmail.com', 'all', 'all_admins'];
+                const globalMessageTargets = ['rodzelem@gmail.com', 'ryanvavrecan@gmail.com', 'all', 'all_admins'];
                 newSubscriptions.push(db.collection('messages')
                     .where('receiverId', 'in', globalMessageTargets)
                     .orderBy('createdAt', 'desc').limit(100)
-                    .onSnapshot(s => {
-                        const payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
-                        dispatch({ type: 'MERGE_MESSAGES', payload } as unknown as Action);
-                    }, e => console.error("Global messages subscription failed:", e))
+                    .onSnapshot(handleMessageSnapshot, e => console.error("Global messages subscription failed:", e))
                 );
                 
                 newSubscriptions.push(db.collection('notifications')
                     .where('userId', 'in', globalMessageTargets)
                     .orderBy('createdAt', 'desc').limit(100)
-                    .onSnapshot(s => {
-                        const payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
-                        dispatch({ type: 'MERGE_NOTIFICATIONS', payload } as unknown as Action);
-                    }, e => console.error("Global notifications subscription failed:", e))
+                    .onSnapshot(handleNotificationSnapshot, e => console.error("Global notifications subscription failed:", e))
                 );
             }
 
@@ -574,12 +814,92 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         syncTrigger
     ]);
 
+    // Separate useEffect for users subscription to avoid rebuilding all subscriptions when state.subcontractors updates
+    useEffect(() => {
+        const currentUser = state.currentUser;
+        if (state.isDemoMode || !currentUser) {
+            if (usersSubscription.current) {
+                usersSubscription.current();
+                usersSubscription.current = null;
+            }
+            return;
+        }
+
+        const { isMasterAdmin, currentOrganization } = state;
+        const isCustomer = currentUser.role === 'customer';
+        const isSales = currentUser.role === 'platform_sales';
+
+        if (usersSubscription.current) {
+            usersSubscription.current();
+            usersSubscription.current = null;
+        }
+
+        if (isMasterAdmin) {
+            // Master admins get all users
+            usersSubscription.current = db.collection('users').onSnapshot(
+                s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) }), 
+                e => {
+                    console.error("Users subscription failed:", e);
+                    toast.error("Permission denied for Users list");
+                }
+            );
+        } else if (currentUser.role === 'franchise_admin' && currentUser.franchiseId) {
+            // Franchise admins get all users within their franchise silhouette
+            usersSubscription.current = db.collection('users')
+                .where('franchiseId', '==', currentUser.franchiseId)
+                .onSnapshot(
+                    s => dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) }), 
+                    e => console.warn(e)
+                );
+        } else if (!isCustomer) {
+            console.log("[AppContext-Debug] Users subscription setup. role:", currentUser.role, "org:", currentUser.organizationId);
+            const targetOrgId = isSales 
+                ? (currentOrganization?.id || currentUser.organizationId)
+                : currentUser.organizationId;
+            if (targetOrgId) {
+                const targetOrgIds = [targetOrgId];
+                (state.subcontractors || []).forEach(sub => {
+                    if (sub.handshakeStatus === 'Linked' && sub.linkedOrgId) {
+                        targetOrgIds.push(sub.linkedOrgId);
+                    }
+                });
+                const queryOrgIds = Array.from(new Set(targetOrgIds)).slice(0, 30);
+                console.log("[AppContext-Debug] Subscribing to users with org IDs:", queryOrgIds);
+                const usersQuery = queryOrgIds.length === 1
+                    ? db.collection('users').where('organizationId', '==', queryOrgIds[0])
+                    : db.collection('users').where('organizationId', 'in', queryOrgIds);
+                usersSubscription.current = usersQuery.onSnapshot(
+                    s => {
+                        console.log("[AppContext-Debug] Users query succeeded. Count:", s.size, "queryOrgIds:", queryOrgIds);
+                        dispatch({ type: 'SET_USERS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as User)) });
+                    },
+                    e => console.error("[AppContext-Debug] Users subscription failed:", e)
+                );
+            }
+        }
+
+        return () => {
+            if (usersSubscription.current) {
+                usersSubscription.current();
+                usersSubscription.current = null;
+            }
+        };
+    }, [
+        state.currentUser?.id,
+        state.currentUser?.organizationId,
+        state.currentUser?.role,
+        state.currentOrganization?.id,
+        state.isDemoMode,
+        linkedSubcontractorOrgsKey,
+        dispatch
+    ]);
+
     // NEW: Capacitor AppState Listener for background sync recovery
     useEffect(() => {
         let isMounted = true;
         const initCapacitor = async () => {
             try {
-                const { App: CapacitorApp } = await import('@capacitor/app');
+                const { App: CapacitorApp } = await import(/* @vite-ignore */ '@capacitor/app');
                 if (!isMounted) return;
                 CapacitorApp.addListener('appStateChange', ({ isActive }) => {
                     if (isActive) {

@@ -98,6 +98,7 @@ export type Action =
     | { type: 'ADD_PROJECT'; payload: any }
     | { type: 'UPDATE_PROJECT'; payload: any }
     | { type: 'DELETE_PROJECT'; payload: string }
+    | { type: 'SET_VIEWING_WORK_ORDER'; payload: { workOrderNumber: string | null; customerId: string | null } }
     | { type: 'SET_SUBCONTRACTORS'; payload: Subcontractor[] }
     | { type: 'ADD_SUBCONTRACTOR'; payload: any }
     | { type: 'UPDATE_SUBCONTRACTOR'; payload: any }
@@ -116,8 +117,10 @@ export type Action =
     | { type: 'SYNC_DATA'; payload: any }
     | { type: 'SET_MESSAGES'; payload: Message[] }
     | { type: 'MERGE_MESSAGES'; payload: Message[] }
+    | { type: 'DELETE_MESSAGE'; payload: string }
     | { type: 'SET_NOTIFICATIONS'; payload: Notification[] }
     | { type: 'MERGE_NOTIFICATIONS'; payload: Notification[] }
+    | { type: 'DELETE_NOTIFICATION'; payload: string }
     | { type: 'UPDATE_SHIFT_LOG'; payload: { userId: string, log: ShiftLog } }
     | { type: 'ADD_SHIFT_LOG'; payload: { userId: string, log: ShiftLog } }
     | { type: 'SET_SHIFT_LOGS'; payload: { userId: string, logs: ShiftLog[] } }
@@ -167,11 +170,23 @@ export const appReducer = (state: AppState, action: Action): AppState => {
             return {
                 ...initialState,
                 theme: state.theme, // Persist theme
-                loading: false, // Ensure loading is false
+                loading: true, // Keep loading as true to show spinner during transition
             };
         case 'LOGIN_SUCCESS':
             // Guard: never let a stale auth callback overwrite an active demo session
             if (state.isDemoMode) return state;
+
+            // Merge details if same user is already logged in to prevent wiping out data collections
+            if (state.currentUser?.id === action.payload.user.id) {
+                return {
+                    ...state,
+                    currentUser: action.payload.user,
+                    currentOrganization: action.payload.organization || null,
+                    isMasterAdmin: action.payload.isMasterAdmin,
+                    loading: false,
+                };
+            }
+
             // Start from a clean slate, preserving only the theme from the previous state.
             return {
                 ...initialState,
@@ -205,11 +220,18 @@ export const appReducer = (state: AppState, action: Action): AppState => {
             return { ...state, customers: [...state.customers, action.payload] };
         case 'UPDATE_CUSTOMER': return { ...state, customers: state.customers.map(c => c.id === action.payload.id ? { ...c, ...action.payload } : c) };
         case 'DELETE_CUSTOMER': return { ...state, customers: state.customers.filter(c => c.id !== action.payload) };
+        case 'DELETE_MESSAGE': return { ...state, messages: state.messages.filter(m => m.id !== action.payload) };
+        case 'DELETE_NOTIFICATION': return { ...state, notifications: state.notifications.filter(n => n.id !== action.payload) };
         case 'SET_MESSAGES': return { ...state, messages: action.payload };
         case 'MERGE_MESSAGES': {
             const newMsgs = [...state.messages];
             action.payload.forEach(msg => {
-                if (!newMsgs.some(m => m.id === msg.id)) newMsgs.push(msg);
+                const index = newMsgs.findIndex(m => m.id === msg.id);
+                if (index !== -1) {
+                    newMsgs[index] = { ...newMsgs[index], ...msg };
+                } else {
+                    newMsgs.push(msg);
+                }
             });
             return { ...state, messages: newMsgs.sort((a, b) => new Date(b.createdAt || b.timestamp).getTime() - new Date(a.createdAt || a.timestamp).getTime()) };
         }
@@ -217,7 +239,12 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'MERGE_NOTIFICATIONS': {
             const newNotifs = [...state.notifications];
             action.payload.forEach(notif => {
-                if (!newNotifs.some(n => n.id === notif.id)) newNotifs.push(notif);
+                const index = newNotifs.findIndex(n => n.id === notif.id);
+                if (index !== -1) {
+                    newNotifs[index] = { ...newNotifs[index], ...notif };
+                } else {
+                    newNotifs.push(notif);
+                }
             });
             return { ...state, notifications: newNotifs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) };
         }
@@ -282,6 +309,8 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'ADD_AGREEMENT': 
             if (state.serviceAgreements.some(a => a.id === action.payload.id)) return state;
             return { ...state, serviceAgreements: [...state.serviceAgreements, action.payload] };
+        case 'UPDATE_AGREEMENT':
+            return { ...state, serviceAgreements: state.serviceAgreements.map(a => a.id === action.payload.id ? { ...a, ...action.payload } : a) };
         case 'SET_CYLINDERS': return { ...state, refrigerantCylinders: action.payload };
         case 'UPDATE_CYLINDER': return { ...state, refrigerantCylinders: state.refrigerantCylinders.map(c => c.id === action.payload.id ? { ...c, ...action.payload } : c) };
         case 'ADD_CYLINDER': 
@@ -381,6 +410,12 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'SET_INCIDENTS': return { ...state, incidents: action.payload, incidentReports: action.payload };
         case 'SET_BIDS': return { ...state, bids: action.payload };
         case 'SET_ACTIVE_JOB_ID_FOR_WORKFLOW': return { ...state, activeJobIdForWorkflow: action.payload };
+        case 'SET_VIEWING_WORK_ORDER':
+            return {
+                ...state,
+                viewingWorkOrderNumber: action.payload.workOrderNumber,
+                viewingWorkOrderCustomerId: action.payload.customerId
+            };
         
         case 'SET_TEAMS': return { ...state, teams: action.payload };
         case 'ADD_TEAM': 

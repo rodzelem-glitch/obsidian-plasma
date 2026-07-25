@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useMemo } from 'react';
@@ -63,7 +64,7 @@ const EstimatorSettings: React.FC = () => {
         } as ProposalPreset;
         
         try {
-            await db.collection('proposalPresets').doc(itemToSave.id).set(itemToSave);
+            await db.collection('proposalPresets').doc(itemToSave.id).set(cleanUndefinedFields(itemToSave));
             if (currentPreset.id) dispatch({ type: 'UPDATE_PROPOSAL_PRESET', payload: itemToSave });
             else dispatch({ type: 'ADD_PROPOSAL_PRESET', payload: itemToSave });
             setIsModalOpen(false);
@@ -165,7 +166,7 @@ const EstimatorSettings: React.FC = () => {
                          avgLabor: Number(rawLabor) || 0
                      } as ProposalPreset;
                      
-                     batch.set(ref, fullItem);
+                     batch.set(cleanUndefinedFields(ref), fullItem);
                      dispatch({ type: 'ADD_PROPOSAL_PRESET', payload: fullItem });
                  });
                  

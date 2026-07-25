@@ -105,21 +105,81 @@ const PublicEquipmentReport: React.FC = () => {
                                     {/* Asset Photos */}
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                                         {asset.serialPhotoUrl && (
-                                            <div className="relative border rounded-xl overflow-hidden shadow-sm h-48 bg-gray-100 group">
-                                                <img src={asset.serialPhotoUrl} alt="Serial Number Evidence" className="w-full h-full object-cover" />
-                                                <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] font-bold uppercase py-1 text-center backdrop-blur-sm">Serial Verification</div>
+                                            <div className="flex flex-col space-y-1">
+                                                <div className="relative border rounded-xl overflow-hidden shadow-sm h-48 bg-gray-100 group">
+                                                    <img src={asset.serialPhotoUrl} alt="Serial Number Evidence" className="w-full h-full object-cover" />
+                                                    <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] font-bold uppercase py-1 text-center backdrop-blur-sm">Serial Verification</div>
+                                                </div>
+                                                {asset.serialPhotoLabel && (
+                                                    <p className="text-[11px] text-slate-600 font-semibold italic text-center px-1 break-words leading-normal">
+                                                        "{asset.serialPhotoLabel}"
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
                                         {asset.unitTagPhotoUrl && (
-                                            <div className="relative border rounded-xl overflow-hidden shadow-sm h-48 bg-gray-100 group">
-                                                <img src={asset.unitTagPhotoUrl} alt="Unit Tag Data" className="w-full h-full object-cover" />
-                                                <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] font-bold uppercase py-1 text-center backdrop-blur-sm">Equipment Tag</div>
+                                            <div className="flex flex-col space-y-1">
+                                                <div className="relative border rounded-xl overflow-hidden shadow-sm h-48 bg-gray-100 group">
+                                                    <img src={asset.unitTagPhotoUrl} alt="Unit Tag Data" className="w-full h-full object-cover" />
+                                                    <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] font-bold uppercase py-1 text-center backdrop-blur-sm">Equipment Tag</div>
+                                                </div>
+                                                {asset.unitTagPhotoLabel && (
+                                                    <p className="text-[11px] text-slate-600 font-semibold italic text-center px-1 break-words leading-normal">
+                                                        "{asset.unitTagPhotoLabel}"
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
                                         {asset.conditionPhotoUrl && (
-                                            <div className="relative border rounded-xl overflow-hidden shadow-sm h-48 bg-gray-100 group">
-                                                <img src={asset.conditionPhotoUrl} alt="Visual Condition" className="w-full h-full object-cover" />
-                                                <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] font-bold uppercase py-1 text-center backdrop-blur-sm">State of Wear</div>
+                                            <div className="flex flex-col space-y-1">
+                                                <div className="relative border rounded-xl overflow-hidden shadow-sm h-48 bg-gray-100 group">
+                                                    <img src={asset.conditionPhotoUrl} alt="Visual Condition" className="w-full h-full object-cover" />
+                                                    <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] font-bold uppercase py-1 text-center backdrop-blur-sm">State of Wear</div>
+                                                </div>
+                                                {asset.conditionPhotoLabel && (
+                                                    <p className="text-[11px] text-slate-600 font-semibold italic text-center px-1 break-words leading-normal">
+                                                        "{asset.conditionPhotoLabel}"
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {asset.wideLocationPhotoUrl && (
+                                            <div className="flex flex-col space-y-1">
+                                                <div className="relative border rounded-xl overflow-hidden shadow-sm h-48 bg-gray-100 group">
+                                                    <img src={asset.wideLocationPhotoUrl} alt="Location Context" className="w-full h-full object-cover" />
+                                                    <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] font-bold uppercase py-1 text-center backdrop-blur-sm">Location Context</div>
+                                                </div>
+                                                {asset.wideLocationPhotoLabel && (
+                                                    <p className="text-[11px] text-slate-600 font-semibold italic text-center px-1 break-words leading-normal">
+                                                        "{asset.wideLocationPhotoLabel}"
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {asset.accessPointPhotoUrl && (
+                                            <div className="flex flex-col space-y-1">
+                                                <div className="relative border rounded-xl overflow-hidden shadow-sm h-48 bg-gray-100 group">
+                                                    <img src={asset.accessPointPhotoUrl} alt="Access Pathway" className="w-full h-full object-cover" />
+                                                    <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] font-bold uppercase py-1 text-center backdrop-blur-sm">Access Pathway</div>
+                                                </div>
+                                                {asset.accessPointPhotoLabel && (
+                                                    <p className="text-[11px] text-slate-600 font-semibold italic text-center px-1 break-words leading-normal">
+                                                        "{asset.accessPointPhotoLabel}"
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {asset.qrCodePhotoUrl && (
+                                            <div className="flex flex-col space-y-1">
+                                                <div className="relative border rounded-xl overflow-hidden shadow-sm h-48 bg-gray-100 group">
+                                                    <img src={asset.qrCodePhotoUrl} alt="QR Tag Close-up" className="w-full h-full object-cover" />
+                                                    <div className="absolute bottom-0 w-full bg-black/60 text-white text-[10px] font-bold uppercase py-1 text-center backdrop-blur-sm">QR Code / Tag</div>
+                                                </div>
+                                                {asset.qrCodePhotoLabel && (
+                                                    <p className="text-[11px] text-slate-600 font-semibold italic text-center px-1 break-words leading-normal">
+                                                        "{asset.qrCodePhotoLabel}"
+                                                    </p>
+                                                )}
                                             </div>
                                         )}
                                     </div>

@@ -19,6 +19,7 @@ const FranchiseOpportunities = lazy(() => import('../pages/landing/FranchiseOppo
 const LoginPage = lazy(() => import('../pages/Login'));
 const PublicBookingPage = lazy(() => import('../pages/PublicBookingPage'));
 const PublicCareerPage = lazy(() => import('../pages/PublicCareerPage'));
+const PublicUploadPortal = lazy(() => import('../pages/PublicUploadPortal'));
 
 // Lazy Load Payment Page
 const ApexDemo = lazy(() => import('../pages/Pro/ApexDemo'));
@@ -39,6 +40,11 @@ const PublicRoutes: React.FC<{ user: User | null, getRedirectPath: () => string 
     <Route path="/widgets/reviews/:orgId" element={<ReviewsWidget />} />
     <Route path="/book" element={<PublicBookingPage />} />
     <Route path="/careers/:orgId" element={<PublicCareerPage />} />
+    <Route path="/public-upload/:token" element={
+        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-slate-900 text-white">Connecting Secure Portal...</div>}>
+            <PublicUploadPortal />
+        </Suspense>
+    } />
     <Route path="/auth/callback" element={
         <Suspense fallback={<div className="flex h-screen items-center justify-center bg-gray-50 text-gray-500">Processing Authentication...</div>}>
             <OAuthCallback />

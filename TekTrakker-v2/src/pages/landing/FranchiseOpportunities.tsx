@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState, useRef } from 'react';
 import { Network, ArrowRight, CheckCircle2, Lock, Building, Map, CreditCard, ChevronLeft, Globe, Loader2 } from 'lucide-react';
@@ -89,7 +90,7 @@ const FranchiseOpportunities: React.FC = () => {
             if (!credential.user) throw new Error("Failed to create auth user");
 
             // 2. Create the Franchise Silhouette
-            const franchiseRef = await db.collection('franchises').add({
+            const franchiseRef = await db.collection('franchises').add(cleanUndefinedFields({
                 name: franchiseName,
                 ownerUserId: credential.user.uid,
                 branding: {
@@ -112,10 +113,10 @@ const FranchiseOpportunities: React.FC = () => {
                     signatureBase64: signatureData
                 },
                 createdAt: new Date().toISOString()
-            });
+            }));
 
             // 3. Create the User Document as Franchise Admin
-            await db.collection('users').doc(credential.user.uid).set({
+            await db.collection('users').doc(credential.user.uid).set(cleanUndefinedFields({
                 id: credential.user.uid,
                 email: email,
                 firstName: firstName,
@@ -124,7 +125,7 @@ const FranchiseOpportunities: React.FC = () => {
                 franchiseId: franchiseRef.id,
                 organizationId: 'master_admin_placeholder', // Skips standard org enforcement
                 createdAt: new Date().toISOString()
-            });
+            }));
 
             showToast.warn('Welcome aboard! Your Franchise Portal is being provisioned. Please contact our DNS team to point your domain.');
             navigate('/master/dashboard');

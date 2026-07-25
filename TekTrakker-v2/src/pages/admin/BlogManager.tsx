@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect } from 'react';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
@@ -65,9 +66,9 @@ const BlogManager: React.FC = () => {
                 return;
             }
 
-            await db.collection('organizations').doc(state.currentOrganization?.id).update({
+            await db.collection('organizations').doc(state.currentOrganization?.id).update(cleanUndefinedFields({
                 profileSlug: normalizedSlug
-            });
+            }));
             toast.success("Profile URL updated successfully!");
         } catch (err) {
             console.error("Failed to update profile slug", err);
@@ -112,14 +113,14 @@ const BlogManager: React.FC = () => {
         
         setIsSaving(true);
         try {
-            await db.collection('organizations').doc(state.currentOrganization?.id).collection('blogPosts').add({
+            await db.collection('organizations').doc(state.currentOrganization?.id).collection('blogPosts').add(cleanUndefinedFields({
                 title,
                 content: DOMPurify.sanitize(content),
                 published,
                 authorId: state.currentUser?.id,
                 createdAt: new Date().toISOString(),
                 slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '')
-            });
+            }));
             toast.success(published ? "Blog post published!" : "Draft saved!");
             setTitle('');
             setContent('');

@@ -10,14 +10,62 @@ test.describe('Customer Management', () => {
         dialog.accept();
     });
 
-    // Wait for the emulators to finish booting up
-    await page.waitForTimeout(15000);
+    // Wait for the emulators and Vite to finish booting up and be fully responsive
+    console.log('Waiting for Firebase emulators and Vite server to be responsive...');
+    let ready = false;
+    for (let i = 0; i < 30; i++) {
+      try {
+        // Try fetching root page, Firestore emulator, and Auth emulator
+        const [rootRes, firestoreRes, authRes] = await Promise.all([
+          page.request.get('/'),
+          page.request.get('http://127.0.0.1:8081'),
+          page.request.get('http://127.0.0.1:9099')
+        ]);
+        console.log(`Port checks: Vite=${rootRes.status()}, Firestore=${firestoreRes.status()}, Auth=${authRes.status()}`);
+        ready = true;
+        break;
+      } catch (e: any) {
+        console.log(`Waiting for services to boot... (Attempt ${i + 1}/30): ${e.message}`);
+        await page.waitForTimeout(2000);
+      }
+    }
+
+    if (!ready) {
+      throw new Error('Firebase emulators or Vite server failed to boot within 60 seconds.');
+    }
+
+    // Navigate to root to establish origin, then set localStorage
+    let loaded = false;
+    for (let i = 0; i < 5; i++) {
+      try {
+        await page.goto('/');
+        loaded = true;
+        break;
+      } catch (e: any) {
+        console.log(`Failed to load root page on attempt ${i + 1}: ${e.message}. Retrying...`);
+        await page.waitForTimeout(2000);
+      }
+    }
+    if (!loaded) {
+      throw new Error('Failed to load root page after multiple attempts.');
+    }
+    await page.evaluate(() => {
+      try {
+        window.localStorage.setItem('onboarding_complete_apex-sales-manager-id', 'true');
+        window.localStorage.setItem('onboarding_complete_undefined', 'true');
+      } catch (e) {
+        // Ignore
+      }
+    });
 
     // Navigate to the app with demo=admin which auto-logs in and sets up demo state
     await page.goto('/?demo=admin');
 
-    // Navigate to the customers page
-    await page.goto('/#/admin/customers');
+    // Wait for redirect/onboarding check to settle on the dashboard
+    await page.waitForURL('**/admin/dashboard', { timeout: 15000 });
+
+    // Navigate to the customers page via client-side hash navigation to preserve demo session
+    await page.evaluate(() => { window.location.hash = '#/admin/customers'; });
 
     // Wait for the customer management view to load by looking for the Quick Add button
     await expect(page.getByText('Quick Add', { exact: true })).toBeVisible({ timeout: 10000 });

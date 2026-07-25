@@ -1,4 +1,4 @@
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { db, storage } from 'lib/firebase';
@@ -212,13 +212,13 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
     const handleSaveTemplate = async () => {
         if (!state.currentOrganization?.id || !subject.trim() || !htmlContent.trim()) return;
         try {
-            await db.collection('organizations').doc(state.currentOrganization.id).collection('marketingTemplates').add({
+            await db.collection('organizations').doc(state.currentOrganization.id).collection('marketingTemplates').add(cleanUndefinedFields({
                 name: subject,
                 subject,
                 htmlContent,
                 aiPrompt,
                 createdAt: new Date().toISOString()
-            });
+            }));
             toast.success("Template successfully saved to Library!");
         } catch (err: any) {
             toast.error("Failed to save template.");
@@ -267,9 +267,9 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                         deliveryHtml = deliveryHtml.split(state.currentOrganization.logoUrl).join(publicLogoUrl);
                         
                         // Silently promote the public URL globally so future campaigns never hit this bottleneck
-                        await db.collection('organizations').doc(state.currentOrganization.id).update({
+                        await db.collection('organizations').doc(state.currentOrganization.id).update(cleanUndefinedFields({
                             logoUrl: publicLogoUrl
-                        });
+                        }));
                     } catch(err) {
                         console.error("Base64 to URL migration failed:", err);
                     }
@@ -289,7 +289,7 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                 openedBy: []
             };
 
-            const campaignRef = await db.collection('marketingCampaigns').add(trackingPayload);
+            const campaignRef = await db.collection('marketingCampaigns').add(cleanUndefinedFields(trackingPayload));
             const campaignId = campaignRef.id;
 
             const batches = [];
@@ -299,7 +299,7 @@ EXISTING HTML DRAFT:\n\`\`\`html\n${htmlContent}\n\`\`\``
                  const trackingPixel = `\n<img src="https://us-central1-tektrakker.cloudfunctions.net/trackEmailOpen?campaignId=${campaignId}&customerId=${c.id}" width="1" height="1" style="display:none; visibility:hidden; width:1px; height:1px;" alt="" />`;
                  const personalizedHtml = deliveryHtml + trackingPixel;
 
-                 currentBatch.set(db.collection('mail_queue').doc(), {
+                 currentBatch.set(cleanUndefinedFields(db.collection('mail_queue')).doc(), {
                     to: [c.email!.trim().toLowerCase()], 
                     message: {
                         subject: subject.trim(),

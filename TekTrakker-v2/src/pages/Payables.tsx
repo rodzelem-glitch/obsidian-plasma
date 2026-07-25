@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -25,6 +26,7 @@ interface PayableRecord {
 
 const Payables: React.FC = () => {
     const { state } = useAppContext();
+    const isAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both' || state.currentUser?.role === 'franchise_admin';
     const [payables, setPayables] = useState<PayableRecord[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -46,10 +48,10 @@ const Payables: React.FC = () => {
     const handleMarkPaid = async (id: string) => {
         if (!await globalConfirm("Mark this payable as settled?")) return;
         try {
-            await db.collection('payables').doc(id).update({
+            await db.collection('payables').doc(id).update(cleanUndefinedFields({
                 status: 'Paid',
                 paidAt: new Date().toISOString()
-            });
+            }));
         } catch (e) { showToast.warn("Failed to update status."); }
     };
 
@@ -140,9 +142,15 @@ const Payables: React.FC = () => {
                             </td>
                             <td className="px-6 py-4">
                                 {p.status === 'Unpaid' && (
-                                    <Button size="sm" onClick={() => handleMarkPaid(p.id)} className="h-8 text-[10px] font-black uppercase px-4 bg-emerald-600">
-                                        Mark Paid
-                                    </Button>
+                                    isAdmin ? (
+                                        <Button size="sm" onClick={() => handleMarkPaid(p.id)} className="h-8 text-[10px] font-black uppercase px-4 bg-emerald-600">
+                                            Mark Paid
+                                        </Button>
+                                    ) : (
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase italic">
+                                            Admin Settlement Required
+                                        </span>
+                                    )
                                 )}
                                 {p.status === 'Paid' && (
                                     <span className="text-[10px] font-bold text-slate-400 uppercase italic">

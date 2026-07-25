@@ -1,10 +1,16 @@
 
 import React from 'react';
 import { ShieldCheck, FileText } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
 
 const EULA: React.FC = () => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8">
+            <Helmet>
+                <title>End User License Agreement (EULA) | TekTrakker App License</title>
+                <meta name="description" content="Read the official End User License Agreement (EULA) for downloading and using the TekTrakker mobile and desktop applications." />
+                <meta name="robots" content="noindex, follow" />
+            </Helmet>
             <div className="max-w-4xl mx-auto bg-white dark:bg-slate-900 shadow-xl rounded-2xl overflow-hidden">
                 <div className="bg-slate-900 text-white p-4 md:p-8">
                     <div className="flex items-center gap-3 mb-2">

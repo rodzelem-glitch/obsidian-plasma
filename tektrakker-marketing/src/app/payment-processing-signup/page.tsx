@@ -204,7 +204,7 @@ export default function PaymentProcessingSignup() {
                         </div>
 
                         <div className="text-center mt-8">
-                            <Link href="/payment-processing" className="text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors inline-flex items-center gap-1">
+                            <Link href="/payment-processing/" className="text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors inline-flex items-center gap-1">
                                 See detailed savings calculator <ArrowRight size={14} />
                             </Link>
                         </div>
@@ -222,7 +222,7 @@ export default function PaymentProcessingSignup() {
                                 check out our full-featured plans.
                             </p>
                             <Link 
-                                href="/pricing" 
+                                href="/pricing/" 
                                 className="inline-flex items-center gap-2 px-6 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-all text-sm"
                             >
                                 View All Plans <ArrowRight size={16} />

@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 import React, { useState } from 'react';
 import Modal from 'components/ui/Modal';
@@ -41,20 +42,20 @@ const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = ({ isOpe
                 // Apply a 50% discount modifier for 3 months
                 const currentPct = state.currentOrganization.customDiscountPct || 0;
                 const newPct = Math.max(currentPct, 50); // Ensure they get at least 50%
-                await orgRef.update({ 
+                await orgRef.update(cleanUndefinedFields({ 
                     customDiscountPct: newPct,
                     subscriptionStatus: 'active',
                     retentionOfferApplied: new Date().toISOString()
-                });
+                }));
                 dispatch({ 
                     type: 'UPDATE_ORGANIZATION', 
                     payload: { ...state.currentOrganization, customDiscountPct: newPct, subscriptionStatus: 'active' } 
                 });
             } else if (type === 'pause') {
-                await orgRef.update({ 
+                await orgRef.update(cleanUndefinedFields({ 
                     subscriptionStatus: 'paused',
                     retentionOfferApplied: new Date().toISOString()
-                });
+                }));
                 dispatch({ 
                     type: 'UPDATE_ORGANIZATION', 
                     payload: { ...state.currentOrganization, subscriptionStatus: 'paused' } 
@@ -81,12 +82,12 @@ const CancelSubscriptionModal: React.FC<CancelSubscriptionModalProps> = ({ isOpe
                  return;
             }
 
-            await db.collection('organizations').doc(state.currentOrganization.id).update({
+            await db.collection('organizations').doc(state.currentOrganization.id).update(cleanUndefinedFields({
                 subscriptionStatus: 'cancelled',
                 cancellationReason: feedbackReason,
                 cancellationFeedback: additionalFeedback,
                 canceledAt: new Date().toISOString()
-            });
+            }));
             dispatch({ 
                 type: 'UPDATE_ORGANIZATION', 
                 payload: { ...state.currentOrganization, subscriptionStatus: 'cancelled' } 

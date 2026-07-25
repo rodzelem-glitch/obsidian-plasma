@@ -1,3 +1,4 @@
+import { cleanUndefinedFields } from '../../lib/utils';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -15,7 +16,8 @@ import Select from 'components/ui/Select';
 import { 
     Calendar, Clock, MapPin, Users, Plus, Search, Filter, 
     Video, X, Trash2, Edit2, CalendarDays, CheckCircle, 
-    Briefcase, AlertCircle, Sparkles, UserCheck, CheckSquare
+    Briefcase, AlertCircle, Sparkles, UserCheck, CheckSquare,
+    Copy, Check
 } from 'lucide-react';
 
 interface CompanyEvent {
@@ -61,6 +63,9 @@ const CompanyCalendar: React.FC = () => {
     const [isEventModalOpen, setIsEventModalOpen] = useState(false);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState<CompanyEvent | null>(null);
+    const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const [activeTab, setActiveTab] = useState<'apple' | 'google' | 'outlook'>('apple');
     
     // Event Form
     const [eventForm, setEventForm] = useState<Partial<CompanyEvent>>({
@@ -76,6 +81,16 @@ const CompanyCalendar: React.FC = () => {
     });
 
     const isPlatformAdmin = currentUser?.role === 'admin' || currentUser?.role === 'both' || currentUser?.role === 'master_admin';
+
+    // Build the dynamic sync URL
+    const syncUrl = `https://us-central1-tektrakker.cloudfunctions.net/userCalendarFeed?userId=${currentUser?.id || 'demo-user-id'}&orgId=${orgId}`;
+
+    const handleCopyLink = () => {
+        navigator.clipboard.writeText(syncUrl);
+        setCopied(true);
+        showToast.success("Calendar subscription URL copied!");
+        setTimeout(() => setCopied(false), 2000);
+    };
 
     // --- MOCK INITIAL DATA ---
     const getMockEvents = (): CompanyEvent[] => {
@@ -198,7 +213,7 @@ const CompanyCalendar: React.FC = () => {
                         const mocks = getMockEvents();
                         mocks.forEach(async (m) => {
                             const { id, ...data } = m;
-                            await db.collection('events').doc(id).set(data).catch(() => {});
+                            await db.collection('events').doc(id).set(cleanUndefinedFields(data)).catch(() => {});
                         });
                         setEvents(mocks);
                     } else {
@@ -324,7 +339,7 @@ const CompanyCalendar: React.FC = () => {
                 saveEventsToStorage(newEventsList);
             } else {
                 const { id, ...data } = updatedEvent;
-                await db.collection('events').doc(id).update(data);
+                await db.collection('events').doc(id).update(cleanUndefinedFields(data));
             }
             showToast.success(`Rescheduled: "${updatedEvent.title}"`);
         } catch (e) {
@@ -433,7 +448,7 @@ const CompanyCalendar: React.FC = () => {
                 saveEventsToStorage(newList);
             } else {
                 const { id, ...data } = newEvent;
-                await db.collection('events').doc(id).set(data, { merge: true });
+                await db.collection('events').doc(id).set(cleanUndefinedFields(data), { merge: true });
             }
             showToast.success(selectedEvent ? "Event updated successfully!" : "Corporate event scheduled!");
             setIsEventModalOpen(false);
@@ -525,6 +540,13 @@ const CompanyCalendar: React.FC = () => {
                             <Plus size={18} /> {t("Schedule Company Event")}
                         </button>
                     )}
+
+                    <button 
+                        onClick={() => setIsSyncModalOpen(true)}
+                        className="w-full flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl text-sm font-black transition-all shadow-md active:scale-95 cursor-pointer border-none mt-2"
+                    >
+                        <Sparkles size={18} /> {t("Sync Calendar to Phone")}
+                    </button>
 
                     {/* Filter Panel */}
                     <Card className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm">
@@ -767,7 +789,7 @@ const CompanyCalendar: React.FC = () => {
                                                     return u ? (
                                                         <span key={uid} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-600 dark:text-slate-300">
                                                             <UserCheck size={10} className="text-slate-400" />
-                                                            {u.firstName} {u.lastName[0]}.
+                                                            {u.firstName || u.email || ''} {(u.lastName || '')[0] || ''}.
                                                         </span>
                                                     ) : null;
                                                 })}
@@ -996,6 +1018,179 @@ const CompanyCalendar: React.FC = () => {
                 </Modal>
             )}
 
+            {/* Sync Calendar to Phone Modal */}
+            <Modal
+                isOpen={isSyncModalOpen}
+                onClose={() => setIsSyncModalOpen(false)}
+                title={t("Sync Calendar to Your Phone")}
+            >
+                <div className="space-y-6">
+                    <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 p-5 rounded-2xl border border-emerald-100 dark:border-emerald-900/30 flex items-start gap-4">
+                        <div className="p-3 bg-emerald-500 text-white rounded-xl shadow-md">
+                            <Sparkles size={20} />
+                        </div>
+                        <div>
+                            <h4 className="font-extrabold text-sm text-emerald-900 dark:text-emerald-300">
+                                {t("Dynamic iCalendar Subscription Feed")}
+                            </h4>
+                            <p className="text-xs text-emerald-700 dark:text-emerald-400/90 mt-1 leading-relaxed">
+                                {t("Subscribe once, and your personal phone or computer calendar will automatically stay synced in real-time with all of your assigned jobs and company events.")}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                            {t("Your Private Subscription URL")}
+                        </label>
+                        <div className="flex gap-2">
+                            <div className="relative flex-grow">
+                                <input
+                                    type="text"
+                                    readOnly
+                                    value={syncUrl}
+                                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 text-xs font-mono py-3 px-4 rounded-xl pr-10 focus:outline-none"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-extrabold text-slate-400 bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded uppercase select-none">
+                                    {t("Private")}
+                                </span>
+                            </div>
+                            <button
+                                onClick={handleCopyLink}
+                                className={`flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-black transition-all cursor-pointer border-none shadow-sm active:scale-95 ${
+                                    copied
+                                        ? "bg-emerald-600 text-white"
+                                        : "bg-indigo-600 hover:bg-indigo-500 text-white"
+                                }`}
+                            >
+                                {copied ? <CheckCircle size={16} /> : <Copy size={16} />}
+                                {copied ? t("Copied") : t("Copy")}
+                            </button>
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-normal">
+                            {t("⚠️ Keep this link secure. Anyone with access to this link can view your calendar feed.")}
+                        </p>
+                    </div>
+
+                    {/* Navigation Tabs */}
+                    <div className="border-b border-slate-200 dark:border-slate-800 flex gap-2">
+                        <button
+                            onClick={() => setActiveTab('apple')}
+                            className={`pb-3 text-xs font-black px-2 relative transition-all border-none bg-transparent cursor-pointer ${
+                                activeTab === 'apple'
+                                    ? "text-indigo-600 dark:text-indigo-400"
+                                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                            }`}
+                        >
+                            {t("Apple (iPhone / Mac)")}
+                            {activeTab === 'apple' && (
+                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-full" />
+                            )}
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('google')}
+                            className={`pb-3 text-xs font-black px-2 relative transition-all border-none bg-transparent cursor-pointer ${
+                                activeTab === 'google'
+                                    ? "text-indigo-600 dark:text-indigo-400"
+                                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                            }`}
+                        >
+                            {t("Google Calendar")}
+                            {activeTab === 'google' && (
+                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-full" />
+                            )}
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('outlook')}
+                            className={`pb-3 text-xs font-black px-2 relative transition-all border-none bg-transparent cursor-pointer ${
+                                activeTab === 'outlook'
+                                    ? "text-indigo-600 dark:text-indigo-400"
+                                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                            }`}
+                        >
+                            {t("Outlook")}
+                            {activeTab === 'outlook' && (
+                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-full" />
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Tab Instructions Content */}
+                    <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-5 rounded-2xl min-h-[160px] flex flex-col justify-center">
+                        {activeTab === 'apple' && (
+                            <div className="space-y-4 text-xs text-slate-600 dark:text-slate-350 leading-relaxed">
+                                <p className="font-extrabold text-slate-800 dark:text-slate-200">
+                                    {t("To subscribe on your iPhone or iPad:")}
+                                </p>
+                                <ol className="list-decimal pl-5 space-y-2">
+                                    <li>{t("Copy the private subscription URL shown above.")}</li>
+                                    <li>{t("Open the ")}<strong>{t("Settings")}</strong>{t(" app on your iOS device.")}</li>
+                                    <li>{t("Scroll down and select ")}<strong>{t("Calendar")}</strong>{t(" (or select ")}<strong>{t("Apps > Calendar")}</strong>{t(" depending on iOS version).")}</li>
+                                    <li>{t("Tap ")}<strong>{t("Calendar Accounts")}</strong>{t(" (or ")}<strong>{t("Accounts")}</strong>{t("), then tap ")}<strong>{t("Add Account")}</strong>{t(".")}</li>
+                                    <li>{t("Select ")}<strong>{t("Other")}</strong>{t(" at the bottom of the list.")}</li>
+                                    <li>{t("Tap ")}<strong>{t("Add Subscribed Calendar")}</strong>{t(".")}</li>
+                                    <li>{t("Paste the copied link into the ")}<strong>{t("Server")}</strong>{t(" input box and tap ")}<strong>{t("Next")}</strong>{t(".")}</li>
+                                    <li>{t("Verify settings, turn off credentials requirement, and tap ")}<strong>{t("Save")}</strong>{t(" in the top right.")}</li>
+                                </ol>
+                                <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800">
+                                    <p className="font-extrabold text-slate-800 dark:text-slate-200">
+                                        {t("To subscribe on a Mac:")}
+                                    </p>
+                                    <ol className="list-decimal pl-5 mt-2 space-y-2">
+                                        <li>{t("Open the Calendar app on your Mac.")}</li>
+                                        <li>{t("Select ")}<strong>{t("File")}</strong>{t(" > ")}<strong>{t("New Calendar Subscription...")}</strong>{t(" from the menu bar.")}</li>
+                                        <li>{t("Paste the copied URL, then click ")}<strong>{t("Subscribe")}</strong>{t(".")}</li>
+                                        <li>{t("Choose a friendly name (e.g. 'TekTrakker'), and set the Auto-refresh rate to ")}<strong>{t("Every hour")}</strong>{t(" for the best experience.")}</li>
+                                    </ol>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'google' && (
+                            <div className="space-y-3 text-xs text-slate-600 dark:text-slate-350 leading-relaxed">
+                                <p className="font-extrabold text-slate-800 dark:text-slate-200">
+                                    {t("To subscribe using Google Calendar (Web & Android):")}
+                                </p>
+                                <ol className="list-decimal pl-5 space-y-2">
+                                    <li>{t("Copy the private subscription URL shown above.")}</li>
+                                    <li>{t("Open ")}<a href="https://calendar.google.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 font-extrabold underline">{t("Google Calendar")}</a>{t(" in your desktop browser.")}</li>
+                                    <li>{t("In the left-hand column, find the ")}<strong>{t("Other calendars")}</strong>{t(" section.")}</li>
+                                    <li>{t("Click the ")}<strong>{t("+")}</strong>{t(" (Add) button next to Other calendars, and select ")}<strong>{t("From URL")}</strong>{t(".")}</li>
+                                    <li>{t("Paste the copied link into the URL input field.")}</li>
+                                    <li>{t("Click ")}<strong>{t("Add calendar")}</strong>{t(". The calendar will appear under 'Other calendars'.")}</li>
+                                    <li>{t("Android devices will automatically sync this calendar under your Google Account settings.")}</li>
+                                </ol>
+                            </div>
+                        )}
+
+                        {activeTab === 'outlook' && (
+                            <div className="space-y-3 text-xs text-slate-600 dark:text-slate-350 leading-relaxed">
+                                <p className="font-extrabold text-slate-800 dark:text-slate-200">
+                                    {t("To subscribe using Outlook / Office 365:")}
+                                </p>
+                                <ol className="list-decimal pl-5 space-y-2">
+                                    <li>{t("Copy the private subscription URL shown above.")}</li>
+                                    <li>{t("Log into your mail account at ")}<a href="https://outlook.live.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 font-extrabold underline">{t("Outlook.com")}</a>{t(" or your company Outlook Web App.")}</li>
+                                    <li>{t("Switch to the ")}<strong>{t("Calendar")}</strong>{t(" view using the sidebar navigation.")}</li>
+                                    <li>{t("Click ")}<strong>{t("Add Calendar")}</strong>{t(" (located in the left calendar list panel).")}</li>
+                                    <li>{t("Select ")}<strong>{t("Subscribe from Web")}</strong>{t(" from the menu options.")}</li>
+                                    <li>{t("Paste the copied link in the URL box.")}</li>
+                                    <li>{t("Enter a friendly name (e.g. 'TekTrakker Schedule'), pick a color / icon, and click ")}<strong>{t("Import")}</strong>{t(".")}</li>
+                                </ol>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex justify-end pt-2 border-t border-slate-200 dark:border-slate-850">
+                        <Button
+                            onClick={() => setIsSyncModalOpen(false)}
+                            className="px-6 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-850 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors border-none text-xs font-extrabold cursor-pointer"
+                        >
+                            {t("Close")}
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

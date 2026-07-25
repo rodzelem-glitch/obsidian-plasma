@@ -71,7 +71,7 @@ exports.analyzeRFPWithAI = functions.runWith({ secrets: ["GEMINI_API_KEY"] }).ht
         const organizationId = userData?.organizationId || userData?.orgId;
         const apiKey = await (0, aiAgent_1.getGeminiApiKey)(organizationId);
         const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
         const parts = [{
                 text: `You are an expert construction estimator. Analyze the provided RFP document(s). 
 Extract the following information in strict JSON format: 

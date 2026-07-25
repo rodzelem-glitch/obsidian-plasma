@@ -76,7 +76,8 @@ const PayrollPreviewModal: React.FC<PayrollPreviewModalProps> = ({ isOpen, onClo
     const compensationTable = useMemo(() => {
         if (!isOpen) return { valid: [], unsynced: [] };
 
-        const records: Record<string, { userId: string, name: string, gustoId: string, regularHours: number, overtime: number, commission: number }> = {};
+        const combinedUsers = [...(state.users || []), ...(state.subcontractors || [])];
+        const records: Record<string, { userId: string, name: string, gustoId: string, adpId: string, regularHours: number, overtime: number, commission: number }> = {};
 
         // Aggregate Hours
         Object.entries(state.shiftLogs || {}).forEach(([userId, logsMap]) => {
@@ -86,11 +87,12 @@ const PayrollPreviewModal: React.FC<PayrollPreviewModalProps> = ({ isOpen, onClo
                     const clockInDate = log.clockIn.split('T')[0];
                     if (clockInDate >= startDate && clockInDate <= endDate) {
                         if (!records[userId]) {
-                            const user: any = state.users.find(u => u.id === userId);
+                            const user: any = combinedUsers.find(u => u.id === userId);
                             records[userId] = {
                                 userId,
                                 name: user ? `${user.firstName || user.name || ''} ${user.lastName || ''}`.trim() || 'Unknown' : 'Unknown',
                                 gustoId: user?.gustoEmployeeId || '',
+                                adpId: user?.adpEmployeeId || '',
                                 regularHours: 0,
                                 overtime: 0,
                                 commission: 0
@@ -116,11 +118,12 @@ const PayrollPreviewModal: React.FC<PayrollPreviewModalProps> = ({ isOpen, onClo
                 const techId = job.assignedTechnicianId || job.technicianId;
                 if (techId) {
                     if (!records[techId]) {
-                        const user: any = state.users.find(u => u.id === techId);
+                        const user: any = combinedUsers.find(u => u.id === techId);
                         records[techId] = {
                             userId: techId,
                             name: user ? `${user.firstName || user.name || ''} ${user.lastName || ''}`.trim() || 'Unknown' : 'Unknown',
                             gustoId: user?.gustoEmployeeId || '',
+                            adpId: user?.adpEmployeeId || '',
                             regularHours: 0,
                             overtime: 0,
                             commission: 0
@@ -137,8 +140,13 @@ const PayrollPreviewModal: React.FC<PayrollPreviewModalProps> = ({ isOpen, onClo
                 valid: allRecords.filter(r => r.gustoId),
                 unsynced: allRecords.filter(r => !r.gustoId)
             };
+        } else if (activePayrollService === 'adp') {
+            return {
+                valid: allRecords.filter(r => r.adpId),
+                unsynced: allRecords.filter(r => !r.adpId)
+            };
         } else {
-            // For QuickBooks, ADP, Paychex or local exports, all records are valid for preview and export
+            // For QuickBooks, Paychex or local exports, all records are valid for preview and export
             return {
                 valid: allRecords,
                 unsynced: []
@@ -165,9 +173,17 @@ const PayrollPreviewModal: React.FC<PayrollPreviewModalProps> = ({ isOpen, onClo
                 showToast.success(`Successfully pushed ${compensationTable.valid.length} timesheets directly to QuickBooks Online!`);
                 onClose();
             } else if (activePayrollService === 'adp') {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                showToast.success(`Successfully staged ${compensationTable.valid.length} payroll logs in ADP Workforce Now!`);
-                onClose();
+                const functions = getFunctions();
+                const stageReq = httpsCallable(functions, 'stageADPPayroll');
+                const res = await stageReq({ orgId: state.currentOrganization.id, startDate, endDate });
+                const data = res.data as any;
+                if (data.success) {
+                    showToast.success(`Successfully staged ${compensationTable.valid.length} payroll logs in ADP Workforce Now!`);
+                    if (data.adpReviewUrl) {
+                        window.open(data.adpReviewUrl, '_blank', 'noopener,noreferrer');
+                    }
+                    onClose();
+                }
             } else if (activePayrollService === 'paychex') {
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 showToast.success(`Successfully sent ${compensationTable.valid.length} compensation entries to Paychex Flex!`);
@@ -516,7 +532,7 @@ const PayrollPreviewModal: React.FC<PayrollPreviewModalProps> = ({ isOpen, onClo
                     
                     {step === 'preview' && (
                         <>
-                            {activePayrollService === 'gusto' && compensationTable.unsynced.length > 0 && (
+                             {activePayrollService === 'gusto' && compensationTable.unsynced.length > 0 && (
                                 <div className="mb-6 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/50 rounded-xl p-5 shadow-sm">
                                     <h3 className="text-amber-800 dark:text-amber-300 font-bold mb-2 flex items-center gap-2">
                                         <Loader2 className="w-5 h-5" /> Pending Gusto Sync
@@ -542,6 +558,37 @@ const PayrollPreviewModal: React.FC<PayrollPreviewModalProps> = ({ isOpen, onClo
                                         className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded font-bold shadow transition-colors text-sm"
                                     >
                                         {isStaging ? 'Syncing...' : 'Force Sync Missing Profiles'}
+                                    </button>
+                                </div>
+                            )}
+
+                            {activePayrollService === 'adp' && compensationTable.unsynced.length > 0 && (
+                                <div className="mb-6 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/50 rounded-xl p-5 shadow-sm">
+                                    <h3 className="text-amber-800 dark:text-amber-300 font-bold mb-2 flex items-center gap-2">
+                                        <Loader2 className="w-5 h-5" /> Pending ADP Sync
+                                    </h3>
+                                    <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
+                                        The following team members have billable work in this period, but their profiles haven't been linked to ADP yet.
+                                    </p>
+                                    <ul className="list-disc pl-5 text-sm font-medium text-amber-900 dark:text-amber-100 grid grid-cols-2 gap-1 mb-4">
+                                        {compensationTable.unsynced.map(u => <li key={u.userId}>{u.name}</li>)}
+                                    </ul>
+                                    <button 
+                                        onClick={async () => {
+                                            setIsStaging(true);
+                                            try {
+                                                const functions = getFunctions();
+                                                const syncReq = httpsCallable(functions, 'bulkSyncADPEmployees');
+                                                await syncReq({ orgId: state.currentOrganization?.id, userIds: compensationTable.unsynced.map(u => u.userId) });
+                                                showToast.success("Successfully synced missing employees with ADP!");
+                                                onClose();
+                                            } catch (e: any) { showToast.warn("Failed to sync: " + e.message); }
+                                            setIsStaging(false);
+                                        }}
+                                        disabled={isStaging}
+                                        className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded font-bold shadow transition-colors text-sm"
+                                    >
+                                        {isStaging ? 'Syncing...' : 'Force Sync Missing ADP Profiles'}
                                     </button>
                                 </div>
                             )}

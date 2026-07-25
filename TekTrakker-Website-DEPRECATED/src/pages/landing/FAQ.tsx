@@ -3,6 +3,7 @@ import { ChevronDown, HelpCircle, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Logo } from '../../components/ui/Logo';
 import { MarketingFooter } from '../../components/layout/MarketingFooter';
+import { Helmet } from 'react-helmet-async';
 
 const FAQS = [
   {
@@ -80,6 +81,13 @@ const FAQ: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans flex flex-col selection:bg-primary-500 selection:text-white">
+      <Helmet>
+        <title>Frequently Asked Questions | TekTrakker Support & Help Center</title>
+        <meta name="description" content="Get answers to common questions about TekTrakker's field service software, pricing, Stripe integration, offline PWA app, and QuickBooks sync." />
+        <meta name="keywords" content="TekTrakker FAQ, HVAC Software Pricing, Contractor Software Support, QuickBooks Sync Setup" />
+        <meta property="og:title" content="TekTrakker Support - Frequently Asked Questions" />
+        <meta property="og:description" content="Find answers to all your questions about setting up and running your field service business on TekTrakker." />
+      </Helmet>
       <nav className="border-b border-slate-200 backdrop-blur-md fixed w-full z-50 bg-white/80">
           <div className="max-w-7xl mx-auto px-6 h-24 flex justify-between items-center">
               <div className="flex items-center cursor-pointer" onClick={() => navigate('/')}>
