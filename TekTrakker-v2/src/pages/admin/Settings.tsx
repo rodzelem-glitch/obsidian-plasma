@@ -574,11 +574,11 @@ const Settings: React.FC = () => {
             const cleanSecretsData = JSON.parse(JSON.stringify(secretsData));
 
             // Update public profile (removing exposed secrets over time as they are nullified by the backend)
-            batch.set(orgRef, cleanUndefinedFields(cleanOrgData), { merge: true });
+            batch.set(orgRef, cleanOrgData, { merge: true });
 
             // Upsert Secrets Document
             const secretsRef = orgRef.collection('secrets').doc('config');
-            batch.set(secretsRef, cleanUndefinedFields(cleanSecretsData), { merge: true });
+            batch.set(secretsRef, cleanSecretsData, { merge: true });
 
             await batch.commit();
 

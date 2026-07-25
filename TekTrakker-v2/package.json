@@ -1,7 +1,7 @@
 {
   "name": "tektrakker-v2",
   "private": true,
-  "version": "8.55",
+  "version": "8.56",
   "type": "module",
   "scripts": {
     "dev": "vite",
