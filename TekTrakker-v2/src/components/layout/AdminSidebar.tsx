@@ -19,6 +19,8 @@ import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
 import { useLanguage } from 'context/LanguageContext';
 import { hasPermission , cleanUndefinedFields } from 'lib/utils';
+import { HardDrive, ShieldCheck } from 'lucide-react';
+import { setActiveView } from 'lib/viewState';
 
 const PATH_PERMISSIONS: Record<string, string> = {
   '/admin/analytics': 'view_financials',
@@ -33,6 +35,7 @@ const PATH_PERMISSIONS: Record<string, string> = {
   '/admin/contracting': 'view_customers',
   '/admin/marketing-hub': 'manage_marketing',
   '/admin/reviews': 'manage_marketing',
+  '/admin/awards': 'manage_marketing',
   '/admin/records': 'manage_inventory',
   '/admin/compliance': 'view_refrigerant',
 };
@@ -56,6 +59,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
   const isPaymentsOnly = state.currentOrganization?.plan === 'payments_only';
   const isKortTester = user?.email === 'integrations@kortpayments.com' || (user?.role as string) === 'kort_tester';
   const isUnlocked = isKortTester && typeof window !== 'undefined' && localStorage.getItem('kort_tester_unlocked') === 'true';
+  const isMasterAdmin = state.isMasterAdmin || user?.role === 'master_admin';
 
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
   const [orderedPaths, setOrderedPaths] = useState<string[]>([]);
@@ -98,7 +102,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
         { path: '/admin/workforce', label: 'Workforce', icon: UsersIcon, roles: ['admin', 'both', 'supervisor'] },
         { path: '/admin/hr', label: 'HR & Payroll', icon: BriefcaseIcon, roles: ['admin', 'both'] },
         { path: '/admin/projects', label: 'Project Management', icon: FolderKanban, roles: ['admin', 'both', 'supervisor'] },
-        { path: '/admin/messages', label: 'Messages', icon: ChatBubbleLeftRightIcon, roles: ['admin', 'both', 'supervisor'] },
+        { path: '/admin/communications', label: 'Communications', icon: ChatBubbleLeftRightIcon, roles: ['admin', 'both', 'supervisor'] },
       ]
     },
     {
@@ -115,11 +119,13 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
       items: [
         { path: '/admin/marketing-hub', label: 'Sales & Marketing Hub', icon: MegaphoneIcon, roles: ['admin', 'both'], featureKey: 'salesCrm' },
         { path: '/admin/reviews', label: 'Reviews', icon: Star, roles: ['admin', 'both'] },
+        { path: '/admin/awards', label: 'TekTrakker Awards', icon: BadgeIcon, roles: ['admin', 'both'] },
       ]
     },
     {
       group: 'Backoffice & Compliance',
       items: [
+        { path: '/admin/drive', label: 'Organization Drive', icon: HardDrive, roles: ['admin', 'both', 'supervisor'] },
         { path: '/admin/records', label: 'Records and assets', icon: BoxIcon, roles: ['admin', 'both'], featureKey: 'inventory' },
         { path: '/admin/compliance', label: 'Compliance and safety', icon: Shield, roles: ['admin', 'both', 'supervisor'], featureKey: 'hrDocuments' },
         { path: '/admin/hiring', label: 'ATS', icon: BriefcaseIcon, roles: ['admin', 'both'], featureKey: 'careerPage' },
@@ -152,8 +158,18 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
                    });
                });
           }
-          defaultOrder.forEach(p => {
-              if (!mergedOrder.includes(p)) mergedOrder.push(p);
+          navGroups.forEach(g => {
+              const groupTag = `__group__:${g.group}`;
+              let groupIdx = mergedOrder.indexOf(groupTag);
+              if (groupIdx === -1) {
+                  mergedOrder.push(groupTag);
+                  groupIdx = mergedOrder.length - 1;
+              }
+              g.items.forEach((item, itemIdx) => {
+                  if (!mergedOrder.includes(item.path)) {
+                      mergedOrder.splice(groupIdx + 1 + itemIdx, 0, item.path);
+                  }
+              });
           });
           setOrderedPaths(mergedOrder);
       } else {
@@ -276,7 +292,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
 
   const resetToDefaults = async () => {
       if (!user.id) return;
-      if (!window.confirm("Are you sure you want to revert to the default platform navigation? All custom names will be lost.")) return;
+      if (!(await globalConfirm("Are you sure you want to revert to the default platform navigation? All custom names will be lost.", "Reset Navigation", "Reset to Default", "Cancel"))) return;
       try {
           await db.collection('users').doc(user.id).set(cleanUndefinedFields({
               preferences: { sidebarOrder: null, customLabels: null, hiddenSidebarPaths: null }
@@ -422,9 +438,27 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ user, onLogout, isOpen = fa
 
         <div className={`p-4 pb-[calc(1rem+var(--sab,env(safe-area-inset-bottom,0px)))] border-t border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800/80 space-y-3 ${isCollapsed ? 'px-2 flex flex-col items-center' : ''}`}>
 
+            {isMasterAdmin && (
+                <button
+                    onClick={() => {
+                        setActiveView('master', user.id);
+                        navigate('/master/dashboard');
+                    }}
+                    data-tour="switch-master-btn"
+                    title={isCollapsed ? t("Return to Master Admin") : undefined}
+                    className={`w-full flex items-center justify-center gap-2 px-4 py-2 border border-indigo-600 dark:border-indigo-500 text-indigo-600 dark:text-indigo-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-indigo-50 dark:hover:bg-indigo-900/20 focus:outline-none transition-colors ${isCollapsed ? 'px-0' : ''}`}
+                >
+                    <ShieldCheck size={18} className="shrink-0 text-indigo-600 dark:text-indigo-400" />
+                    {!isCollapsed && <span className="truncate">{t('Return to Master Admin')}</span>}
+                </button>
+            )}
+
             {canSwitchToTech && (
                 <button
-                    onClick={() => navigate('/briefing')}
+                    onClick={() => {
+                        setActiveView('tech', user.id);
+                        navigate('/briefing');
+                    }}
                     data-tour="switch-tech-btn"
                     title={isCollapsed ? t("Switch to Tech View") : undefined}
                     className={`w-full flex items-center justify-center px-4 py-2 border border-primary-600 dark:border-primary-500 text-primary-600 dark:text-primary-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-primary-50 dark:hover:bg-primary-900/20 focus:outline-none transition-colors ${isCollapsed ? 'px-0' : ''}`}

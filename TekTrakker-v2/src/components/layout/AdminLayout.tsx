@@ -8,6 +8,7 @@ import TopNavActions from '../common/TopNavActions';
 import PageHeader from '../ui/PageHeader';
 import OnboardingTour, { useOnboardingTour } from '../ui/OnboardingTour';
 import { useAppContext } from 'context/AppContext';
+import RouteErrorBoundary from '../common/RouteErrorBoundary';
 
 interface AdminLayoutProps {
   user: User;
@@ -71,7 +72,9 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ user, onLogout, children }) =
         <main id="main-scroll-container" className="flex-1 bg-slate-50 dark:bg-slate-900 p-4 sm:p-6 lg:p-8 transition-colors pb-safe">
             <div className="min-h-full max-w-7xl mx-auto pb-8">
               <PageHeader />
-              {children}
+              <RouteErrorBoundary>
+                {children}
+              </RouteErrorBoundary>
             </div>
         </main>
       </div>

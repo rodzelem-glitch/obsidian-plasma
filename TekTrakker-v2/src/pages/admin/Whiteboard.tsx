@@ -7,9 +7,11 @@ import {
     Move, Pencil as DrawingIcon, Trash2, Plus, X, Type, CheckSquare, 
     Link as LinkIcon, FileText, Image as ImageIcon, RotateCcw, 
     Save, Minimize2, ZoomIn, ZoomOut, Check, User, Calendar, 
-    ArrowLeft, AlertCircle, Sparkles, Layers, RefreshCw, Eraser
+    ArrowLeft, AlertCircle, Sparkles, Layers, RefreshCw, Eraser,
+    Hand, Maximize2, Eye
 } from 'lucide-react';
 import showToast from '../../lib/toast';
+import { globalConfirm } from 'lib/globalConfirm';
 
 interface WhiteboardElement {
     id: string;
@@ -82,8 +84,12 @@ const Whiteboard: React.FC = () => {
     const [isPanning, setIsPanning] = useState(false);
     const [panStart, setPanStart] = useState({ x: 0, y: 0 });
 
-    // Active tool: 'select' | 'draw' | 'highlighter' | 'eraser'
-    const [activeTool, setActiveTool] = useState<'select' | 'draw' | 'highlighter' | 'eraser'>('select');
+    // Active tool: 'select' | 'pan' | 'draw' | 'highlighter' | 'eraser'
+    const [activeTool, setActiveTool] = useState<'select' | 'pan' | 'draw' | 'highlighter' | 'eraser'>('select');
+    
+    // Task expansion and full detail modal state
+    const [expandedTaskIds, setExpandedTaskIds] = useState<Record<string, boolean>>({});
+    const [viewingModalTaskId, setViewingModalTaskId] = useState<string | null>(null);
     
     // Drawing Properties
     const [brushColor, setBrushColor] = useState('#3b82f6'); // default blue
@@ -187,11 +193,13 @@ const Whiteboard: React.FC = () => {
             document.activeElement?.getAttribute('contenteditable') === 'true';
         if (isEditing) return;
 
-        if (e.code === 'Space' && activeTool === 'select') {
+        if (e.code === 'Space' && (activeTool === 'select' || activeTool === 'pan')) {
             e.preventDefault();
             setIsPanning(true);
         } else if (e.key.toLowerCase() === 'v') {
             setActiveTool('select');
+        } else if (e.key.toLowerCase() === 'p') {
+            setActiveTool('pan');
         } else if (e.key.toLowerCase() === 'd') {
             setActiveTool('draw');
         } else if (e.key.toLowerCase() === 'h') {
@@ -217,16 +225,12 @@ const Whiteboard: React.FC = () => {
 
     // Canvas Panning and Drawing Handlers
     const handleMouseDown = (e: React.MouseEvent) => {
-        // Space pan or middle click or select tool panning
-        if (e.button === 1 || isPanning || e.button === 2) {
+        // Pan canvas on middle click, right click, pan tool, or clicking canvas background in select mode
+        if (e.button === 1 || e.button === 2 || isPanning || activeTool === 'pan' || activeTool === 'select') {
             e.preventDefault();
+            setEditingElementId(null);
             setIsPanning(true);
             setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-            return;
-        }
-
-        if (activeTool === 'select') {
-            setEditingElementId(null);
             return;
         }
 
@@ -654,7 +658,7 @@ const Whiteboard: React.FC = () => {
     };
 
     const clearCanvas = async () => {
-        if (!window.confirm("Are you sure you want to clear all notes and drawings? This action cannot be undone.")) return;
+        if (!(await globalConfirm("Are you sure you want to clear all notes and drawings? This action cannot be undone.", "Clear Whiteboard", "Clear Board", "Cancel"))) return;
         setElements([]);
         setStrokes([]);
         saveToFirestore([], []);
@@ -783,7 +787,7 @@ const Whiteboard: React.FC = () => {
                 </div>
             </header>
 
-            {/* Sub-toolbar tools dock (select, draw, highlighter, eraser) */}
+            {/* Sub-toolbar tools dock (select, pan, draw, highlighter, eraser) */}
             <div className="absolute top-20 left-4 z-20 flex flex-col gap-2 p-2 bg-slate-800 bg-opacity-90 backdrop-blur-md rounded-xl border border-slate-700 shadow-2xl">
                 <button
                     onClick={() => setActiveTool('select')}
@@ -791,6 +795,14 @@ const Whiteboard: React.FC = () => {
                     title="Select & Move Elements (V)"
                 >
                     <Move size={20} />
+                </button>
+                
+                <button
+                    onClick={() => setActiveTool('pan')}
+                    className={`p-3 rounded-lg transition-all ${activeTool === 'pan' ? 'bg-primary-600 text-white shadow-md scale-105' : 'text-slate-400 hover:bg-slate-700 hover:text-slate-100'}`}
+                    title="Pan / Move Board Canvas (P)"
+                >
+                    <Hand size={20} />
                 </button>
                 
                 <button
@@ -921,8 +933,8 @@ const Whiteboard: React.FC = () => {
             {/* Whiteboard Interactive Infinite Canvas area */}
             <div 
                 ref={boardRef}
-                className="flex-1 w-full relative overflow-hidden bg-slate-950 select-none cursor-grab"
-                style={{ cursor: isPanning ? 'grabbing' : activeTool === 'select' ? 'default' : 'crosshair' }}
+                className="flex-1 w-full relative overflow-hidden bg-slate-950 select-none"
+                style={{ cursor: isPanning ? 'grabbing' : (activeTool === 'select' || activeTool === 'pan') ? 'grab' : 'crosshair' }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
@@ -1061,88 +1073,156 @@ const Whiteboard: React.FC = () => {
                                 )}
 
                                 {/* CHECKLIST TASK & DELEGATION CARD */}
-                                {el.type === 'task' && (
-                                    <div className="w-full h-full flex flex-col bg-slate-800/95 backdrop-blur-sm border border-slate-700 text-slate-100 p-4 rounded-xl">
-                                        <div className="flex items-start justify-between border-b border-slate-700 pb-2 mb-2">
-                                            <div>
-                                                <h3 className="font-bold text-sm text-white pr-4 truncate max-w-[170px] leading-tight">
-                                                    {el.taskTitle}
-                                                </h3>
-                                                <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mt-1 ${
-                                                    el.taskPriority === 'High' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
-                                                    el.taskPriority === 'Medium' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                                                    'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                                }`}>
-                                                    {el.taskPriority} Priority
-                                                </span>
-                                            </div>
-                                            
-                                            {/* Delegation Circle Badge */}
-                                            {el.taskDelegatedTo && (
-                                                <div 
-                                                    className="w-8 h-8 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-md border border-indigo-400 shrink-0"
-                                                    title={`Delegated to ${users.find(u => u.id === el.taskDelegatedTo)?.firstName || 'User'}`}
-                                                >
-                                                    {users.find(u => u.id === el.taskDelegatedTo)?.firstName?.[0] || 'U'}
-                                                </div>
-                                            )}
-                                        </div>
+                                {el.type === 'task' && (() => {
+                                    const isTaskExpanded = !!expandedTaskIds[el.id];
 
-                                        <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed mb-3">
-                                            {el.taskDescription}
-                                        </p>
-
-                                        {/* Task Checklist items scroll area */}
-                                        <div className="flex-1 overflow-y-auto mb-2 pr-1 custom-scrollbar space-y-1.5">
-                                            {el.taskChecklist && el.taskChecklist.length > 0 ? (
-                                                el.taskChecklist.map(item => (
-                                                    <div 
-                                                        key={item.id} 
-                                                        className="flex items-center justify-between gap-2 p-1.5 bg-slate-900/50 hover:bg-slate-900 rounded border border-slate-700/50"
+                                    return (
+                                        <div 
+                                            className="w-full h-full flex flex-col bg-slate-800/95 backdrop-blur-sm border border-slate-700 text-slate-100 p-4 rounded-xl overflow-hidden"
+                                            onDoubleClick={(e) => {
+                                                e.stopPropagation();
+                                                setViewingModalTaskId(el.id);
+                                            }}
+                                        >
+                                            <div className="flex items-start justify-between border-b border-slate-700 pb-2 mb-2">
+                                                <div className="flex-1 min-w-0 pr-2">
+                                                    <h3 
+                                                        className={`font-bold text-sm text-white leading-tight ${isTaskExpanded ? 'whitespace-normal break-words' : 'truncate max-w-[150px]'}`}
+                                                        title={el.taskTitle}
                                                     >
-                                                        <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
-                                                            <input 
-                                                                type="checkbox"
-                                                                checked={item.checked}
-                                                                onChange={() => toggleChecklistItem(el.id, item.id)}
+                                                        {el.taskTitle}
+                                                    </h3>
+                                                    <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full inline-block mt-1 ${
+                                                        el.taskPriority === 'High' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' :
+                                                        el.taskPriority === 'Medium' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                                                        'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                                    }`}>
+                                                        {el.taskPriority} Priority
+                                                    </span>
+                                                </div>
+                                                
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setExpandedTaskIds(prev => ({ ...prev, [el.id]: !prev[el.id] }));
+                                                        }}
+                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                        onTouchStart={(e) => e.stopPropagation()}
+                                                        className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white transition-colors"
+                                                        title={isTaskExpanded ? "Collapse card text" : "Expand card text"}
+                                                    >
+                                                        {isTaskExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                                                    </button>
+                                                    
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setViewingModalTaskId(el.id);
+                                                        }}
+                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                        onTouchStart={(e) => e.stopPropagation()}
+                                                        className="p-1 hover:bg-slate-700 rounded text-indigo-400 hover:text-indigo-300 transition-colors"
+                                                        title="Open full view modal"
+                                                    >
+                                                        <Eye size={13} />
+                                                    </button>
+
+                                                    {/* Delegation Circle Badge */}
+                                                    {el.taskDelegatedTo && (
+                                                        <div 
+                                                            className="w-7 h-7 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-md border border-indigo-400 shrink-0 ml-0.5"
+                                                            title={`Delegated to ${users.find(u => u.id === el.taskDelegatedTo)?.firstName || 'User'}`}
+                                                        >
+                                                            {users.find(u => u.id === el.taskDelegatedTo)?.firstName?.[0] || 'U'}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Description area */}
+                                            <div className="mb-2">
+                                                <p 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setExpandedTaskIds(prev => ({ ...prev, [el.id]: !prev[el.id] }));
+                                                    }}
+                                                    className={`text-[11px] leading-relaxed cursor-pointer transition-colors ${
+                                                        isTaskExpanded 
+                                                            ? 'text-slate-200 whitespace-pre-wrap break-words max-h-48 overflow-y-auto custom-scrollbar p-2 bg-slate-900/60 rounded border border-slate-700/60' 
+                                                            : 'text-slate-400 line-clamp-2 hover:text-slate-200'
+                                                    }`}
+                                                    title={isTaskExpanded ? "Click to collapse text" : "Click to expand text"}
+                                                >
+                                                    {el.taskDescription || <span className="italic text-slate-500">No description</span>}
+                                                </p>
+                                                {el.taskDescription && el.taskDescription.length > 70 && !isTaskExpanded && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setExpandedTaskIds(prev => ({ ...prev, [el.id]: true }));
+                                                        }}
+                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                        onTouchStart={(e) => e.stopPropagation()}
+                                                        className="text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 mt-0.5 inline-block"
+                                                    >
+                                                        + Show full text
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Task Checklist items scroll area */}
+                                            <div className="flex-1 overflow-y-auto mb-2 pr-1 custom-scrollbar space-y-1.5 min-h-[50px]">
+                                                {el.taskChecklist && el.taskChecklist.length > 0 ? (
+                                                    el.taskChecklist.map(item => (
+                                                        <div 
+                                                            key={item.id} 
+                                                            className="flex items-center justify-between gap-2 p-1.5 bg-slate-900/50 hover:bg-slate-900 rounded border border-slate-700/50"
+                                                        >
+                                                            <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                                                <input 
+                                                                    type="checkbox"
+                                                                    checked={item.checked}
+                                                                    onChange={() => toggleChecklistItem(el.id, item.id)}
+                                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                                    onTouchStart={(e) => e.stopPropagation()}
+                                                                    className="rounded border-slate-600 bg-slate-800 text-primary-600 focus:ring-primary-500 h-3.5 w-3.5 shrink-0"
+                                                                />
+                                                                <span className={`text-[11px] font-medium ${isTaskExpanded ? 'whitespace-normal break-words' : 'truncate'} ${item.checked ? 'line-through text-slate-500' : 'text-slate-300'}`}>
+                                                                    {item.text}
+                                                                </span>
+                                                            </label>
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); deleteChecklistItem(el.id, item.id); }}
                                                                 onMouseDown={(e) => e.stopPropagation()}
                                                                 onTouchStart={(e) => e.stopPropagation()}
-                                                                className="rounded border-slate-600 bg-slate-800 text-primary-600 focus:ring-primary-500 h-3.5 w-3.5 shrink-0"
-                                                            />
-                                                            <span className={`text-[11px] font-medium truncate ${item.checked ? 'line-through text-slate-500' : 'text-slate-300'}`}>
-                                                                {item.text}
-                                                            </span>
-                                                        </label>
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); deleteChecklistItem(el.id, item.id); }}
-                                                            onMouseDown={(e) => e.stopPropagation()}
-                                                            onTouchStart={(e) => e.stopPropagation()}
-                                                            className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors shrink-0"
-                                                        >
-                                                            <X size={10} />
-                                                        </button>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="text-[10px] text-slate-500 italic text-center py-4">No itemized checklist tasks</div>
-                                            )}
-                                        </div>
+                                                                className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors shrink-0"
+                                                            >
+                                                                <X size={10} />
+                                                            </button>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-[10px] text-slate-500 italic text-center py-2">No itemized checklist tasks</div>
+                                                )}
+                                            </div>
 
-                                        {/* Task due date footer details */}
-                                        <div className="flex items-center justify-between text-[9px] text-slate-400 border-t border-slate-700/50 pt-2 shrink-0">
-                                            <span className="flex items-center gap-1 font-semibold text-rose-400">
-                                                <Calendar size={10} />
-                                                Due: {el.taskDueDate || 'No limit'}
-                                            </span>
-                                            
-                                            {el.taskChecklist && el.taskChecklist.length > 0 && (
-                                                <span className="font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded">
-                                                    {el.taskChecklist.filter(i => i.checked).length}/{el.taskChecklist.length} tasks
+                                            {/* Task due date footer details */}
+                                            <div className="flex items-center justify-between text-[9px] text-slate-400 border-t border-slate-700/50 pt-2 shrink-0">
+                                                <span className="flex items-center gap-1 font-semibold text-rose-400">
+                                                    <Calendar size={10} />
+                                                    Due: {el.taskDueDate || 'No limit'}
                                                 </span>
-                                            )}
+                                                
+                                                {el.taskChecklist && el.taskChecklist.length > 0 && (
+                                                    <span className="font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded">
+                                                        {el.taskChecklist.filter(i => i.checked).length}/{el.taskChecklist.length} tasks
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
 
                                 {/* WEBSITE LINK PREVIEW CARD */}
                                 {el.type === 'link' && (
@@ -1705,6 +1785,163 @@ const Whiteboard: React.FC = () => {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* FULL TASK DETAILS EXPANDED MODAL */}
+            {viewingModalTaskId && (
+                <div 
+                    className="fixed inset-0 z-[200] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4"
+                    onClick={() => setViewingModalTaskId(null)}
+                >
+                    {(() => {
+                        const modalTask = elements.find(el => el.id === viewingModalTaskId);
+                        if (!modalTask) return null;
+                        const delegatedUser = users.find(u => u.id === modalTask.taskDelegatedTo);
+
+                        return (
+                            <div 
+                                className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden text-slate-100 animate-in fade-in zoom-in-95 duration-150"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                {/* Modal Header */}
+                                <div className="p-5 border-b border-slate-800 flex items-start justify-between bg-slate-800/60">
+                                    <div className="flex-1 pr-4">
+                                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                            <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                                                modalTask.taskPriority === 'High' ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' :
+                                                modalTask.taskPriority === 'Medium' ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' :
+                                                'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                                            }`}>
+                                                {modalTask.taskPriority} Priority
+                                            </span>
+                                            {modalTask.taskDueDate && (
+                                                <span className="flex items-center gap-1 text-xs text-rose-400 font-semibold bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                                                    <Calendar size={12} />
+                                                    Due: {modalTask.taskDueDate}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <h2 className="text-xl font-bold text-white tracking-tight leading-snug">
+                                            {modalTask.taskTitle}
+                                        </h2>
+                                    </div>
+                                    
+                                    <button 
+                                        onClick={() => setViewingModalTaskId(null)}
+                                        className="p-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-all"
+                                        title="Close"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                {/* Modal Body */}
+                                <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
+                                    {/* Assigned / Delegated To */}
+                                    {delegatedUser && (
+                                        <div className="flex items-center gap-3 p-3 bg-indigo-950/40 border border-indigo-800/40 rounded-xl">
+                                            <div className="w-10 h-10 rounded-full bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-md shrink-0">
+                                                {delegatedUser.firstName?.[0] || 'U'}
+                                            </div>
+                                            <div>
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-400 block">Assigned Team Member</span>
+                                                <span className="text-sm font-semibold text-white">{delegatedUser.firstName} {delegatedUser.lastName} ({delegatedUser.role})</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Full Description */}
+                                    <div>
+                                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Full Description</h3>
+                                        <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+                                            {modalTask.taskDescription || <span className="italic text-slate-500">No description provided.</span>}
+                                        </div>
+                                    </div>
+
+                                    {/* Sub-Checklist Tasks */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                                                Sub-Checklist ({modalTask.taskChecklist?.filter(i => i.checked).length || 0} / {modalTask.taskChecklist?.length || 0} Completed)
+                                            </h3>
+                                        </div>
+                                        
+                                        <div className="space-y-2">
+                                            {modalTask.taskChecklist && modalTask.taskChecklist.length > 0 ? (
+                                                modalTask.taskChecklist.map(item => (
+                                                    <div 
+                                                        key={item.id}
+                                                        className="flex items-start justify-between gap-3 p-3 bg-slate-950/50 hover:bg-slate-950 rounded-xl border border-slate-800 transition-colors"
+                                                    >
+                                                        <label className="flex items-start gap-3 cursor-pointer flex-1 min-w-0">
+                                                            <input 
+                                                                type="checkbox"
+                                                                checked={item.checked}
+                                                                onChange={() => toggleChecklistItem(modalTask.id, item.id)}
+                                                                className="mt-0.5 rounded border-slate-600 bg-slate-800 text-primary-600 focus:ring-primary-500 h-4 w-4 shrink-0"
+                                                            />
+                                                            <span className={`text-xs font-medium leading-relaxed ${item.checked ? 'line-through text-slate-500' : 'text-slate-200'}`}>
+                                                                {item.text}
+                                                            </span>
+                                                        </label>
+                                                        <button 
+                                                            onClick={() => deleteChecklistItem(modalTask.id, item.id)}
+                                                            className="text-slate-500 hover:text-rose-400 p-1 rounded transition-colors shrink-0"
+                                                            title="Delete sub-task"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <p className="text-xs text-slate-500 italic bg-slate-950/40 p-4 rounded-xl text-center border border-slate-800/50">No sub-checklist items defined for this task.</p>
+                                            )}
+                                        </div>
+
+                                        {/* Quick Add Sub-task inside Modal */}
+                                        <div className="mt-3 flex gap-2">
+                                            <input 
+                                                type="text"
+                                                value={newChecklistItemText}
+                                                onChange={(e) => setNewChecklistItemText(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && addChecklistItem(modalTask.id)}
+                                                placeholder="Add a new sub-task..."
+                                                className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            />
+                                            <button
+                                                onClick={() => addChecklistItem(modalTask.id)}
+                                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all active:scale-95"
+                                            >
+                                                Add Item
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Modal Footer */}
+                                <div className="p-4 border-t border-slate-800 bg-slate-800/40 flex items-center justify-between">
+                                    <button
+                                        onClick={() => {
+                                            setEditingElementId(modalTask.id);
+                                            setViewingModalTaskId(null);
+                                        }}
+                                        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5"
+                                    >
+                                        <Sparkles size={14} className="text-indigo-400" />
+                                        Edit Card Settings
+                                    </button>
+
+                                    <button
+                                        onClick={() => setViewingModalTaskId(null)}
+                                        className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow-lg active:scale-95"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
         </div>

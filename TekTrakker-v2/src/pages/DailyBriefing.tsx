@@ -1,14 +1,14 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
 import Card from 'components/ui/Card';
 import { 
-    ClipboardList, CheckSquare, Play, MapPinIcon, CalendarDays, Navigation, ChevronRight, FileText, Clock, AlertCircle
+    ClipboardList, CheckSquare, Play, MapPinIcon, CalendarDays, Navigation, ChevronRight, FileText, Clock, AlertCircle, ShieldAlert, BookOpen
 } from 'lucide-react';
 import type { Job, Project, ProjectTask, User } from 'types';
-import { formatAddress , cleanUndefinedFields } from 'lib/utils';
+import { formatAddress, cleanUndefinedFields, safeFormatTimeString, safeParseDate, resolveSiteLocationName } from 'lib/utils';
 import { globalConfirm } from 'lib/globalConfirm';
 
 import WeatherWidget from './briefing/components/WeatherWidget';
@@ -16,15 +16,20 @@ import ProjectTaskWorkflowModal from './briefing/components/ProjectTaskWorkflowM
 import JobWorkflowModal from './briefing/components/JobWorkflowModal';
 import LocationPhotosLayoutModal from 'components/modals/LocationPhotosLayoutModal';
 import SubcontractorWorkOrderModal from 'components/modals/SubcontractorWorkOrderModal';
+import BriefingTimeClockModal from './briefing/components/modals/BriefingTimeClockModal';
+import BriefingMileageModal from './briefing/components/modals/BriefingMileageModal';
+import BriefingExpensesModal from './briefing/components/modals/BriefingExpensesModal';
+import { BarChart2, MessageSquare, ArrowUpRight, CreditCard as ExpensesIcon } from 'lucide-react';
 
 import { db } from 'lib/firebase';
 import showToast from 'lib/toast';
+import { checkAndAutoUpgradeOrgTier } from 'lib/autoUpgradeTier';
 import Modal from 'components/ui/Modal';
 import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import Button from 'components/ui/Button';
 
-const ALL_INDUSTRIES = ['HVAC', 'Plumbing', 'Electrical', 'Appliance Repair', 'Locksmith', 'Handyman', 'Cleaning', 'Pest Control', 'Landscaping', 'Roofing', 'Painting', 'General Contracting'];
+const ALL_INDUSTRIES = ['HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General', 'Cleaning', 'Painting', 'Roofing', 'Contracting', 'Masonry', 'Telecommunications', 'Solar', 'Security', 'Pet Grooming'];
 
 const JobCard: React.FC<{ 
     job: Job; 
@@ -35,11 +40,6 @@ const JobCard: React.FC<{
 }> = ({ job, customer, users, onOpen, onOpenLayout }) => {
     const { t } = useLanguage();
     const { state } = useAppContext();
-    
-    const isSubcontractor = state.currentUser?.role === 'Subcontractor';
-    const displayCustomerName = isSubcontractor 
-        ? `${t("Job")} #${job.poNumber || job.id.slice(-6).toUpperCase()}` 
-        : (customer?.name || job.customerName);
     
     const resolvedAddress = useMemo(() => {
         if (job.locationId && customer?.serviceLocations) {
@@ -56,7 +56,14 @@ const JobCard: React.FC<{
         return null;
     }, [job, customer]);
 
-    const timeStr = job.appointmentTime ? new Date(job.appointmentTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+    const siteLocationName = resolveSiteLocationName(job, loc) || loc?.locationNumber || 'Site Location';
+
+    const isSubcontractor = state.currentUser?.role === 'Subcontractor';
+    const displayCustomerName = isSubcontractor 
+        ? siteLocationName
+        : (job.customerName || customer?.name);
+
+    const timeStr = safeFormatTimeString(job.appointmentTime);
     const isEnRoute = job.transitStartTime && !job.checkInTime;
     const isInProgress = job.jobStatus === 'In Progress';
     const isCompleted = job.jobStatus === 'Completed';
@@ -171,9 +178,201 @@ const DailyBriefing: React.FC = () => {
     const [layoutJobId, setLayoutJobId] = useState<string | null>(null);
     const [autoOpenAssetId, setAutoOpenAssetId] = useState<string | null>(null);
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [selectedTaskData, setSelectedTaskData] = useState<{task: ProjectTask, project: Project} | null>(null);
     const [activeJobId, setActiveJobId] = useState<string | null>(null);
     const [viewingWorkOrderId, setViewingWorkOrderId] = useState<string | null>(null);
+    const [isTimeClockOpen, setIsTimeClockOpen] = useState(false);
+    const [isMileageOpen, setIsMileageOpen] = useState(false);
+    const [isExpensesOpen, setIsExpensesOpen] = useState(false);
+
+    useEffect(() => {
+        const urlJobId = searchParams.get('jobId') || searchParams.get('job');
+        if (urlJobId) {
+            if (currentUser?.role === 'Subcontractor') {
+                setViewingWorkOrderId(urlJobId);
+            } else {
+                setActiveJobId(urlJobId);
+            }
+        }
+    }, [searchParams, currentUser]);
+
+    // Current work week start timestamp (Monday 00:00:00)
+    const weekStartMs = useMemo(() => {
+        const now = new Date();
+        const dayOfWeek = now.getDay();
+        const distanceToMonday = (dayOfWeek + 6) % 7;
+        const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday, 0, 0, 0, 0);
+        return monday.getTime();
+    }, []);
+
+    // Helper to safely parse log dates without UTC/timezone shift
+    const parseLogDateMs = (raw: any): number => {
+        if (!raw) return 0;
+        if (typeof raw === 'number') return raw;
+        if (raw instanceof Date) return raw.getTime();
+        const str = String(raw).trim();
+        if (!str) return 0;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+            const [y, m, d] = str.split('-').map(Number);
+            return new Date(y, m - 1, d, 12, 0, 0, 0).getTime();
+        }
+        const dt = new Date(str);
+        return isNaN(dt.getTime()) ? 0 : dt.getTime();
+    };
+
+    const briefingShiftLogs = useMemo(() => {
+        if (!state.shiftLogs) return [];
+        let list: any[] = [];
+        if (Array.isArray(state.shiftLogs)) {
+            list = state.shiftLogs;
+        } else if (typeof state.shiftLogs === 'object') {
+            if (currentUser?.id && Array.isArray((state.shiftLogs as any)[currentUser.id])) {
+                list = (state.shiftLogs as any)[currentUser.id];
+            } else {
+                list = Object.values(state.shiftLogs).flat();
+            }
+        }
+        const userName = currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase() : '';
+        return list.filter((s: any) => {
+            if (!s) return false;
+            const isUserShift = !currentUser?.id ||
+                s.userId === currentUser.id ||
+                s.techId === currentUser.id ||
+                (currentUser.email && s.userEmail === currentUser.email) ||
+                (userName && s.techName && s.techName.toLowerCase().includes(userName)) ||
+                (userName && s.userName && s.userName.toLowerCase().includes(userName));
+            if (!isUserShift) return false;
+
+            const raw = s.clockIn || s.date || s.timestamp || s.createdAt;
+            if (!raw) return true;
+            return parseLogDateMs(raw) >= weekStartMs;
+        });
+    }, [state.shiftLogs, currentUser, weekStartMs]);
+
+    const briefingVehicleLogs = useMemo(() => {
+        if (!state.vehicleLogs) return [];
+        let list: any[] = [];
+        if (Array.isArray(state.vehicleLogs)) {
+            list = state.vehicleLogs;
+        } else if (typeof state.vehicleLogs === 'object') {
+            if (currentUser?.id && Array.isArray((state.vehicleLogs as any)[currentUser.id])) {
+                list = (state.vehicleLogs as any)[currentUser.id];
+            } else {
+                list = Object.values(state.vehicleLogs).flat();
+            }
+        }
+        const userName = currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase() : '';
+        return list.filter((l: any) => {
+            if (!l) return false;
+            const isUserLog = !currentUser?.id ||
+                l.userId === currentUser.id ||
+                l.techId === currentUser.id ||
+                l.driverId === currentUser.id ||
+                l.paidBy === currentUser.id ||
+                (currentUser.firstName && l.paidBy === currentUser.firstName) ||
+                (currentUser.email && l.userEmail === currentUser.email) ||
+                (userName && l.techName && l.techName.toLowerCase().includes(userName)) ||
+                (userName && l.userName && l.userName.toLowerCase().includes(userName)) ||
+                (userName && l.driverName && l.driverName.toLowerCase().includes(userName));
+            if (!isUserLog) return false;
+
+            const raw = l.date || l.timestamp || l.clockOut || l.createdAt;
+            if (!raw) return true;
+            return parseLogDateMs(raw) >= weekStartMs;
+        });
+    }, [state.vehicleLogs, currentUser, weekStartMs]);
+
+    const weeklyHoursTotal = useMemo(() => {
+        return briefingShiftLogs.reduce((sum, s) => {
+            const hw = parseFloat(s.hoursWorked || s.totalHours || s.hours || s.duration || '0');
+            if (!isNaN(hw) && hw > 0) return sum + hw;
+            if (s.clockIn && s.clockOut) {
+                const inMs = parseLogDateMs(s.clockIn);
+                const outMs = parseLogDateMs(s.clockOut);
+                if (inMs > 0 && outMs > inMs) {
+                    return sum + ((outMs - inMs) / (1000 * 60 * 60));
+                }
+            }
+            return sum;
+        }, 0);
+    }, [briefingShiftLogs]);
+
+    const weeklyMilesTotal = useMemo(() => {
+        return briefingVehicleLogs.reduce((sum, l: any) => {
+            const isMileageType = !l.type || l.type === 'Mileage' || l.type === 'mileage' || l.miles !== undefined || l.mileage !== undefined || l.currentMileage !== undefined || (l.startMiles !== undefined && l.endMiles !== undefined) || (l.startMileage !== undefined && l.endMileage !== undefined);
+            if (!isMileageType) return sum;
+            let m = 0;
+            if (l.miles !== undefined && l.miles !== null && l.miles !== '') {
+                m = parseFloat(l.miles);
+            } else if (l.mileage !== undefined && l.mileage !== null && l.mileage !== '') {
+                m = parseFloat(l.mileage);
+            } else if (l.currentMileage !== undefined && l.currentMileage !== null && l.currentMileage !== '') {
+                m = parseFloat(l.currentMileage);
+            } else if (l.endMiles !== undefined && l.startMiles !== undefined) {
+                m = parseFloat(l.endMiles) - parseFloat(l.startMiles);
+            } else if (l.endMileage !== undefined && l.startMileage !== undefined) {
+                m = parseFloat(l.endMileage) - parseFloat(l.startMileage);
+            }
+            return sum + (!isNaN(m) && m > 0 ? m : 0);
+        }, 0);
+    }, [briefingVehicleLogs]);
+
+    const weeklyExpensesTotal = useMemo(() => {
+        const vehicleExpenses = briefingVehicleLogs.reduce((sum, l) => {
+            const isMileageType = l.type === 'Mileage' || l.type === 'mileage';
+            if (isMileageType) return sum;
+            const cost = parseFloat(l.cost || l.amount || l.price || l.totalCost || 0);
+            return sum + (!isNaN(cost) && cost > 0 ? cost : 0);
+        }, 0);
+
+        const generalExpensesList = Array.isArray(state.expenses) ? state.expenses : [];
+        const userName = currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase() : '';
+        const generalExpenses = generalExpensesList.reduce((sum, e: any) => {
+            if (!e) return sum;
+            const isUserExpense = !currentUser?.id ||
+                e.userId === currentUser.id ||
+                e.submittedBy === currentUser.id ||
+                e.paidBy === currentUser.id ||
+                (currentUser.firstName && e.paidBy === currentUser.firstName) ||
+                (userName && e.paidBy && e.paidBy.toLowerCase() === userName) ||
+                (currentUser.email && e.userEmail === currentUser.email);
+            if (!isUserExpense) return sum;
+
+            const dateRaw = e.date || e.timestamp || e.createdAt;
+            if (dateRaw && new Date(dateRaw).getTime() < weekStartMs) return sum;
+
+            const amt = parseFloat(e.amount || e.cost || e.total || e.subtotal || 0);
+            return sum + (!isNaN(amt) && amt > 0 ? amt : 0);
+        }, 0);
+
+        return vehicleExpenses + generalExpenses;
+    }, [briefingVehicleLogs, state.expenses, currentUser, weekStartMs]);
+
+    const weeklyCompletedJobsCount = useMemo(() => {
+        if (!currentUser?.id) return 0;
+        const allJobs = [...(state.jobs || []), ...(state.externalJobs || [])];
+        const userName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim().toLowerCase();
+        const isAdminUser = currentUser.role === 'admin' || currentUser.role === 'master_admin';
+
+        return allJobs.filter((j: any) => {
+            const isAssigned =
+                isAdminUser ||
+                j.assignedTechnicianId === currentUser.id ||
+                (j.assignedTechnicianName && userName && j.assignedTechnicianName.toLowerCase() === userName) ||
+                (j.assignedCrew && (j.assignedCrew.includes(currentUser.id) || (userName && j.assignedCrew.includes(userName)))) ||
+                (j.assistants && j.assistants.includes(currentUser.id)) ||
+                (currentUser.role === 'Subcontractor' && j.subcontractorId === currentUser.id);
+            
+            if (!isAssigned) return false;
+            const isCompleted = j.jobStatus === 'Completed' || j.status === 'Completed' || j.jobStatus === 'Closed' || j.status === 'Closed' || j.jobStatus === 'Finished' || j.status === 'Finished' || j.jobStatus === 'Billed';
+            if (!isCompleted) return false;
+
+            const completedTime = j.completedAt || j.closedAt || j.finishedAt || j.updatedAt || j.appointmentTime || j.scheduledDate;
+            if (!completedTime) return true;
+            return new Date(completedTime).getTime() >= weekStartMs;
+        }).length;
+    }, [state.jobs, state.externalJobs, currentUser, weekStartMs]);
     // Subcontractor crew states
     const [isAddTechModalOpen, setIsAddTechModalOpen] = useState(false);
     const [newTechFirstName, setNewTechFirstName] = useState('');
@@ -225,6 +424,11 @@ const DailyBriefing: React.FC = () => {
             };
 
             await db.collection('users').doc(newTechId).set(cleanUndefinedFields(newTechData));
+            
+            // Auto-upgrade plan tier if user limit is exceeded
+            const activeOrgUsers = (state.users || []).filter(u => u.organizationId === currentUser.organizationId && u.status !== 'archived');
+            await checkAndAutoUpgradeOrgTier(currentUser.organizationId, state.currentOrganization?.plan, activeOrgUsers.length + 1);
+
             showToast.success("Technician added to your crew successfully!");
             setIsAddTechModalOpen(false);
             setNewTechFirstName('');
@@ -376,14 +580,23 @@ const DailyBriefing: React.FC = () => {
         if (!currentUser) return [];
         const combinedJobs = [...(jobs || []), ...(externalJobs || [])];
         return combinedJobs.filter(j => {
-            const isAssigned = j.assignedTechnicianId === currentUser.id || 
-                               (j.assignedCrew && j.assignedCrew.includes(currentUser.id)) ||
-                               (j.assistants && j.assistants.includes(currentUser.id)) ||
-                               (currentUser.role === 'Subcontractor' && j.subcontractorId === currentUser.id);
-            const isNotCompleted = j.jobStatus !== 'Completed' && j.jobStatus !== 'Cancelled';
             const hasWorkOrder = !!j.subcontractorWorkOrder;
-            const isPending = hasWorkOrder && (j.subcontractorWorkOrder.status === 'pending' || !j.subcontractorWorkOrder.status);
-            return isAssigned && isNotCompleted && isPending;
+            if (!hasWorkOrder) return false;
+
+            const isNotCompleted = j.jobStatus !== 'Completed' && j.jobStatus !== 'Cancelled';
+            const isPending = j.subcontractorWorkOrder.status === 'pending' || !j.subcontractorWorkOrder.status;
+
+            // Subcontractor work orders pending approval must ONLY show to Subcontractor accounts matching the assignment
+            const isSubcontractorUser = currentUser.role === 'Subcontractor';
+            const isAssignedSubcontractor = isSubcontractorUser && (
+                j.subcontractorId === currentUser.id ||
+                j.subcontractorWorkOrder?.subcontractorId === currentUser.id ||
+                Boolean((j as any).subcontractorEmail && (j as any).subcontractorEmail.toLowerCase() === currentUser.email?.toLowerCase()) ||
+                Boolean((j.subcontractorWorkOrder as any)?.contactEmail && (j.subcontractorWorkOrder as any).contactEmail.toLowerCase() === currentUser.email?.toLowerCase()) ||
+                j.assignedTechnicianId === currentUser.id
+            );
+
+            return isAssignedSubcontractor && isNotCompleted && isPending;
         });
     }, [jobs, externalJobs, currentUser]);
 
@@ -418,17 +631,14 @@ const DailyBriefing: React.FC = () => {
         };
 
         myActiveJobs.forEach(job => {
-            let jobTimeStr = job.appointmentTime;
-            if (jobTimeStr && !jobTimeStr.includes('T')) {
-                // Fix for date-only strings being parsed as UTC midnight
-                jobTimeStr = `${jobTimeStr}T12:00:00`;
-            } else if (jobTimeStr && jobTimeStr.endsWith('T00:00:00.000Z')) {
-                // Fix for ISO strings generated at UTC midnight but intended for local day
-                jobTimeStr = jobTimeStr.replace('T00:00:00.000Z', 'T12:00:00');
+            const parsedDate = safeParseDate(job.appointmentTime);
+            if (!parsedDate) {
+                // If appointmentTime is a non-standard string, put it in today's section so it stays visible
+                groups.today.push(job);
+                return;
             }
-            const jobTime = new Date(jobTimeStr).getTime();
-            
-            if (isNaN(jobTime)) return;
+
+            const jobTime = parsedDate.getTime();
 
             if (jobTime < startOfTomorrow) {
                 groups.today.push(job);
@@ -439,7 +649,11 @@ const DailyBriefing: React.FC = () => {
             }
         });
 
-        const sortByTime = (a: Job, b: Job) => new Date(a.appointmentTime).getTime() - new Date(b.appointmentTime).getTime();
+        const sortByTime = (a: Job, b: Job) => {
+            const timeA = safeParseDate(a.appointmentTime)?.getTime() ?? 0;
+            const timeB = safeParseDate(b.appointmentTime)?.getTime() ?? 0;
+            return timeA - timeB;
+        };
         groups.today.sort(sortByTime);
         groups.tomorrow.sort(sortByTime);
         groups.upcoming.sort(sortByTime);
@@ -493,6 +707,115 @@ const DailyBriefing: React.FC = () => {
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</p>
                 </div>
             </header>
+
+            {/* Briefing Quick Action Bar: Time Clock, Mileage Tracker, Expenses */}
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => setIsTimeClockOpen(true)}
+                className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md hover:border-primary-500 transition-all text-left group cursor-pointer flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-primary-50 dark:bg-primary-950/50 flex items-center justify-center text-primary-600 dark:text-primary-400 group-hover:scale-110 transition-transform">
+                    <Clock size={20} />
+                  </div>
+                  <span className="text-[10px] font-black uppercase text-slate-400">⏱️ Shift Logs</span>
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-white group-hover:text-primary-600 transition-colors">
+                    {t("Time Clock")}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                    {t("Clock in/out & shifts")}
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsMileageOpen(true)}
+                className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md hover:border-primary-500 transition-all text-left group cursor-pointer flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">
+                    <Navigation size={20} />
+                  </div>
+                  <span className="text-[10px] font-black uppercase text-slate-400">🚗 Trip Logs</span>
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-white group-hover:text-emerald-600 transition-colors">
+                    {t("Mileage Tracker")}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                    {t("Odometer & IRS log")}
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsExpensesOpen(true)}
+                className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md hover:border-primary-500 transition-all text-left group cursor-pointer flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform">
+                    <ExpensesIcon size={20} />
+                  </div>
+                  <span className="text-[10px] font-black uppercase text-slate-400">💳 Receipts</span>
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-white group-hover:text-amber-600 transition-colors">
+                    {t("Expenses")}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                    {t("Fuel, parts, maint")}
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            {/* Briefing Analytics Overview Card */}
+            <div className="p-5 rounded-2xl bg-slate-900 text-white shadow-lg space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="font-extrabold text-xs uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <BarChart2 size={16} className="text-primary-400" />
+                  {t("Briefing Performance Analytics")}
+                </span>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">
+                  {t("Weekly Summary")}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">{t("Weekly Hours")}</span>
+                  <span className="text-lg font-black text-white font-mono">
+                    {weeklyHoursTotal.toFixed(1)} <span className="text-xs font-normal text-slate-400">hrs</span>
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">{t("Logged Miles")}</span>
+                  <span className="text-lg font-black text-emerald-400 font-mono">
+                    {weeklyMilesTotal.toFixed(1)} <span className="text-xs font-normal text-slate-400">mi</span>
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">{t("Expenses")}</span>
+                  <span className="text-lg font-black text-amber-400 font-mono">
+                    ${weeklyExpensesTotal.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">{t("Completed")}</span>
+                  <span className="text-lg font-black text-sky-400 font-mono">
+                    {weeklyCompletedJobsCount} <span className="text-xs font-normal text-slate-400">jobs</span>
+                  </span>
+                </div>
+              </div>
+            </div>
 
             {currentUser && currentUser.role === 'Subcontractor' && (
                 <div className="bg-gradient-to-r from-teal-500 to-indigo-600 text-white rounded-3xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
@@ -620,6 +943,11 @@ const DailyBriefing: React.FC = () => {
                     <div className="space-y-3">
                         {pendingWorkOrders.map(job => {
                             const customer = state.customers?.find(c => c.id === job.customerId);
+                            const locationObj = job.locationId && customer?.serviceLocations
+                                ? customer.serviceLocations.find((l: any) => l.id === job.locationId)
+                                : null;
+                            const siteLocationName = resolveSiteLocationName(job, locationObj) || locationObj?.locationNumber || 'Site Location';
+                            const isSubcontractorUser = state.currentUser?.role === 'Subcontractor';
                             const resolvedAddress = job.address || customer?.address || '';
                             return (
                                 <button 
@@ -637,7 +965,7 @@ const DailyBriefing: React.FC = () => {
                                             </span>
                                         </div>
                                         <p className="text-xs text-slate-500 dark:text-slate-450 truncate mt-1">
-                                            {customer?.name || job.customerName} &bull; {formatAddress(resolvedAddress)}
+                                            {isSubcontractorUser ? siteLocationName : (customer?.name || job.customerName)} &bull; {formatAddress(resolvedAddress)}
                                         </p>
                                         {job.subcontractorWorkOrder?.nte && (
                                             <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-1 font-semibold">
@@ -655,15 +983,59 @@ const DailyBriefing: React.FC = () => {
                 </div>
             )}
 
-            <WeatherWidget />
+            {/* Weather & Team Chat 2-Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <WeatherWidget />
 
-            <div className="grid grid-cols-2 gap-4 mb-2">
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+                    <MessageSquare size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                      {t("Team Messenger & Dispatch Chat")}
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      {t("Instant communication with dispatchers, managers, and field crews.")}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-3 border-t border-slate-100 dark:border-slate-800/80 flex justify-end">
+                  <Button
+                    type="button"
+                    onClick={() => navigate('/briefing/messages')}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shrink-0 flex items-center gap-1.5 shadow-sm"
+                  >
+                    {t("Open Chat")}
+                    <ArrowUpRight size={14} />
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                 <button 
                   onClick={() => navigate('/briefing/scheduling')}
-                  className="col-span-2 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-center justify-center gap-2 hover:bg-emerald-100 transition-colors text-emerald-700 dark:text-emerald-400 font-bold shadow-sm"
+                  className="p-3.5 sm:p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/60 rounded-2xl flex items-center justify-center gap-2 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all text-emerald-700 dark:text-emerald-400 font-bold shadow-xs text-xs sm:text-sm"
                 >
-                    <CalendarDays className="w-5 h-5 flex-shrink-0" />
+                    <CalendarDays className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                     {t("View My Full Schedule")}
+                </button>
+                <button 
+                  onClick={() => navigate('/briefing/hr?tab=safety')}
+                  className="p-3.5 sm:p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/60 rounded-2xl flex items-center justify-center gap-2 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all text-red-700 dark:text-red-400 font-bold shadow-xs text-xs sm:text-sm"
+                >
+                    <ShieldAlert className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                    {t("Report Incident")}
+                </button>
+                <button 
+                  onClick={() => navigate('/briefing/hr')}
+                  className="p-3.5 sm:p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/60 rounded-2xl flex items-center justify-center gap-2 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-all text-blue-700 dark:text-blue-400 font-bold shadow-xs text-xs sm:text-sm"
+                >
+                    <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                    {t("HR & Handbooks")}
                 </button>
             </div>
 
@@ -682,23 +1054,6 @@ const DailyBriefing: React.FC = () => {
                     </div>
                 </Card>
             )}
-
-            <div className="grid grid-cols-2 gap-4 mb-6">
-                <button 
-                  onClick={() => navigate('/briefing/hr?tab=safety')}
-                  className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center justify-center gap-2 hover:bg-red-100 transition-colors text-red-700 dark:text-red-400 font-bold shadow-sm"
-                >
-                    <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
-                    {t("Report Incident")}
-                </button>
-                <button 
-                  onClick={() => navigate('/briefing/hr')}
-                  className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors text-blue-700 dark:text-blue-400 font-bold shadow-sm"
-                >
-                    <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
-                    {t("HR & Handbooks")}
-                </button>
-            </div>
 
             <div className="space-y-6">
                 <div>
@@ -988,6 +1343,21 @@ const DailyBriefing: React.FC = () => {
                     </form>
                 </Modal>
             )}
+
+            <BriefingTimeClockModal
+              isOpen={isTimeClockOpen}
+              onClose={() => setIsTimeClockOpen(false)}
+            />
+
+            <BriefingMileageModal
+              isOpen={isMileageOpen}
+              onClose={() => setIsMileageOpen(false)}
+            />
+
+            <BriefingExpensesModal
+              isOpen={isExpensesOpen}
+              onClose={() => setIsExpensesOpen(false)}
+            />
         </div>
     );
 };

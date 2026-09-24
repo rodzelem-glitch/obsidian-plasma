@@ -21,8 +21,10 @@ const SubcontractorOnboardingWidget: React.FC = () => {
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [trade, setTrade] = useState('HVAC');
+    const [licenseNumber, setLicenseNumber] = useState('');
     const [taxId, setTaxId] = useState('');
     const [address, setAddress] = useState('');
+    const [wantsTekTrakkerAccount, setWantsTekTrakkerAccount] = useState(false);
 
     // Document uploads state
     const [uploadedDocs, setUploadedDocs] = useState<Record<string, { fileName: string; fileUrl: string; expiryDate?: string }>>({});
@@ -31,6 +33,18 @@ const SubcontractorOnboardingWidget: React.FC = () => {
     const sigPadRef = useRef<SignaturePadHandle>(null);
 
     useEffect(() => {
+        const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+        const searchParams = new URLSearchParams(window.location.search || hashQuery);
+        const queryCompany = searchParams.get('company');
+        const queryContact = searchParams.get('contact');
+        const queryEmail = searchParams.get('email');
+        const queryPhone = searchParams.get('phone');
+
+        if (queryCompany) setName(queryCompany);
+        if (queryContact) setContactName(queryContact);
+        if (queryEmail) setEmail(queryEmail);
+        if (queryPhone) setPhone(queryPhone);
+
         const fetchOrg = async () => {
             if (!orgId) {
                 setLoading(false);
@@ -119,18 +133,28 @@ const SubcontractorOnboardingWidget: React.FC = () => {
                 };
             });
 
-            const newSubId = `sub-${Date.now()}`;
+            const hashQuery = window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '';
+            const searchParams = new URLSearchParams(window.location.search || hashQuery);
+            const querySubId = searchParams.get('subId');
+            const targetSubId = querySubId || `sub-${Date.now()}`;
+
             const subData = {
-                id: newSubId,
+                id: targetSubId,
                 organizationId: orgId,
                 name: name.trim(),
+                companyName: name.trim(),
                 contactName: contactName.trim(),
                 email: email.trim().toLowerCase(),
                 phone: phone.trim(),
                 trade: trade.trim(),
+                licenseNumber: licenseNumber.trim(),
                 taxId: taxId.trim(),
                 address: address.trim(),
-                status: 'pending_review',
+                status: 'Active',
+                complianceStatus: 'pending_review',
+                type: 'external',
+                isInternal: false,
+                isSubscribedToTekTrakker: wantsTekTrakkerAccount,
                 complianceDocs,
                 signature: capturedSig || null,
                 signedDate: capturedSig ? new Date().toISOString() : null,
@@ -138,7 +162,7 @@ const SubcontractorOnboardingWidget: React.FC = () => {
             };
 
             // Save to subcontractors collection
-            await db.collection('subcontractors').doc(newSubId).set(subData);
+            await db.collection('subcontractors').doc(targetSubId).set(subData, { merge: true });
 
             // Queue notification for org admins
             try {
@@ -147,7 +171,7 @@ const SubcontractorOnboardingWidget: React.FC = () => {
                     to: orgEmail,
                     message: {
                         subject: `New Subcontractor Registration: ${name.trim()}`,
-                        html: `<div style="font-family:sans-serif;padding:20px;"><h2 style="color:#2563eb;">New Subcontractor Onboarding Submission</h2><p><strong>Company:</strong> ${name.trim()}</p><p><strong>Contact:</strong> ${contactName.trim()} (${email.trim()})</p><p><strong>Trade:</strong> ${trade}</p><p>Please log in to TekTrakker Workforce -> Subcontractors to review compliance documents.</p></div>`,
+                        html: `<div style="font-family:sans-serif;padding:20px;"><h2 style="color:#2563eb;">New Subcontractor Onboarding Submission</h2><p><strong>Company:</strong> ${name.trim()}</p><p><strong>Contact:</strong> ${contactName.trim()} (${email.trim()})</p><p><strong>Trade:</strong> ${trade}</p>${licenseNumber.trim() ? `<p><strong>License #:</strong> ${licenseNumber.trim()}</p>` : ''}<p>Please log in to TekTrakker Workforce -> Subcontractors to review compliance documents.</p></div>`,
                         text: `New Subcontractor Onboarding Submission from ${name.trim()} (${contactName.trim()}).`
                     },
                     organizationId: orgId,
@@ -178,23 +202,23 @@ const SubcontractorOnboardingWidget: React.FC = () => {
 
     if (submitted) {
         return (
-            <div className="w-full max-w-2xl mx-auto p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 text-center font-sans">
+            <div className="w-full max-w-4xl mx-auto p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 text-center font-sans">
                 <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
                     <CheckCircle size={36} />
                 </div>
                 <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Registration Submitted!</h2>
                 <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-                    Thank you <strong>{contactName}</strong>. Your subcontractor setup form and compliance documents have been submitted to <strong>{organization?.name || 'the service provider'}</strong> for review.
+                    Thank you <strong>{contactName}</strong>. Your subcontractor setup form has been submitted to <strong>{organization?.name || 'the service provider'}</strong> for review.
                 </p>
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl text-xs text-slate-500">
-                    You will be notified once your vendor profile and direct deposit details are verified.
+                    You will be notified once your vendor profile and documents are reviewed and approved.
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="w-full max-w-3xl mx-auto p-4 md:p-8 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800 font-sans text-slate-900 dark:text-white">
+        <div className="w-full min-h-full box-border p-4 md:p-8 bg-white dark:bg-slate-900 font-sans text-slate-900 dark:text-white rounded-3xl shadow-xl border border-slate-200 dark:border-slate-800">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-6 mb-6">
                 <div>
@@ -208,14 +232,14 @@ const SubcontractorOnboardingWidget: React.FC = () => {
                 )}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6 w-full">
                 {/* Company & Contact Details */}
-                <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-800 w-full">
                     <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
                         <Building2 size={18} className="text-blue-500" /> 1. Subcontractor Contact Information
                     </h3>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                         <div>
                             <label className="block font-bold text-xs mb-1 text-slate-700 dark:text-slate-300">Company / Business Name *</label>
                             <input
@@ -268,14 +292,31 @@ const SubcontractorOnboardingWidget: React.FC = () => {
                                 className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                             >
                                 <option value="HVAC">HVAC &amp; Mechanical</option>
-                                <option value="Electrical">Electrical</option>
                                 <option value="Plumbing">Plumbing</option>
-                                <option value="Roofing">Roofing</option>
-                                <option value="General Contracting">General Contracting</option>
+                                <option value="Electrical">Electrical</option>
                                 <option value="Landscaping">Landscaping</option>
-                                <option value="Appliance Repair">Appliance Repair</option>
+                                <option value="General">General / Handyman</option>
+                                <option value="Cleaning">Cleaning &amp; Janitorial</option>
+                                <option value="Painting">Painting &amp; Coating</option>
+                                <option value="Roofing">Roofing</option>
+                                <option value="Contracting">Contracting &amp; Remodeling</option>
+                                <option value="Masonry">Masonry &amp; Concrete</option>
+                                <option value="Telecommunications">Telecommunications &amp; Cabling</option>
+                                <option value="Solar">Solar &amp; Renewable Energy</option>
+                                <option value="Security">Security &amp; Low Voltage</option>
+                                <option value="Pet Grooming">Pet Grooming</option>
                                 <option value="Other">Other Trade</option>
                             </select>
+                        </div>
+                        <div>
+                            <label className="block font-bold text-xs mb-1 text-slate-700 dark:text-slate-300">License Number</label>
+                            <input
+                                type="text"
+                                value={licenseNumber}
+                                onChange={e => setLicenseNumber(e.target.value)}
+                                placeholder="e.g. TACLB123456E"
+                                className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
                         </div>
                         <div>
                             <label className="block font-bold text-xs mb-1 text-slate-700 dark:text-slate-300">Federal Tax ID / EIN</label>
@@ -287,7 +328,7 @@ const SubcontractorOnboardingWidget: React.FC = () => {
                                 className="w-full p-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
-                        <div className="md:col-span-2">
+                        <div className="md:col-span-2 lg:col-span-2">
                             <label className="block font-bold text-xs mb-1 text-slate-700 dark:text-slate-300">Business Address</label>
                             <input
                                 type="text"
@@ -300,11 +341,19 @@ const SubcontractorOnboardingWidget: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Required Compliance Documents */}
-                <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-800">
-                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
-                        <FileText size={18} className="text-indigo-500" /> 2. Required Compliance &amp; Payout Documents
+                {/* Compliance & Payout Documents (Optional Until Approved) */}
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-800 w-full">
+                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
+                        <FileText size={18} className="text-indigo-500" /> 2. Compliance &amp; Payout Documents (Optional Until Approved)
                     </h3>
+
+                    <div className="p-4 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-2xl mb-4 text-xs text-blue-900 dark:text-blue-300 flex items-start gap-3">
+                        <ShieldCheck size={20} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                        <div>
+                            <span className="font-bold block text-sm mb-0.5">Documents Not Required Until Approved</span>
+                            You do not need to upload compliance documents (COI, W-9, Licenses, Direct Deposit) right now. You can submit your setup registration today and upload these documents after your profile is approved by the company.
+                        </div>
+                    </div>
 
                     <div className="space-y-4">
                         {activeDocDefs.map((def) => {
@@ -314,7 +363,7 @@ const SubcontractorOnboardingWidget: React.FC = () => {
                                     <div>
                                         <div className="flex items-center gap-2 font-bold text-sm">
                                             {def.key === 'direct_deposit' ? <CreditCard size={16} className="text-emerald-500" /> : <FileText size={16} className="text-slate-400" />}
-                                            {def.label}
+                                            {def.label} <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-1.5">(Optional until approved)</span>
                                         </div>
                                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{def.description}</p>
                                         {uploaded?.fileName && (
@@ -349,10 +398,56 @@ const SubcontractorOnboardingWidget: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Setup Mode Selection */}
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-800 w-full space-y-3">
+                    <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                        <CreditCard size={18} className="text-indigo-500" /> 3. TekTrakker Account &amp; Dispatch Preference
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${!wantsTekTrakkerAccount ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
+                            <div className="flex items-start gap-3">
+                                <input
+                                    type="radio"
+                                    name="accountPref"
+                                    checked={!wantsTekTrakkerAccount}
+                                    onChange={() => setWantsTekTrakkerAccount(false)}
+                                    className="mt-1 accent-indigo-600"
+                                />
+                                <div>
+                                    <div className="font-extrabold text-sm text-slate-900 dark:text-white">External Subcontractor (No TekTrakker Login)</div>
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-snug">Receive work orders, site locations, and manager sign-off forms via direct email and web links. No software subscription required.</div>
+                                </div>
+                            </div>
+                            <span className="mt-3 inline-flex text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 w-max">
+                                ✓ Free Email &amp; Link Dispatches
+                            </span>
+                        </label>
+
+                        <label className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${wantsTekTrakkerAccount ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900'}`}>
+                            <div className="flex items-start gap-3">
+                                <input
+                                    type="radio"
+                                    name="accountPref"
+                                    checked={wantsTekTrakkerAccount}
+                                    onChange={() => setWantsTekTrakkerAccount(true)}
+                                    className="mt-1 accent-indigo-600"
+                                />
+                                <div>
+                                    <div className="font-extrabold text-sm text-slate-900 dark:text-white">Subscribed TekTrakker Account</div>
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-snug">I want a full TekTrakker organization account to manage my workforce and link directly with prime contractor systems.</div>
+                                </div>
+                            </div>
+                            <span className="mt-3 inline-flex text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 w-max">
+                                Full TekTrakker Org Account
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
                 {/* Signature Authorization */}
-                <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+                <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-2xl border border-slate-200/60 dark:border-slate-800 w-full">
                     <h3 className="text-sm font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2">
-                        3. Digital Signature Authorization
+                        4. Digital Signature Authorization
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
                         By signing below, I certify that all information and documents provided are accurate and authorized for vendor onboarding.
@@ -371,8 +466,20 @@ const SubcontractorOnboardingWidget: React.FC = () => {
                     {submitting ? 'Submitting Registration...' : 'Complete & Submit Onboarding Form'}
                 </button>
 
-                <div className="text-center text-[10px] text-slate-400 uppercase tracking-widest font-bold">
-                    Powered by TekTrakker Contractor Management
+                <div className="pt-2 text-center">
+                    <a
+                        href="https://tektrakker.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-1.5 text-xs font-bold text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors group"
+                    >
+                        <span>Powered by</span>
+                        <img
+                            src="/tektrakker-logo-web.png"
+                            alt="TekTrakker"
+                            className="h-4 w-auto object-contain opacity-75 group-hover:opacity-100 transition-opacity dark:brightness-0 dark:invert"
+                        />
+                    </a>
                 </div>
             </form>
         </div>

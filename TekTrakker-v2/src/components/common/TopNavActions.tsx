@@ -10,6 +10,8 @@ import VirtualWorker from '../ui/VirtualWorker';
 import { LiveSupportFloatingButton } from '../common/LiveSupportComponent';
 import Modal from '../ui/Modal';
 import { useLanguage } from 'context/LanguageContext';
+import { isNotificationRead, handleNotificationClick, markAllNotificationsInDb } from 'lib/notificationNavigator';
+import { globalConfirm } from 'lib/globalConfirm';
 
 interface TopNavActionsProps {
     user: User;
@@ -53,7 +55,8 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
         (user.role === 'master_admin' && (n.userId === 'rodzelem@gmail.com' || n.userId === 'ryanvavrecan@gmail.com')) ||
         (n.userId === 'all_admins' && (user.role === 'admin' || user.role === 'master_admin' || user.role === 'both'))
     );
-    const unreadCount = myNotifications.filter(n => !n.read).length;
+    const unreadNotifications = myNotifications.filter(n => !isNotificationRead(n, user));
+    const unreadCount = unreadNotifications.length;
 
     const toggleTheme = () => {
         dispatch({ type: 'TOGGLE_THEME' });
@@ -146,10 +149,12 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
                         if (matched) {
                             html5QrCode.stop().then(() => setIsScannerOpen(false)).catch(() => setIsScannerOpen(false));
                         } else {
-                            if (window.confirm(`No direct match found for "${cleanText}". Search inventory/records globally?`)) {
-                                navigate(`/admin/records?tab=inventory&search=${encodeURIComponent(cleanText)}`);
-                                html5QrCode.stop().then(() => setIsScannerOpen(false)).catch(() => setIsScannerOpen(false));
-                            }
+                            (async () => {
+                                if (await globalConfirm(`No direct match found for "${cleanText}". Search inventory/records globally?`, "Barcode Scanned", "Search Records", "Cancel")) {
+                                    navigate(`/admin/records?tab=inventory&search=${encodeURIComponent(cleanText)}`);
+                                    html5QrCode.stop().then(() => setIsScannerOpen(false)).catch(() => setIsScannerOpen(false));
+                                }
+                            })();
                         }
                     },
                     (_errorMessage: string) => {}
@@ -243,40 +248,42 @@ const TopNavActions: React.FC<TopNavActionsProps> = ({ user }) => {
                         {unreadCount > 0 && (
                             <div className="flex justify-end mb-3">
                                 <button className="text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 transition-colors" onClick={() => {
-                                    dispatch({type: 'MARK_ALL_READ', payload: user.id});
-                                    myNotifications.filter(n => !n.read).forEach(n => {
-                                        db.collection('notifications').doc(n.id).update(cleanUndefinedFields({ read: true })).catch(console.error);
-                                    });
+                                    dispatch({ type: 'MARK_ALL_READ', payload: { userId: user.id, userEmail: user.email } });
+                                    markAllNotificationsInDb(unreadNotifications, user);
                                 }}>Mark all as read</button>
                             </div>
                         )}
-                        <div className="flex flex-col gap-2">
-                            {myNotifications.filter(n => !n.read).length === 0 ? (
+                        <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto">
+                            {unreadNotifications.length === 0 ? (
                                 <div className="py-8 text-center text-slate-500 dark:text-slate-400 text-sm">No new alerts</div>
-                            ) : myNotifications.filter(n => !n.read).map(n => (
+                            ) : unreadNotifications.map(n => (
                                 <div 
                                     key={n.id} 
                                     role="button"
                                     tabIndex={0}
-                                    className={`p-4 border rounded-xl dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors ${!n.read ? 'bg-primary-50/50 border-primary-100 dark:bg-primary-900/10 dark:border-primary-800/30' : 'border-slate-100'}`} 
+                                    className="p-4 border rounded-xl dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors bg-primary-50/50 border-primary-100 dark:bg-primary-900/10 dark:border-primary-800/30" 
                                     onClick={() => { 
-                                        dispatch({type:'MARK_NOTIFICATION_READ', payload: n.id}); 
-                                        if (!n.read) db.collection('notifications').doc(n.id).update(cleanUndefinedFields({ read: true })).catch(console.error);
-                                        if(n.link) navigate(n.link); 
-                                        setShowNotifications(false); 
+                                        handleNotificationClick(n, {
+                                            currentUser: user,
+                                            navigate,
+                                            dispatch,
+                                            onComplete: () => setShowNotifications(false)
+                                        });
                                     }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' || e.key === ' ') {
                                             e.preventDefault();
-                                            dispatch({type:'MARK_NOTIFICATION_READ', payload: n.id}); 
-                                            if (!n.read) db.collection('notifications').doc(n.id).update(cleanUndefinedFields({ read: true })).catch(console.error);
-                                            if(n.link) navigate(n.link); 
-                                            setShowNotifications(false);
+                                            handleNotificationClick(n, {
+                                                currentUser: user,
+                                                navigate,
+                                                dispatch,
+                                                onComplete: () => setShowNotifications(false)
+                                            });
                                         }
                                     }}
                                 >
                                     <p className="font-semibold text-slate-900 dark:text-white text-sm">{n.title}</p>
-                                    <p className="text-slate-600 dark:text-slate-400 mt-1 text-xs leading-relaxed">{n.message}</p>
+                                    <p className="text-slate-600 dark:text-slate-400 mt-1 text-xs leading-relaxed">{n.message || (n as any).body}</p>
                                 </div>
                             ))}
                         </div>

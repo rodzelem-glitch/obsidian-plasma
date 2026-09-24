@@ -1,5 +1,5 @@
 import showToast from "lib/toast";
-import { UserPlus } from 'lucide-react';
+import { UserPlus, Archive, ArchiveRestore } from 'lucide-react';
 
 import React, { useState } from 'react';
 import { useAppContext } from 'context/AppContext';
@@ -18,7 +18,7 @@ import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
 import { generateProposalPdfAttachment } from 'lib/pdfHelper';
 
 const ProposalManagement: React.FC = () => {
-    const { state } = useAppContext();
+    const { state, dispatch } = useAppContext();
     
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
@@ -34,17 +34,62 @@ const ProposalManagement: React.FC = () => {
     const viewProposal = state.proposals.find(p => p.id === viewProposalId);
 
     const filteredProposals = (state.proposals || []).filter(p => {
-        const matchesSearch = p.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                              p.id.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === 'All' || p.status === statusFilter;
-        return matchesSearch && matchesStatus;
+        const hasSearch = !!searchTerm.trim();
+        const q = searchTerm.toLowerCase().trim();
+
+        // 1. Status / Archive filter
+        if (statusFilter === 'Archived') {
+            if (!p.archived) return false;
+        } else if (hasSearch) {
+            if (statusFilter !== 'All' && p.status !== statusFilter) return false;
+        } else {
+            if (p.archived) return false;
+            if (statusFilter !== 'All' && p.status !== statusFilter) return false;
+        }
+
+        // 2. Search match
+        if (hasSearch) {
+            const matchesSearch = (p.customerName || '').toLowerCase().includes(q) || 
+                                  (p.id || '').toLowerCase().includes(q) ||
+                                  (p.title || '').toLowerCase().includes(q) ||
+                                  (p.poNumber || '').toLowerCase().includes(q);
+            if (!matchesSearch) return false;
+        }
+
+        return true;
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+    const activeProposals = (state.proposals || []).filter(p => !p.archived);
     const stats = {
-        total: filteredProposals.length,
-        accepted: filteredProposals.filter(p => p.status === 'Accepted').length,
-        pending: filteredProposals.filter(p => p.status === 'Sent' || p.status === 'Opened' || p.status === 'Draft').length,
-        value: filteredProposals.reduce((sum, p) => sum + (p.total || 0), 0)
+        total: activeProposals.length,
+        accepted: activeProposals.filter(p => p.status === 'Accepted').length,
+        pending: activeProposals.filter(p => p.status === 'Sent' || p.status === 'Opened' || p.status === 'Draft').length,
+        value: activeProposals.reduce((sum, p) => sum + (p.total || 0), 0)
+    };
+
+    const handleArchiveProposal = async (proposal: Proposal, archive: boolean = true) => {
+        try {
+            const updates = {
+                archived: archive,
+                archivedAt: archive ? new Date().toISOString() : null,
+                archivedBy: archive ? (state.currentUser?.id || null) : null,
+                updatedAt: new Date().toISOString()
+            };
+            if (!state.isDemoMode) {
+                await db.collection('proposals').doc(proposal.id).update(cleanUndefinedFields(updates));
+            }
+            dispatch({
+                type: 'UPDATE_PROPOSAL',
+                payload: {
+                    id: proposal.id,
+                    ...updates
+                }
+            });
+            showToast.success(archive ? "Proposal archived." : "Proposal restored from archive.");
+        } catch (e) {
+            console.error(e);
+            showToast.warn(archive ? "Failed to archive proposal." : "Failed to restore proposal.");
+        }
     };
 
     const handleDelete = async (id: string) => {
@@ -143,7 +188,7 @@ const ProposalManagement: React.FC = () => {
             }
         }
 
-        if (!selectedEmails && !confirm(`Send reminder for proposal #${p.id.slice(-6)} to ${emails.join(', ')}?`)) return;
+        if (!selectedEmails && !confirm(`Send reminder for proposal #${p.proposalNumber || p.id} to ${emails.join(', ')}?`)) return;
 
         try {
             const link = `${getBaseUrl()}/#/proposal-view/${p.id}`;
@@ -262,6 +307,7 @@ const ProposalManagement: React.FC = () => {
                         <option value="Declined">Declined</option>
                         <option value="Denied">Denied</option>
                         <option value="Expired">Expired</option>
+                        <option value="Archived">📦 Archived</option>
                     </Select>
                 </div>
             </div>
@@ -282,7 +328,7 @@ const ProposalManagement: React.FC = () => {
                                     )}
                                 </td>
                                 <td className="px-6 py-4 text-xs font-mono font-bold text-slate-400">
-                                    #{p.id.slice(-6)}
+                                    #{p.proposalNumber || p.id}
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="font-black text-slate-900 dark:text-white text-sm">{p.customerName}</div>
@@ -292,16 +338,23 @@ const ProposalManagement: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col gap-1 items-start">
-                                        <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full ${
-                                            p.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800' :
-                                            p.status === 'Sent' ? 'bg-blue-100 text-blue-800' :
-                                            p.status === 'Opened' ? 'bg-indigo-100 text-indigo-800' :
-                                            (p.status === 'Declined' || p.status === 'Denied') ? 'bg-rose-100 text-rose-800' :
-                                            p.status === 'Expired' ? 'bg-slate-200 text-slate-800' :
-                                            'bg-slate-100 text-slate-500'
-                                        }`}>
-                                            {p.status}
-                                        </span>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full ${
+                                                p.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800' :
+                                                p.status === 'Sent' ? 'bg-blue-100 text-blue-800' :
+                                                p.status === 'Opened' ? 'bg-indigo-100 text-indigo-800' :
+                                                (p.status === 'Declined' || p.status === 'Denied') ? 'bg-rose-100 text-rose-800' :
+                                                p.status === 'Expired' ? 'bg-slate-200 text-slate-800' :
+                                                'bg-slate-100 text-slate-500'
+                                            }`}>
+                                                {p.status}
+                                            </span>
+                                            {p.archived && (
+                                                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 flex items-center gap-1">
+                                                    <Archive size={10} /> Archived
+                                                </span>
+                                            )}
+                                        </div>
                                         {(() => {
                                             const hasBeenOpened = p.status === 'Opened' || p.trackingHistory?.some((entry: any) => entry.status === 'Opened');
                                             return hasBeenOpened && p.status !== 'Accepted' && (
@@ -339,6 +392,19 @@ const ProposalManagement: React.FC = () => {
                                         >
                                             <Eye size={14} />
                                             View
+                                        </button>
+                                        <button 
+                                            title={p.archived ? "Restore Proposal" : "Archive Proposal"}
+                                            aria-label={p.archived ? "Restore Proposal" : "Archive Proposal"}
+                                            onClick={(e) => { e.stopPropagation(); handleArchiveProposal(p, !p.archived); }}
+                                            className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-md transition-colors font-bold shadow-sm ${
+                                                p.archived 
+                                                    ? 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-900/40' 
+                                                    : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                            }`}
+                                        >
+                                            {p.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                                            {p.archived ? "Restore" : "Archive"}
                                         </button>
                                         <button 
                                             title="Reassign Customer" 
@@ -393,7 +459,9 @@ const ProposalManagement: React.FC = () => {
                 isOpen={recipientModalConfig.isOpen}
                 onClose={() => setRecipientModalConfig({ isOpen: false, proposal: null, type: 'send' })}
                 customerId={recipientModalConfig.proposal?.customerId}
-                locationId={recipientModalConfig.proposal?.locationId}
+                locationId={recipientModalConfig.proposal?.locationId || (recipientModalConfig.proposal as any)?.serviceLocationId}
+                locationName={recipientModalConfig.proposal?.locationName || (recipientModalConfig.proposal as any)?.siteLocationName || (recipientModalConfig.proposal as any)?.address}
+                documentType="proposal"
                 title={recipientModalConfig.type === 'send' ? 'Select Proposal Recipients' : 'Select Reminder Recipients'}
                 onConfirm={(emails, attachPdf) => {
                     if (recipientModalConfig.proposal) {

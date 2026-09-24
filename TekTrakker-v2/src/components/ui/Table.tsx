@@ -5,6 +5,8 @@ interface TableProps {
     headers: React.ReactNode[];
     children: React.ReactNode;
     limit?: number;
+    className?: string;
+    containerClassName?: string;
 }
 
 const getTextFromNode = (node: any): string => {
@@ -26,7 +28,7 @@ const getTextFromNode = (node: any): string => {
     return '';
 };
 
-const Table: React.FC<TableProps> = ({ headers, children, limit }) => {
+const Table: React.FC<TableProps> = ({ headers, children, limit, className, containerClassName }) => {
     const [sortColIndex, setSortColIndex] = useState<number | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null);
 
@@ -171,34 +173,85 @@ const Table: React.FC<TableProps> = ({ headers, children, limit }) => {
         });
     }
 
+    const actionsColIndex = headers.findIndex((h) => {
+        const text = getTextFromNode(h).trim().toLowerCase();
+        return text === 'actions' || text === 'action' || text === 'options';
+    });
+
+    const processTrCell = (tr: any) => {
+        if (!tr || !React.isValidElement(tr) || actionsColIndex === -1) return tr;
+        const trProps = tr.props as any;
+        if (!trProps || !trProps.children) return tr;
+
+        const cells = React.Children.toArray(trProps.children);
+        if (actionsColIndex >= cells.length) return tr;
+
+        const updatedCells = cells.map((cell: any, idx) => {
+            if (idx === actionsColIndex && React.isValidElement(cell)) {
+                const cellProps = (cell as any).props || {};
+                const existingClass = cellProps.className || '';
+                if (!existingClass.includes('sticky')) {
+                    return React.cloneElement(cell as React.ReactElement<any>, {
+                        className: `${existingClass} sticky right-0 z-10 bg-white dark:bg-slate-800 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.1)]`.trim()
+                    });
+                }
+            }
+            return cell;
+        });
+
+        return React.cloneElement(tr as React.ReactElement<any>, { children: updatedCells });
+    };
+
     const displayedRows = limit !== undefined ? rowElements.slice(0, limit) : rowElements;
+
+    const processedRows = displayedRows.map((el: any) => {
+        if (!el) return el;
+        if (el.type === 'tbody') {
+            const tbodyChildren = React.Children.toArray(el.props.children);
+            const processedChildren = tbodyChildren.map((child: any) => processTrCell(child));
+            return React.cloneElement(el as React.ReactElement<any>, {
+                className: `bg-white dark:bg-slate-800 text-slate-900 dark:text-gray-100 divide-y divide-slate-100 dark:divide-slate-700/50 border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${el.props.className || ''}`,
+                children: processedChildren
+            });
+        }
+        return processTrCell(el);
+    });
 
     const hasTbodyChildren = displayedRows.some((el: any) => el && el.type === 'tbody');
 
-    const renderedContent = hasTbodyChildren
-        ? displayedRows.map((el: any) => {
-            if (el && el.type === 'tbody') {
-                return React.cloneElement(el, {
-                    className: `bg-white dark:bg-slate-800 text-slate-900 dark:text-gray-100 divide-y divide-slate-100 dark:divide-slate-700/50 border-b border-slate-200 dark:border-slate-700 last:border-b-0 ${el.props.className || ''}`
-                });
-            }
-            return el;
-        })
-        : (
-            <tbody className="bg-white dark:bg-slate-800 text-slate-900 dark:text-gray-100 divide-y divide-slate-100 dark:divide-slate-700/50 [&>tr]:transition-colors [&>tr:hover]:bg-slate-50 dark:[&>tr:hover]:bg-slate-700/30 [&>tr]:min-h-[48px]">
-                {displayedRows}
-            </tbody>
-        );
+    const renderedContent = hasTbodyChildren ? processedRows : (
+        <tbody className="bg-white dark:bg-slate-800 text-slate-900 dark:text-gray-100 divide-y divide-slate-100 dark:divide-slate-700/50 [&>tr]:transition-colors [&>tr:hover]:bg-slate-50 dark:[&>tr:hover]:bg-slate-700/30 [&>tr]:min-h-[48px]">
+            {processedRows}
+        </tbody>
+    );
+
+    const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+        const target = e.currentTarget;
+        if (!target) return;
+        const { scrollTop, scrollHeight, clientHeight } = target;
+        const isAtTop = scrollTop <= 1;
+        const isAtBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight - 1;
+        const isNotScrollable = scrollHeight <= clientHeight + 2;
+
+        // If the table cannot scroll vertically (e.g. 1-2 items) or has reached its scroll boundary in the scroll direction:
+        if (isNotScrollable || (e.deltaY < 0 && isAtTop) || (e.deltaY > 0 && isAtBottom)) {
+            window.scrollBy({ top: e.deltaY, behavior: 'auto' });
+        }
+    };
 
     return (
-        <div className="relative overflow-x-auto custom-scrollbar touch-pan-x rounded-lg border border-slate-200 dark:border-slate-700">
-            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-                <thead className="bg-slate-50 dark:bg-slate-800/80 sticky top-0 z-[1]">
+        <div 
+            onWheel={handleWheel}
+            className={`relative overflow-x-auto overflow-y-auto max-h-[calc(100dvh-220px)] custom-scrollbar overscroll-x-contain overscroll-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 ${containerClassName || ''}`}
+        >
+            <table className={`min-w-full border-separate border-spacing-0 divide-y divide-slate-200 dark:divide-slate-700 ${className || ''}`}>
+                <thead className="bg-slate-100 dark:bg-slate-800 sticky top-0 z-20 shadow-xs border-b border-slate-200 dark:border-slate-700">
                     <tr>
                         {headers.map((h, i) => {
                             const headerText = getTextFromNode(h);
-                            const isSortable = headerText.trim() !== '' && 
-                                               headerText.toLowerCase() !== 'actions' && 
+                            const isActionsCol = i === actionsColIndex;
+                            const isSortable = !isActionsCol &&
+                                               headerText.trim() !== '' && 
                                                headerText.toLowerCase() !== 'options' &&
                                                headerText.toLowerCase() !== 'select' &&
                                                headerText.toLowerCase() !== 'checkbox';
@@ -207,7 +260,7 @@ const Table: React.FC<TableProps> = ({ headers, children, limit }) => {
                                 <th 
                                     key={i} 
                                     onClick={() => isSortable && handleSort(i)}
-                                    className={`px-4 md:px-6 py-3 text-left text-[10px] md:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap ${isSortable ? 'cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700/50 select-none' : ''}`}
+                                    className={`sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 text-left text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider whitespace-nowrap ${isSortable ? 'cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 select-none' : ''} ${isActionsCol ? 'sticky right-0 top-0 z-30 bg-slate-200 dark:bg-slate-800 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.1)]' : ''}`}
                                 >
                                     <div className="flex items-center gap-1.5">
                                         <span>{h}</span>
@@ -230,7 +283,7 @@ const Table: React.FC<TableProps> = ({ headers, children, limit }) => {
                         })}
                     </tr>
                 </thead>
-                {hasTbodyChildren ? renderedContent : renderedContent}
+                {renderedContent}
             </table>
         </div>
     );

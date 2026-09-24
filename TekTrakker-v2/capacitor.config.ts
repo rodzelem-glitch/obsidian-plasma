@@ -22,11 +22,11 @@ const config: CapacitorConfig = {
     },
     StatusBar: {
       overlaysWebView: true,
-      style: "DARK",
-      backgroundColor: "#00000000"
+      style: "LIGHT",
+      backgroundColor: "#ffffffff"
     },
     NavigationBar: {
-      style: "DARK",
+      style: "LIGHT",
       backgroundColor: "#00000000"
     },
     PushNotifications: {

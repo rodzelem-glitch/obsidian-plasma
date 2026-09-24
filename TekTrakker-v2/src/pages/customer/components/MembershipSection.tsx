@@ -4,6 +4,7 @@ import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
 import { ShieldCheck, Clock, DollarSign, Repeat, Zap, TrendingUp, Gift, Star, Calendar, CheckCircle2 } from 'lucide-react';
 import type { ServiceAgreement, Job } from 'types';
+import { formatAgreementDate } from 'lib/membershipHelper';
 
 interface MembershipSectionProps {
     membership: ServiceAgreement | null;
@@ -70,7 +71,7 @@ const MembershipSection: React.FC<MembershipSectionProps> = ({ membership, endDa
                         </div>
                         <div className="text-right text-white/50 text-xs">
                             <p className="font-bold">Renews</p>
-                            <p className="font-black text-white text-sm">{new Date(membership.endDate).toLocaleDateString()}</p>
+                            <p className="font-black text-white text-sm">{formatAgreementDate(membership)}</p>
                             <p className="mt-1 text-[10px]">{planStats.monthsRemaining} months remaining</p>
                             {onCancelPlan && (
                                 <button onClick={onCancelPlan} className="mt-2 text-[10px] text-red-500 hover:text-red-400 font-bold tracking-widest uppercase transition-colors">

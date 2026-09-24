@@ -13,8 +13,10 @@ import Textarea from 'components/ui/Textarea';
 import { useNavigate } from 'react-router-dom';
 import type { MembershipPlan, ServiceAgreement } from 'types';
 import { db } from 'lib/firebase';
-import { Shield, CheckCircle, Users, DollarSign, Wrench, FileText, Plus, Ban, Trash2 } from 'lucide-react';
+import { Shield, CheckCircle, Users, DollarSign, Wrench, FileText, Plus, Ban, Trash2, Eye } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
+import { isRecurringMembership, calculateAgreementMRR, formatAgreementDate, getAgreementClassification } from '../../lib/membershipHelper';
+import AgreementViewerModal from '../../components/modals/AgreementViewerModal';
 
 const DEFAULT_PLANS: Omit<MembershipPlan, 'organizationId'>[] = [
     { id: 'plan-gold', name: 'Gold Plan', monthlyPrice: 29.00, annualPrice: 300.00, discountPercentage: 20, discountScope: 'Both', visitsPerYear: 2, color: 'yellow', benefits: ['Priority Scheduling', 'No Dispatch Fees', '20% Parts Discount'], pricePerAdditionalSystem: 15.00 },
@@ -31,6 +33,8 @@ const Memberships: React.FC = () => {
     const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
     const [isEditAgreementModalOpen, setIsEditAgreementModalOpen] = useState(false);
     const [editingAgreement, setEditingAgreement] = useState<ServiceAgreement | null>(null);
+    const [viewingAgreement, setViewingAgreement] = useState<ServiceAgreement | null>(null);
+    const [agreementFilter, setAgreementFilter] = useState<'all' | 'memberships' | 'contracts'>('all');
     const [enrollForm, setEnrollForm] = useState({
         customerId: '',
         planId: '',
@@ -62,19 +66,26 @@ const Memberships: React.FC = () => {
 
     const stats = useMemo(() => {
         const activeAgreements = agreements.filter(a => a.status === 'Active');
-        const active = activeAgreements.length;
+        const activeMemberships = activeAgreements.filter(isRecurringMembership);
+        const active = activeMemberships.length;
         const totalAgreements = agreements.length;
         
-        // Corrected MRR Logic: Only count ACTIVE plans
-        const monthlyRevenue = activeAgreements.reduce((sum, a) => {
-            // Price normalization: If annual, divide by 12
-            const monthlyVal = a.billingCycle === 'Monthly' ? a.price : (a.price / 12);
-            return sum + monthlyVal;
-        }, 0);
+        // MRR Logic: Strictly count active recurring membership plans (excludes commercial contractor agreements / MSAs)
+        const monthlyRevenue = calculateAgreementMRR(activeAgreements);
 
-        const dueForVisit = activeAgreements.filter(a => a.visitsRemaining > 0).length;
+        const dueForVisit = activeAgreements.filter(a => (a.visitsRemaining || 0) > 0).length;
         return { active, totalAgreements, monthlyRevenue, dueForVisit };
     }, [agreements]);
+
+    const filteredAgreements = useMemo(() => {
+        if (agreementFilter === 'memberships') {
+            return agreements.filter(isRecurringMembership);
+        }
+        if (agreementFilter === 'contracts') {
+            return agreements.filter(a => !isRecurringMembership(a));
+        }
+        return agreements;
+    }, [agreements, agreementFilter]);
 
     const handleEditPlan = (plan: MembershipPlan) => {
         setEditingPlan({ ...plan });
@@ -333,35 +344,136 @@ const Memberships: React.FC = () => {
 
             {/* Agreements Table */}
             <Card>
-                <h3 className="text-lg font-bold mb-4 dark:text-white">Membership Agreements</h3>
-                <Table headers={['Customer', 'Plan', 'Systems', 'Renewal Date', 'Status', 'Action']}>
-                    {agreements.map(a => (
-                        <tr key={a.id}>
-                            <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{a.customerName}</td>
-                            <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{a.planName}</td>
-                            <td className="px-6 py-4 text-gray-600 dark:text-gray-300 font-mono text-center">{a.systemCount || 1}</td>
-                            <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{new Date(a.endDate).toLocaleDateString()}</td>
-                            <td className="px-6 py-4">
-                                <span className={`px-2 py-1 rounded text-xs font-bold ${a.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{a.status}</span>
-                            </td>
-                            <td className="px-6 py-4 flex items-center gap-2">
-                                <button onClick={() => {
-                                    setEditingAgreement({...a});
-                                    setIsEditAgreementModalOpen(true);
-                                }} className="text-blue-500 hover:text-blue-700" title="Edit Agreement">
-                                    <Wrench size={16}/>
-                                </button>
-                                {a.status === 'Active' && (
-                                    <button onClick={() => handleCancelAgreement(a.id)} className="text-orange-500 hover:text-orange-700" title="Cancel Membership">
-                                        <Ban size={16}/>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                    <div>
+                        <h3 className="text-lg font-bold dark:text-white">Service Agreements &amp; Memberships</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                            Click any agreement to view full contract details, rate schedules, and executed legal documents.
+                        </p>
+                    </div>
+
+                    {/* Filter Tabs */}
+                    <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                        <button
+                            type="button"
+                            onClick={() => setAgreementFilter('all')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                agreementFilter === 'all'
+                                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                            }`}
+                        >
+                            All ({agreements.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAgreementFilter('memberships')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                agreementFilter === 'memberships'
+                                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                            }`}
+                        >
+                            Memberships ({agreements.filter(isRecurringMembership).length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setAgreementFilter('contracts')}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                                agreementFilter === 'contracts'
+                                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900'
+                            }`}
+                        >
+                            Commercial Contracts ({agreements.filter(a => !isRecurringMembership(a)).length})
+                        </button>
+                    </div>
+                </div>
+
+                <Table headers={['Customer', 'Type', 'Plan / Agreement', 'Scope', 'Renewal / Term', 'Status', 'Action']}>
+                    {filteredAgreements.map(a => {
+                        const classMeta = getAgreementClassification(a);
+                        return (
+                            <tr 
+                                key={a.id}
+                                onClick={() => setViewingAgreement(a)}
+                                className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group"
+                            >
+                                <td className="px-6 py-4 font-bold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                    {a.customerName}
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border ${classMeta.badgeColor}`}>
+                                        {classMeta.label}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-gray-600 dark:text-gray-300">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-semibold text-slate-800 dark:text-slate-200">{a.planName}</span>
+                                        {a.contractNumber && (
+                                            <span className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded font-bold">
+                                                #{a.contractNumber}
+                                            </span>
+                                        )}
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 text-gray-600 dark:text-gray-300 font-mono text-center">
+                                    {a.siteCount ? `${a.siteCount} Sites` : `${a.systemCount || 1} System`}
+                                </td>
+                                <td className="px-6 py-4 text-gray-600 dark:text-gray-300">
+                                    {formatAgreementDate(a)}
+                                </td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 rounded text-xs font-bold ${a.status === 'Active' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-red-100 text-red-800'}`}>{a.status}</span>
+                                </td>
+                                <td className="px-6 py-4 flex items-center gap-2">
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setViewingAgreement(a);
+                                        }} 
+                                        className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 p-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded transition-colors" 
+                                        title="View Agreement & Document"
+                                    >
+                                        <Eye size={16}/>
                                     </button>
-                                )}
-                                <button onClick={() => handleDeleteAgreement(a.id)} className="text-red-500 hover:text-red-700" title="Delete Record">
-                                    <Trash2 size={16}/>
-                                </button>
-                            </td>
-                        </tr>
-                    ))}
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingAgreement({...a});
+                                            setIsEditAgreementModalOpen(true);
+                                        }} 
+                                        className="text-blue-500 hover:text-blue-700 p-1 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded transition-colors" 
+                                        title="Edit Agreement"
+                                    >
+                                        <Wrench size={16}/>
+                                    </button>
+                                    {a.status === 'Active' && (
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleCancelAgreement(a.id);
+                                            }} 
+                                            className="text-orange-500 hover:text-orange-700 p-1 hover:bg-orange-50 dark:hover:bg-orange-950/40 rounded transition-colors" 
+                                            title="Cancel Membership"
+                                        >
+                                            <Ban size={16}/>
+                                        </button>
+                                    )}
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteAgreement(a.id);
+                                        }} 
+                                        className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors" 
+                                        title="Delete Record"
+                                    >
+                                        <Trash2 size={16}/>
+                                    </button>
+                                </td>
+                            </tr>
+                        );
+                    })}
                 </Table>
             </Card>
 
@@ -578,6 +690,14 @@ const Memberships: React.FC = () => {
                     </div>
                 )}
             </Modal>
+
+            {/* View Full Agreement & Document Modal */}
+            <AgreementViewerModal
+                isOpen={!!viewingAgreement}
+                onClose={() => setViewingAgreement(null)}
+                agreement={viewingAgreement}
+                organization={state.currentOrganization}
+            />
         </div>
     );
 };

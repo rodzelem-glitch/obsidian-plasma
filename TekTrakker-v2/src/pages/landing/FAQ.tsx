@@ -72,7 +72,7 @@ const FAQS = [
       },
       {
         question: "Can I accept credit cards on-site?",
-        answer: "Yes. We integrate with Stripe and Square. Technicians can scan cards or use Apple/Google Pay directly through the app, and the funds are typically deposited into your account within 24-48 hours."
+        answer: "Yes. TekTrakker Payments powers native, embedded payment processing with industry-leading low rates. Technicians can tap/scan cards or use Apple/Google Pay directly through the app, and funds are automatically batched with 24-48 hour deposits."
       },
       {
         question: "How does the B2B Contractor Marketplace work?",

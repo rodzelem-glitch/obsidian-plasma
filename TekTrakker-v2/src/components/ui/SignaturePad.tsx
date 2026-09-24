@@ -5,7 +5,8 @@ const SignatureCanvas = (SignatureCanvasModule as any).default || SignatureCanva
 export interface SignaturePadHandle {
     clear: () => void;
     isEmpty: () => boolean;
-    toDataURL: () => string;
+    toDataURL: (type?: string, encoderOptions?: number) => string;
+    getTrimmedCanvas: () => any;
 }
 
 interface SignaturePadProps {
@@ -23,13 +24,34 @@ const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(({ classN
             sigCanvas.current?.clear();
             onEnd?.('');
         },
-        isEmpty: () => sigCanvas.current?.isEmpty(),
-        toDataURL: () => sigCanvas.current?.getTrimmedCanvas().toDataURL('image/png')
+        isEmpty: () => !sigCanvas.current || sigCanvas.current.isEmpty(),
+        toDataURL: (type?: string, encoderOptions?: number) => {
+            try {
+                if (!sigCanvas.current || sigCanvas.current.isEmpty()) return '';
+                return sigCanvas.current.getTrimmedCanvas().toDataURL(type || 'image/png', encoderOptions);
+            } catch (err) {
+                try {
+                    return sigCanvas.current?.getCanvas?.()?.toDataURL(type || 'image/png', encoderOptions) || '';
+                } catch (err2) {
+                    return '';
+                }
+            }
+        },
+        getTrimmedCanvas: () => {
+            if (!sigCanvas.current || sigCanvas.current.isEmpty()) return null;
+            return sigCanvas.current.getTrimmedCanvas();
+        }
     }));
 
     const handleEnd = () => {
         if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
-            onEnd?.(sigCanvas.current.getTrimmedCanvas().toDataURL('image/png'));
+            try {
+                const trimmed = sigCanvas.current.getTrimmedCanvas().toDataURL('image/png');
+                onEnd?.(trimmed);
+            } catch (err) {
+                const fallback = sigCanvas.current?.getCanvas?.()?.toDataURL('image/png') || '';
+                onEnd?.(fallback);
+            }
         } else {
             onEnd?.('');
         }
@@ -44,12 +66,23 @@ const SignaturePad = forwardRef<SignaturePadHandle, SignaturePadProps>(({ classN
 
             const width = container.clientWidth;
             const canvasEl = container.querySelector('canvas');
-            if (canvasEl) {
-                const w = canvasEl.clientWidth || width || 400;
-                const h = canvasEl.clientHeight || 160;
-                setCanvasSize({ width: w, height: h });
-            } else {
-                setCanvasSize({ width: width || 400, height: 160 });
+            const w = canvasEl?.clientWidth || width || 400;
+            const h = canvasEl?.clientHeight || 160;
+
+            // Preserve existing stroke data across canvas dimension adjustments
+            const existingPoints = (sigCanvas.current && !sigCanvas.current.isEmpty())
+                ? sigCanvas.current.toData()
+                : null;
+
+            setCanvasSize(prev => {
+                if (prev.width === w && prev.height === h) return prev;
+                return { width: w, height: h };
+            });
+
+            if (existingPoints && sigCanvas.current) {
+                requestAnimationFrame(() => {
+                    sigCanvas.current?.fromData(existingPoints);
+                });
             }
         };
 

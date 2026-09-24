@@ -7,10 +7,9 @@ import { AppProvider } from './context/AppContext';
 import { ConfirmProvider } from './context/ConfirmContext';
 import { FranchiseProvider } from './context/FranchiseContext';
 import { LanguageProvider } from './context/LanguageContext';
+import { TelephonyProvider } from './context/TelephonyContext';
 import { defineCustomElements } from '@ionic/pwa-elements/loader';
 import './styles/index.css';
-import { registerSW } from 'virtual:pwa-register';
-
 // Register Capacitor PWA Elements safely
 try {
     const definePromise = defineCustomElements(window);
@@ -21,72 +20,14 @@ try {
     console.error("Failed to load PWA elements", e);
 }
 
-// FORCIBLY PURGE PWA SERVICE WORKERS DURING LOCAL DEV OR ON CAPACITOR NATIVE
-// Prevents local caching loops where the browser ignores npm run dev updates, and prevents WKWebView issues.
-if ('serviceWorker' in navigator) {
-    const isNative = typeof window !== 'undefined' && (window as any).Capacitor && (window as any).Capacitor.isNativePlatform();
-    
-    if (import.meta.env.DEV || isNative) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-            for (let registration of registrations) {
-                registration.unregister();
-                console.warn('[VitePWA] Forcefully unregistered service-worker for dev/native platform.');
-            }
-        });
-    } else {
-        // Register it manually for production web users
-        let updateSW: any;
-        const triggerUpdate = (reload = true) => {
-            if (typeof updateSW === 'function') {
-                return updateSW(reload);
-            } else {
-                return navigator.serviceWorker.getRegistrations().then(registrations => {
-                    let hasWaiting = false;
-                    for (let r of registrations) {
-                        if (r.waiting) {
-                            hasWaiting = true;
-                            r.waiting.postMessage({ type: 'SKIP_WAITING' });
-                        }
-                    }
-                    if (reload) {
-                        if (hasWaiting) {
-                            const reloadOnController = () => {
-                                navigator.serviceWorker.removeEventListener('controllerchange', reloadOnController);
-                                window.location.reload();
-                            };
-                            navigator.serviceWorker.addEventListener('controllerchange', reloadOnController);
-                            setTimeout(() => {
-                                navigator.serviceWorker.removeEventListener('controllerchange', reloadOnController);
-                                window.location.reload();
-                            }, 5000);
-                        } else {
-                            window.location.reload();
-                        }
-                    }
-                });
-            }
-        };
-        (window as any).updateServiceWorker = triggerUpdate;
-
-        updateSW = registerSW({
-            immediate: true,
-            onNeedRefresh() {
-                console.info('[VitePWA] New service worker available. Notifying user via toast.');
-                setTimeout(() => { 
-                    window.dispatchEvent(new CustomEvent('app-update-available', { 
-                        detail: { updateSW: triggerUpdate } 
-                    })); 
-                }, 100);
-            },
-            onRegisteredSW(swUrl, r) {
-                if (r) {
-                    setInterval(() => {
-                        r.update();
-                    }, 60 * 60 * 1000);
-                }
-            }
-        });
-    }
+// UNCONDITIONALLY PURGE ALL SERVICE WORKERS TO PREVENT BACKGROUND INTERRUPTIONS & SPONTANEOUS RELOADS
+// The app relies on standard immutable HTTP caching for lightning-fast loads without hijacking active sessions.
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (let registration of registrations) {
+            registration.unregister().catch(() => {});
+        }
+    }).catch(() => {});
 }
 
 // --- MOBILE HEIGHT FIX ---
@@ -97,58 +38,46 @@ const updateVH = () => {
 window.addEventListener('resize', updateVH);
 updateVH();
 
-// --- VERSION UPDATE HANDLER ---
-const handleChunkError = (event: ErrorEvent | PromiseRejectionEvent) => {
-    let msg = '';
-    if (event instanceof ErrorEvent) {
-        msg = event.message?.toLowerCase() || '';
-    } else if (event instanceof PromiseRejectionEvent) {
-        msg = event.reason?.message?.toLowerCase() || event.reason?.toString()?.toLowerCase() || '';
-    }
+import { isChunkErrorMessage } from './lib/lazyWithRetry';
 
-    const isChunkError = 
-        msg.includes('loading chunk') || 
-        msg.includes('importing a module script failed') ||
-        msg.includes('dynamically imported module') ||
-        msg.includes('expected a javascript-or-wasm module script') ||
-        msg.includes('unsupported mime type') ||
-        msg.includes('bad-precaching-response') ||
-        msg.includes('precache');
+// --- DYNAMIC CHUNK AUTO-RECOVERY ---
+// Detect chunk loading / dynamic import errors caused by new deployments & stale browser sessions
+const handleChunkError = (err?: any) => {
+    console.warn('[Auto-Recovery] Dynamic chunk mismatch detected. Recovering latest build...', err);
+    const storageKey = 'chunk_reload_timestamp';
+    const lastReload = sessionStorage.getItem(storageKey);
+    const now = Date.now();
 
-    if (isChunkError) {
-        const storageKey = 'version_reload_timestamp';
-        const lastReload = sessionStorage.getItem(storageKey);
-        const now = Date.now();
-
-        if (!lastReload || now - parseInt(lastReload) > 10000) {
-            console.warn('Chunk load error detected. Force clearing service workers and reloading...');
-            sessionStorage.setItem(storageKey, now.toString());
-            
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(registrations => {
-                    for (let registration of registrations) {
-                        registration.unregister();
-                    }
-                    window.location.reload();
-                }).catch(() => {
-                    window.location.reload();
-                });
-            } else {
-                window.location.reload();
-            }
-        } else {
-            document.body.innerHTML = "<div style=\"background: radial-gradient(135deg, #0f172a 0%, #1e1b4b 100%); display: flex; align-items: center; justify-content: center; height: 100vh; font-family: 'Inter', system-ui, -apple-system, sans-serif; color: #f8fafc; text-align: center; padding: 20px; box-sizing: border-box; overflow: hidden; margin: 0;\">\n    <div style=\"background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 24px; padding: 40px; max-width: 480px; width: 100%; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); box-sizing: border-box; transition: all 0.3s ease;\">\n        <div style=\"width: 64px; height: 64px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px;\">\n            <svg style=\"width: 32px; height: 32px; color: #ef4444;\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" stroke-width=\"2\">\n                <path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z\" />\n            </svg>\n        </div>\n        <h1 style=\"font-size: 24px; font-weight: 800; margin: 0 0 12px; letter-spacing: -0.025em; background: linear-gradient(to right, #f8fafc, #cbd5e1); -webkit-background-clip: text; -webkit-text-fill-color: transparent;\">App Update Required</h1>\n        <p style=\"font-size: 14px; line-height: 1.6; color: #94a3b8; margin: 0 0 32px;\">A critical update is available, but the browser cache prevents it from loading correctly. Press below to clear cache and reload.</p>\n        <button onclick=\"window.location.reload(true);\" style=\"background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #ffffff; border: none; padding: 14px 28px; font-size: 14px; font-weight: 700; border-radius: 12px; cursor: pointer; box-shadow: 0 4px 20px rgba(79, 70, 229, 0.4); transition: all 0.2s ease; width: 100%; display: inline-block; box-sizing: border-box;\">Force Reload & Update</button>\n    </div>\n</div>";
-        }
+    // Prevent infinite reload loop if the network is genuinely down (10s cooldown)
+    if (!lastReload || now - parseInt(lastReload, 10) > 10000) {
+        sessionStorage.setItem(storageKey, now.toString());
+        const url = new URL(window.location.href);
+        url.searchParams.set('v', now.toString());
+        window.location.replace(url.toString());
     }
 };
 
+// Intercept Vite preload errors and auto-recover to the latest deployed version
 window.addEventListener('vite:preloadError', (event) => {
     event.preventDefault();
-    handleChunkError(event as any);
+    handleChunkError(event);
 });
 
-window.addEventListener('error', handleChunkError);
-window.addEventListener('unhandledrejection', handleChunkError);
+// Intercept global script/unhandled rejection errors for stale dynamic imports
+window.addEventListener('unhandledrejection', (event) => {
+    const msg = event.reason?.message || String(event.reason || '');
+    if (isChunkErrorMessage(msg)) {
+        event.preventDefault();
+        handleChunkError(event.reason);
+    }
+});
+
+window.addEventListener('error', (event) => {
+    const msg = event.message || event.error?.message || '';
+    if (isChunkErrorMessage(msg)) {
+        handleChunkError(event.error);
+    }
+});
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -181,52 +110,72 @@ class GlobalErrorBoundary extends React.Component<{children: React.ReactNode}, {
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("Global React Crash:", error, errorInfo);
     (window as any).appHasErrors = true;
-    
-    // Self-heal chunk mismatch and dynamic import failures instantly
-    const msg = (error?.message || '').toLowerCase();
-    const isChunkError = 
-        msg.includes('loading chunk') || 
-        msg.includes('importing a module script failed') ||
-        msg.includes('dynamically imported module') ||
-        msg.includes('failed to fetch dynamically imported module') ||
-        msg.includes('expected a javascript-or-wasm module script');
-        
-    if (isChunkError) {
-        const storageKey = 'version_reload_timestamp';
-        const lastReload = sessionStorage.getItem(storageKey);
-        const now = Date.now();
-        
-        // Prevent endless reload loop if the network is genuinely down
-        if (!lastReload || now - parseInt(lastReload) > 10000) {
-            console.warn('React boundary detected chunk error. Force clearing service workers and reloading...');
-            sessionStorage.setItem(storageKey, now.toString());
-            
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.getRegistrations().then(registrations => {
-                    for (let registration of registrations) {
-                        registration.unregister();
-                    }
-                    window.location.reload();
-                }).catch(() => {
-                    window.location.reload();
-                });
-            } else {
-                window.location.reload();
-            }
-        }
+
+    if (error?.message && isChunkErrorMessage(error.message)) {
+      handleChunkError(error);
     }
   }
 
-
   render() {
     if (this.state.hasError) {
+      const isChunk = isChunkErrorMessage(this.state.error?.message);
+
+      if (isChunk) {
+        return (
+          <div className="p-5 bg-slate-900 text-white h-screen w-screen overflow-auto flex flex-col items-center justify-center text-center">
+            <div className="max-w-md w-full bg-slate-800 border border-slate-700 p-8 rounded-2xl shadow-xl space-y-4">
+              <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary-500 mx-auto" />
+              <h1 className="text-xl font-black text-white">Updating Application...</h1>
+              <p className="text-sm text-slate-300">A new build was deployed. Loading the latest version of TekTrakker...</p>
+              <button
+                onClick={() => {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('v', Date.now().toString());
+                  window.location.replace(url.toString());
+                }}
+                className="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer shadow-md"
+              >
+                Click here if not redirected automatically
+              </button>
+            </div>
+          </div>
+        );
+      }
+
       return (
-        <div className="p-5 bg-white text-gray-800 h-screen w-screen overflow-auto flex flex-col items-center justify-center">
-          <h1 className="text-2xl font-bold mb-2.5 text-red-600">Something went wrong.</h1>
-          <p className="text-base mb-5 text-gray-700">Please close the app and try again.</p>
-          <pre className="whitespace-pre-wrap break-words text-xs text-black bg-slate-100 p-4 rounded max-w-[80%]">
-             {this.state.error?.name}: {this.state.error?.message}
-          </pre>
+        <div className="p-5 bg-slate-900 text-white h-screen w-screen overflow-auto flex flex-col items-center justify-center text-center">
+          <div className="max-w-md w-full bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-xl space-y-4">
+            <h1 className="text-xl font-black text-rose-400">Application Notice</h1>
+            <p className="text-sm text-slate-300">An unexpected view error occurred. You can safely refresh the view to continue.</p>
+            <button
+              onClick={() => {
+                try {
+                  sessionStorage.clear();
+                  if ('caches' in window) {
+                    caches.keys().then(names => {
+                      names.forEach(name => caches.delete(name));
+                    });
+                  }
+                  if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(regs => {
+                      for (const reg of regs) reg.unregister().catch(() => {});
+                    });
+                  }
+                } catch (e) {}
+                const url = new URL(window.location.href);
+                url.searchParams.set('v', Date.now().toString());
+                window.location.replace(url.toString());
+              }}
+              className="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer shadow-md"
+            >
+              Refresh View
+            </button>
+            {this.state.error?.message && (
+              <pre className="whitespace-pre-wrap break-words text-[11px] text-slate-400 bg-slate-950/60 p-3 rounded-lg text-left max-h-32 overflow-y-auto">
+                {this.state.error.message}
+              </pre>
+            )}
+          </div>
         </div>
       );
     }
@@ -243,7 +192,9 @@ root.render(
           <AppProvider>
             <LanguageProvider>
               <ConfirmProvider>
-                <App />
+                <TelephonyProvider>
+                  <App />
+                </TelephonyProvider>
               </ConfirmProvider>
             </LanguageProvider>
           </AppProvider>

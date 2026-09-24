@@ -1,6 +1,6 @@
 import showToast from "lib/toast";
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
@@ -12,10 +12,12 @@ import Select from 'components/ui/Select';
 import Textarea from 'components/ui/Textarea';
 import type { Job, PartOrder, InvoiceLineItem, ShopOrder, Customer } from 'types';
 import { formatAddress , cleanUndefinedFields } from 'lib/utils';
-import { Trash2, Mail } from 'lucide-react';
+import { Trash2, Mail, Search, Calendar, Filter, ShieldCheck, Wrench, Plus, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { extractAllUpcomingMaintenance, UpcomingMaintenanceItem, calculateEquipmentMaintenanceSchedule } from 'lib/maintenanceHelper';
 import { db } from 'lib/firebase';
 import { collection, addDoc } from 'firebase/firestore';
 import { globalConfirm } from "lib/globalConfirm";
+import { isNotificationRead, handleNotificationClick } from 'lib/notificationNavigator';
 
 const BackButton = () => {
     const navigate = useNavigate();
@@ -166,7 +168,8 @@ export const PartOrdersView: React.FC = () => {
                     
                     const updatedItems = [...job.invoice.items, newItem];
                     const newSubtotal = updatedItems.reduce((acc, item) => acc + (item.total || 0), 0);
-                    const newTax = newSubtotal * (job.invoice.taxRate || 0.0825);
+                    const effectiveTaxRate = typeof job.invoice.taxRate === 'number' ? job.invoice.taxRate : 0;
+                    const newTax = typeof job.invoice.taxAmount === 'number' && job.invoice.taxAmount > 0 ? job.invoice.taxAmount : newSubtotal * effectiveTaxRate;
                     const newTotal = newSubtotal + newTax;
 
                     const updatedJob = {
@@ -362,38 +365,52 @@ export const PartOrdersView: React.FC = () => {
 export const UnpaidInvoicesView: React.FC = () => {
     const { state } = useAppContext();
     const navigate = useNavigate();
-    const invoices = (state.jobs as Job[]).filter(j => j.invoice?.status === 'Unpaid' || j.invoice?.status === 'Pending');
+    const invoices = (state.jobs as Job[]).filter(j => {
+        const statusStr = (j.invoice?.status as string);
+        if (!j.invoice || statusStr === 'Paid' || statusStr === 'Cancelled' || statusStr === 'Void') return false;
+        const total = Number(j.invoice.totalAmount) ?? Number(j.invoice.amount) ?? 0;
+        const paid = Number(j.invoice.amountPaid) || 0;
+        return (total - paid) > 0 || j.invoice.status === 'Unpaid' || j.invoice.status === 'Pending';
+    });
 
     return (
         <div>
             <BackButton />
             
             <Card>
-                <Table headers={['Invoice ID', 'Customer', 'Date Scheduled', 'Amount', 'Status', 'Actions']}>
-                    {invoices.map(job => (
-                        <tr key={job.id}>
-                            <td className="px-6 py-4 text-gray-600 dark:text-gray-300 font-mono text-sm">{job.invoice?.id || 'N/A'}</td>
-                            <td className="px-6 py-4 text-gray-900 dark:text-white font-medium">
-                                {job.customerName}
-                                <div className="text-xs text-gray-500">{formatAddress(job.address)}</div>
-                            </td>
-                            <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm">{new Date(job.appointmentTime).toLocaleDateString()}</td>
-                            <td className="px-6 py-4 text-yellow-600 dark:text-yellow-400 font-bold text-lg">${(job.invoice?.totalAmount || job.invoice?.amount || 0).toFixed(2)}</td>
-                            <td className="px-6 py-4 text-sm">
-                                <span className={`px-2 py-1 rounded text-xs font-bold ${job.invoice?.status === 'Pending' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' : 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'}`}>
-                                    {job.invoice?.status || 'Unknown'}
-                                </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm">
-                                <button 
-                                    onClick={() => navigate(`/admin/history?histId=${job.id}`)}
-                                    className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 font-bold hover:underline"
-                                >
-                                    View Job
-                                </button>
-                            </td>
-                        </tr>
-                    ))}
+                <Table headers={['Invoice ID', 'Customer', 'Date Scheduled', 'Balance Due', 'Status', 'Actions']}>
+                    {invoices.map(job => {
+                        const total = Number(job.invoice?.totalAmount) ?? Number(job.invoice?.amount) ?? 0;
+                        const paid = Number(job.invoice?.amountPaid) || 0;
+                        const balance = paid > 0 ? Math.max(0, total - paid) : total;
+                        return (
+                            <tr key={job.id}>
+                                <td className="px-6 py-4 text-gray-600 dark:text-gray-300 font-mono text-sm">{job.invoice?.id || 'N/A'}</td>
+                                <td className="px-6 py-4 text-gray-900 dark:text-white font-medium">
+                                    {job.customerName}
+                                    <div className="text-xs text-gray-500">{formatAddress(job.address)}</div>
+                                </td>
+                                <td className="px-6 py-4 text-gray-600 dark:text-gray-300 text-sm">{new Date(job.appointmentTime).toLocaleDateString()}</td>
+                                <td className="px-6 py-4 text-yellow-600 dark:text-yellow-400 font-bold text-lg">
+                                    ${balance.toFixed(2)}
+                                    {paid > 0 && <span className="text-xs text-gray-400 font-normal block">(${total.toFixed(2)} total)</span>}
+                                </td>
+                                <td className="px-6 py-4 text-sm">
+                                    <span className={`px-2 py-1 rounded text-xs font-bold ${job.invoice?.status === 'Pending' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' : 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'}`}>
+                                        {job.invoice?.status || 'Unknown'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-sm">
+                                    <button 
+                                        onClick={() => navigate(`/admin/records?tab=history&histId=${job.id}`)}
+                                        className="text-primary-600 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 font-bold hover:underline"
+                                    >
+                                        View Job
+                                    </button>
+                                </td>
+                            </tr>
+                        );
+                    })}
                      {invoices.length === 0 && (
                         <tr><td colSpan={6} className="p-6 text-center text-gray-500">No unpaid invoices. Good job!</td></tr>
                     )}
@@ -406,68 +423,49 @@ export const UnpaidInvoicesView: React.FC = () => {
 
 export const UpcomingMaintenanceView: React.FC = () => {
     const { state } = useAppContext();
-
-    
-    interface UpcomingMaintenanceItem {
-        customer: Customer;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        asset: any;
-        nextDate: Date;
-        daysUntil: number;
-        isOverdue: boolean;
-    }
-    
-    const upcomingList: UpcomingMaintenanceItem[] = [];
+    const navigate = useNavigate();
+    const [timeFilter, setTimeFilter] = useState<'all' | 'overdue' | '30' | '45' | '60' | '90' | '180'>('45');
+    const [searchQuery, setSearchQuery] = useState('');
     const now = new Date();
-    
-    Object.values(state.customers).forEach(customer => {
-        if(customer.equipment) {
-            customer.equipment.forEach(asset => {
-                if(asset.warranty?.requiresMaintenance && asset.warranty.maintenanceIntervalMonths) {
-                    let nextDate: Date;
-                    if(asset.warranty.lastMaintenanceDate) {
-                        nextDate = new Date(asset.warranty.lastMaintenanceDate);
-                    } else if(asset.warranty.manufacturerStartDate) {
-                        nextDate = new Date(asset.warranty.manufacturerStartDate);
-                        nextDate.setDate(nextDate.getDate() + 1);
-                    } else {
-                        return;
-                    }
-                    
-                    nextDate.setMonth(nextDate.getMonth() + asset.warranty.maintenanceIntervalMonths);
-                    const diffTime = nextDate.getTime() - now.getTime();
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    if(diffDays <= 45) {
-                        upcomingList.push({
-                            customer,
-                            asset,
-                            nextDate,
-                            daysUntil: diffDays,
-                            isOverdue: diffDays < 0
-                        });
-                    }
-                }
-            });
-        }
-    });
 
-    upcomingList.sort((a,b) => a.daysUntil - b.daysUntil);
+    const upcomingList = useMemo(() => {
+        return extractAllUpcomingMaintenance(
+            state.customers || [],
+            state.serviceAgreements || [],
+            now,
+            timeFilter,
+            searchQuery
+        );
+    }, [state.customers, state.serviceAgreements, timeFilter, searchQuery]);
+
+    // Quick stats across all tracked equipment
+    const stats = useMemo(() => {
+        const all = extractAllUpcomingMaintenance(state.customers || [], state.serviceAgreements || [], now, 'all', '');
+        const overdue = all.filter(i => i.isOverdue).length;
+        const dueSoon = all.filter(i => !i.isOverdue && i.daysUntil <= 45).length;
+        const total = all.length;
+        return { overdue, dueSoon, total };
+    }, [state.customers, state.serviceAgreements]);
 
     const handleSendReminder = async (item: UpcomingMaintenanceItem) => {
         if (!item.customer.email) {
             showToast.warn("No email address found for this customer.");
             return;
         }
-        if (await globalConfirm(`Send an automated reminder email to ${item.customer.name} (${item.customer.email})?`)) {
+        const confirmMsg = `Send an automated reminder email to ${item.customer.name} (${item.customer.email}) for their ${item.asset.brand ? item.asset.brand + ' ' : ''}${item.asset.type || 'equipment'}?`;
+        if (await globalConfirm(confirmMsg)) {
             try {
                 const orgName = state.currentOrganization?.name || 'Service Provider';
                 const orgEmail = state.currentOrganization?.email || '';
                 const orgLicense = state.currentOrganization?.settings?.licenseNumber || state.currentOrganization?.licenseNumber || '';
-                const portalUrl = `https://tektrakker-v2.web.app/#/portal/auth?orgId=${item.customer.organizationId}`;
+                const portalUrl = `https://tektrakker-v2.web.app/#/portal/auth?orgId=${item.customer.organizationId || state.currentOrganization?.id || ''}`;
                 
                 const licenseFooterText = orgLicense ? `\n\nState License: ${orgLicense}` : '';
                 const licenseFooterHtml = orgLicense ? `<br/><br/><small style="color:#6b7280;font-size:12px;">State License: ${orgLicense}</small>` : '';
+
+                const timingText = item.isOverdue 
+                    ? `is overdue for routine preventative maintenance by ${Math.abs(item.daysUntil)} days`
+                    : `is due for routine warranty maintenance in ${item.daysUntil} days`;
 
                 await addDoc(collection(db, 'mail'), {
                      toUids: [item.customer.id],
@@ -475,16 +473,16 @@ export const UpcomingMaintenanceView: React.FC = () => {
                      message: {
                          from: `${orgName} <no-reply@tektrakker.com>`,
                          ...(orgEmail ? { replyTo: orgEmail } : {}),
-                         subject: `Action Required: Maintenance due for your ${item.asset.brand || ''} Equipment`,
-                         text: `Hello ${item.customer.name || 'Valued Customer'},\n\nThis is a friendly reminder from ${orgName} that your ${item.asset.brand || 'HVAC'} ${item.asset.type || 'system'} is due for routine warranty maintenance in ${item.daysUntil} days.\n\nPlease schedule an appointment through your portal to maintain your warranty compliance: ${portalUrl}\n\nThank you,\n${orgName}${licenseFooterText}`,
+                         subject: `Action Required: Routine Maintenance due for your ${item.asset.brand || ''} Equipment`,
+                         text: `Hello ${item.customer.name || 'Valued Customer'},\n\nThis is a friendly reminder from ${orgName} that your ${item.asset.brand ? item.asset.brand + ' ' : ''}${item.asset.type || 'equipment'} ${timingText}.\n\nPlease schedule an appointment through your portal to maintain peak efficiency and warranty compliance: ${portalUrl}\n\nThank you,\n${orgName}${licenseFooterText}`,
                          html: `<p>Hello <strong>${item.customer.name || 'Valued Customer'}</strong>,</p>
-                                <p>This is a friendly reminder from <strong>${orgName}</strong> that your <strong>${item.asset.brand || 'HVAC'} ${item.asset.type || 'system'}</strong> is due for routine warranty maintenance in <strong>${item.daysUntil} days</strong>.</p>
-                                <p>Please schedule an appointment through your portal to maintain your warranty coverage.</p>
-                                <p><a href="${portalUrl}" style="background-color:#2563eb;color:white;padding:10px 15px;text-decoration:none;border-radius:5px;display:inline-block;margin-top:10px;">Access Service Portal to Schedule</a></p>
+                                <p>This is a friendly reminder from <strong>${orgName}</strong> that your <strong>${item.asset.brand ? item.asset.brand + ' ' : ''}${item.asset.type || 'equipment'}</strong> ${timingText}.</p>
+                                <p>Routine maintenance protects equipment longevity, keeps utility bills low, and preserves warranty compliance.</p>
+                                <p><a href="${portalUrl}" style="background-color:#2563eb;color:white;padding:10px 18px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:10px;font-weight:bold;">Access Service Portal to Schedule</a></p>
                                 <p>Thank you,<br/><strong>${orgName}</strong></p>${licenseFooterHtml}`
                      }
                 });
-                showToast.warn(`Reminder email queued for ${item.customer.name}!`);
+                showToast.success(`Reminder email queued for ${item.customer.name}!`);
             } catch (e: unknown) {
                 console.error("Failed to queue mail docs", e);
                 showToast.warn(`Failed to send: ${(e as Error).message}`);
@@ -493,50 +491,167 @@ export const UpcomingMaintenanceView: React.FC = () => {
     };
 
     return (
-        <div>
+        <div className="space-y-4">
             <BackButton />
+
+            {/* Header with Title and KPI Quick Counters */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <div>
+                    <h2 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Wrench className="text-indigo-500" size={22} />
+                        Equipment Maintenance & Repeat Service Tracker
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Track upcoming preventative maintenance across all customer equipment to drive recurring service revenue.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <div className="px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-xs">
+                        <span className="text-red-700 dark:text-red-400 font-bold">{stats.overdue} Overdue</span>
+                    </div>
+                    <div className="px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-xs">
+                        <span className="text-amber-700 dark:text-amber-400 font-bold">{stats.dueSoon} Due (≤45d)</span>
+                    </div>
+                    <div className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-xs">
+                        <span className="text-slate-700 dark:text-slate-300 font-bold">{stats.total} Total Tracked</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Controls Bar: Time Filter & Search */}
+            <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                {/* Search Bar */}
+                <div className="relative w-full md:w-80">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)}
+                        placeholder="Search customer, phone, brand, model..."
+                        className="w-full pl-9 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                        >
+                            &times;
+                        </button>
+                    )}
+                </div>
+
+                {/* Time Window Filter Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto custom-scrollbar pb-1 md:pb-0">
+                    <span className="text-xs font-bold text-slate-400 flex items-center gap-1 mr-1 shrink-0">
+                        <Filter size={12} /> Window:
+                    </span>
+                    {[
+                        { id: 'overdue', label: 'Overdue' },
+                        { id: '30', label: 'Next 30d' },
+                        { id: '45', label: 'Next 45d' },
+                        { id: '90', label: 'Next 90d' },
+                        { id: '180', label: 'Next 6mo' },
+                        { id: 'all', label: 'All Tracked' }
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setTimeFilter(tab.id as any)}
+                            className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors shrink-0 ${
+                                timeFilter === tab.id
+                                    ? 'bg-primary-600 text-white font-bold shadow-sm'
+                                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                            }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
             
             <Card>
                 <Table headers={['Customer', 'Equipment', 'Last Serviced', 'Next Due', 'Status', 'Actions']}>
                     {upcomingList.map((item, idx) => (
-                        <tr key={idx}>
+                        <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                             <td className="px-6 py-4">
-                                <div className="text-gray-900 dark:text-white font-medium">{item.customer.name}</div>
+                                <div className="text-gray-900 dark:text-white font-semibold flex items-center gap-1.5">
+                                    {item.customer.name}
+                                    {item.isAgreementCovered && (
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800" title="Active Service Agreement Member">
+                                            {item.agreementName || 'Club Member'}
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="text-xs text-gray-500">{item.customer.phone || 'No phone'}</div>
+                                {item.customer.address && <div className="text-[11px] text-slate-400 truncate max-w-xs">{item.customer.address}</div>}
                             </td>
                             <td className="px-6 py-4">
-                                <span className="font-semibold">{item.asset.brand} - {item.asset.type}</span>
-                                <div className="text-xs text-slate-500">M/N: {item.asset.model || 'Unknown'}</div>
+                                <div className="font-semibold text-slate-800 dark:text-slate-100">
+                                    {item.asset.brand || 'HVAC'} - {item.asset.type || 'System'}
+                                </div>
+                                <div className="text-xs text-slate-500 font-mono">
+                                    M/N: {item.asset.model || 'Unknown'} {item.asset.serial ? `• S/N: ${item.asset.serial}` : ''}
+                                </div>
                             </td>
                             <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
-                                {item.asset.warranty?.lastMaintenanceDate ? new Date(item.asset.warranty.lastMaintenanceDate).toLocaleDateString() : 'Never'}
+                                {item.lastServicedDate ? item.lastServicedDate.toLocaleDateString() : (
+                                    <span className="text-xs italic text-slate-400">Initial Service Due</span>
+                                )}
                             </td>
-                            <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
-                                {item.nextDate.toLocaleDateString()}
+                            <td className="px-6 py-4">
+                                <div className="font-bold text-gray-900 dark:text-white text-sm">
+                                    {item.nextDate.toLocaleDateString()}
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                    {item.intervalMonths} mo routine cycle
+                                </div>
                             </td>
                             <td className="px-6 py-4 text-sm">
                                 {item.isOverdue ? (
-                                    <span className="px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                                        Overdue ({-item.daysUntil} days)
+                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 inline-flex items-center gap-1 border border-red-200 dark:border-red-800">
+                                        <AlertTriangle size={12} /> Overdue ({Math.abs(item.daysUntil)} days)
+                                    </span>
+                                ) : item.daysUntil <= 30 ? (
+                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 inline-flex items-center gap-1 border border-amber-200 dark:border-amber-800">
+                                        <Clock size={12} /> Due in {item.daysUntil} days
                                     </span>
                                 ) : (
-                                    <span className="px-2 py-1 rounded text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                                        Due in {item.daysUntil} days
+                                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 inline-flex items-center gap-1 border border-emerald-200 dark:border-emerald-800">
+                                        <CheckCircle size={12} /> Due in {item.daysUntil} days
                                     </span>
                                 )}
                             </td>
                             <td className="px-6 py-4">
-                                <button
-                                    onClick={() => handleSendReminder(item)}
-                                    className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition-colors"
-                                >
-                                    <Mail size={14} /> Send Reminder
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => handleSendReminder(item)}
+                                        className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors border border-blue-200 dark:border-blue-800 shadow-sm"
+                                        title="Queue automated reminder email to customer"
+                                    >
+                                        <Mail size={13} /> Send Reminder
+                                    </button>
+                                    <button
+                                        onClick={() => navigate(`/admin/operations?tab=scheduling&customerId=${item.customer.id}`)}
+                                        className="flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg transition-colors border border-emerald-200 dark:border-emerald-800 shadow-sm"
+                                        title="Dispatch or schedule a maintenance appointment for this customer"
+                                    >
+                                        <Calendar size={13} /> Book Service
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     ))}
                     {upcomingList.length === 0 && (
-                        <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nothing due in the next 45 days.</td></tr>
+                        <tr>
+                            <td colSpan={6} className="p-8 text-center text-gray-500">
+                                <Wrench size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                                <p className="font-semibold text-sm text-slate-600 dark:text-slate-300">
+                                    No equipment due within this window.
+                                </p>
+                                <p className="text-xs text-slate-400 mt-1">
+                                    {searchQuery ? 'Try clearing your search query, or select' : 'Select'} &quot;All Tracked&quot; or &quot;Next 90d&quot; to inspect all equipment schedules.
+                                </p>
+                            </td>
+                        </tr>
                     )}
                 </Table>
             </Card>
@@ -562,14 +677,15 @@ export const ActiveWarrantiesView: React.FC = () => {
             const labExpiry = labStart && w.laborDurationMonths ? addMonths(labStart, w.laborDurationMonths) : null;
             const latestExpiry = [mfgExpiry, labExpiry].filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0];
             if (!latestExpiry || latestExpiry <= now) return;
+            
+            const calc = calculateEquipmentMaintenanceSchedule(asset, customer, now);
             let nextPmDate: Date | null = null;
             let daysUntilPm: number | null = null;
             let pmStatus = 'n/a';
-            if (w.requiresMaintenance && w.maintenanceIntervalMonths) {
-                const baseDate = w.lastMaintenanceDate ? new Date(w.lastMaintenanceDate) : (mfgStart || new Date());
-                nextPmDate = addMonths(baseDate, w.maintenanceIntervalMonths);
-                daysUntilPm = Math.ceil((nextPmDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                pmStatus = daysUntilPm < 0 ? 'overdue' : daysUntilPm <= 30 ? 'upcoming' : 'ok';
+            if (!calc.isOptedOut) {
+                nextPmDate = calc.nextDate;
+                daysUntilPm = calc.daysUntil;
+                pmStatus = calc.isOverdue ? 'overdue' : calc.daysUntil <= 30 ? 'upcoming' : 'ok';
             }
             const types: string[] = [];
             if (mfgExpiry && mfgExpiry > now) types.push('Manufacturer');
@@ -657,14 +773,12 @@ export const AlertsCenterView: React.FC = () => {
                (n.userId === 'all_admins' && (state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both'));
     });
 
-    const markAsRead = async (id: string) => {
-        dispatch({ type: 'MARK_NOTIFICATION_READ', payload: id });
-        await db.collection('notifications').doc(id).update(cleanUndefinedFields({ read: true })).catch(console.error);
-    };
-
-    const handleAlertClick = (n: any) => {
-        if (!n.read) markAsRead(n.id);
-        if (n.link) navigate(n.link);
+    const onAlertClick = (n: any) => {
+        handleNotificationClick(n, {
+            currentUser: state.currentUser,
+            navigate,
+            dispatch
+        });
     };
 
     return (
@@ -677,19 +791,19 @@ export const AlertsCenterView: React.FC = () => {
             <Card>
                 <Table headers={['Date', 'Title', 'Message', 'Status', 'Actions']}>
                     {alerts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(alert => (
-                        <tr key={alert.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors" onClick={() => handleAlertClick(alert)}>
+                        <tr key={alert.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors" onClick={() => onAlertClick(alert)}>
                             <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{new Date(alert.createdAt).toLocaleString()}</td>
                             <td className="px-6 py-4 text-gray-900 dark:text-white font-semibold">{alert.title}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{alert.message}</td>
+                            <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-300">{alert.message || (alert as any).body}</td>
                             <td className="px-6 py-4">
-                                {alert.read ? (
+                                {isNotificationRead(alert, state.currentUser) ? (
                                     <span className="px-2 py-1 rounded text-xs font-bold bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">Read</span>
                                 ) : (
                                     <span className="px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">Action Required</span>
                                 )}
                             </td>
                             <td className="px-6 py-4">
-                                <Button size="sm" onClick={(e) => { e.stopPropagation(); handleAlertClick(alert); }}>
+                                <Button size="sm" onClick={(e) => { e.stopPropagation(); onAlertClick(alert); }}>
                                     View
                                 </Button>
                             </td>

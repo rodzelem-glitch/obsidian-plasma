@@ -449,6 +449,16 @@
             data.type = 'booking';
             data.organizationId = orgId;
 
+            const isConsentGiven = data.consent === 'true' || data.consent === true || data.consent === 'on';
+            if (isConsentGiven) {
+                data.marketingConsent = {
+                    sms: true,
+                    email: true,
+                    agreedAt: new Date().toISOString(),
+                    source: 'WebWidget'
+                };
+            }
+
             // Get selected customer type
             const activeCard = container.querySelector('.tt-widget-customer-card.active');
             const customerType = activeCard ? activeCard.getAttribute('data-type') : 'Homeowner';

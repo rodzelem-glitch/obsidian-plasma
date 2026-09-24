@@ -1,10 +1,11 @@
 import React from 'react';
-import { FileSignature, Sparkles, ClipboardList, Import, Camera, ImageIcon, X, ChevronDown, ChevronUp, Edit3, Wrench, CheckCircle, Trash2, MapPin, Layers } from 'lucide-react';
+import { FileSignature, Sparkles, ClipboardList, Import, Camera, ImageIcon, X, ChevronDown, ChevronUp, Edit3, Wrench, CheckCircle, Trash2, MapPin, Layers, Plus } from 'lucide-react';
 import Button from '../../../../components/ui/Button';
 import Textarea from '../../../../components/ui/Textarea';
 import { VoiceInput } from '../../../../components/ui/VoiceInput';
 import { StoredFile, Proposal } from '../../../../types';
 import { useLanguage } from 'context/LanguageContext';
+import { globalConfirm } from '../../../../lib/globalConfirm';
 
 interface ChecklistItem {
     id: string;
@@ -17,6 +18,7 @@ interface DiagnosisStepProps {
     setIsWaiverOpen: (open: boolean) => void;
     setIsImportModalOpen: (open: boolean) => void;
     buildProposal: () => void;
+    onCreateNewProposal?: () => void;
     onOpenProposalSelector?: () => void;
     checklists: ChecklistItem[];
     toggleChecklistItem: (id: string) => void;
@@ -27,6 +29,7 @@ interface DiagnosisStepProps {
     setNotes: (notes: string) => void;
     handlePhotoUpload: (e: React.ChangeEvent<HTMLInputElement>, label: string) => void;
     takeNativePhoto: () => void;
+    pickGalleryPhotos?: () => void;
     files: StoredFile[];
     onDeletePhoto: (file: StoredFile) => void;
     onViewPhoto: (file: StoredFile) => void;
@@ -40,6 +43,7 @@ interface DiagnosisStepProps {
     assets?: any[];
     unitStates?: Array<{
         assetId: string;
+        includeOnWorkOrder?: boolean;
         health?: 'Good' | 'Fair' | 'Poor' | 'Critical';
         healthBefore?: 'Good' | 'Fair' | 'Poor' | 'Critical';
         healthAfter?: 'Good' | 'Fair' | 'Poor' | 'Critical';
@@ -54,6 +58,7 @@ interface DiagnosisStepProps {
     hidden?: boolean;
     serviceLocations?: any[];
 }
+
 
 
 interface AccordionSectionProps {
@@ -111,6 +116,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
     setIsImportModalOpen,
     setIsToolModalOpen,
     buildProposal,
+    onCreateNewProposal,
     onOpenProposalSelector,
     checklists,
     toggleChecklistItem,
@@ -121,6 +127,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
     setNotes,
     handlePhotoUpload,
     takeNativePhoto,
+    pickGalleryPhotos,
     files,
     onDeletePhoto,
     onViewPhoto,
@@ -163,22 +170,35 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
     };
 
-    const handleUpdateUnitState = (assetId: string, field: string, value: any) => {
-        if (!setUnitStates) return;
+    const getAssetId = (asset: any) => asset.id || asset.equipmentId || asset._id || asset.assetTag || asset.name || '';
+
+    const handleUpdateUnitState = (assetId: string, fieldOrUpdates: string | Record<string, any>, value?: any) => {
+        if (!setUnitStates || !assetId) return;
+        const updatesObj = typeof fieldOrUpdates === 'object' ? fieldOrUpdates : { [fieldOrUpdates]: value };
         const existingStates = [...(unitStates || [])];
         const idx = existingStates.findIndex(s => s.assetId === assetId);
         if (idx > -1) {
-            existingStates[idx] = { ...existingStates[idx], [field]: value };
+            existingStates[idx] = { ...existingStates[idx], ...updatesObj };
         } else {
-            const asset = assets.find(a => a.id === assetId);
+            const asset = assets.find(a => getAssetId(a) === assetId);
             const defaultHealth = mapConditionToHealth(asset?.condition);
-            existingStates.push({ assetId, health: defaultHealth, [field]: value });
+            existingStates.push({ 
+                assetId, 
+                includeOnWorkOrder: true,
+                health: defaultHealth, 
+                healthBefore: defaultHealth,
+                healthAfter: 'Good',
+                ...updatesObj 
+            });
         }
         setUnitStates(existingStates);
     };
 
-    const renderAssetCard = (asset: any) => {
-        const stateObj = unitStates.find(s => s.assetId === asset.id) || { 
+    const renderAssetCard = (asset: any, assetIndex: number = 0) => {
+        const assetId = getAssetId(asset) || `unit-${assetIndex + 1}`;
+        const stateObj = unitStates.find(s => s.assetId === assetId) || { 
+            assetId: assetId,
+            includeOnWorkOrder: true,
             health: mapConditionToHealth(asset.condition), 
             healthBefore: mapConditionToHealth(asset.condition),
             healthAfter: 'Good',
@@ -188,12 +208,13 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
         };
         const healthBefore = stateObj.healthBefore || stateObj.health || mapConditionToHealth(asset.condition);
         const healthAfter = stateObj.healthAfter || 'Good';
-        const isExpanded = expandedUnits[asset.id];
+        const cardKey = assetId;
+        const isExpanded = expandedUnits[cardKey];
         
         return (
-            <div key={asset.id} className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-sm transition-all hover:border-primary-300">
+            <div key={cardKey} className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-slate-900 shadow-sm transition-all hover:border-primary-300">
                 <div 
-                    onClick={() => setExpandedUnits(prev => ({ ...prev, [asset.id]: !prev[asset.id] }))}
+                    onClick={() => setExpandedUnits(prev => ({ ...prev, [cardKey]: !prev[cardKey] }))}
                     className="w-full flex justify-between items-center p-4 bg-slate-50/50 dark:bg-slate-800/20 hover:bg-slate-100/50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                 >
                     <div className="flex items-center gap-3">
@@ -207,7 +228,19 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                             </span>
                         </div>
                     </div>
-                     <div className="flex items-center gap-3">
+                     <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                         <label 
+                             className="flex items-center gap-1.5 cursor-pointer bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-900 dark:text-indigo-200 transition-all shrink-0"
+                             title="Check to include this unit on the printed / exported Work Order and Job Report PDF"
+                         >
+                             <input 
+                                 type="checkbox"
+                                 checked={stateObj.includeOnWorkOrder !== false}
+                                 onChange={(e) => handleUpdateUnitState(assetId, 'includeOnWorkOrder', e.target.checked)}
+                                 className="rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                             />
+                             <span>Work Order</span>
+                         </label>
                          {onEditAsset && (
                              <button
                                  type="button"
@@ -252,10 +285,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                                         <button
                                             type="button"
                                             key={item.value}
-                                            onClick={() => {
-                                                handleUpdateUnitState(asset.id, 'healthBefore', item.value);
-                                                handleUpdateUnitState(asset.id, 'health', item.value);
-                                            }}
+                                            onClick={() => handleUpdateUnitState(assetId, { healthBefore: item.value, health: item.value })}
                                             className={`py-2 px-1 text-[11px] font-bold border rounded-xl transition-all duration-200 flex items-center justify-center gap-1 shadow-sm cursor-pointer ${
                                                 isSelected ? item.bgClass : item.textClass + ' bg-white dark:bg-slate-800'
                                             }`}
@@ -281,7 +311,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                                         <button
                                             type="button"
                                             key={item.value}
-                                            onClick={() => handleUpdateUnitState(asset.id, 'healthAfter', item.value)}
+                                            onClick={() => handleUpdateUnitState(assetId, 'healthAfter', item.value)}
                                             className={`py-2 px-1 text-[11px] font-bold border rounded-xl transition-all duration-200 flex items-center justify-center gap-1 shadow-sm cursor-pointer ${
                                                 isSelected ? item.bgClass : item.textClass + ' bg-white dark:bg-slate-800'
                                             }`}
@@ -297,13 +327,13 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                         <div>
                             <div className="flex justify-between items-center mb-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t("Diagnosis / Problems Found")}</label>
-                                <VoiceInput onResult={(text) => handleUpdateUnitState(asset.id, 'diagnosis', (stateObj.diagnosis || '') + ' ' + text)} />
+                                <VoiceInput onResult={(text) => handleUpdateUnitState(assetId, 'diagnosis', (stateObj.diagnosis || '') + ' ' + text)} />
                             </div>
                             <Textarea
                                 rows={2}
                                 placeholder={t("What did you diagnose on this specific unit?")}
                                 value={stateObj.diagnosis || ''}
-                                onChange={e => handleUpdateUnitState(asset.id, 'diagnosis', e.target.value)}
+                                onChange={e => handleUpdateUnitState(assetId, 'diagnosis', e.target.value)}
                                 className="bg-slate-50/50 text-xs py-2 px-3"
                             />
                         </div>
@@ -312,13 +342,13 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                         <div>
                             <div className="flex justify-between items-center mb-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t("Repairs / Work Done")}</label>
-                                <VoiceInput onResult={(text) => handleUpdateUnitState(asset.id, 'repair', (stateObj.repair || '') + ' ' + text)} />
+                                <VoiceInput onResult={(text) => handleUpdateUnitState(assetId, 'repair', (stateObj.repair || '') + ' ' + text)} />
                             </div>
                             <Textarea
                                 rows={2}
                                 placeholder={t("What adjustments or repairs did you perform on this unit?")}
                                 value={stateObj.repair || ''}
-                                onChange={e => handleUpdateUnitState(asset.id, 'repair', e.target.value)}
+                                onChange={e => handleUpdateUnitState(assetId, 'repair', e.target.value)}
                                 className="bg-slate-50/50 text-xs py-2 px-3"
                             />
                         </div>
@@ -327,13 +357,13 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                         <div>
                             <div className="flex justify-between items-center mb-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t("Unit Recommendations")}</label>
-                                <VoiceInput onResult={(text) => handleUpdateUnitState(asset.id, 'recommendations', (stateObj.recommendations || '') + ' ' + text)} />
+                                <VoiceInput onResult={(text) => handleUpdateUnitState(assetId, 'recommendations', (stateObj.recommendations || '') + ' ' + text)} />
                             </div>
                             <Textarea
                                 rows={2}
                                 placeholder={t("Any specific recommendations for this system?")}
                                 value={stateObj.recommendations || ''}
-                                onChange={e => handleUpdateUnitState(asset.id, 'recommendations', e.target.value)}
+                                onChange={e => handleUpdateUnitState(assetId, 'recommendations', e.target.value)}
                                 className="bg-slate-50/50 text-xs py-2 px-3"
                             />
                         </div>
@@ -369,6 +399,17 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
             </AccordionSection>
 
             <AccordionSection id="proposals" title={t("Linked Proposals")} icon={FileSignature} badge={linkedProposals.length} isOpen={expandedSections['proposals']} toggleSection={toggleSection}>
+                <div className="flex justify-end mb-3">
+                    <Button 
+                        type="button" 
+                        variant="secondary" 
+                        onClick={onCreateNewProposal || buildProposal} 
+                        className="text-xs font-bold flex items-center gap-1.5 border-purple-200 text-purple-700 bg-purple-50 hover:bg-purple-100"
+                    >
+                        <Plus size={14} />
+                        {t("Create New Proposal")}
+                    </Button>
+                </div>
                 {linkedProposals.length > 0 ? (
                     <div className="space-y-2">
                         {linkedProposals.map(p => (
@@ -475,12 +516,12 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                             )}
                             {onCheckAll && (
                                 <button 
-                                    onClick={() => {
-                                        if (window.confirm(t("Are you sure you want to mark all checklist items as completed? Please confirm you have physically performed these checks."))) {
+                                    onClick={async () => {
+                                        if (await globalConfirm(t("Are you sure you want to mark all checklist items as completed? Please confirm you have physically performed these checks."), t("Complete All Checks"), t("Check All"), t("Cancel"))) {
                                             onCheckAll();
                                         }
                                     }} 
-                                    className="text-[10px] uppercase font-black text-emerald-600 hover:underline"
+                                    className="text-[10px] uppercase font-black text-emerald-600 hover:underline cursor-pointer"
                                 >
                                     {t("Check All")}
                                 </button>
@@ -597,9 +638,13 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
             </AccordionSection>
 
             <AccordionSection id="findings" title={t("Pre-Work Findings")} icon={Edit3} isOpen={expandedSections['findings']} toggleSection={toggleSection}>
-
-                <div className="flex justify-between items-center mb-3">
-                    <p className="text-sm font-bold text-slate-600">{t("Document the diagnosis")}</p>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded border bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300">
+                            🔒 VISIBILITY: CUSTOMER / INVOICE
+                        </span>
+                        <span className="text-xs text-slate-500">{t("Document the diagnosis")}</span>
+                    </div>
                     <VoiceInput onResult={(text) => setNotes(notes ? notes + '\n' + text : text)} />
                 </div>
                 <Textarea 
@@ -611,7 +656,7 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                 />
             </AccordionSection>
 
-            <AccordionSection id="photos" title={t("Job Photos")} icon={Camera} badge={files.filter(f => { const lbl = f.metadata?.label || f.label; return lbl === 'Pre-Work' || lbl === 'Before'; }).length} isOpen={expandedSections['photos']} toggleSection={toggleSection}>
+            <AccordionSection id="photos" title={t("Job Photos")} icon={Camera} badge={files.filter(f => { const url = f.dataUrl || f.url; return f.fileType?.startsWith('image/') || (f as any).contentType?.startsWith('image/') || f.type === 'Photo' || (url && url.match(/\.(jpeg|jpg|png|webp|gif|heic)($|\?)/i)); }).length} isOpen={expandedSections['photos']} toggleSection={toggleSection}>
                 <div className="flex flex-col md:flex-row gap-6">
                     <div className="flex gap-3 w-full md:w-auto h-24">
                         <button 
@@ -623,15 +668,25 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                             <Camera size={24} className="text-slate-400 mb-2"/>
                             <span className="text-xs font-bold text-slate-500">{t("Camera")}</span>
                         </button>
-                        <label htmlFor="prework-gallery" className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors w-24 h-24 shadow-sm">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (pickGalleryPhotos) {
+                                    pickGalleryPhotos();
+                                } else {
+                                    document.getElementById('prework-gallery')?.click();
+                                }
+                            }}
+                            className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors w-24 h-24 shadow-sm"
+                        >
                             <ImageIcon size={24} className="text-slate-400 mb-2"/>
                             <span className="text-xs font-bold text-slate-500">{t("Gallery")}</span>
                             <input id="prework-gallery" type="file" multiple accept="image/*" onChange={(e) => handlePhotoUpload(e, 'Before')} className="hidden" />
-                        </label>
+                        </button>
                     </div>
                     
                     <div className="flex-1 flex items-start overflow-x-auto gap-3 pb-2 custom-scrollbar">
-                        {files.filter(f => { const lbl = f.metadata?.label || f.label; return lbl === 'Pre-Work' || lbl === 'Before'; }).map(f => (
+                        {files.filter(f => { const url = f.dataUrl || f.url; return f.fileType?.startsWith('image/') || (f as any).contentType?.startsWith('image/') || f.type === 'Photo' || (url && url.match(/\.(jpeg|jpg|png|webp|gif|heic)($|\?)/i)); }).map(f => (
                             <div key={f.id} className="relative w-32 rounded-xl flex flex-col border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-md shrink-0 overflow-hidden group">
                                 <div className="relative w-full h-24 overflow-hidden bg-slate-900">
                                     <button 
@@ -646,37 +701,82 @@ const DiagnosisStep: React.FC<DiagnosisStepProps> = ({
                                         />
                                     </button>
                                     <button 
-                                        onClick={(e) => { e.stopPropagation(); onDeletePhoto(f); }}
-                                        className="absolute top-1 right-1 p-1 bg-red-600/90 hover:bg-red-700 text-white rounded-full opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shadow-sm backdrop-blur-sm z-10"
+                                        type="button"
                                         title="Delete Photo"
                                         aria-label="Delete Photo"
+                                        onClick={(e) => { e.stopPropagation(); onDeletePhoto(f); }}
+                                        className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity shadow-lg z-10"
                                     >
-                                        <X size={10}/>
+                                        <Trash2 size={12}/>
                                     </button>
                                 </div>
-                                <div className="p-1.5 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30 flex flex-col gap-1">
+                                <div className="p-1.5 flex flex-col gap-1 bg-slate-50 dark:bg-slate-900">
+                                    <div className="flex items-center justify-between gap-1">
+                                        <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate max-w-[80px]" title={f.fileName}>
+                                            {f.fileName}
+                                        </span>
+                                    </div>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={f.metadata?.label || f.label || 'General'}
+                                            onChange={(e) => onUpdatePhotoLabel?.(f.id, e.target.value)}
+                                            placeholder={t("Tag/Label...")}
+                                            className="w-full text-[9px] font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded px-1.5 py-0.5 text-slate-600 dark:text-slate-300 focus:outline-none focus:border-indigo-500"
+                                            list="diagnosis-photo-tags"
+                                        />
+                                        <datalist id="diagnosis-photo-tags">
+                                            <option value="Before" />
+                                            <option value="Pre-Work" />
+                                            <option value="Data Plate Tag" />
+                                            <option value="After" />
+                                            <option value="Completed Work" />
+                                        </datalist>
+                                    </div>
                                     <select
-                                        value={f.metadata?.assetId || ''}
+                                        value={f.assetId || f.metadata?.assetId || ''}
                                         onChange={(e) => onAssignPhotoToAsset?.(f.id, e.target.value)}
                                         className="w-full text-[10px] py-1 px-1.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 font-medium cursor-pointer"
                                     >
                                         <option value="">{t("General Photo")}</option>
-                                        {assets && assets.map(asset => (
-                                            <option key={asset.id} value={asset.id}>
-                                                {asset.name || `${asset.brand} ${t(asset.type)}`} {asset.serial ? `(${asset.serial.slice(-4)})` : ''}
-                                            </option>
-                                        ))}
+                                        {assets && assets.map(asset => {
+                                            const serialText = asset.serial || asset.serialNumber ? ` • S/N: ${asset.serial || asset.serialNumber}` : '';
+                                            const modelText = asset.model || asset.modelNumber ? ` • M/N: ${asset.model || asset.modelNumber}` : '';
+                                            const brandText = asset.brand ? ` (${asset.brand})` : '';
+                                            return (
+                                                <option key={asset.id} value={asset.id}>
+                                                    {asset.name || `${asset.brand || ''} ${t(asset.type || 'Unit')}`.trim()}{brandText}{modelText}{serialText}
+                                                </option>
+                                            );
+                                        })}
                                     </select>
-                                    <select
-                                        value={f.metadata?.label || f.label || ''}
-                                        onChange={(e) => onUpdatePhotoLabel?.(f.id, e.target.value)}
-                                        className="w-full text-[10px] py-1 px-1.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 font-medium cursor-pointer"
-                                    >
-                                        <option value="Before">{t("Before")}</option>
-                                        <option value="After">{t("After")}</option>
-                                        <option value="Pre-Work">{t("Pre-Work")}</option>
-                                        <option value="Completed Work">{t("Completed Work")}</option>
-                                    </select>
+                                    <div className="flex flex-col gap-1">
+                                        <input
+                                            type="text"
+                                            list={`diag-label-options-${f.id}`}
+                                            placeholder="Label (e.g. Heater Coil)"
+                                            value={f.metadata?.label || f.label || ''}
+                                            onChange={(e) => onUpdatePhotoLabel?.(f.id, e.target.value)}
+                                            className="w-full text-[10px] py-1 px-1.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 font-medium"
+                                        />
+                                        <datalist id={`diag-label-options-${f.id}`}>
+                                            <option value="Before" />
+                                            <option value="Pre-Work" />
+                                            <option value="Heater Coil" />
+                                            <option value="Compressor" />
+                                            <option value="Evaporator Coil" />
+                                            <option value="Capacitor" />
+                                            <option value="Blower Motor" />
+                                            <option value="Control Board" />
+                                            <option value="Thermostat" />
+                                            <option value="Electrical Panel" />
+                                            <option value="Filter Drier" />
+                                            <option value="Drain Pan" />
+                                            <option value="Data Plate Tag" />
+                                            <option value="After" />
+                                            <option value="Completed Work" />
+                                        </datalist>
+                                    </div>
                                 </div>
                             </div>
                         ))}

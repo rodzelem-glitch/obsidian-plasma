@@ -53,6 +53,8 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
     const [expandedInvoiceId, setExpandedInvoiceId] = useState<string | null>(null);
     const [copiedField, setCopiedField] = useState<string | null>(null);
     const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
+    const [overrideTaxablePurchases, setOverrideTaxablePurchases] = useState<string>('');
+    const [isEditingTaxablePurchases, setIsEditingTaxablePurchases] = useState<boolean>(false);
 
     const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
     const fmtWhole = (n: number) => `$${Math.round(n || 0).toLocaleString()}`;
@@ -129,16 +131,13 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
                 return;
             }
 
-            // Check if Customer is Tax Exempt
+            // Check if Customer is Tax Exempt (Requires uploaded tax certificate)
             const cust = j.customerId ? state.customers?.find(c => c.id === j.customerId) : null;
-            const isTaxExemptCustomer = !!(
-                cust?.taxExempt || 
-                cust?.taxExemptCertUrl || 
-                inv.taxExempt || 
-                inv.customerTaxExempt
-            );
             const certUrl = cust?.taxExemptCertUrl || inv.taxExemptCertUrl || inv.customerTaxExemptCertUrl || null;
             const certNumber = cust?.taxExemptNumber || inv.taxExemptNumber || null;
+            const isTaxExemptCustomer = !!(
+                (cust?.taxExempt || inv.taxExempt || inv.customerTaxExempt) && certUrl
+            );
 
             // Calculation per invoice
             const lineItems: any[] = inv.items || [];
@@ -214,18 +213,24 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
 
         // Calculate Tax Paid on Supplies/Materials from Expenses (Credit for Tax Paid to Suppliers)
         let totalTaxPaidSupplies = 0;
+        let actualTaxPaidFromExpenses = 0;
         (state.expenses || []).forEach((exp: any) => {
             if (!exp.date) return;
             const expDate = exp.date.split('T')[0];
             if (startDate && expDate < startDate) return;
             if (endDate && expDate > endDate) return;
-            if (exp.category === 'Materials (COGS)' || exp.category === 'Supplies' || exp.category === 'Taxes and licenses') {
+            const cat = exp.category || '';
+            if (cat === 'Materials' || cat === 'Materials (COGS)' || cat === 'Supplies' || cat === 'Parts' || cat === 'Taxes and licenses' || cat.toLowerCase().includes('material')) {
                 totalTaxPaidSupplies += (Number(exp.amount) || 0);
+                if (Number(exp.taxAmount) > 0) {
+                    actualTaxPaidFromExpenses += Number(exp.taxAmount);
+                }
             }
         });
 
-        // Tax-Paid Purchases Credit (estimated tax paid at supply house)
-        const taxPaidToSuppliersCredit = totalTaxPaidSupplies * ((orgTaxRate / 100) / (1 + (orgTaxRate / 100)));
+        // Tax-Paid Purchases Credit (uses actual tax paid on receipts if logged, or estimated tax paid at supply house)
+        const estimatedTaxPaidCredit = totalTaxPaidSupplies * ((orgTaxRate / 100) / (1 + (orgTaxRate / 100)));
+        const taxPaidToSuppliersCredit = actualTaxPaidFromExpenses > 0 ? actualTaxPaidFromExpenses : estimatedTaxPaidCredit;
 
         // State Tax vs Local Tax Breakdown
         const stateTaxRate = currentStateRule.defaultStateRate;
@@ -242,12 +247,20 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
         }
         const netTaxPayable = Math.max(0, totalTaxCollected - timelyFilingDiscount);
 
+        // Taxable Purchases calculation (auto-calculated from expenses or overridden)
+        const parsedOverride = parseFloat(overrideTaxablePurchases);
+        const hasValidOverride = !isNaN(parsedOverride) && overrideTaxablePurchases.trim() !== '';
+        const totalTaxablePurchases = hasValidOverride ? parsedOverride : totalTaxPaidSupplies;
+
         return {
             filteredJobs: filteredJobs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
             stateRule: currentStateRule,
             totalGrossSales,
             totalTaxableSales,
             totalExemptSales,
+            totalTaxablePurchases,
+            autoTaxablePurchases: totalTaxPaidSupplies,
+            hasValidOverride,
             totalTaxCollected,
             stateTaxRate,
             localTaxRate,
@@ -258,7 +271,7 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
             timelyFilingDiscount,
             netTaxPayable
         };
-    }, [jobs, startDate, endDate, accountingBasis, orgTaxRate, state.expenses, state.customers, selectedStateCode]);
+    }, [jobs, startDate, endDate, accountingBasis, orgTaxRate, state.expenses, state.customers, selectedStateCode, overrideTaxablePurchases]);
 
     // Copy to clipboard helper
     const handleCopy = (fieldId: string, textToCopy: string, label: string) => {
@@ -310,10 +323,12 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
             ['Item 2: Total Taxable Sales (WebFile Whole Dollars)', Math.round(taxData.totalTaxableSales)],
             ['Item 3: Total Tax-Exempt Sales (Exact)', taxData.totalExemptSales.toFixed(2)],
             ['Item 3: Total Tax-Exempt Sales (WebFile Whole Dollars)', Math.round(taxData.totalExemptSales)],
+            ['Item 4: Total Taxable Purchases (Exact)', taxData.totalTaxablePurchases.toFixed(2)],
+            ['Item 4: Total Taxable Purchases (WebFile Whole Dollars)', Math.round(taxData.totalTaxablePurchases)],
             ['State Tax Portion (6.25%)', taxData.stateTaxDue.toFixed(2)],
             ['Local Tax Portion (' + taxData.localTaxRate.toFixed(2) + '%)', taxData.localTaxDue.toFixed(2)],
-            ['Item 4: Total Tax Collected / Due (Exact)', taxData.totalTaxCollected.toFixed(2)],
-            ['Item 4: Total Tax Collected (WebFile Whole Dollars)', Math.round(taxData.totalTaxCollected)],
+            ['Item 5: Total Tax Collected / Due (Exact)', taxData.totalTaxCollected.toFixed(2)],
+            ['Item 5: Total Tax Collected (WebFile Whole Dollars)', Math.round(taxData.totalTaxCollected)],
             ['Timely Filing Discount (0.5%)', taxData.timelyFilingDiscount.toFixed(2)],
             ['Net Tax Payable to State', taxData.netTaxPayable.toFixed(2)],
             [''],
@@ -471,7 +486,7 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
             </Card>
 
             {/* Main Texas WebFile Return Key Metrics Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 
                 {/* Item 1: Total Gross Sales */}
                 <Card className="bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 p-5 rounded-2xl shadow-sm relative overflow-hidden flex flex-col justify-between">
@@ -566,12 +581,84 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
                     </div>
                 </Card>
 
-                {/* Item 4: Total Tax Collected / Due */}
+                {/* Item 4: Total Taxable Purchases */}
+                <Card className="bg-white dark:bg-slate-800 border-2 border-amber-200 dark:border-amber-900/50 p-5 rounded-2xl shadow-sm relative overflow-hidden flex flex-col justify-between">
+                    <div>
+                        <div className="flex justify-between items-start mb-2">
+                            <span className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-wide">
+                                Item 4
+                            </span>
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase">
+                                {taxData.hasValidOverride ? 'Custom Override' : 'Expense Auto-Calc'}
+                            </span>
+                        </div>
+                        <h5 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                            Total Taxable Purchases
+                        </h5>
+                        {isEditingTaxablePurchases ? (
+                            <div className="mt-2 space-y-1">
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    className="w-full text-lg font-black p-1 border border-amber-400 dark:border-amber-600 rounded bg-amber-50/50 dark:bg-slate-900 text-amber-900 dark:text-amber-200 focus:outline-none"
+                                    value={overrideTaxablePurchases}
+                                    onChange={e => setOverrideTaxablePurchases(e.target.value)}
+                                    placeholder={taxData.autoTaxablePurchases.toFixed(2)}
+                                />
+                                <div className="flex gap-1 justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setOverrideTaxablePurchases(''); setIsEditingTaxablePurchases(false); }}
+                                        className="text-[10px] font-bold text-slate-500 hover:text-slate-700 underline"
+                                    >
+                                        Reset to Auto
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditingTaxablePurchases(false)}
+                                        className="text-[10px] font-extrabold text-amber-800 bg-amber-200 px-2 py-0.5 rounded"
+                                    >
+                                        Done
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-between mt-1">
+                                <p className="text-2xl font-black text-amber-600 dark:text-amber-400">
+                                    {fmt(taxData.totalTaxablePurchases)}
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditingTaxablePurchases(true)}
+                                    className="text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:underline bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-900/50"
+                                    title="Edit or override taxable purchases"
+                                >
+                                    Edit
+                                </button>
+                            </div>
+                        )}
+                        <p className="text-xs font-bold text-amber-700 dark:text-amber-300 mt-1">
+                            WebFile Round: {fmtWhole(taxData.totalTaxablePurchases)}
+                        </p>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => handleCopy('taxable_purchases_whole', Math.round(taxData.totalTaxablePurchases).toString(), 'Taxable Purchases Whole Dollars')}
+                            className="flex-1 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 text-amber-800 dark:text-amber-300 text-[11px] font-extrabold py-1.5 rounded-lg flex items-center justify-center gap-1 transition-colors"
+                        >
+                            {copiedField === 'taxable_purchases_whole' ? <Check size={12} className="text-amber-600" /> : <Copy size={12} />}
+                            Copy WebFile ($)
+                        </button>
+                    </div>
+                </Card>
+
+                {/* Item 5: Total Tax Collected / Due */}
                 <Card className="bg-white dark:bg-slate-800 border-2 border-purple-200 dark:border-purple-900/50 p-5 rounded-2xl shadow-sm relative overflow-hidden flex flex-col justify-between">
                     <div>
                         <div className="flex justify-between items-start mb-2">
                             <span className="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300 text-[10px] font-black uppercase px-2 py-0.5 rounded tracking-wide">
-                                Item 4
+                                Item 5
                             </span>
                             <span className="text-[10px] text-purple-600 dark:text-purple-400 font-bold uppercase">Rate: {orgTaxRate}%</span>
                         </div>
@@ -704,6 +791,17 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
                             <div className="flex justify-between items-center">
                                 <span className="font-extrabold text-emerald-900 dark:text-emerald-300">Total Combined Sales Tax Collected</span>
                                 <span className="font-black text-emerald-700 dark:text-emerald-400 text-sm">{fmt(taxData.totalTaxCollected)}</span>
+                            </div>
+                        </div>
+
+                        <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl space-y-2 border border-amber-200 dark:border-amber-900/40">
+                            <div className="flex justify-between items-center">
+                                <span className="font-extrabold text-amber-900 dark:text-amber-300">Total Taxable Purchases</span>
+                                <span className="font-black text-amber-700 dark:text-amber-400 text-sm">{fmt(taxData.totalTaxablePurchases)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-amber-800 dark:text-amber-300">WebFile Rounded Whole Dollars</span>
+                                <span className="font-bold text-amber-900 dark:text-amber-200">{fmtWhole(taxData.totalTaxablePurchases)}</span>
                             </div>
                         </div>
                     </div>
@@ -973,6 +1071,12 @@ const SalesTaxPrepTab: React.FC<SalesTaxPrepTabProps> = ({
                                         </tr>
                                         <tr style="border-bottom: 1px solid #e2e8f0;">
                                             <td style="padding: 10px; font-weight: 800; color: #047857;">Item 4</td>
+                                            <td style="padding: 10px; font-weight: 700; color: #1e293b;">Total Taxable Purchases</td>
+                                            <td style="padding: 10px; text-align: right; font-weight: 600;">${taxData.totalTaxablePurchases.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                            <td style="padding: 10px; text-align: right; font-weight: 900; color: #047857; background: #f8fafc;">$${Math.round(taxData.totalTaxablePurchases).toLocaleString()}</td>
+                                        </tr>
+                                        <tr style="border-bottom: 1px solid #e2e8f0;">
+                                            <td style="padding: 10px; font-weight: 800; color: #047857;">Item 5</td>
                                             <td style="padding: 10px; font-weight: 700; color: #1e293b;">Total Tax Collected / Due (${orgTaxRate}%)</td>
                                             <td style="padding: 10px; text-align: right; font-weight: 600;">${taxData.totalTaxCollected.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                             <td style="padding: 10px; text-align: right; font-weight: 900; color: #047857; background: #f8fafc;">$${Math.round(taxData.totalTaxCollected).toLocaleString()}</td>

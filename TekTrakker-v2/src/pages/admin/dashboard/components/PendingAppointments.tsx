@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { Appointment } from '../../../../types/types';
-import { Check, X, Calendar, User, Clock, Hash, MapPin, Phone, Mail, FileText, Download } from 'lucide-react';
+import { Check, X, Calendar, User, Clock, Hash, MapPin, Phone, Mail, FileText, Download, ShieldCheck } from 'lucide-react';
 import Card from '../../../../components/ui/Card';
 import Modal from '../../../../components/ui/Modal';
 
@@ -396,6 +396,26 @@ const PendingAppointments: React.FC<{ appointments: Appointment[], onAccept: (ap
                                     </p>
                                 </div>
                             )}
+
+                            {/* TCPA & Marketing Consent Status */}
+                            <div className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 p-4 rounded-xl">
+                                <h4 className="font-bold text-sm text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                                    <ShieldCheck size={16} className="text-emerald-500" /> TCPA & Marketing Consent
+                                </h4>
+                                {appt.marketingConsent?.sms || (appt as any).consent ? (
+                                    <div className="flex flex-col gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+                                        <span className="font-bold flex items-center gap-1.5">
+                                            <Check size={14} className="text-emerald-500" />
+                                            Opt-in Verified (SMS & Email)
+                                        </span>
+                                        <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                            Source: {appt.marketingConsent?.source || (appt.source ? `${appt.source} Widget` : 'WebWidget')} • Agreed: {appt.marketingConsent?.agreedAt ? new Date(appt.marketingConsent.agreedAt).toLocaleString() : (appt.createdAt ? new Date(appt.createdAt).toLocaleString() : 'Recorded')}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 italic">No marketing consent recorded for this request.</p>
+                                )}
+                            </div>
 
                             <div className="flex justify-end gap-3 pt-6">
                                 <button 

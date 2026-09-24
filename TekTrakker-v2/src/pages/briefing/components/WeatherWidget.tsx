@@ -82,7 +82,7 @@ const WeatherWidget: React.FC = () => {
             href={`https://weather.com/weather/today/l/${weather.lat || 29.4241},${weather.lng || -98.4936}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="block mb-6 bg-gradient-to-br from-primary-500 to-primary-700 text-white border-none shadow-lg rounded-xl p-4 cursor-pointer hover:shadow-xl hover:scale-[1.02] transition-all"
+            className="block h-full bg-gradient-to-br from-primary-500 to-primary-700 text-white border-none shadow-lg rounded-2xl p-4 cursor-pointer hover:shadow-xl hover:scale-[1.01] transition-all flex flex-col justify-between"
         >
             <div className="flex justify-between items-center px-2">
                 <div>

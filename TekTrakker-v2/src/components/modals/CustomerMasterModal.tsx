@@ -1,31 +1,51 @@
-import { getBaseUrl, getPaymentTermsLabel , cleanUndefinedFields } from "lib/utils";
+import { getBaseUrl, getPaymentTermsLabel, cleanUndefinedFields, getOrGenerateAccountNumber, formatFullAddress, sanitizeCustomer, sanitizeAddressFields, isInternalExpenseFile, resolveSiteLocationName } from "lib/utils";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
-import Input from '../ui/Input';
+import Input, { NumberInput } from '../ui/Input';
 import Select from '../ui/Select';
 import Textarea from '../ui/Textarea';
 import { useAppContext } from 'context/AppContext';
 import { db, firebase, functions } from 'lib/firebase';
-import type { Customer, EquipmentAsset, ServiceAgreement, MembershipPlan, Job, StoredFile } from 'types';
-import { TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Users, Mail, Printer, Sparkles, ShieldCheck, MessageSquare, CheckCircle, Edit, Share2, Copy, Upload, PhoneCall, PhoneOff, Calendar, XCircle, Clock, AlertCircle, PhoneOutgoing, Voicemail, UserCheck, Key } from 'lucide-react';
+import type { Customer, EquipmentAsset, ServiceAgreement, MembershipPlan, Job, StoredFile, CustomerMarkupRule } from 'types';
+import { 
+    TrashIcon, PlusCircle, Wrench, FileText, DollarSign, Image, User, Users, Mail, Printer, Sparkles, ShieldCheck, ShieldAlert, MessageSquare, CheckCircle, Edit, Share2, Copy, Upload, PhoneCall, PhoneOff, Calendar, XCircle, Clock, AlertCircle, PhoneOutgoing, Voicemail, UserCheck, Key,
+    MapPin, Briefcase, RotateCcw, Link2, Archive, CheckSquare, Square, Search, Filter, Trash2, CalendarPlus, AlignLeft, Eye, EyeOff, Inbox, LayoutGrid, ArrowLeft
+} from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { globalConfirm } from "lib/globalConfirm";
 import { uploadFileToStorage } from 'lib/storageService';
 import { sendEmail } from 'lib/notificationService';
 import showToast from 'lib/toast';
 import WarrantySection from 'pages/customer/components/WarrantySection';
+import IssueWarrantyModal from './IssueWarrantyModal';
 import EquipmentHierarchy from 'pages/admin/projects/components/tabs/equipment/EquipmentHierarchy';
 import { useLanguage } from 'context/LanguageContext';
 import LocationPhotosLayoutModal from './LocationPhotosLayoutModal';
 import JobDetailModal from './JobDetailModal';
 import InvoiceEditorModal from './InvoiceEditorModal';
-import { Paperclip, ExternalLink, FileCheck, Download, Send } from 'lucide-react';
+import { Paperclip, ExternalLink, FileCheck, Download, Send, Receipt, CreditCard, Percent } from 'lucide-react';
 import { Map as MapIcon } from 'lucide-react';
 import SendEmailModal from './SendEmailModal';
+import EmailStatementModal from './EmailStatementModal';
 import SendSMSModal from './SendSMSModal';
 import LogCallModal from './LogCallModal';
+import CreatePaymentLinkModal from './CreatePaymentLinkModal';
+import LogReceivedPaymentModal from './LogReceivedPaymentModal';
+import MallFilterRequisitionModal from './MallFilterRequisitionModal';
+import JobAppointmentModal from './JobAppointmentModal';
+import JobLinkingModal from './JobLinkingModal';
+import SignOffModal from 'pages/briefing/components/SignOffModal';
+import { resolveDocumentDisplayId } from 'lib/numbering';
+import { getOrgPaymentInstructions, formatPaymentInstructionsHtml } from 'lib/paymentInstructionsHelper';
+import { PaymentInstructionsCard } from 'components/payment/PaymentInstructionsCard';
+import { detectFileType } from 'lib/fileViewerHelper';
+import { getJobTimeSummary } from 'lib/jobTimeHelper';
+import CustomerDocumentDrive from '../features/CustomerDocumentDrive';
+import { HardDrive } from 'lucide-react';
+import { generateStatementOfAccountPdfAttachment } from 'lib/pdfHelper';
+import { isRecurringMembership, formatAgreementDate } from 'lib/membershipHelper';
 
 interface CustomerMasterModalProps {
     isOpen: boolean;
@@ -36,7 +56,22 @@ interface CustomerMasterModalProps {
 const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClose, customerId }) => {
     const { state, dispatch } = useAppContext();
     const { t } = useLanguage();
-    const customer = state.customers.find(c => c.id === customerId);
+    const [fetchedCustomer, setFetchedCustomer] = useState<Customer | null>(null);
+    const customer = state.customers.find(c => c.id === customerId) || fetchedCustomer;
+
+    useEffect(() => {
+        if (!isOpen || !customerId) return;
+        if (!state.customers.find(c => c.id === customerId)) {
+            db.collection('customers').doc(customerId).get().then(doc => {
+                if (doc.exists) {
+                    const data = { id: doc.id, ...doc.data() } as Customer;
+                    setFetchedCustomer(data);
+                    dispatch({ type: 'ADD_CUSTOMER', payload: data });
+                }
+            }).catch(err => console.error("Error fetching customer in CustomerMasterModal:", err));
+        }
+    }, [isOpen, customerId, state.customers, dispatch]);
+
     const [calling, setCalling] = useState(false);
 
     const handleCallBridge = async () => {
@@ -80,12 +115,29 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
 
     const [activeTab, setActiveTab] = useState<'overview' | 'equipment' | 'history' | 'financials' | 'warranties' | 'docs' | 'communications' | 'maintenance'>('overview');
     const [statementUnpaidOnly, setStatementUnpaidOnly] = useState(false);
+    const [showPaymentsLedger, setShowPaymentsLedger] = useState(false);
     const [historyLocationFilter, setHistoryLocationFilter] = useState('');
+    const [historySearchTerm, setHistorySearchTerm] = useState('');
+    const [historyStatusFilter, setHistoryStatusFilter] = useState('ALL');
     const [editingInvoiceJobId, setEditingInvoiceJobId] = useState<string | null>(null);
+    const [editingAppointmentJob, setEditingAppointmentJob] = useState<Job | null>(null);
+    const [linkingJob, setLinkingJob] = useState<Job | null>(null);
+    const [activeSignOffJob, setActiveSignOffJob] = useState<Job | null>(null);
+    const [historyNotesJob, setHistoryNotesJob] = useState<Job | null>(null);
+    const [historyInternalNotes, setHistoryInternalNotes] = useState('');
     const [isSendEmailModalOpen, setIsSendEmailModalOpen] = useState(false);
     const [isSendSmsModalOpen, setIsSendSmsModalOpen] = useState(false);
     const [isLogCallModalOpen, setIsLogCallModalOpen] = useState(false);
+    const [isCreatePaymentLinkOpen, setIsCreatePaymentLinkOpen] = useState(false);
+    const [isLogPaymentModalOpen, setIsLogPaymentModalOpen] = useState(false);
     const [sendInvoiceModalConfig, setSendInvoiceModalConfig] = useState<{ isOpen: boolean; job: Job | null }>({ isOpen: false, job: null });
+    const [isEmailStatementModalOpen, setIsEmailStatementModalOpen] = useState(false);
+    const [isMallFilterModalOpen, setIsMallFilterModalOpen] = useState(false);
+
+    const [showSmsReConsentModal, setShowSmsReConsentModal] = useState(false);
+    const [reConsentCertify, setReConsentCertify] = useState(false);
+    const [reConsentReason, setReConsentReason] = useState('Customer Verbal Request');
+    const [reConsentNotes, setReConsentNotes] = useState('');
 
     const handleSyncRcCallerId = async () => {
         setIsSyncingRc(true);
@@ -131,16 +183,18 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
     }, [customerId]);
     const [isEditing, setIsEditing] = useState(false);
     const [formData, setFormData] = useState<Partial<Customer>>({});
+    const [showPortalPassword, setShowPortalPassword] = useState(false);
     const [isSendingInvite, setIsSendingInvite] = useState(false);
     const [dragActiveDocs, setDragActiveDocs] = useState(false);
     const [dragActiveWarranties, setDragActiveWarranties] = useState(false);
     
     // Property Location State
-    const [newLocation, setNewLocation] = useState<any>({ name: '', address: '', city: '', state: '', zip: '', notes: '' });
+    const [newLocation, setNewLocation] = useState<any>({ name: '', address: '', city: '', state: '', zip: '', notes: '', storeNumber: '', locationNumber: '' });
     const [isAddingLocation, setIsAddingLocation] = useState(false);
+    const [locationSearchTerm, setLocationSearchTerm] = useState('');
 
     // Contacts State
-    const [newContact, setNewContact] = useState<any>({ id: '', name: '', title: '', phone: '', email: '', isPrimary: false, portalRole: undefined, allowedLocationIds: [], portalUserStatus: undefined });
+    const [newContact, setNewContact] = useState<any>({ id: '', name: '', title: '', phone: '', email: '', isPrimary: false, isIncomingWorkOrderContact: false, contactRoles: [], portalRole: undefined, allowedLocationIds: [], portalUserStatus: undefined });
     const [isAddingContact, setIsAddingContact] = useState(false);
 
     // Membership Manual Enrollment State
@@ -173,23 +227,247 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
     const [shareTargetId, setShareTargetId] = useState('');
     const [shareMessageText, setShareMessageText] = useState('');
     const [isSharing, setIsSharing] = useState(false);
+    const [isIssueWarrantyOpen, setIsIssueWarrantyOpen] = useState(false);
+
+    // --- Maintenance Schedule Tab States ---
+    const [isEditingAgreement, setIsEditingAgreement] = useState(false);
+    const [agreementFormData, setAgreementFormData] = useState<any>({
+        agreementName: '',
+        status: 'Draft',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        value: 1200,
+        billingFrequency: 'Annually',
+        paymentTerms: 'net_30',
+        coveredItems: ['Filter replacement', 'Coil cleaning', 'Belt inspection', 'Electrical check'],
+        coveredEquipmentIds: [],
+        frequency: 'Quarterly',
+        visits: [],
+        notes: ''
+    });
+    const [newCoveredItem, setNewCoveredItem] = useState('');
+    const [notificationTemplate, setNotificationTemplate] = useState<'reminder' | 'overdue'>('reminder');
+    const [notificationRecipient, setNotificationRecipient] = useState('');
+    const [selectedVisitForNotification, setSelectedVisitForNotification] = useState<string | null>(null);
+    const [isSendingNotification, setIsSendingNotification] = useState(false);
+
+    // Initialize agreement form data when customer or editing state changes
+    React.useEffect(() => {
+        if (customer?.maintenanceAgreement) {
+            setAgreementFormData(customer.maintenanceAgreement);
+        } else {
+            setAgreementFormData({
+                agreementName: 'Commercial Comfort Plan',
+                status: 'Draft',
+                startDate: new Date().toISOString().split('T')[0],
+                endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                value: 1200,
+                billingFrequency: 'Annually',
+                paymentTerms: 'net_30',
+                coveredItems: ['Filter replacement', 'Coil cleaning', 'Belt inspection', 'Electrical check'],
+                coveredEquipmentIds: (customer?.equipment || []).map((e: any) => e.id),
+                frequency: 'Quarterly',
+                visits: [],
+                notes: ''
+            });
+        }
+    }, [customer?.id, customer?.maintenanceAgreement, isEditingAgreement]);
 
     const membership = state.serviceAgreements?.find(a => a.customerId === customerId && a.status === 'Active');
+
+    const employees = useMemo(() => state.users?.filter((u: any) => 
+        u.role === 'employee' || u.role === 'both' || u.role === 'supervisor' || u.role === 'Technician' || u.role === 'Subcontractor'
+    ) || [], [state.users]);
+
+    const linkedPartners = useMemo(() => {
+        if (!state.subcontractors) return [];
+        const currentOrgId = state.currentOrganization?.id;
+        return state.subcontractors.filter(s => 
+            (s.organizationId === currentOrgId || s.linkedOrgId === currentOrgId) && 
+            s.status !== 'Inactive'
+        );
+    }, [state.subcontractors, state.currentOrganization]);
 
     const customerJobs = useMemo(() => {
         return state.jobs.filter(j => j.customerId === customerId);
     }, [state.jobs, customerId]);
 
+    const historyStats = useMemo(() => {
+        const total = customerJobs.length;
+        const completed = customerJobs.filter(j => j.jobStatus === 'Completed').length;
+        const inProgress = customerJobs.filter(j => j.jobStatus === 'In Progress' || j.jobStatus === 'Scheduled').length;
+        const needsFollowUp = customerJobs.filter(j => j.jobStatus === 'Needs Follow-up').length;
+        const totalBilled = customerJobs.reduce((sum, j) => sum + Number(j.invoice?.totalAmount || j.invoice?.amount || 0), 0);
+        const totalPaid = customerJobs.reduce((sum, j) => {
+            const inv = j.invoice as any;
+            if (!inv) return sum;
+            if (inv.status === 'Paid') return sum + Number(inv.totalAmount || inv.amount || 0);
+            return sum + Number(inv.amountPaid || 0);
+        }, 0);
+        return { total, completed, inProgress, needsFollowUp, totalBilled, totalPaid };
+    }, [customerJobs]);
+
     const filteredHistoryJobs = useMemo(() => {
-        if (!historyLocationFilter) return customerJobs;
-        return customerJobs.filter(j => {
-            const locId = j.locationId || 'default';
-            return locId === historyLocationFilter;
+        let list = [...customerJobs];
+        
+        // Filter by location
+        if (historyLocationFilter) {
+            list = list.filter(j => {
+                const locId = j.locationId || 'default';
+                return locId === historyLocationFilter;
+            });
+        }
+
+        // Filter by status (only when not searching, so searching finds jobs regardless of status)
+        if (historyStatusFilter !== 'ALL' && !historySearchTerm.trim()) {
+            list = list.filter(j => j.jobStatus === historyStatusFilter);
+        }
+
+        // Filter by search query
+        if (historySearchTerm.trim()) {
+            const rawQuery = historySearchTerm.toLowerCase().trim();
+            const cleanQuery = rawQuery.replace(/^[#\s]+/, '');
+            const cleanAlphaNumeric = rawQuery.replace(/[^a-z0-9]/g, '');
+            const searchTokens = rawQuery.split(/\s+/).filter(t => t.length > 0);
+
+            list = list.filter(j => {
+                const draft = (j as any).draftData || {};
+                const idMatch = (j.id || '').toLowerCase();
+                const jobNumber = (j.jobNumber || '').toLowerCase();
+                const descMatch = ((j as any).description || '').toLowerCase();
+                const taskMatch = Array.isArray(j.tasks) ? j.tasks.join(' ').toLowerCase() : '';
+                const techMatch = (j.assignedTechnicianName || '').toLowerCase();
+                const poMatch = (j.poNumber || (j as any).workOrderNumber || j.invoice?.poNumber || (j as any).referenceNumber || (j as any).legacyPoNumber || draft?.workOrderNo || '').toLowerCase();
+                const invMatch = `${j.invoice?.id || ''} ${j.invoice?.invoiceNumber || ''} ${Array.isArray((j as any).linkedInvoiceIds) ? (j as any).linkedInvoiceIds.join(' ') : ''}`.toLowerCase();
+                const propMatch = `${j.proposalId || ''} ${Array.isArray((j as any).linkedProposalIds) ? (j as any).linkedProposalIds.join(' ') : ''}`.toLowerCase();
+                const locMatch = `${j.locationName || ''} ${(typeof j.address === 'string' ? j.address : '')} ${(j as any).serviceLocationName || ''} ${draft?.serviceAddress || ''}`.toLowerCase();
+                const equipMatch = `${(j as any).hvacBrand || ''} ${(j as any).hvacType || ''} ${(j as any).modelNo || ''} ${(j as any).serialNo || ''} ${draft?.serialNo || ''} ${draft?.modelNo || ''} ${draft?.brand || ''}`.toLowerCase();
+                const rawJobNotes = typeof j.notes === 'string' ? j.notes : Object.values(j.notes || {}).filter(v => typeof v === 'string').join(' ');
+                const rawDraftNotes = typeof draft?.notes === 'string' ? draft.notes : Object.values(draft?.notes || {}).filter(v => typeof v === 'string').join(' ');
+                const notesMatch = `${j.techRecommendations || ''} ${j.notes?.workNotes || ''} ${j.notes?.diagnosis || ''} ${draft?.workNotes || ''} ${(j.invoice as any)?.clientNotes || ''} ${rawJobNotes} ${rawDraftNotes}`.toLowerCase();
+                const filesMatch = Array.isArray(j.files) ? j.files.map((f: any) => `${f.fileName || ''} ${f.label || ''} ${f.woNumber || ''}`).join(' ').toLowerCase() : '';
+
+                const combinedJobText = `${idMatch} ${jobNumber} ${descMatch} ${taskMatch} ${techMatch} ${poMatch} ${invMatch} ${propMatch} ${locMatch} ${equipMatch} ${notesMatch} ${filesMatch}`;
+                const combinedAlpha = combinedJobText.replace(/[^a-z0-9]/g, '');
+
+                const matchesTokens = searchTokens.length > 0 && searchTokens.every(token => {
+                    const cleanToken = token.replace(/^[#\s]+/, '').replace(/^inv-|^prop-|^wo-/, '');
+                    const cleanTokenAlpha = token.replace(/[^a-z0-9]/g, '');
+                    return (
+                        combinedJobText.includes(token) ||
+                        (cleanToken.length > 0 && combinedJobText.includes(cleanToken)) ||
+                        (cleanTokenAlpha.length >= 3 && combinedAlpha.includes(cleanTokenAlpha))
+                    );
+                });
+
+                return matchesTokens;
+            });
+        }
+
+        // Sort newest first
+        return list.sort((a, b) => {
+            const timeA = new Date(a.appointmentTime || a.createdAt || 0).getTime();
+            const timeB = new Date(b.appointmentTime || b.createdAt || 0).getTime();
+            return timeB - timeA;
         });
-    }, [customerJobs, historyLocationFilter]);
+    }, [customerJobs, historyLocationFilter, historyStatusFilter, historySearchTerm]);
+
+    const handleJobStatusChange = async (job: Job, newStatus: string) => {
+        try {
+            const updates = { jobStatus: newStatus, updatedAt: new Date().toISOString() };
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
+            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
+            showToast.success(`Job status updated to ${newStatus}`);
+        } catch (err: any) {
+            console.error("Failed to update status:", err);
+            showToast.error("Failed to update status");
+        }
+    };
+
+    const handleJobAssignmentChange = async (job: Job, targetVal: string) => {
+        try {
+            let assignedTechnicianId: string | null = null;
+            let assignedTechnicianName: string | null = null;
+            let assignedPartnerId: string | null = null;
+
+            if (targetVal.startsWith('partner:')) {
+                assignedPartnerId = targetVal.replace('partner:', '');
+                const partner = linkedPartners.find(p => p.linkedOrgId === assignedPartnerId || p.id === assignedPartnerId);
+                assignedTechnicianName = partner?.companyName || 'Subcontractor';
+            } else if (targetVal) {
+                assignedTechnicianId = targetVal;
+                const techUser = employees.find(u => u.id === targetVal);
+                assignedTechnicianName = techUser ? `${techUser.firstName} ${techUser.lastName}` : null;
+            }
+
+            const updates: any = {
+                assignedTechnicianId,
+                assignedTechnicianName,
+                assignedPartnerId,
+                updatedAt: new Date().toISOString()
+            };
+
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
+            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
+            showToast.success("Technician assignment updated");
+        } catch (err: any) {
+            console.error("Failed to assign technician:", err);
+            showToast.error("Failed to assign technician");
+        }
+    };
+
+    const handleCopyJobRef = (jobId: string) => {
+        const refStr = `JOB-${jobId.replace('job-', '')}`;
+        navigator.clipboard.writeText(refStr);
+        showToast.success(`Copied ${refStr} to clipboard`);
+    };
+
+    const handleSaveHistoryNotes = async () => {
+        if (!historyNotesJob) return;
+        try {
+            const updates = { internalNotes: historyInternalNotes, updatedAt: new Date().toISOString() };
+            dispatch({ type: 'UPDATE_JOB', payload: { ...historyNotesJob, ...updates } });
+            await db.collection('jobs').doc(historyNotesJob.id).update(cleanUndefinedFields(updates));
+            showToast.success("Internal notes updated successfully");
+            setHistoryNotesJob(null);
+            setHistoryInternalNotes('');
+        } catch (err) {
+            console.error("Failed to save notes:", err);
+            showToast.error("Failed to save notes");
+        }
+    };
+
+    const isJobCancelledOrVoid = (j: any) => {
+        if (!j) return true;
+        const js = String(j.jobStatus || j.status || '').toLowerCase().trim();
+        const invs = String(j.invoice?.status || '').toLowerCase().trim();
+        const invNotes = String(j.invoice?.notes || j.invoice?.internalNotes || '').toLowerCase();
+        
+        // 1. Explicit cancelled or void checks on job or invoice status
+        if (js.includes('cancel') || js.includes('void') || invs.includes('cancel') || invs.includes('void')) {
+            return true;
+        }
+        if (j.isCancelled === true || j.isVoid === true || j.invoice?.isCancelled === true || j.invoice?.isVoid === true) {
+            return true;
+        }
+        
+        // 2. Invoice notes or descriptions indicating zeroed out / cancelled
+        if (invNotes.includes('zeroed out') || invNotes.includes('cancelled') || invNotes.includes('canceled') || invNotes.includes('void')) {
+            return true;
+        }
+
+        // 3. Exclude empty zero-dollar shell tickets without invoice id or without items
+        const total = Number(j.invoice?.totalAmount ?? j.invoice?.amount ?? j.invoice?.grandTotal ?? 0);
+        const hasItems = Array.isArray(j.invoice?.items) && j.invoice.items.length > 0;
+        if (!j.invoice?.id || (total <= 0.001 && !hasItems)) {
+            return true;
+        }
+
+        return false;
+    };
 
     const statementTotals = useMemo(() => {
-        const invoiceJobs = customerJobs.filter(j => j.invoice);
+        const invoiceJobs = customerJobs.filter(j => j.invoice && !isJobCancelledOrVoid(j));
         let totalBilled = 0;
         let totalPaid = 0;
         
@@ -201,7 +479,8 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             days30: 0,
             days60: 0,
             days90: 0,
-            older: 0
+            older: 0,
+            over45: 0
         };
 
         invoiceJobs.forEach(j => {
@@ -213,7 +492,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             
             if (inv.status !== 'Paid') {
                 const bal = Math.max(0, t - p);
-                const dateVal = inv.dueDate || j.appointmentTime || j.createdAt;
+                const dateVal = j.appointmentTime || (j as any).completedDate || inv.dueDate || j.createdAt;
                 if (dateVal) {
                     let dateObj = new Date(dateVal);
                     if (typeof dateVal === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateVal)) {
@@ -222,6 +501,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                     dateObj.setHours(0, 0, 0, 0);
                     
                     const daysOverdue = Math.floor((now.getTime() - dateObj.getTime()) / (1000 * 60 * 60 * 24));
+                    if (daysOverdue > 45) aging.over45 += bal;
                     if (daysOverdue <= 0) aging.current += bal;
                     else if (daysOverdue <= 30) aging.days30 += bal;
                     else if (daysOverdue <= 60) aging.days60 += bal;
@@ -242,7 +522,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
     }, [customerJobs]);
 
     const statementJobs = useMemo(() => {
-        const invoiceJobs = customerJobs.filter(j => j.invoice);
+        const invoiceJobs = customerJobs.filter(j => j.invoice && !isJobCancelledOrVoid(j));
         
         // Sort chronologically oldest first
         const sorted = [...invoiceJobs].sort((a, b) => {
@@ -255,16 +535,18 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         let runningBalance = 0;
         const mapped = sorted.map(j => {
             const inv = j.invoice as any;
-            const total = inv.totalAmount || inv.amount || 0;
-            const paid = inv.status === 'Failed' ? 0 : (inv.amountPaid || (inv.status === 'Paid' ? total : 0));
-            const balance = Math.max(0, total - paid);
-            runningBalance += (total - paid);
+            const total = Number(inv.totalAmount ?? inv.amount ?? 0);
+            const rawPaid = Number(inv.amountPaid || inv.depositPaidAmount || (inv.depositPaid ? (inv.depositAmount || 0) : 0) || 0);
+            const paid = inv.status === 'Failed' ? 0 : (inv.status === 'Paid' ? (rawPaid > 0 ? rawPaid : total) : rawPaid);
+            const clampedPaid = Math.min(total, Math.max(0, paid));
+            const balance = Math.max(0, total - clampedPaid);
+            runningBalance += (total - clampedPaid);
             
             return {
                 job: j,
                 invoice: inv,
                 total,
-                paid,
+                paid: clampedPaid,
                 balance,
                 runningBalance
             };
@@ -273,6 +555,53 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         if (!statementUnpaidOnly) return mapped;
         return mapped.filter(tx => tx.balance > 0.01 && tx.invoice?.status !== 'Paid');
     }, [customerJobs, statementUnpaidOnly]);
+
+    const filteredStatementJobs = useMemo(() => {
+        return statementJobs.filter(tx => !isJobCancelledOrVoid(tx.job) && (tx.total > 0 || (Array.isArray(tx.invoice?.items) && tx.invoice.items.length > 0)));
+    }, [statementJobs]);
+
+    const customerPayments = useMemo(() => {
+        const list: any[] = [];
+        customerJobs.forEach(job => {
+            if (isJobCancelledOrVoid(job)) return;
+            const inv = job.invoice as any;
+            if (!inv) return;
+            const loc = customer?.serviceLocations?.find((l: any) => l.id === job.locationId || l.address === job.address || l.name === job.locationName || l.propertyName === job.locationName);
+            const siteAddress = formatFullAddress(job.address || loc?.address || customer?.address || '');
+            if (Array.isArray(inv.payments) && inv.payments.length > 0) {
+                inv.payments.forEach((p: any) => {
+                    list.push({
+                        id: p.id || `pay-${job.id}-${Math.random()}`,
+                        amount: Number(p.amount) || 0,
+                        method: p.method || 'Check',
+                        reference: p.reference || '',
+                        date: p.date || p.createdAt?.split('T')[0] || job.appointmentTime?.split('T')[0] || 'N/A',
+                        notes: p.notes || '',
+                        jobId: job.id,
+                        invoiceId: inv.id || job.id.slice(0, 8),
+                        locationName: resolveSiteLocationName(job, loc) || 'Main Office',
+                        address: siteAddress,
+                        poNumber: job.poNumber
+                    });
+                });
+            } else if (Number(inv.amountPaid || 0) > 0 && inv.status === 'Paid') {
+                list.push({
+                    id: `pay-settled-${job.id}`,
+                    amount: Number(inv.amountPaid),
+                    method: inv.paymentMethod || 'Manual',
+                    reference: inv.paymentReference || '',
+                    date: inv.paidDate ? inv.paidDate.split('T')[0] : (job.appointmentTime ? job.appointmentTime.split('T')[0] : 'N/A'),
+                    notes: 'Settled on invoice completion',
+                    jobId: job.id,
+                    invoiceId: inv.id || job.id.slice(0, 8),
+                    locationName: resolveSiteLocationName(job, loc) || 'Main Office',
+                    address: siteAddress,
+                    poNumber: job.poNumber
+                });
+            }
+        });
+        return list.sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+    }, [customerJobs, customer]);
 
     const customerWarranties = useMemo(() => {
         return state.warrantyClaims?.filter(w => w.customerId === customerId) || [];
@@ -806,16 +1135,84 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         }
     };
 
+    const handleAddMarkupRule = () => {
+        const currentRules: CustomerMarkupRule[] = [
+            ...(formData.pricingRules?.partsMarkupRules || (
+                (formData.pricingRules?.partsMarkupTier1 || formData.pricingRules?.partsMarkupTier2) ? [
+                    { id: `tier-under-1500`, condition: 'under' as const, threshold: 1500, rate: formData.pricingRules?.partsMarkupTier1 ?? 43, label: 'Standard Commercial Parts' },
+                    { id: `tier-over-1500`, condition: 'over' as const, threshold: 1500, rate: formData.pricingRules?.partsMarkupTier2 ?? 23, label: 'RTUs, Compressors, Coils' }
+                ] : []
+            ))
+        ];
+        const newRule: CustomerMarkupRule = {
+            id: `rule-${Date.now()}`,
+            condition: 'under',
+            threshold: 1500,
+            rate: 24,
+            label: ''
+        };
+        setFormData({
+            ...formData,
+            pricingRules: {
+                ...(formData.pricingRules || {}),
+                partsMarkupRules: [...currentRules, newRule]
+            }
+        });
+    };
+
+    const handleUpdateMarkupRule = (index: number, field: keyof CustomerMarkupRule, value: any) => {
+        const currentRules: CustomerMarkupRule[] = [
+            ...(formData.pricingRules?.partsMarkupRules || (
+                (formData.pricingRules?.partsMarkupTier1 || formData.pricingRules?.partsMarkupTier2) ? [
+                    { id: `tier-under-1500`, condition: 'under' as const, threshold: 1500, rate: formData.pricingRules?.partsMarkupTier1 ?? 43, label: 'Standard Commercial Parts' },
+                    { id: `tier-over-1500`, condition: 'over' as const, threshold: 1500, rate: formData.pricingRules?.partsMarkupTier2 ?? 23, label: 'RTUs, Compressors, Coils' }
+                ] : []
+            ))
+        ];
+        const updated = [...currentRules];
+        if (updated[index]) {
+            updated[index] = { ...updated[index], [field]: value };
+            setFormData({
+                ...formData,
+                pricingRules: {
+                    ...(formData.pricingRules || {}),
+                    partsMarkupRules: updated
+                }
+            });
+        }
+    };
+
+    const handleDeleteMarkupRule = (index: number) => {
+        const currentRules: CustomerMarkupRule[] = [
+            ...(formData.pricingRules?.partsMarkupRules || (
+                (formData.pricingRules?.partsMarkupTier1 || formData.pricingRules?.partsMarkupTier2) ? [
+                    { id: `tier-under-1500`, condition: 'under' as const, threshold: 1500, rate: formData.pricingRules?.partsMarkupTier1 ?? 43, label: 'Standard Commercial Parts' },
+                    { id: `tier-over-1500`, condition: 'over' as const, threshold: 1500, rate: formData.pricingRules?.partsMarkupTier2 ?? 23, label: 'RTUs, Compressors, Coils' }
+                ] : []
+            ))
+        ];
+        const updated = currentRules.filter((_, idx) => idx !== index);
+        setFormData({
+            ...formData,
+            pricingRules: {
+                ...(formData.pricingRules || {}),
+                partsMarkupRules: updated
+            }
+        });
+    };
+
     const handleSaveOverview = async () => {
         let finalPaymentTerms = formData.paymentTerms;
         if (formData.paymentTerms === 'custom' && (formData as any).paymentTermsDays) {
             finalPaymentTerms = `net_${(formData as any).paymentTermsDays}`;
         }
-        const updated = { 
+        const accountNumberToSave = formData.accountNumber || customer.accountNumber || getOrGenerateAccountNumber(customer);
+        const updated = sanitizeCustomer({ 
             ...customer, 
             ...formData, 
+            accountNumber: accountNumberToSave,
             paymentTerms: finalPaymentTerms
-        };
+        });
         delete (updated as any).paymentTermsDays;
 
         try {
@@ -886,6 +1283,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             console.error("Failed to update active customer jobs:", err);
         });
 
+        showToast.success("Customer saved successfully!");
         setIsEditing(false);
     };
 
@@ -894,15 +1292,25 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             showToast.warn("Property Name and Address are required.");
             return;
         }
+
+        const cleanLoc = sanitizeAddressFields(newLocation.address, newLocation.city || customer.city, newLocation.state || customer.state, newLocation.zip || customer.zip);
         
+        const storeNum = (newLocation.storeNumber || newLocation.locationNumber || '').trim();
         // Map legacy UI "name" to "propertyName" for the new schema
-        const locPayload = {
+        const locPayload: any = {
             ...newLocation,
-            name: newLocation.name || newLocation.propertyName,
-            propertyName: newLocation.name || newLocation.propertyName,
+            storeNumber: storeNum || undefined,
+            locationNumber: storeNum || undefined,
+            address: cleanLoc.address,
+            city: cleanLoc.city,
+            state: cleanLoc.state,
+            zip: cleanLoc.zip,
+            name: (newLocation.name || newLocation.propertyName || 'Site Location').trim(),
+            propertyName: (newLocation.name || newLocation.propertyName || 'Site Location').trim(),
             customerId: customer.id,
             organizationId: state.currentOrganization?.id || 'default'
         };
+        delete locPayload.poNumber;
 
         let updatedLocations;
         if (locPayload.id) {
@@ -960,7 +1368,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         }
 
         dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, serviceLocations: updatedLocations } });
-        setNewLocation({ name: '', address: '', city: '', state: '', zip: '', notes: '' });
+        setNewLocation({ name: '', address: '', city: '', state: '', zip: '', notes: '', storeNumber: '', locationNumber: '' });
         setIsAddingLocation(false);
     };
 
@@ -1005,168 +1413,6 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         await Promise.all(jobUpdates).catch(console.error);
     };
 
-    const handleToggleServicePlan = async (job: Job, e: React.MouseEvent) => {
-        e.stopPropagation();
-
-        const currentlyCovered = !!job.isServicePlan;
-
-        if (!currentlyCovered) {
-            // Toggling ON: Check for Residential Membership Plan or Commercial Maintenance Agreement
-            const activeMembership = state.serviceAgreements?.find(
-                a => a.customerId === customer.id && a.status === 'Active'
-            );
-            const maintenanceAgreement = customer.maintenanceAgreement;
-
-            // 1. Residential / Membership Plan
-            if (activeMembership) {
-                if (activeMembership.visitsRemaining <= 0) {
-                    showToast.warn(`Membership plan "${activeMembership.planName}" has 0 remaining visits available.`);
-                }
-                const newVisitsRemaining = Math.max(0, activeMembership.visitsRemaining - 1);
-                const updatedAgreement = { ...activeMembership, visitsRemaining: newVisitsRemaining };
-
-                try {
-                    if (!state.isDemoMode) {
-                        await db.collection('serviceAgreements').doc(activeMembership.id).update(cleanUndefinedFields({ visitsRemaining: newVisitsRemaining }));
-                    }
-                } catch (err) {
-                    console.error("Failed to update membership visits remaining:", err);
-                }
-                dispatch({ type: 'UPDATE_AGREEMENT', payload: updatedAgreement });
-
-                const jobPayload = {
-                    ...job,
-                    isServicePlan: true,
-                    servicePlanType: 'membership' as const,
-                    servicePlanId: activeMembership.id
-                };
-                try {
-                    if (!state.isDemoMode) {
-                        await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({ isServicePlan: true, servicePlanType: 'membership', servicePlanId: activeMembership.id }));
-                    }
-                } catch (err) {
-                    console.error("Failed to update job service plan status:", err);
-                }
-                dispatch({ type: 'UPDATE_JOB', payload: jobPayload });
-                showToast.success(`Marked as part of ${activeMembership.planName} Membership. Remaining visits: ${newVisitsRemaining}`);
-                return;
-            }
-
-            // 2. Commercial / Maintenance Agreement
-            if (maintenanceAgreement && maintenanceAgreement.status === 'Active' && maintenanceAgreement.visits) {
-                const visits = [...maintenanceAgreement.visits];
-                let targetSlotIndex = visits.findIndex(v => v.jobId === job.id);
-                if (targetSlotIndex === -1) {
-                    targetSlotIndex = visits.findIndex(v => v.status !== 'Completed' && !v.jobId);
-                }
-                if (targetSlotIndex === -1) {
-                    targetSlotIndex = visits.findIndex(v => v.status !== 'Completed');
-                }
-
-                if (targetSlotIndex !== -1) {
-                    visits[targetSlotIndex] = {
-                        ...visits[targetSlotIndex],
-                        status: 'Completed',
-                        jobId: job.id,
-                        completedAt: new Date().toISOString()
-                    };
-
-                    const updatedAgreement = { ...maintenanceAgreement, visits };
-                    try {
-                        if (!state.isDemoMode) {
-                            await db.collection('customers').doc(customer.id).update(cleanUndefinedFields({ maintenanceAgreement: updatedAgreement }));
-                        }
-                    } catch (err) {
-                        console.error("Failed to update maintenance agreement visit:", err);
-                    }
-                    dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, maintenanceAgreement: updatedAgreement } });
-
-                    const jobPayload = {
-                        ...job,
-                        isServicePlan: true,
-                        servicePlanType: 'maintenanceAgreement' as const,
-                        servicePlanId: maintenanceAgreement.id
-                    };
-                    try {
-                        if (!state.isDemoMode) {
-                            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({ isServicePlan: true, servicePlanType: 'maintenanceAgreement', servicePlanId: maintenanceAgreement.id }));
-                        }
-                    } catch (err) {
-                        console.error("Failed to update job service plan status:", err);
-                    }
-                    dispatch({ type: 'UPDATE_JOB', payload: jobPayload });
-                    showToast.success(`Marked as part of Commercial Maintenance Agreement ("${maintenanceAgreement.agreementName}").`);
-                    return;
-                }
-            }
-
-            // 3. No active plan found
-            showToast.warn("Customer is not enrolled in an active membership plan or commercial maintenance agreement.");
-        } else {
-            // Toggling OFF: Restore visit count / reset visit slot
-            const planType = job.servicePlanType || (customer.customerType === 'Residential' ? 'membership' : 'maintenanceAgreement');
-
-            if (planType === 'membership') {
-                const activeMembership = state.serviceAgreements?.find(
-                    a => a.customerId === customer.id && a.status === 'Active'
-                ) || state.serviceAgreements?.find(a => a.id === job.servicePlanId);
-
-                if (activeMembership) {
-                    const maxVisits = activeMembership.visitsTotal || 99;
-                    const newVisitsRemaining = Math.min(maxVisits, activeMembership.visitsRemaining + 1);
-                    const updatedAgreement = { ...activeMembership, visitsRemaining: newVisitsRemaining };
-
-                    try {
-                        if (!state.isDemoMode) {
-                            await db.collection('serviceAgreements').doc(activeMembership.id).update(cleanUndefinedFields({ visitsRemaining: newVisitsRemaining }));
-                        }
-                    } catch (err) {
-                        console.error("Failed to restore membership visit count:", err);
-                    }
-                    dispatch({ type: 'UPDATE_AGREEMENT', payload: updatedAgreement });
-                }
-            } else if (planType === 'maintenanceAgreement' && customer.maintenanceAgreement) {
-                const agreement = customer.maintenanceAgreement;
-                const visits = (agreement.visits || []).map((v: any) => {
-                    if (v.jobId === job.id) {
-                        return {
-                            ...v,
-                            status: 'Pending',
-                            jobId: undefined,
-                            completedAt: undefined
-                        };
-                    }
-                    return v;
-                });
-                const updatedAgreement = { ...agreement, visits };
-                try {
-                    if (!state.isDemoMode) {
-                        await db.collection('customers').doc(customer.id).update(cleanUndefinedFields({ maintenanceAgreement: updatedAgreement }));
-                    }
-                } catch (err) {
-                    console.error("Failed to reset maintenance agreement visit:", err);
-                }
-                dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, maintenanceAgreement: updatedAgreement } });
-            }
-
-            const jobPayload = {
-                ...job,
-                isServicePlan: false,
-                servicePlanType: undefined,
-                servicePlanId: undefined
-            };
-            try {
-                if (!state.isDemoMode) {
-                    await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({ isServicePlan: false, servicePlanType: null, servicePlanId: null }));
-                }
-            } catch (err) {
-                console.error("Failed to clear job service plan status:", err);
-            }
-            dispatch({ type: 'UPDATE_JOB', payload: jobPayload });
-            showToast.info("Removed service plan coverage for visit.");
-        }
-    };
-
     const cleanContactsForFirestore = (contactsList: any[]) => {
         return contactsList.map((c: any) => {
             const cleaned = { ...c };
@@ -1198,7 +1444,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         const cleanedContacts = cleanContactsForFirestore(updatedContacts);
         await db.collection('customers').doc(customer.id).update(cleanUndefinedFields({ contacts: cleanedContacts }));
         dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, contacts: cleanedContacts } });
-        setNewContact({ id: '', name: '', title: '', phone: '', email: '', isPrimary: false, portalRole: undefined, allowedLocationIds: [], portalUserStatus: undefined });
+        setNewContact({ id: '', name: '', title: '', phone: '', email: '', isPrimary: false, isIncomingWorkOrderContact: false, contactRoles: [], portalRole: undefined, allowedLocationIds: [], portalUserStatus: undefined });
         setIsAddingContact(false);
         showToast.success("Contact saved.");
     };
@@ -1215,18 +1461,31 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         e.stopPropagation();
         if (!await globalConfirm("Delete this file permanently?")) return;
         try {
+            const fileUrl = file.url || file.dataUrl;
             if (file.parentType === 'customer') {
+                const updatedFiles = (customer.files || []).filter((f: any) => {
+                    if (file.id && f.id === file.id) return false;
+                    if (fileUrl && (f.url === fileUrl || f.dataUrl === fileUrl)) return false;
+                    return true;
+                });
                 await db.collection('customers').doc(customer.id).update(cleanUndefinedFields({
-                    files: firebase.firestore.FieldValue.arrayRemove(file)
+                    files: updatedFiles,
+                    updatedAt: new Date().toISOString()
                 }));
-                dispatch({ type: 'UPDATE_CUSTOMER', payload: { id: customer.id, files: (customer.files || []).filter((f: any) => f.id !== file.id) } });
+                dispatch({ type: 'UPDATE_CUSTOMER', payload: { id: customer.id, files: updatedFiles } });
             } else if (file.parentType === 'job' && file.parentId) {
                 const jobToUpdate = state.jobs.find((j: Job) => j.id === file.parentId);
                 if (jobToUpdate) {
+                    const updatedFiles = (jobToUpdate.files || []).filter((f: any) => {
+                        if (file.id && f.id === file.id) return false;
+                        if (fileUrl && (f.url === fileUrl || f.dataUrl === fileUrl)) return false;
+                        return true;
+                    });
                     await db.collection('jobs').doc(jobToUpdate.id).update(cleanUndefinedFields({
-                        files: firebase.firestore.FieldValue.arrayRemove(file)
+                        files: updatedFiles,
+                        updatedAt: new Date().toISOString()
                     }));
-                    dispatch({ type: 'UPDATE_JOB', payload: { id: jobToUpdate.id, files: (jobToUpdate.files || []).filter((f: any) => f.id !== file.id) } });
+                    dispatch({ type: 'UPDATE_JOB', payload: { id: jobToUpdate.id, files: updatedFiles } });
                 }
             } else {
                 showToast.error("Could not determine file origin.");
@@ -1409,6 +1668,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                     text: `Welcome to the ${orgName} Portal. Setup your account here: ${portalLink}`,
                     replyTo: org?.email,
                 },
+                senderUser: state.currentUser,
                 type: 'PortalInvite'
             };
 
@@ -1486,6 +1746,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                     text: `Welcome to the ${orgName} Portal. Setup your account here: ${portalLink}`,
                     replyTo: org?.email,
                 },
+                senderUser: state.currentUser,
                 type: 'PortalInvite'
             };
 
@@ -1498,198 +1759,38 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
     };
 
         const handleDownloadPDF = async () => {
-        try {
-            // @ts-ignore - html2pdf has no types available right now
-            const html2pdf = (await import('html2pdf.js')).default;
-            
-            const org = state.currentOrganization;
-            const orgName = org?.name || 'Service Provider';
-            const orgPhone = org?.phone || '';
-            const orgEmail = org?.email || '';
-            const orgAddress = org?.address ? `${org.address.street || ''}, ${org.address.city || ''}, ${org.address.state || ''} ${org.address.zip || ''}` : '';
-            
-            // Format date range
-            const dates = statementJobs.map(tx => new Date(tx.job.appointmentTime || tx.job.createdAt || 0).getTime());
-            const minDate = dates.length > 0 ? new Date(Math.min(...dates)).toLocaleDateString() : 'N/A';
-            const maxDate = dates.length > 0 ? new Date(Math.max(...dates)).toLocaleDateString() : 'N/A';
-            const statementPeriod = `${minDate} - ${maxDate}`;
-            const statementNumber = `SOA-${customer.id.slice(0, 8).toUpperCase()}-${Date.now().toString().slice(-6)}`;
-
-            const invoiceRows = statementJobs.map((tx, idx) => {
-                const j = tx.job;
-                const inv = tx.invoice;
-                const t = tx.total;
-                const p = tx.paid;
-                const d = tx.balance;
-                const rb = tx.runningBalance;
-                const addressStr = typeof j.address === 'string' ? j.address : `${(j.address as any)?.street || ''}, ${(j.address as any)?.city || ''}`;
-                const zebraStyle = idx % 2 === 0 ? 'background-color: #f8fafc;' : 'background-color: #ffffff;';
-                const statusStyle = inv.status === 'Paid' 
-                    ? 'color: #15803d; background-color: #f0fdf4; border: 1px solid #bbf7d0;' 
-                    : 'color: #b91c1c; background-color: #fef2f2; border: 1px solid #fecaca;';
+            try {
+                const org = state.currentOrganization;
                 
-                return `
-                    <tr style="${zebraStyle}">
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${new Date(j.appointmentTime || j.createdAt || '').toLocaleDateString()}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: bold;">#${inv.id || j.id.slice(0, 8)}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">
-                            <strong>${j.locationName || j.customerName || 'Main Address'}</strong><br/>
-                            <span style="font-size: 10px; color: #64748b;">${addressStr}</span>
-                        </td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-family: monospace;">${j.poNumber || '—'}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right;">${t.toFixed(2)}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right;">${p.toFixed(2)}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right; font-weight: bold; color: ${d > 0.01 ? '#dc2626' : '#1e293b'};">${d.toFixed(2)}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right; font-weight: bold;">${rb.toFixed(2)}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px;">${inv.dueDate ? new Date(inv.dueDate.replace(/-/g, '/')).toLocaleDateString() : 'Upon Receipt'}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: center;">
-                            <span style="display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1px 4px; border-radius: 3px; ${statusStyle}">
-                                ${inv.status || 'Unpaid'}
-                            </span>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
+                // Format date range & filter out any cancelled / void entries
+                const filteredJobs = filteredStatementJobs;
+                const dates = filteredJobs.map(tx => new Date(tx.job.appointmentTime || tx.job.createdAt || 0).getTime());
+                const minDate = dates.length > 0 ? new Date(Math.min(...dates)).toLocaleDateString() : 'N/A';
+                const maxDate = dates.length > 0 ? new Date(Math.max(...dates)).toLocaleDateString() : 'N/A';
+                const statementPeriod = `${minDate} - ${maxDate}`;
+                const statementNumber = `SOA-${customer.id.slice(0, 8).toUpperCase()}-${Date.now().toString().slice(-6)}`;
 
-            const htmlContent = `
-                <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; color: #1e293b; font-size: 11px; line-height: 1.5; background: #ffffff;">
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                        <tr>
-                            <td>
-                                <h1 style="font-size: 24px; font-weight: 800; color: #123A63; text-transform: uppercase; letter-spacing: -0.5px; margin: 0;">Statement of Account</h1>
-                                <p style="margin: 5px 0 0; font-size: 11px; color: #64748b;">Statement Date: ${new Date().toLocaleDateString()} | Statement #: ${statementNumber}</p>
-                            </td>
-                            <td style="font-size: 11px; color: #475569; text-align: right; line-height: 1.4; vertical-align: top;">
-                                <strong style="font-size: 13px; color: #1e293b;">${orgName}</strong><br/>
-                                ${orgAddress}<br/>
-                                Phone: ${orgPhone} | Email: ${orgEmail}<br/>
-                                ${org?.taxId ? `Tax ID: ${org.taxId}` : ''}
-                            </td>
-                        </tr>
-                    </table>
-                    
-                    <div style="border-bottom: 2px solid #123A63; margin-bottom: 20px;"></div>
+                const { doc, attachment } = await generateStatementOfAccountPdfAttachment({
+                    customer,
+                    org,
+                    statementJobs: filteredJobs,
+                    statementTotals,
+                    statementPeriod,
+                    statementNumber
+                });
 
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                        <tr>
-                            <td style="width: 50%; vertical-align: top;">
-                                <div style="font-size: 9px; font-weight: 700; color: #123A63; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; width: 95%;">Client Information</div>
-                                <div style="font-size: 11px; color: #334155;">
-                                    <p style="margin: 3px 0;"><strong>${customer.name}</strong></p>
-                                    <p style="margin: 3px 0;">${customer.address}</p>
-                                    ${customer.email ? `<p style="margin: 3px 0;">Email: ${customer.email}</p>` : ''}
-                                    ${customer.phone ? `<p style="margin: 3px 0;">Phone: ${customer.phone}</p>` : ''}
-                                </div>
-                            </td>
-                            <td style="width: 50%; vertical-align: top;">
-                                <div style="font-size: 9px; font-weight: 700; color: #123A63; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Account Summary & Terms</div>
-                                <div style="font-size: 11px; color: #334155;">
-                                    <p style="margin: 3px 0;">Client Code: <strong>${customer.id.slice(0, 8).toUpperCase()}</strong></p>
-                                    <p style="margin: 3px 0;">Account Number: <strong>${customer.id.replace(/\D/g, '')}</strong></p>
-                                    <p style="margin: 3px 0;">Payment Terms: <strong>${customer.paymentTerms || 'Net 30'}</strong></p>
-                                    <p style="margin: 3px 0;">Statement Period: <strong>${statementPeriod}</strong></p>
-                                </div>
-                            </td>
-                        </tr>
-                    </table>
+                doc.save(attachment.filename);
+                showToast.success("Statement PDF downloaded successfully!");
+            } catch (error: any) {
+                console.error("PDF generation error:", error);
+                showToast.error("Failed to generate PDF: " + error.message);
+            }
+        };
 
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; border: 1px solid #cbd5e1;">
-                        <tr>
-                            <th style="background-color: #123A63; color: #ffffff; font-weight: 700; font-size: 9px; text-transform: uppercase; text-align: center; padding: 6px; border: 1px solid #cbd5e1;">Previous Balance</th>
-                            <th style="background-color: #123A63; color: #ffffff; font-weight: 700; font-size: 9px; text-transform: uppercase; text-align: center; padding: 6px; border: 1px solid #cbd5e1;">New Charges</th>
-                            <th style="background-color: #123A63; color: #ffffff; font-weight: 700; font-size: 9px; text-transform: uppercase; text-align: center; padding: 6px; border: 1px solid #cbd5e1;">Payments Received</th>
-                            <th style="background-color: #123A63; color: #ffffff; font-weight: 700; font-size: 9px; text-transform: uppercase; text-align: center; padding: 6px; border: 1px solid #cbd5e1;">Adjustments</th>
-                            <th style="background-color: #0f2d50; color: #ffffff; font-weight: 700; font-size: 9px; text-transform: uppercase; text-align: center; padding: 6px; border: 1px solid #cbd5e1;">Amount Due</th>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px; text-align: center; font-size: 12px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc;">$0.00</td>
-                            <td style="padding: 8px; text-align: center; font-size: 12px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc;">${statementTotals.totalBilled.toFixed(2)}</td>
-                            <td style="padding: 8px; text-align: center; font-size: 12px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc; color: #16a34a;">${statementTotals.totalPaid.toFixed(2)}</td>
-                            <td style="padding: 8px; text-align: center; font-size: 12px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc;">$0.00</td>
-                            <td style="padding: 8px; text-align: center; font-size: 14px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f1f5f9; color: #dc2626;">${statementTotals.totalDue.toFixed(2)}</td>
-                        </tr>
-                    </table>
-
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                        <thead>
-                            <tr style="background: #123A63; color: #ffffff;">
-                                <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50; width: 10%;">Date</th>
-                                <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50; width: 12%;">Invoice #</th>
-                                <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50;">Property / Address</th>
-                                <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50; width: 12%;">Ref / PO #</th>
-                                <th style="padding: 6px 8px; text-align: right; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50; width: 10%;">Billed (Dr)</th>
-                                <th style="padding: 6px 8px; text-align: right; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50; width: 10%;">Paid (Cr)</th>
-                                <th style="padding: 6px 8px; text-align: right; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50; width: 12%;">Balance</th>
-                                <th style="padding: 6px 8px; text-align: right; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50; width: 12%;">Running Bal</th>
-                                <th style="padding: 6px 8px; text-align: left; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50; width: 12%;">Due Date</th>
-                                <th style="padding: 6px 8px; text-align: center; font-size: 9px; font-weight: 700; text-transform: uppercase; border-bottom: 2px solid #0f2d50; width: 10%;">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${invoiceRows}
-                        </tbody>
-                    </table>
-
-                    <div style="font-size: 9px; font-weight: 700; color: #123A63; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px;">Aging Analysis (Unpaid Balances)</div>
-                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px; border: 1px solid #cbd5e1;">
-                        <tr style="background-color: #f1f5f9; color: #475569; font-weight: bold; font-size: 9px; text-transform: uppercase; text-align: center;">
-                            <th style="padding: 5px; border: 1px solid #cbd5e1;">Current</th>
-                            <th style="padding: 5px; border: 1px solid #cbd5e1;">1 - 30 Days</th>
-                            <th style="padding: 5px; border: 1px solid #cbd5e1;">31 - 60 Days</th>
-                            <th style="padding: 5px; border: 1px solid #cbd5e1;">61 - 90 Days</th>
-                            <th style="padding: 5px; border: 1px solid #cbd5e1;">90+ Days</th>
-                            <th style="padding: 5px; border: 1px solid #cbd5e1; background-color: #123A63; color: #ffffff;">Total Outstanding</th>
-                        </tr>
-                        <tr style="text-align: center; font-size: 11px; font-weight: bold;">
-                            <td style="padding: 8px; border: 1px solid #cbd5e1;">${statementTotals.aging.current.toFixed(2)}</td>
-                            <td style="padding: 8px; border: 1px solid #cbd5e1; color: ${statementTotals.aging.days30 > 0 ? '#b45309' : '#1e293b'}">${statementTotals.aging.days30.toFixed(2)}</td>
-                            <td style="padding: 8px; border: 1px solid #cbd5e1; color: ${statementTotals.aging.days60 > 0 ? '#b45309' : '#1e293b'}">${statementTotals.aging.days60.toFixed(2)}</td>
-                            <td style="padding: 8px; border: 1px solid #cbd5e1; color: ${statementTotals.aging.days90 > 0 ? '#dc2626' : '#1e293b'}">${statementTotals.aging.days90.toFixed(2)}</td>
-                            <td style="padding: 8px; border: 1px solid #cbd5e1; color: ${statementTotals.aging.older > 0 ? '#dc2626' : '#1e293b'}">${statementTotals.aging.older.toFixed(2)}</td>
-                            <td style="padding: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc; font-size: 12px; color: #dc2626;">${statementTotals.totalDue.toFixed(2)}</td>
-                        </tr>
-                    </table>
-
-                    <table style="width: 100%; border-collapse: collapse; font-size: 9px; color: #64748b; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 15px;">
-                        <tr>
-                            <td style="width: 60%; vertical-align: top; padding-right: 20px;">
-                                <strong style="color: #1e293b; text-transform: uppercase; font-size: 10px; display: block; margin-bottom: 6px;">Payment Instructions</strong>
-                                Please submit check payments payable to <strong>${orgName}</strong>.<br/>
-                                For direct bank remittance (ACH/Wire), please contact billing department at <strong>${orgEmail}</strong>.<br/>
-                                Please reference the Statement Number on your remittance advice.
-                            </td>
-                            <td style="width: 40%; vertical-align: top; text-align: right; line-height: 1.4;">
-                                <strong>Corporate Remittance Support</strong><br/>
-                                Email: ${orgEmail}<br/>
-                                Phone: ${orgPhone}<br/>
-                                <span style="font-size: 8px; color: #94a3b8; display: block; margin-top: 10px;">CONFIDENTIALITY NOTICE: This document contains proprietary financial information intended solely for the corporate account holder.</span>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-            `;
-
-            const opt: any = {
-                margin: 10,
-                filename: `Statement-${customer.name.replace(/[^a-z0-9]/gi, '_')}-${statementNumber}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-
-            await html2pdf().from(htmlContent).set(opt).save();
-            showToast.success("Statement PDF downloaded successfully!");
-        } catch (error: any) {
-            console.error("PDF generation error:", error);
-            showToast.error("Failed to generate PDF: " + error.message);
-        }
-    };
-
-        const renderInOutTimes = (job: Job) => {
-        const checkIn = job.checkInTime || (job as any).clockIn;
-        const checkOut = job.checkOutTime || (job as any).clockOut;
+    const renderInOutTimes = (job: Job) => {
+        const timeSummary = getJobTimeSummary(job);
         
-        if (!checkIn && !checkOut) {
+        if (!timeSummary.hasTimeRecorded) {
             if (job.appointmentTime) {
                 try {
                     const dateObj = new Date(job.appointmentTime);
@@ -1706,25 +1807,26 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             return <span className="text-gray-400 dark:text-gray-600">—</span>;
         }
         
-        const formatTime = (isoString?: string) => {
-            if (!isoString) return '—';
-            try {
-                return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            } catch {
-                return '—';
-            }
-        };
-        
         return (
             <div className="flex flex-col text-[10px] leading-snug">
-                {checkIn && (
+                {timeSummary.formattedInTime && (
                     <span className="text-slate-600 dark:text-slate-400 font-medium">
-                        <span className="text-slate-400 mr-0.5">In:</span> {formatTime(checkIn)}
+                        <span className="text-slate-400 mr-0.5">In:</span> {timeSummary.formattedInTime}
                     </span>
                 )}
-                {checkOut && (
+                {timeSummary.formattedOutTime && (
                     <span className="text-slate-600 dark:text-slate-400 font-medium">
-                        <span className="text-slate-400 mr-0.5">Out:</span> {formatTime(checkOut)}
+                        <span className="text-slate-400 mr-0.5">Out:</span> {timeSummary.formattedOutTime}
+                    </span>
+                )}
+                {timeSummary.status === 'in_progress' && (
+                    <span className="text-amber-600 dark:text-amber-400 font-extrabold text-[9px] uppercase animate-pulse">
+                        Active On Site
+                    </span>
+                )}
+                {timeSummary.formattedDuration && (
+                    <span className="text-indigo-600 dark:text-indigo-400 font-bold text-[9px]">
+                        {timeSummary.formattedDuration}
                     </span>
                 )}
             </div>
@@ -1780,7 +1882,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                         href={`/#/proposal-view/${p.id}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        title={p.title || `View Proposal #${p.id.slice(0, 8)}`}
+                        title={p.title || `View Proposal #${p.proposalNumber || p.id}`}
                         className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-100 dark:border-blue-900/50 hover:bg-blue-100 transition-colors"
                     >
                         <FileText size={10} />
@@ -1791,44 +1893,61 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         }
 
         // 3. Invoice badges (supporting multiple linked jobs/invoices)
-        const relatedJobs = (state.jobs || []).filter((j: any) => 
+        const isRealInvoiceObj = (inv: any) => {
+            if (!inv || !inv.id) return false;
+            const hasItems = Array.isArray(inv.items) && inv.items.length > 0;
+            const hasTotal = (Number(inv.totalAmount) || Number(inv.amount) || Number(inv.subtotal) || 0) > 0;
+            const isPaidOrSent = inv.status === 'Paid' || inv.status === 'Sent' || inv.status === 'Partially Paid';
+            return hasItems || hasTotal || isPaidOrSent;
+        };
+
+        const rawRelatedJobs = (state.jobs || []).filter((j: any) => 
             (j.id === job.id || 
              job.linkedJobIds?.includes(j.id) || 
              j.linkedJobIds?.includes(job.id) || 
              (j.invoice && job.linkedInvoiceIds?.includes(j.invoice.id))) && 
-            j.invoice
+            isRealInvoiceObj(j.invoice)
         );
 
-        if (relatedJobs.length === 0 && job.invoice) {
+        // Deduplicate related jobs by invoice ID
+        const seenInvIds = new Set<string>();
+        const relatedJobs: any[] = [];
+        for (const rj of rawRelatedJobs) {
+            const invId = rj.invoice.id;
+            if (!seenInvIds.has(invId)) {
+                seenInvIds.add(invId);
+                relatedJobs.push(rj);
+            }
+        }
+
+        if (relatedJobs.length === 0 && isRealInvoiceObj(job.invoice)) {
             docs.push(
-                <a 
+                <button 
                     key={`inv-fallback-${job.id}`}
-                    href={`/#/invoice/${job.id}`} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    title="View Invoice"
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 hover:bg-amber-100 transition-colors"
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setEditingInvoiceJobId(job.id); }}
+                    title="Manage / View Invoice"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 hover:bg-amber-100 transition-colors cursor-pointer"
                 >
                     <FileText size={10} />
                     <span className="text-[9px] font-bold">Inv</span>
-                </a>
+                </button>
             );
         } else {
             relatedJobs.forEach((rj: any, idx: number) => {
                 const badgeLabel = relatedJobs.length > 1 ? `Inv ${idx + 1}` : 'Inv';
                 const dateStr = rj.appointmentTime ? new Date(rj.appointmentTime).toLocaleDateString() : '';
                 docs.push(
-                    <a 
+                    <button 
                         key={`inv-${rj.id}`}
-                        href={`/#/invoice/${rj.id}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        title={`View Invoice for Job ${rj.id.slice(0, 8)} ${dateStr ? `on ${dateStr}` : ''}`}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 hover:bg-amber-100 transition-colors"
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setEditingInvoiceJobId(rj.id); }}
+                        title={`Manage / View Invoice for Job ${rj.id.slice(0, 8)} ${dateStr ? `on ${dateStr}` : ''}`}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 hover:bg-amber-100 transition-colors cursor-pointer"
                     >
                         <FileText size={10} />
                         <span className="text-[9px] font-bold">{badgeLabel}</span>
-                    </a>
+                    </button>
                 );
             });
         }
@@ -1859,10 +1978,10 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                 const mimeType = file.type || file.mimeType || file.fileType || '';
                 const fileUrl = file.url || file.dataUrl || '';
                 
-                // Exclude photos/images
+                // Exclude photos/images and internal expense/vendor receipts
                 const isImage = mimeType.startsWith('image/') || 
                                 /\.(png|jpe?g|gif|webp|heic)$/i.test(fileName);
-                if (isImage) return;
+                if (isImage || isInternalExpenseFile(file)) return;
 
                 // Skip files without a valid URL
                 if (!fileUrl) return;
@@ -1903,18 +2022,32 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         const orgPhone = org?.phone || '';
         const orgEmail = org?.email || '';
         const orgAddress = org?.address ? `${org.address.street || ''}, ${org.address.city || ''}, ${org.address.state || ''} ${org.address.zip || ''}` : '';
+        const isTekAir = String(org?.name || '').toLowerCase().includes('tekair') || org?.id === 'org-1765817997819';
+        const licenseNumber = org?.licenseNumber || org?.taxId || (isTekAir ? 'TACLA73240E' : '');
+        const orgLogo = org?.letterheadDataUrl || org?.logoUrl || '';
         
         if (!await globalConfirm(`Send Statement of Account directly to ${emailTarget}?`)) return;
 
         try {
-            // Format date range
-            const dates = statementJobs.map(tx => new Date(tx.job.appointmentTime || tx.job.createdAt || 0).getTime());
+            // Format date range & filter out any cancelled / void entries
+            const filteredJobs = statementJobs.filter(tx => !isJobCancelledOrVoid(tx.job) && (tx.total > 0 || (Array.isArray(tx.invoice?.items) && tx.invoice.items.length > 0)));
+            const dates = filteredJobs.map(tx => new Date(tx.job.appointmentTime || tx.job.createdAt || 0).getTime());
             const minDate = dates.length > 0 ? new Date(Math.min(...dates)).toLocaleDateString() : 'N/A';
             const maxDate = dates.length > 0 ? new Date(Math.max(...dates)).toLocaleDateString() : 'N/A';
             const statementPeriod = `${minDate} - ${maxDate}`;
             const statementNumber = `SOA-${customer.id.slice(0, 8).toUpperCase()}-${Date.now().toString().slice(-6)}`;
 
-            const invoiceRows = statementJobs.map((tx, idx) => {
+            // Generate official branded vector PDF attachment
+            const { attachment } = await generateStatementOfAccountPdfAttachment({
+                customer,
+                org,
+                statementJobs: filteredJobs,
+                statementTotals,
+                statementPeriod,
+                statementNumber
+            });
+
+            const invoiceRows = filteredJobs.map((tx, idx) => {
                 const j = tx.job;
                 const inv = tx.invoice;
                 const t = tx.total;
@@ -1936,10 +2069,10 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                             <span style="font-size: 10px; color: #64748b;">${addressStr}</span>
                         </td>
                         <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-family: monospace;">${j.poNumber || '—'}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right;">${t.toFixed(2)}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right;">${p.toFixed(2)}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right; font-weight: bold; color: ${d > 0.01 ? '#dc2626' : '#1e293b'};">${d.toFixed(2)}</td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right; font-weight: bold;">${rb.toFixed(2)}</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right;">$${t.toFixed(2)}</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right;">$${p.toFixed(2)}</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right; font-weight: bold; color: ${d > 0.01 ? '#dc2626' : '#1e293b'};">$${d.toFixed(2)}</td>
+                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: right; font-weight: bold;">$${rb.toFixed(2)}</td>
                         <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 11px; text-align: center;">
                             <span style="display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase; padding: 1px 4px; border-radius: 3px; ${statusStyle}">
                                 ${inv.status || 'Unpaid'}
@@ -1951,8 +2084,10 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
 
             const mailPayload = {
                 to: [emailTarget.trim().toLowerCase()],
+                attachments: [attachment],
                 message: {
-                    subject: `Statement of Account: ${customer.name}`,
+                    subject: `Statement of Account: ${customer.name} - ${statementNumber}`,
+                    attachments: [attachment],
                     html: `
                         <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 750px; margin: auto; padding: 30px; border: 1px solid #e2e8f0; color: #1e293b; font-size: 12px; line-height: 1.5; background-color: #ffffff;">
                             
@@ -1960,13 +2095,15 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                             <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
                                 <tr>
                                     <td>
+                                        ${orgLogo ? `<img src="${orgLogo}" style="max-height: 48px; max-width: 180px; margin-bottom: 8px; object-fit: contain;" alt="${orgName}"/><br/>` : ''}
                                         <h2 style="font-size: 22px; font-weight: 800; color: #123A63; text-transform: uppercase; margin: 0; letter-spacing: -0.5px;">Statement of Account</h2>
                                         <p style="margin: 5px 0 0; font-size: 11px; color: #64748b;">Statement Date: ${new Date().toLocaleDateString()} | Statement #: ${statementNumber}</p>
                                     </td>
                                     <td style="font-size: 11px; color: #475569; text-align: right; line-height: 1.4; vertical-align: top;">
-                                        <strong style="font-size: 12px; color: #1e293b;">${orgName}</strong><br/>
+                                        <strong style="font-size: 13px; color: #1e293b;">${orgName}</strong><br/>
                                         ${orgAddress}<br/>
-                                        Phone: ${orgPhone}
+                                        Phone: ${orgPhone} | Email: ${orgEmail}<br/>
+                                        ${licenseNumber ? `<span style="font-weight: bold; color: #123A63;">License #: ${licenseNumber}</span>` : ''}
                                     </td>
                                 </tr>
                             </table>
@@ -1984,15 +2121,15 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                     <td style="width: 50%; vertical-align: top; padding-left: 15px;">
                                         <div style="font-size: 9px; font-weight: 700; color: #123A63; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px; margin-bottom: 6px;">Account Summary & Terms</div>
                                         <p style="margin: 2px 0; color: #334155;">Client Code: <strong>${customer.id.slice(0, 8).toUpperCase()}</strong></p>
-                                        <p style="margin: 2px 0; color: #334155;">Account Number: <strong>${customer.id.replace(/\D/g, '')}</strong></p>
-                                        <p style="margin: 2px 0; color: #334155;">Payment Terms: <strong>${customer.paymentTerms || 'Net 30'}</strong></p>
+                                        <p style="margin: 2px 0; color: #334155;">Account Number: <strong>${customer.accountNumber || getOrGenerateAccountNumber(customer)}</strong></p>
+                                        <p style="margin: 2px 0; color: #334155;">Payment Terms: <strong>${(customer.paymentTerms || 'Net 30').replace(/_/g, ' ').toUpperCase()}</strong></p>
                                         <p style="margin: 2px 0; color: #334155;">Statement Period: <strong>${statementPeriod}</strong></p>
                                     </td>
                                 </tr>
                             </table>
 
-                            <p style="color: #334155; margin-bottom: 20px;">Dear Finance Team,</p>
-                            <p style="color: #334155; margin-bottom: 25px;">Please find below the corporate Statement of Account for <strong>${customer.name}</strong> summarizing all recent service invoices, payments, and outstanding balances.</p>
+                            <p style="color: #334155; margin-bottom: 12px;">Dear Finance Team,</p>
+                            <p style="color: #334155; margin-bottom: 20px;">Please find below the corporate Statement of Account for <strong>${customer.name}</strong> summarizing all recent service invoices, payments, and outstanding balances. An official branded vector PDF is attached to this email for your accounting records.</p>
 
                             <!-- Financial Summary -->
                             <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; border: 1px solid #cbd5e1;">
@@ -2005,10 +2142,10 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                 </tr>
                                 <tr>
                                     <td style="padding: 10px; text-align: center; font-size: 13px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc;">$0.00</td>
-                                    <td style="padding: 10px; text-align: center; font-size: 13px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc;">${statementTotals.totalBilled.toFixed(2)}</td>
-                                    <td style="padding: 10px; text-align: center; font-size: 13px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc; color: #16a34a;">${statementTotals.totalPaid.toFixed(2)}</td>
+                                    <td style="padding: 10px; text-align: center; font-size: 13px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc;">$${statementTotals.totalBilled.toFixed(2)}</td>
+                                    <td style="padding: 10px; text-align: center; font-size: 13px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc; color: #16a34a;">-$${statementTotals.totalPaid.toFixed(2)}</td>
                                     <td style="padding: 10px; text-align: center; font-size: 13px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f8fafc;">$0.00</td>
-                                    <td style="padding: 10px; text-align: center; font-size: 14px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f1f5f9; color: #dc2626;">${statementTotals.totalDue.toFixed(2)}</td>
+                                    <td style="padding: 10px; text-align: center; font-size: 14px; font-weight: 700; border: 1px solid #cbd5e1; background-color: #f1f5f9; color: #dc2626;">$${statementTotals.totalDue.toFixed(2)}</td>
                                 </tr>
                             </table>
 
@@ -2044,25 +2181,29 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                     <th style="background-color: #123A63; color: #ffffff; font-weight: bold; font-size: 8px; text-transform: uppercase; text-align: center; padding: 5px; border: 1px solid #cbd5e1;">Total Outstanding</th>
                                 </tr>
                                 <tr>
-                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1;">${statementTotals.aging.current.toFixed(2)}</td>
-                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; color: ${statementTotals.aging.days30 > 0 ? '#b45309' : '#1e293b'};">${statementTotals.aging.days30.toFixed(2)}</td>
-                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; color: ${statementTotals.aging.days60 > 0 ? '#b45309' : '#1e293b'};">${statementTotals.aging.days60.toFixed(2)}</td>
-                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; color: ${statementTotals.aging.days90 > 0 ? '#dc2626' : '#1e293b'};">${statementTotals.aging.days90.toFixed(2)}</td>
-                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; color: ${statementTotals.aging.older > 0 ? '#dc2626' : '#1e293b'};">${statementTotals.aging.older.toFixed(2)}</td>
-                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; background-color: #f8fafc; color: #dc2626;">${statementTotals.totalDue.toFixed(2)}</td>
+                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1;">$${statementTotals.aging.current.toFixed(2)}</td>
+                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; color: ${statementTotals.aging.days30 > 0 ? '#b45309' : '#1e293b'};">$${statementTotals.aging.days30.toFixed(2)}</td>
+                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; color: ${statementTotals.aging.days60 > 0 ? '#b45309' : '#1e293b'};">$${statementTotals.aging.days60.toFixed(2)}</td>
+                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; color: ${statementTotals.aging.days90 > 0 ? '#dc2626' : '#1e293b'};">$${statementTotals.aging.days90.toFixed(2)}</td>
+                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; color: ${statementTotals.aging.older > 0 ? '#dc2626' : '#1e293b'};">$${statementTotals.aging.older.toFixed(2)}</td>
+                                    <td style="padding: 8px; text-align: center; font-size: 11px; font-weight: bold; border: 1px solid #cbd5e1; background-color: #f8fafc; color: #dc2626;">$${statementTotals.totalDue.toFixed(2)}</td>
                                 </tr>
                             </table>
 
+                            ${formatPaymentInstructionsHtml(org)}
+
                             <div style="border-top: 1px solid #e2e8f0; padding-top: 15px; font-size: 10px; color: #64748b;">
-                                <strong>Corporate Remittance Instructions:</strong><br/>
-                                Please remit check payments payable to <strong>${orgName}</strong> or contact billing at <strong>${orgEmail}</strong> for ACH bank wiring details. Reference the statement number on your remittance advice.<br/>
-                                <span style="font-size: 8px; color: #94a3b8; display: block; margin-top: 10px;">CONFIDENTIALITY DISCLAIMER: This email and any attachments contain confidential proprietary financial information intended solely for the customer named above.</span>
+                                <strong>Corporate Remittance Support:</strong><br/>
+                                Please reference Statement #${statementNumber} on your remittance advice. For inquiries, reply directly to this email or contact <strong>${orgEmail || orgPhone}</strong>.<br/>
+                                ${licenseNumber ? `<span style="font-size: 9px; display: block; margin-top: 6px;">STATE LICENSE # ${licenseNumber} — ${orgName}</span>` : ''}
+                                <span style="font-size: 8px; color: #94a3b8; display: block; margin-top: 6px;">CONFIDENTIALITY DISCLAIMER: This email and any attachments contain confidential proprietary financial information intended solely for the customer named above.</span>
                             </div>
                         </div>
                     `,
-                    text: `Statement of Account for ${customer.name}. Outstanding Balance: ${statementTotals.totalDue.toFixed(2)}.`,
+                    text: `Statement of Account for ${customer.name}. Total Outstanding Balance: $${statementTotals.totalDue.toFixed(2)}. An official PDF statement is attached.`,
                     replyTo: org?.email,
                 },
+                senderUser: state.currentUser,
                 type: 'Statement'
             };
 
@@ -2158,28 +2299,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         }
     };
 
-    // --- Maintenance Schedule Tab States & Handlers ---
-    const [isEditingAgreement, setIsEditingAgreement] = useState(false);
-    const [agreementFormData, setAgreementFormData] = useState<any>({
-        agreementName: '',
-        status: 'Draft',
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        value: 1200,
-        billingFrequency: 'Annually',
-        paymentTerms: 'net_30',
-        coveredItems: ['Filter replacement', 'Coil cleaning', 'Belt inspection', 'Electrical check'],
-        coveredEquipmentIds: [],
-        frequency: 'Quarterly',
-        visits: [],
-        notes: ''
-    });
-    const [newCoveredItem, setNewCoveredItem] = useState('');
-    const [notificationTemplate, setNotificationTemplate] = useState<'reminder' | 'overdue'>('reminder');
-    const [notificationRecipient, setNotificationRecipient] = useState('');
-    const [selectedVisitForNotification, setSelectedVisitForNotification] = useState<string | null>(null);
-    const [isSendingNotification, setIsSendingNotification] = useState(false);
-
+    // --- Maintenance Schedule Tab Handlers ---
     const getVisitStatus = (visit: any) => {
         if (!visit.jobId) return visit.status;
         const linkedJob = state.jobs.find((j: any) => j.id === visit.jobId);
@@ -2192,29 +2312,6 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
         
         return 'Scheduled';
     };
-
-
-    // Initialize agreement form data when customer or editing state changes
-    React.useEffect(() => {
-        if (customer?.maintenanceAgreement) {
-            setAgreementFormData(customer.maintenanceAgreement);
-        } else {
-            setAgreementFormData({
-                agreementName: 'Commercial Comfort Plan',
-                status: 'Draft',
-                startDate: new Date().toISOString().split('T')[0],
-                endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                value: 1200,
-                billingFrequency: 'Annually',
-                paymentTerms: 'net_30',
-                coveredItems: ['Filter replacement', 'Coil cleaning', 'Belt inspection', 'Electrical check'],
-                coveredEquipmentIds: (customer?.equipment || []).map((e: any) => e.id),
-                frequency: 'Quarterly',
-                visits: [],
-                notes: ''
-            });
-        }
-    }, [customer?.id, customer?.maintenanceAgreement, isEditingAgreement]);
 
     const generateMaintenanceVisits = (startDateStr: string, endDateStr: string, frequency: string) => {
         if (!startDateStr || !endDateStr) return [];
@@ -2461,7 +2558,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             return;
         }
 
-        const visit = customer.maintenanceAgreement?.visits.find((v: any) => v.id === visitId);
+        const visit = customer.maintenanceAgreement?.visits?.find((v: any) => v.id === visitId);
         if (!visit) return;
 
         setIsSendingNotification(true);
@@ -2471,7 +2568,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
             : `Action Required: Scheduled Maintenance Overdue - ${customer.name}`;
 
         const coveredAssets = (customer.equipment || []).filter((eq: any) => 
-            customer.maintenanceAgreement?.coveredEquipmentIds.includes(eq.id)
+            customer.maintenanceAgreement?.coveredEquipmentIds?.includes(eq.id)
         );
 
         const emailHtml = `
@@ -2817,64 +2914,238 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
              </Modal>
             <Modal isOpen={isOpen} onClose={onClose} title="" size="xl">
                 {/* Custom Header */}
-                <div className="flex justify-between items-start mb-6">
-                    <div>
-                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            {customer.name}
-                            {membership && <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full font-bold">Gold Member</span>}
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-4 mb-6">
+                    <div className="min-w-0 flex-1">
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2 truncate">
+                            <span className="truncate">{customer.name}</span>
+                            {membership && (
+                                <span className={`px-2 py-0.5 text-xs rounded-full font-bold shrink-0 ${
+                                    isRecurringMembership(membership) 
+                                        ? 'bg-yellow-100 text-yellow-800' 
+                                        : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300'
+                                }`}>
+                                    {isRecurringMembership(membership) ? (membership.planName || 'Member') : 'Commercial Contract'}
+                                </span>
+                            )}
                         </h2>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">
                             {customer.address}
                             {customer.city && `, ${customer.city}`}
                             {customer.state && `, ${customer.state}`}
                             {customer.zip && ` ${customer.zip}`}
                         </p>
                     </div>
-                    <div className="flex gap-2 flex-wrap items-start justify-end">
-                        <Button onClick={handleCopyRef} variant="secondary" aria-label="Copy Reference" title="Copy Reference" className="text-xs p-2 shrink-0">
+                    <div className="flex gap-2 flex-wrap items-center justify-end shrink-0">
+                        <Button onClick={handleCopyRef} variant="secondary" aria-label="Copy Reference" title="Copy Reference" className="text-xs p-2 shrink-0 cursor-pointer">
                             <Copy size={14} />
                         </Button>
-                        <Button onClick={() => setShareModalOpen(true)} variant="secondary" aria-label="Share Customer" title="Share Customer" className="text-xs p-2 shrink-0">
+                        <Button onClick={() => setShareModalOpen(true)} variant="secondary" aria-label="Share Customer" title="Share Customer" className="text-xs p-2 shrink-0 cursor-pointer">
                             <Share2 size={14} />
                         </Button>
-                        <Button onClick={handleSendInvite} disabled={isSendingInvite} variant="secondary" className="text-xs flex items-center gap-2 shrink-0">
-                            <Mail size={14} /> {isSendingInvite ? 'Sending...' : 'Send Portal Invite'}
+                        <Button onClick={handleSendInvite} disabled={isSendingInvite} variant="secondary" className="text-xs flex items-center gap-1.5 sm:gap-2 shrink-0 cursor-pointer">
+                            <Mail size={14} /> <span>{isSendingInvite ? 'Sending...' : 'Send Portal Invite'}</span>
                         </Button>
-                        <Button onClick={handleDeleteCustomer} className="bg-red-700 text-white hover:bg-red-800 text-xs font-bold shadow-md border-none shrink-0">Delete</Button>
+                        <Button onClick={handleDeleteCustomer} className="bg-red-700 text-white hover:bg-red-800 text-xs font-bold shadow-md border-none shrink-0 cursor-pointer">Delete</Button>
                     </div>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6 overflow-x-auto">
-                    {[
-                        { id: 'overview', icon: User, label: 'Overview' },
-                        { id: 'equipment', icon: Wrench, label: 'Equipment' },
-                        { id: 'history', icon: FileText, label: 'Service History' },
-                        { id: 'financials', icon: DollarSign, label: 'Financials' },
-                        { id: 'maintenance', icon: Calendar, label: 'Maintenance Schedule' },
-                        { id: 'warranties', icon: ShieldCheck, label: 'Warranties' },
-                        { id: 'docs', icon: Image, label: 'Docs & Media' },
-                        { id: 'communications', icon: MessageSquare, label: 'Communications Log' },
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
-                            className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors whitespace-nowrap ${
-                                activeTab === tab.id
-                                    ? 'border-primary-600 text-primary-600 dark:text-primary-400'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-                            }`}
+                {/* Tab Navigation Breadcrumb */}
+                {activeTab !== 'overview' && (
+                    <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-200 dark:border-slate-700">
+                        <button 
+                            type="button" 
+                            onClick={() => setActiveTab('overview')} 
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors cursor-pointer shadow-xs"
                         >
-                            <tab.icon size={16} /> {t(tab.label)}
+                            <ArrowLeft size={14} /> Back to Overview Hub
                         </button>
-                    ))}
-                </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                {customer.name}
+                            </span>
+                            <span className="text-slate-300 dark:text-slate-600">&bull;</span>
+                            <span className="text-xs font-extrabold text-[#123A63] dark:text-sky-400 uppercase tracking-wider bg-sky-50 dark:bg-sky-950/40 px-2.5 py-1 rounded-md border border-sky-200 dark:border-sky-800">
+                                {activeTab === 'financials' ? 'Statement & Financials' :
+                                 activeTab === 'equipment' ? 'Equipment & Assets' :
+                                 activeTab === 'history' ? 'Service History' :
+                                 activeTab === 'maintenance' ? 'Maintenance Schedule' :
+                                 activeTab === 'warranties' ? 'Warranties' :
+                                 activeTab === 'docs' ? 'Document Drive' :
+                                 activeTab === 'communications' ? 'Communications Log' : 'Details'}
+                            </span>
+                        </div>
+                    </div>
+                )}
 
                 {/* Tab Content */}
-                <div className="h-[50vh] overflow-y-auto custom-scrollbar p-1">
+                <div className="flex-1 min-h-[60vh] custom-scrollbar p-1 pb-8">
                     
                     {activeTab === 'overview' && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="space-y-6">
+                            {/* Management & Operations Hub Tiles */}
+                            <div className="bg-slate-50/80 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="font-extrabold text-xs uppercase tracking-wider text-[#123A63] dark:text-sky-400 flex items-center gap-1.5">
+                                        <LayoutGrid size={14} />
+                                        Customer Management Modules
+                                    </h4>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Direct Access</span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    {/* Statement of Account */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('financials')}
+                                        className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-emerald-500 hover:shadow-md transition-all text-left group cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 group-hover:scale-110 transition-transform">
+                                                <DollarSign size={16} />
+                                            </span>
+                                            {statementTotals.totalDue > 0 ? (
+                                                <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300">
+                                                    ${statementTotals.totalDue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300">
+                                                    Current
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 transition-colors">
+                                            Statement &amp; Financials
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                            {statementJobs.length} Invoices &bull; Ledger
+                                        </div>
+                                    </button>
+
+                                    {/* Equipment */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('equipment')}
+                                        className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 hover:shadow-md transition-all text-left group cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 group-hover:scale-110 transition-transform">
+                                                <Wrench size={16} />
+                                            </span>
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                                {(customer.equipment || []).length}
+                                            </span>
+                                        </div>
+                                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-blue-600 transition-colors">
+                                            Equipment &amp; Assets
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                            Manage units &amp; systems
+                                        </div>
+                                    </button>
+
+                                    {/* Service History */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('history')}
+                                        className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:shadow-md transition-all text-left group cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 group-hover:scale-110 transition-transform">
+                                                <FileText size={16} />
+                                            </span>
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                                {customerJobs.length}
+                                            </span>
+                                        </div>
+                                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-indigo-600 transition-colors">
+                                            Service History
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                            Jobs &amp; Work Orders
+                                        </div>
+                                    </button>
+
+                                    {/* Maintenance Schedule */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('maintenance')}
+                                        className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-amber-500 hover:shadow-md transition-all text-left group cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 group-hover:scale-110 transition-transform">
+                                                <Calendar size={16} />
+                                            </span>
+                                        </div>
+                                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-amber-600 transition-colors">
+                                            Maintenance Schedule
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                            Inspection agreements
+                                        </div>
+                                    </button>
+
+                                    {/* Warranties */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('warranties')}
+                                        className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-purple-500 hover:shadow-md transition-all text-left group cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 group-hover:scale-110 transition-transform">
+                                                <ShieldCheck size={16} />
+                                            </span>
+                                        </div>
+                                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-purple-600 transition-colors">
+                                            Warranties
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                            Coverage &amp; certs
+                                        </div>
+                                    </button>
+
+                                    {/* Document Drive */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('docs')}
+                                        className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-sky-500 hover:shadow-md transition-all text-left group cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="p-2 rounded-lg bg-sky-50 dark:bg-sky-950/40 text-sky-600 group-hover:scale-110 transition-transform">
+                                                <HardDrive size={16} />
+                                            </span>
+                                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                                {(customer.files || []).length + customerJobs.reduce((acc, j) => acc + (j.files?.length || 0), 0)}
+                                            </span>
+                                        </div>
+                                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-sky-600 transition-colors">
+                                            Document Drive
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                            Cloud files &amp; blueprints
+                                        </div>
+                                    </button>
+
+                                    {/* Communications Log */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTab('communications')}
+                                        className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-emerald-500 hover:shadow-md transition-all text-left group cursor-pointer"
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 group-hover:scale-110 transition-transform">
+                                                <MessageSquare size={16} />
+                                            </span>
+                                        </div>
+                                        <div className="font-bold text-xs text-slate-800 dark:text-slate-100 group-hover:text-emerald-600 transition-colors">
+                                            Communications
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                            Call, SMS &amp; email logs
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="md:col-span-2 space-y-4">
                                 <div className="flex justify-between items-center">
                                     <h3 className="font-bold text-gray-900 dark:text-white">Contact Details</h3>
@@ -2898,6 +3169,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                 {isEditing ? (
                                     <div className="space-y-3">
                                         <Input label="Name" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} />
+                                        <Input label="Account Number" value={formData.accountNumber || ''} onChange={e => setFormData({...formData, accountNumber: e.target.value})} placeholder="e.g. ACT-1001" />
                                         <Select 
                                             label="Customer Type" 
                                             value={formData.customerType || 'Residential'} 
@@ -2935,43 +3207,757 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                         )}
                                         <Input label="Email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} />
                                         <Input label="Phone" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} />
-                                        <Input 
-                                            label="Contracted Rate ($/hr)" 
-                                            type="number" 
-                                            value={formData.pricingRules?.contractedRate || ''} 
-                                            onChange={e => setFormData({
-                                                ...formData,
-                                                pricingRules: {
-                                                    ...(formData.pricingRules || {}),
-                                                    contractedRate: e.target.value ? parseFloat(e.target.value) : undefined
-                                                }
-                                            })}
-                                            placeholder="e.g. 85.00"
-                                        />
                                         
+                                        {(formData.customerType === 'Commercial' || formData.customerType === 'Property Management' || formData.vendorCompliance?.vendorStatus || formData.vendorCompliance?.vendorNumber) && (
+                                            <div className="bg-purple-50/60 dark:bg-purple-950/20 p-3 rounded-xl border border-purple-200 dark:border-purple-900/50 space-y-2.5">
+                                                <p className="text-xs font-black uppercase text-purple-700 dark:text-purple-300 tracking-wider flex items-center gap-1.5">
+                                                    <ShieldCheck size={14} className="text-purple-600 dark:text-purple-400" />
+                                                    <span>Vendor Status &amp; Compliance</span>
+                                                </p>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    <Input 
+                                                        label="Vendor Status" 
+                                                        value={formData.vendorCompliance?.vendorStatus || ''} 
+                                                        onChange={e => setFormData({
+                                                            ...formData, 
+                                                            vendorCompliance: { 
+                                                                ...(formData.vendorCompliance || {}), 
+                                                                vendorStatus: e.target.value 
+                                                            } 
+                                                        })} 
+                                                        placeholder="e.g. Temporary Vendor, Active" 
+                                                    />
+                                                    <Input 
+                                                        label="Vendor Number" 
+                                                        value={formData.vendorCompliance?.vendorNumber || ''} 
+                                                        onChange={e => setFormData({
+                                                            ...formData, 
+                                                            vendorCompliance: { 
+                                                                ...(formData.vendorCompliance || {}), 
+                                                                vendorNumber: e.target.value 
+                                                            } 
+                                                        })} 
+                                                        placeholder="e.g. To be assigned or VEND-9921" 
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="bg-slate-50 dark:bg-slate-850 p-3.5 rounded-xl border border-slate-200 dark:border-slate-750 space-y-3">
+                                            <p className="text-xs font-black uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                                                Pricing &amp; Contract Rates
+                                            </p>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <Input 
+                                                    label="Contracted Rate ($/hr)" 
+                                                    type="number" 
+                                                    value={formData.pricingRules?.contractedRate ?? formData.pricingRules?.standardRate ?? ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                                                        setFormData({
+                                                            ...formData,
+                                                            pricingRules: {
+                                                                ...(formData.pricingRules || {}),
+                                                                contractedRate: val,
+                                                                standardRate: val
+                                                            }
+                                                        });
+                                                    }}
+                                                    placeholder="e.g. 85.00"
+                                                />
+                                                <Input 
+                                                    label="Overtime Labor Rate ($/hr)" 
+                                                    type="number" 
+                                                    value={formData.pricingRules?.overtimeRate ?? formData.pricingRules?.overtimeLaborRate ?? formData.pricingRules?.overtimeContractedRate ?? ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                                                        setFormData({
+                                                            ...formData,
+                                                            pricingRules: {
+                                                                ...(formData.pricingRules || {}),
+                                                                overtimeRate: val,
+                                                                overtimeLaborRate: val,
+                                                                overtimeContractedRate: val
+                                                            }
+                                                        });
+                                                    }}
+                                                    placeholder="e.g. 125.00"
+                                                />
+                                                <Input 
+                                                    label="Emergency Contracted Rate ($/hr)" 
+                                                    type="number" 
+                                                    value={formData.pricingRules?.emergencyContractedRate ?? formData.pricingRules?.emergencyRate ?? ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                                                        setFormData({
+                                                            ...formData,
+                                                            pricingRules: {
+                                                                ...(formData.pricingRules || {}),
+                                                                emergencyContractedRate: val,
+                                                                emergencyRate: val
+                                                            }
+                                                        });
+                                                    }}
+                                                    placeholder="e.g. 150.00"
+                                                />
+                                                <Input 
+                                                    label="Trip Fee ($)" 
+                                                    type="number" 
+                                                    value={formData.pricingRules?.tripFee ?? formData.pricingRules?.tripCharge ?? ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                                                        setFormData({
+                                                            ...formData,
+                                                            pricingRules: {
+                                                                ...(formData.pricingRules || {}),
+                                                                tripFee: val,
+                                                                tripCharge: val
+                                                            }
+                                                        });
+                                                    }}
+                                                    placeholder="e.g. 75.00"
+                                                />
+                                                <Input 
+                                                    label="Emergency Trip Charge ($)" 
+                                                    type="number" 
+                                                    value={formData.pricingRules?.emergencyTripFee ?? formData.pricingRules?.emergencyTripCharge ?? ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                                                        setFormData({
+                                                            ...formData,
+                                                            pricingRules: {
+                                                                ...(formData.pricingRules || {}),
+                                                                emergencyTripFee: val,
+                                                                emergencyTripCharge: val
+                                                            }
+                                                        });
+                                                    }}
+                                                    placeholder="e.g. 125.00"
+                                                />
+                                                <Input 
+                                                    label="Travel Time Rule" 
+                                                    value={formData.pricingRules?.travelTime ?? ''} 
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setFormData({
+                                                            ...formData,
+                                                            pricingRules: {
+                                                                ...(formData.pricingRules || {}),
+                                                                travelTime: val,
+                                                                travelIncluded: typeof val === 'string' ? val.toLowerCase().includes('included') : false
+                                                            }
+                                                        });
+                                                    }}
+                                                    placeholder="e.g. Included or $65/hr"
+                                                />
+                                                <div className="sm:col-span-2 space-y-3 pt-2">
+                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-1 border-b border-slate-200 dark:border-slate-750">
+                                                        <div>
+                                                            <p className="text-xs font-black uppercase text-slate-700 dark:text-slate-300 tracking-wider flex items-center gap-1.5">
+                                                                <Percent size={14} className="text-amber-500" />
+                                                                <span>Custom Parts Markup &amp; Tiered Rules</span>
+                                                            </p>
+                                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                                                Configure conditional markup rules by part cost (e.g. Under $1,500 &rarr; 43%, Over $1,500 &rarr; 23%), or set a flat fallback rate.
+                                                            </p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleAddMarkupRule}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
+                                                        >
+                                                            <PlusCircle size={14} />
+                                                            <span>Add Rule</span>
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Tiered Rules Dynamic List */}
+                                                    {(() => {
+                                                        const activeMarkupRules: CustomerMarkupRule[] = formData.pricingRules?.partsMarkupRules || (
+                                                            (formData.pricingRules?.partsMarkupTier1 || formData.pricingRules?.partsMarkupTier2) ? [
+                                                                { id: 'tier-under-1500', condition: 'under' as const, threshold: 1500, rate: formData.pricingRules?.partsMarkupTier1 ?? 43, label: 'Standard Commercial Parts' },
+                                                                { id: 'tier-over-1500', condition: 'over' as const, threshold: 1500, rate: formData.pricingRules?.partsMarkupTier2 ?? 23, label: 'RTUs, Compressors, Coils' }
+                                                            ] : []
+                                                        );
+
+                                                        if (activeMarkupRules.length === 0) {
+                                                            return (
+                                                                <div className="p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center">
+                                                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                                        No conditional tiers defined. Click <strong>&ldquo;+ Add Rule&rdquo;</strong> to define cost-based markup thresholds (e.g. under $1,500 at 43%).
+                                                                    </p>
+                                                                </div>
+                                                            );
+                                                        }
+
+                                                        return (
+                                                            <div className="space-y-2 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                                                                {activeMarkupRules.map((rule, idx) => (
+                                                                    <div key={rule.id || idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs">
+                                                                        <div className="sm:col-span-3">
+                                                                            <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-0.5">Trigger Condition</label>
+                                                                            <select
+                                                                                value={rule.condition}
+                                                                                onChange={e => handleUpdateMarkupRule(idx, 'condition', e.target.value as 'under' | 'over')}
+                                                                                className="w-full text-xs font-semibold rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 py-1.5 px-2 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-amber-500"
+                                                                            >
+                                                                                <option value="under">Under / Up to (≤)</option>
+                                                                                <option value="over">Over / Exceeding (&gt;)</option>
+                                                                            </select>
+                                                                        </div>
+                                                                        <div className="sm:col-span-3">
+                                                                            <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-0.5">Cost Threshold ($)</label>
+                                                                            <div className="relative">
+                                                                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">$</span>
+                                                                                <NumberInput
+                                                                                    step="any"
+                                                                                    value={rule.threshold ?? ''}
+                                                                                    onChange={e => handleUpdateMarkupRule(idx, 'threshold', parseFloat(e.target.value) || 0)}
+                                                                                    placeholder="1500"
+                                                                                    className="w-full pl-6 pr-2 py-1.5 text-xs font-bold rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-amber-500"
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="sm:col-span-2">
+                                                                            <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-0.5">Rate (%)</label>
+                                                                            <div className="relative">
+                                                                                <NumberInput
+                                                                                    step="any"
+                                                                                    value={rule.rate ?? ''}
+                                                                                    onChange={e => handleUpdateMarkupRule(idx, 'rate', parseFloat(e.target.value) || 0)}
+                                                                                    placeholder="24"
+                                                                                    className="w-full pr-5 pl-2 py-1.5 text-xs font-extrabold text-amber-600 dark:text-amber-400 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 focus:ring-1 focus:ring-amber-500"
+                                                                                />
+                                                                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="sm:col-span-3">
+                                                                            <label className="block text-[10px] font-extrabold text-slate-500 uppercase mb-0.5">Scope / Description</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={rule.label || ''}
+                                                                                onChange={e => handleUpdateMarkupRule(idx, 'label', e.target.value)}
+                                                                                placeholder="e.g. Standard parts"
+                                                                                className="w-full px-2 py-1.5 text-xs rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-amber-500"
+                                                                            />
+                                                                        </div>
+                                                                        <div className="sm:col-span-1 flex justify-end sm:justify-center pt-2 sm:pt-4">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleDeleteMarkupRule(idx)}
+                                                                                className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-md transition-colors cursor-pointer"
+                                                                                title="Delete Rule"
+                                                                            >
+                                                                                <Trash2 size={15} />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        );
+                                                    })()}
+
+                                                    {/* Fallback rate & Notes */}
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                                        <Input 
+                                                            label="Standard / Fallback Parts Markup (%)" 
+                                                            type="number" 
+                                                            value={formData.pricingRules?.partsMarkupPercentage ?? formData.pricingRules?.markupPercentage ?? ''} 
+                                                            onChange={e => {
+                                                                const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    pricingRules: {
+                                                                        ...(formData.pricingRules || {}),
+                                                                        partsMarkupPercentage: val,
+                                                                        markupPercentage: val
+                                                                    }
+                                                                });
+                                                            }}
+                                                            placeholder="e.g. 23"
+                                                        />
+                                                        <Input 
+                                                            label="Markup Rule Summary / Notes" 
+                                                            value={formData.pricingRules?.partsMarkupNotes ?? ''} 
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    pricingRules: {
+                                                                        ...(formData.pricingRules || {}),
+                                                                        partsMarkupNotes: val
+                                                                    }
+                                                                });
+                                                            }}
+                                                            placeholder="e.g. Up to $1,500: 43% | Over $1,500: 23%"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Customer Portal Rate Visibility Toggles */}
+                                            <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-750">
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
+                                                    <p className="text-xs font-black uppercase text-slate-700 dark:text-slate-300 tracking-wider flex items-center gap-1.5">
+                                                        <Eye size={14} className="text-indigo-500" />
+                                                        <span>Customer Portal Visibility</span>
+                                                    </p>
+                                                    <span className="text-[10px] text-slate-400 font-medium">Select which rates are visible on customer dashboard</span>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800">
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.pricingRules?.visibility?.showStandardRate !== false}
+                                                            onChange={e => {
+                                                                const nextVis = { ...(formData.pricingRules?.visibility || {}), showStandardRate: e.target.checked };
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    pricingRules: { ...(formData.pricingRules || {}), visibility: nextVis }
+                                                                });
+                                                            }}
+                                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+                                                        />
+                                                        <span>Standard Labor Rate</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.pricingRules?.visibility?.showOvertimeRate !== false}
+                                                            onChange={e => {
+                                                                const nextVis = { ...(formData.pricingRules?.visibility || {}), showOvertimeRate: e.target.checked };
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    pricingRules: { ...(formData.pricingRules || {}), visibility: nextVis }
+                                                                });
+                                                            }}
+                                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+                                                        />
+                                                        <span>Overtime Labor Rate</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.pricingRules?.visibility?.showEmergencyRate !== false}
+                                                            onChange={e => {
+                                                                const nextVis = { ...(formData.pricingRules?.visibility || {}), showEmergencyRate: e.target.checked };
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    pricingRules: { ...(formData.pricingRules || {}), visibility: nextVis }
+                                                                });
+                                                            }}
+                                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+                                                        />
+                                                        <span>Emergency Diagnostic</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.pricingRules?.visibility?.showTripFee !== false}
+                                                            onChange={e => {
+                                                                const nextVis = { ...(formData.pricingRules?.visibility || {}), showTripFee: e.target.checked };
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    pricingRules: { ...(formData.pricingRules || {}), visibility: nextVis }
+                                                                });
+                                                            }}
+                                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+                                                        />
+                                                        <span>Diagnostic &amp; Trip Fee</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.pricingRules?.visibility?.showEmergencyTripCharge !== false && formData.pricingRules?.visibility?.showEmergencyTripFee !== false}
+                                                            onChange={e => {
+                                                                const nextVis = { 
+                                                                    ...(formData.pricingRules?.visibility || {}), 
+                                                                    showEmergencyTripCharge: e.target.checked,
+                                                                    showEmergencyTripFee: e.target.checked
+                                                                };
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    pricingRules: { ...(formData.pricingRules || {}), visibility: nextVis }
+                                                                });
+                                                            }}
+                                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+                                                        />
+                                                        <span>Emergency Trip Fee</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.pricingRules?.visibility?.showPartsMarkup !== false}
+                                                            onChange={e => {
+                                                                const nextVis = { ...(formData.pricingRules?.visibility || {}), showPartsMarkup: e.target.checked };
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    pricingRules: { ...(formData.pricingRules || {}), visibility: nextVis }
+                                                                });
+                                                            }}
+                                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+                                                        />
+                                                        <span>Parts Markup (%)</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.pricingRules?.visibility?.showPaymentTerms !== false}
+                                                            onChange={e => {
+                                                                const nextVis = { ...(formData.pricingRules?.visibility || {}), showPaymentTerms: e.target.checked };
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    pricingRules: { ...(formData.pricingRules || {}), visibility: nextVis }
+                                                                });
+                                                            }}
+                                                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 dark:border-slate-700"
+                                                        />
+                                                        <span>Payment &amp; Net Terms</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Third-Party Vendor Portal Credentials & Work Order Submission Rules */}
+                                        <div className="bg-sky-50/70 dark:bg-sky-950/20 p-3.5 rounded-xl border border-sky-200 dark:border-sky-900/50 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-black uppercase text-sky-800 dark:text-sky-300 tracking-wider flex items-center gap-1.5">
+                                                    <Key size={14} className="text-sky-600 dark:text-sky-400" />
+                                                    <span>Third-Party Vendor Portal &amp; Work Order Credentials</span>
+                                                </p>
+                                                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-sky-700 dark:text-sky-300">
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={formData.submissionRules?.thirdPartyPortal?.required || !!formData.submissionRules?.thirdPartyPortal?.portalUrl || !!formData.submissionRules?.thirdPartyPortal?.username}
+                                                        onChange={e => {
+                                                            const isReq = e.target.checked;
+                                                            setFormData({
+                                                                ...formData,
+                                                                submissionRules: {
+                                                                    ...(formData.submissionRules || {}),
+                                                                    thirdPartyPortal: {
+                                                                        ...(formData.submissionRules?.thirdPartyPortal || {}),
+                                                                        required: isReq
+                                                                    }
+                                                                }
+                                                            });
+                                                        }}
+                                                        className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 border-sky-300 dark:border-sky-700"
+                                                    />
+                                                    <span>Portal Required</span>
+                                                </label>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Portal Provider</label>
+                                                    <select
+                                                        value={formData.submissionRules?.thirdPartyPortal?.portalName || ''}
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            setFormData({
+                                                                ...formData,
+                                                                submissionRules: {
+                                                                    ...(formData.submissionRules || {}),
+                                                                    thirdPartyPortal: {
+                                                                        ...(formData.submissionRules?.thirdPartyPortal || {}),
+                                                                        portalName: val,
+                                                                        required: true
+                                                                    }
+                                                                }
+                                                            });
+                                                        }}
+                                                        className="w-full text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-sky-500 outline-none"
+                                                    >
+                                                        <option value="">-- Select Portal Provider --</option>
+                                                        <option value="NEST Facilitate / ISP Connect">NEST Facilitate / ISP Connect</option>
+                                                        <option value="ServiceChannel">ServiceChannel</option>
+                                                        <option value="Corrigo">Corrigo</option>
+                                                        <option value="FM Pilot">FM Pilot</option>
+                                                        <option value="Verisae">Verisae</option>
+                                                        <option value="Fixx">Fixx</option>
+                                                        <option value="OfficeTrax">OfficeTrax</option>
+                                                        <option value="Other">Other / Custom</option>
+                                                    </select>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                                        Portal Login URL
+                                                        {formData.submissionRules?.thirdPartyPortal?.portalUrl && (
+                                                            <a 
+                                                                href={formData.submissionRules.thirdPartyPortal.portalUrl.startsWith('http') ? formData.submissionRules.thirdPartyPortal.portalUrl : `https://${formData.submissionRules.thirdPartyPortal.portalUrl}`} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer" 
+                                                                className="ml-2 text-[10px] text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center gap-0.5"
+                                                            >
+                                                                Open Portal <ExternalLink size={10} />
+                                                            </a>
+                                                        )}
+                                                    </label>
+                                                    <Input 
+                                                        value={formData.submissionRules?.thirdPartyPortal?.portalUrl || ''} 
+                                                        onChange={e => setFormData({
+                                                            ...formData,
+                                                            submissionRules: {
+                                                                ...(formData.submissionRules || {}),
+                                                                thirdPartyPortal: {
+                                                                    ...(formData.submissionRules?.thirdPartyPortal || {}),
+                                                                    portalUrl: e.target.value,
+                                                                    required: true
+                                                                }
+                                                            }
+                                                        })}
+                                                        placeholder="https://providers.enternest.com/login.aspx"
+                                                    />
+                                                </div>
+
+                                                <Input 
+                                                    label="Portal Username / Contractor ID" 
+                                                    value={formData.submissionRules?.thirdPartyPortal?.username || ''} 
+                                                    onChange={e => setFormData({
+                                                        ...formData,
+                                                        submissionRules: {
+                                                            ...(formData.submissionRules || {}),
+                                                             thirdPartyPortal: {
+                                                                ...(formData.submissionRules?.thirdPartyPortal || {}),
+                                                                username: e.target.value,
+                                                                required: true
+                                                            }
+                                                        }
+                                                    })} 
+                                                    placeholder="e.g. 52274 or contractor@email.com" 
+                                                />
+
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Portal Password</label>
+                                                    <div className="relative">
+                                                        <Input 
+                                                            type={showPortalPassword ? "text" : "password"} 
+                                                            value={formData.submissionRules?.thirdPartyPortal?.password || ''} 
+                                                            onChange={e => setFormData({
+                                                                ...formData,
+                                                                submissionRules: {
+                                                                    ...(formData.submissionRules || {}),
+                                                                    thirdPartyPortal: {
+                                                                        ...(formData.submissionRules?.thirdPartyPortal || {}),
+                                                                        password: e.target.value,
+                                                                        required: true
+                                                                    }
+                                                                }
+                                                            })} 
+                                                            placeholder="••••••••" 
+                                                        />
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => setShowPortalPassword(!showPortalPassword)} 
+                                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                                                            title={showPortalPassword ? "Hide password" : "Show password"}
+                                                        >
+                                                            {showPortalPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <Input 
+                                                    label="IVR / Phone Check-In Number" 
+                                                    value={formData.submissionRules?.thirdPartyPortal?.phoneNumber || ''} 
+                                                    onChange={e => setFormData({
+                                                        ...formData,
+                                                        submissionRules: {
+                                                            ...(formData.submissionRules || {}),
+                                                            thirdPartyPortal: {
+                                                                required: !!formData.submissionRules?.thirdPartyPortal?.required,
+                                                                ...(formData.submissionRules?.thirdPartyPortal || {}),
+                                                                phoneNumber: e.target.value
+                                                            }
+                                                        }
+                                                    })} 
+                                                    placeholder="e.g. (856)-720-5100" 
+                                                />
+
+                                                <Input 
+                                                    label="IVR PIN / Access Code" 
+                                                    value={formData.submissionRules?.thirdPartyPortal?.pinCode || ''} 
+                                                    onChange={e => setFormData({
+                                                        ...formData,
+                                                        submissionRules: {
+                                                            ...(formData.submissionRules || {}),
+                                                            thirdPartyPortal: {
+                                                                required: !!formData.submissionRules?.thirdPartyPortal?.required,
+                                                                ...(formData.submissionRules?.thirdPartyPortal || {}),
+                                                                pinCode: e.target.value
+                                                            }
+                                                        }
+                                                    })} 
+                                                    placeholder="e.g. 1234" 
+                                                />
+
+                                                <Input 
+                                                    label="Default NTE Limit ($)" 
+                                                    type="number"
+                                                    value={formData.submissionRules?.defaultNteLimit ?? ''} 
+                                                    onChange={e => setFormData({
+                                                        ...formData,
+                                                        submissionRules: {
+                                                            ...(formData.submissionRules || {}),
+                                                            defaultNteLimit: e.target.value ? parseFloat(e.target.value) : undefined
+                                                        }
+                                                    })} 
+                                                    placeholder="e.g. 500" 
+                                                />
+
+                                                <Input 
+                                                    label="Invoice Submission Email" 
+                                                    value={formData.submissionRules?.invoiceSubmissionEmail || ''} 
+                                                    onChange={e => setFormData({
+                                                        ...formData,
+                                                        submissionRules: {
+                                                            ...(formData.submissionRules || {}),
+                                                            invoiceSubmissionEmail: e.target.value
+                                                        }
+                                                    })} 
+                                                    placeholder="e.g. vendorinvoices@portal.com" 
+                                                />
+                                            </div>
+
+                                            {/* Work Order Submission Rules Checkboxes */}
+                                            <div className="pt-2 border-t border-sky-200/80 dark:border-sky-900/40">
+                                                <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Facility Work Order Rules</p>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.submissionRules?.requirePoNumber || false}
+                                                            onChange={e => setFormData({
+                                                                ...formData,
+                                                                submissionRules: { ...(formData.submissionRules || {}), requirePoNumber: e.target.checked }
+                                                            })}
+                                                            className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                                                        />
+                                                        <span>PO / WO# Required</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.submissionRules?.requireSignedWorkOrder || false}
+                                                            onChange={e => setFormData({
+                                                                ...formData,
+                                                                submissionRules: { ...(formData.submissionRules || {}), requireSignedWorkOrder: e.target.checked }
+                                                            })}
+                                                            className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                                                        />
+                                                        <span>Signed Sign-Off Required</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.submissionRules?.requireBeforeAfterPhotos || false}
+                                                            onChange={e => setFormData({
+                                                                ...formData,
+                                                                submissionRules: { ...(formData.submissionRules || {}), requireBeforeAfterPhotos: e.target.checked }
+                                                            })}
+                                                            className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                                                        />
+                                                        <span>Before/After Photos Required</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.submissionRules?.requireEquipmentSerial || false}
+                                                            onChange={e => setFormData({
+                                                                ...formData,
+                                                                submissionRules: { ...(formData.submissionRules || {}), requireEquipmentSerial: e.target.checked }
+                                                            })}
+                                                            className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                                                        />
+                                                        <span>Equipment Serial Required</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.submissionRules?.doNotDiscussPricingWithStoreAssociate || false}
+                                                            onChange={e => setFormData({
+                                                                ...formData,
+                                                                submissionRules: { ...(formData.submissionRules || {}), doNotDiscussPricingWithStoreAssociate: e.target.checked }
+                                                            })}
+                                                            className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                                                        />
+                                                        <span>Do Not Discuss Pricing with Site</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.submissionRules?.allowEmergencyPaperSignOff || false}
+                                                            onChange={e => setFormData({
+                                                                ...formData,
+                                                                submissionRules: { ...(formData.submissionRules || {}), allowEmergencyPaperSignOff: e.target.checked }
+                                                            })}
+                                                            className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
+                                                        />
+                                                        <span>Allow Paper Sign-Off</span>
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <Textarea 
+                                                label="Portal / Submission Notes & Instructions" 
+                                                value={formData.submissionRules?.thirdPartyPortal?.submissionNotes || formData.submissionRules?.customSubmissionNotes || ''} 
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    setFormData({
+                                                        ...formData,
+                                                        submissionRules: {
+                                                            ...(formData.submissionRules || {}),
+                                                            thirdPartyPortal: {
+                                                                required: !!formData.submissionRules?.thirdPartyPortal?.required,
+                                                                ...(formData.submissionRules?.thirdPartyPortal || {}),
+                                                                submissionNotes: val
+                                                            },
+                                                            customSubmissionNotes: val
+                                                        }
+                                                    });
+                                                }}
+                                                placeholder="e.g. Must check in via IVR upon arrival. Upload signed work order and photos to portal before submitting invoice."
+                                                className="text-xs"
+                                            />
+                                        </div>
+
                                         <Input label="Street Address" isBlock value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} />
                                         <Input label="City" isBlock value={formData.city || ''} onChange={e => setFormData({...formData, city: e.target.value})} />
                                         <Input label="State" isBlock value={formData.state || ''} onChange={e => setFormData({...formData, state: e.target.value})} />
                                         <Input label="Zip" isBlock value={formData.zip || ''} onChange={e => setFormData({...formData, zip: e.target.value})} />
                                         
                                         <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded border dark:border-slate-700">
-                                            <p className="text-xs font-bold text-slate-500 mb-2 uppercase">Marketing Consent (Manual Override)</p>
+                                            <p className="text-xs font-bold text-slate-500 mb-2 uppercase">Marketing Consent (TCPA Safeguarded)</p>
                                             <div className="flex gap-4">
                                                 <label className="flex items-center gap-2 cursor-pointer">
                                                     <input 
                                                         type="checkbox" 
                                                         checked={formData.marketingConsent?.sms || false} 
-                                                        onChange={e => setFormData({
-                                                            ...formData, 
-                                                            marketingConsent: { 
-                                                                ...formData.marketingConsent, 
-                                                                sms: e.target.checked,
-                                                                agreedAt: new Date().toISOString(),
-                                                                source: 'Manual'
-                                                            } as any
-                                                        })} 
+                                                        onChange={e => {
+                                                            const isChecking = e.target.checked;
+                                                            const isCurrentlyUnsubscribed = formData.marketingConsent?.sms === false || !!(formData.marketingConsent as any)?.unsubscribedAt || customer?.marketingConsent?.source?.includes('Opt-Out');
+                                                            if (isChecking && isCurrentlyUnsubscribed) {
+                                                                setReConsentCertify(false);
+                                                                setReConsentReason('Customer Verbal Request');
+                                                                setReConsentNotes('');
+                                                                setShowSmsReConsentModal(true);
+                                                            } else {
+                                                                setFormData({
+                                                                    ...formData, 
+                                                                    marketingConsent: { 
+                                                                        ...formData.marketingConsent, 
+                                                                        sms: isChecking,
+                                                                        agreedAt: isChecking ? new Date().toISOString() : (formData.marketingConsent?.agreedAt || null),
+                                                                        unsubscribedAt: isChecking ? null : new Date().toISOString(),
+                                                                        source: isChecking ? 'Manual Admin Consent' : 'Admin Manual Opt-Out'
+                                                                    } as any
+                                                                });
+                                                            }
+                                                        }} 
                                                     />
-                                                    <span className="text-sm dark:text-slate-300">SMS Opt-In</span>
+                                                    <span className="text-sm dark:text-slate-300 font-semibold">SMS Opt-In</span>
                                                 </label>
                                                 <label className="flex items-center gap-2 cursor-pointer">
                                                     <input 
@@ -2982,14 +3968,20 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                                             marketingConsent: { 
                                                                 ...formData.marketingConsent, 
                                                                 email: e.target.checked,
-                                                                agreedAt: new Date().toISOString(),
-                                                                source: 'Manual'
+                                                                agreedAt: e.target.checked ? new Date().toISOString() : (formData.marketingConsent?.agreedAt || null),
+                                                                source: e.target.checked ? 'Manual Admin Consent' : 'Admin Manual Email Opt-Out'
                                                             } as any
                                                         })} 
                                                     />
-                                                    <span className="text-sm dark:text-slate-300">Email Opt-In</span>
+                                                    <span className="text-sm dark:text-slate-300 font-semibold">Email Opt-In</span>
                                                 </label>
                                             </div>
+                                            {((formData.marketingConsent as any)?.unsubscribedAt || formData.marketingConsent?.source?.includes('Opt-Out')) && (
+                                                <div className="mt-2 text-xs font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-300 p-2 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center gap-1.5">
+                                                    <ShieldAlert size={14} className="shrink-0 text-amber-600" />
+                                                    <span>Customer Opted-Out ({formData.marketingConsent?.source || 'SMS STOP'}). Re-subscribing requires TCPA certification.</span>
+                                                </div>
+                                            )}
 
                                          <div className="space-y-2 mt-4">
                                              <label className="block text-xs font-black uppercase text-slate-400 tracking-wider">Assigned Dispatch Teams</label>
@@ -3036,14 +4028,31 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                                     <span>🏛️ Tax Exempt Organization</span>
                                                 </label>
                                                 {formData.taxExempt && (
-                                                    <span className="bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 text-[10px] font-black px-2 py-0.5 rounded uppercase">
-                                                        Exempt Active
-                                                    </span>
+                                                    formData.taxExemptCertUrl ? (
+                                                        <span className="bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 text-[10px] font-black px-2 py-0.5 rounded uppercase">
+                                                            Exempt Active
+                                                        </span>
+                                                    ) : (
+                                                        <span className="bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 text-[10px] font-black px-2 py-0.5 rounded uppercase">
+                                                            ⚠️ Cert Required
+                                                        </span>
+                                                    )
                                                 )}
                                             </div>
 
                                             {formData.taxExempt && (
                                                 <div className="space-y-3 pt-2 border-t border-emerald-200 dark:border-emerald-800/60 animate-fade-in">
+                                                    {!formData.taxExemptCertUrl && (
+                                                        <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/60 rounded-lg text-xs text-amber-900 dark:text-amber-300 flex items-start gap-2">
+                                                            <span className="text-base shrink-0">⚠️</span>
+                                                            <div>
+                                                                <p className="font-bold">Tax Certification Upload Required</p>
+                                                                <p className="text-[11px] opacity-90 mt-0.5">
+                                                                    Commercial customer tax exemption is ONLY active when an official tax certificate file is uploaded. Invoices will be taxed as normal until a certificate file is attached.
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                     <Input 
                                                         label="Tax Exemption Certificate # / Tax ID" 
                                                         value={(formData as any).taxExemptNumber || ''} 
@@ -3052,7 +4061,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                                     />
                                                     <div>
                                                         <label className="block text-xs font-bold text-emerald-900 dark:text-emerald-300 mb-1">
-                                                            Upload Tax Exemption Certificate File (PDF / Image)
+                                                            Upload Tax Exemption Certificate File (PDF / Image) <span className="text-amber-600 dark:text-amber-400 font-extrabold">*Required for Exemption*</span>
                                                         </label>
                                                         <input 
                                                             type="file" 
@@ -3075,7 +4084,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                                         {formData.taxExemptCertUrl && (
                                                             <div className="mt-2 flex items-center justify-between bg-white dark:bg-slate-800 p-2 rounded border border-emerald-200 dark:border-emerald-800">
                                                                 <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 truncate max-w-[200px]">
-                                                                    Certificate File Uploaded
+                                                                    ✓ Certificate File Uploaded
                                                                 </span>
                                                                 <a 
                                                                     href={formData.taxExemptCertUrl} 
@@ -3137,12 +4146,23 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                         )}
 
                                         {customer.taxExempt && (
-                                            <div className="col-span-2 bg-emerald-50 dark:bg-emerald-950/20 p-3 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center justify-between">
+                                            <div className={`col-span-2 p-3 rounded-xl border flex items-center justify-between ${
+                                                customer.taxExemptCertUrl 
+                                                    ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800' 
+                                                    : 'bg-amber-50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700'
+                                            }`}>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-base">🏛️</span>
+                                                    <span className="text-base">{customer.taxExemptCertUrl ? '🏛️' : '⚠️'}</span>
                                                     <div>
-                                                        <p className="text-xs font-extrabold text-emerald-900 dark:text-emerald-300 uppercase">Tax Exempt Customer</p>
+                                                        <p className={`text-xs font-extrabold uppercase ${customer.taxExemptCertUrl ? 'text-emerald-900 dark:text-emerald-300' : 'text-amber-900 dark:text-amber-300'}`}>
+                                                            {customer.taxExemptCertUrl ? 'Tax Exempt Customer (Cert Verified)' : 'Tax Exempt Pending Certificate'}
+                                                        </p>
                                                         {customer.taxExemptNumber && <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">Exempt ID: {customer.taxExemptNumber}</p>}
+                                                        {!customer.taxExemptCertUrl && (
+                                                            <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium mt-0.5">
+                                                                * Certificate file missing: Invoices will be taxed until uploaded *
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 {customer.taxExemptCertUrl ? (
@@ -3155,19 +4175,283 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                                         View Certificate File ↗
                                                     </a>
                                                 ) : (
-                                                    <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-0.5 rounded border border-amber-200">
-                                                        No Certificate Uploaded
+                                                    <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-2 py-1 rounded border border-amber-300 dark:border-amber-700">
+                                                        Upload Certificate Required
                                                     </span>
                                                 )}
                                             </div>
                                         )}
 
+                                        <div><p className="text-gray-500">Account #</p><p className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{customer.accountNumber || getOrGenerateAccountNumber(customer)}</p></div>
                                         <div><p className="text-gray-500">Type</p><p className="font-medium dark:text-white">{customer.customerType || 'Residential'}</p></div>
+                                        <div><p className="text-gray-500">Payment Terms</p><p className="font-bold text-slate-800 dark:text-slate-100">{customer.paymentTerms ? getPaymentTermsLabel(customer.paymentTerms) : 'Net 30'}</p></div>
+                                        {customer.vendorCompliance?.vendorStatus && (
+                                            <div>
+                                                <p className="text-gray-500">Vendor Status</p>
+                                                <p className="font-bold text-purple-600 dark:text-purple-400">{customer.vendorCompliance.vendorStatus}</p>
+                                            </div>
+                                        )}
+                                        {customer.vendorCompliance?.vendorNumber && (
+                                            <div>
+                                                <p className="text-gray-500">Vendor #</p>
+                                                <p className="font-bold text-purple-600 dark:text-purple-400">{customer.vendorCompliance.vendorNumber}</p>
+                                            </div>
+                                        )}
                                         <div><p className="text-gray-500">Email</p><p className="font-medium dark:text-white">{customer.email || 'N/A'}</p></div>
                                         <div><p className="text-gray-500">Phone</p><p className="font-medium dark:text-white">{customer.phone || 'N/A'}</p></div>
+                                        
                                         {customer.pricingRules?.contractedRate !== undefined && customer.pricingRules.contractedRate > 0 && (
-                                            <div><p className="text-gray-500">Contracted Rate</p><p className="font-bold text-emerald-600 dark:text-emerald-400">${customer.pricingRules.contractedRate.toFixed(2)}/hr</p></div>
+                                            <div>
+                                                <p className="text-gray-500 flex items-center gap-1">
+                                                    Contracted Rate
+                                                    {customer.pricingRules?.visibility?.showStandardRate === false && (
+                                                        <span className="text-[9px] px-1 py-0.2 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded font-bold">Portal Hidden</span>
+                                                    )}
+                                                </p>
+                                                <p className="font-bold text-emerald-600 dark:text-emerald-400">${customer.pricingRules.contractedRate.toFixed(2)}/hr</p>
+                                            </div>
                                         )}
+                                        {(customer.pricingRules?.overtimeRate !== undefined && customer.pricingRules.overtimeRate > 0 || customer.pricingRules?.overtimeLaborRate !== undefined && customer.pricingRules.overtimeLaborRate > 0 || customer.pricingRules?.overtimeContractedRate !== undefined && customer.pricingRules.overtimeContractedRate > 0) && (
+                                            <div>
+                                                <p className="text-gray-500 flex items-center gap-1">
+                                                    Overtime Labor Rate
+                                                    {customer.pricingRules?.visibility?.showOvertimeRate === false && (
+                                                        <span className="text-[9px] px-1 py-0.2 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded font-bold">Portal Hidden</span>
+                                                    )}
+                                                </p>
+                                                <p className="font-bold text-blue-600 dark:text-blue-400">${(customer.pricingRules.overtimeRate ?? customer.pricingRules.overtimeLaborRate ?? customer.pricingRules.overtimeContractedRate)?.toFixed(2)}/hr</p>
+                                            </div>
+                                        )}
+                                        {(customer.pricingRules?.emergencyContractedRate !== undefined && customer.pricingRules.emergencyContractedRate > 0 || customer.pricingRules?.emergencyRate !== undefined && customer.pricingRules.emergencyRate > 0) && (
+                                            <div>
+                                                <p className="text-gray-500 flex items-center gap-1">
+                                                    Emergency Rate
+                                                    {customer.pricingRules?.visibility?.showEmergencyRate === false && (
+                                                        <span className="text-[9px] px-1 py-0.2 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded font-bold">Portal Hidden</span>
+                                                    )}
+                                                </p>
+                                                <p className="font-bold text-rose-600 dark:text-rose-400">${(customer.pricingRules.emergencyContractedRate ?? customer.pricingRules.emergencyRate)?.toFixed(2)}/hr</p>
+                                            </div>
+                                        )}
+                                        {(customer.pricingRules?.tripFee !== undefined && customer.pricingRules.tripFee > 0 || customer.pricingRules?.tripCharge !== undefined && customer.pricingRules.tripCharge > 0) && (
+                                            <div>
+                                                <p className="text-gray-500 flex items-center gap-1">
+                                                    Trip Fee
+                                                    {customer.pricingRules?.visibility?.showTripFee === false && (
+                                                        <span className="text-[9px] px-1 py-0.2 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded font-bold">Portal Hidden</span>
+                                                    )}
+                                                </p>
+                                                <p className="font-bold text-indigo-600 dark:text-indigo-400">${(customer.pricingRules.tripFee ?? customer.pricingRules.tripCharge)?.toFixed(2)}</p>
+                                            </div>
+                                        )}
+                                        {(customer.pricingRules?.emergencyTripFee !== undefined && customer.pricingRules.emergencyTripFee > 0 || customer.pricingRules?.emergencyTripCharge !== undefined && customer.pricingRules.emergencyTripCharge > 0) && (
+                                            <div>
+                                                <p className="text-gray-500 flex items-center gap-1">
+                                                    Emergency Trip Fee
+                                                    {(customer.pricingRules?.visibility?.showEmergencyTripFee === false || customer.pricingRules?.visibility?.showEmergencyTripCharge === false) && (
+                                                        <span className="text-[9px] px-1 py-0.2 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded font-bold">Portal Hidden</span>
+                                                    )}
+                                                </p>
+                                                <p className="font-bold text-rose-600 dark:text-rose-400">${(customer.pricingRules.emergencyTripFee ?? customer.pricingRules.emergencyTripCharge)?.toFixed(2)}</p>
+                                            </div>
+                                        )}
+                                        {customer.pricingRules?.travelTime && (
+                                            <div>
+                                                <p className="text-gray-500 flex items-center gap-1">Travel Time</p>
+                                                <p className="font-bold text-sky-600 dark:text-sky-400">{customer.pricingRules.travelTime}</p>
+                                            </div>
+                                        )}
+                                        {((customer.pricingRules?.partsMarkupRules && customer.pricingRules.partsMarkupRules.length > 0) || (customer.pricingRules?.partsMarkupPercentage !== undefined && customer.pricingRules.partsMarkupPercentage > 0) || (customer.pricingRules?.markupPercentage !== undefined && customer.pricingRules.markupPercentage > 0) || (customer.pricingRules?.partsMarkupTier1 !== undefined)) && (
+                                            <div className="col-span-1 sm:col-span-2">
+                                                <p className="text-gray-500 flex items-center gap-1">
+                                                    Parts Markup
+                                                    {customer.pricingRules?.visibility?.showPartsMarkup === false && (
+                                                        <span className="text-[9px] px-1 py-0.2 bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 rounded font-bold">Portal Hidden</span>
+                                                    )}
+                                                </p>
+                                                {customer.pricingRules?.partsMarkupRules && customer.pricingRules.partsMarkupRules.length > 0 ? (
+                                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                                        {customer.pricingRules.partsMarkupRules.map((rule, idx) => (
+                                                            <div key={rule.id || idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs shadow-2xs">
+                                                                <span className="font-semibold text-slate-600 dark:text-slate-300">
+                                                                    {rule.condition === 'under' ? `≤ $${Number(rule.threshold).toLocaleString()}` : `> $${Number(rule.threshold).toLocaleString()}`}:
+                                                                </span>
+                                                                <span className="font-extrabold text-amber-700 dark:text-amber-400">+{rule.rate}%</span>
+                                                                {rule.label && <span className="text-[10px] text-slate-400 font-medium">({rule.label})</span>}
+                                                            </div>
+                                                        ))}
+                                                        {customer.pricingRules?.partsMarkupPercentage !== undefined && (
+                                                            <span className="text-[10px] text-slate-400 font-semibold ml-1">
+                                                                Fallback: +{customer.pricingRules.partsMarkupPercentage}%
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ) : (customer.pricingRules?.partsMarkupTier1 && customer.pricingRules?.partsMarkupTier2) ? (
+                                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs shadow-2xs">
+                                                            <span className="font-semibold text-slate-600 dark:text-slate-300">≤ $1,500:</span>
+                                                            <span className="font-extrabold text-amber-700 dark:text-amber-400">+{customer.pricingRules.partsMarkupTier1}%</span>
+                                                            <span className="text-[10px] text-slate-400 font-medium">(Standard Parts)</span>
+                                                        </div>
+                                                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs shadow-2xs">
+                                                            <span className="font-semibold text-slate-600 dark:text-slate-300">&gt; $1,500:</span>
+                                                            <span className="font-extrabold text-amber-700 dark:text-amber-400">+{customer.pricingRules.partsMarkupTier2}%</span>
+                                                            <span className="text-[10px] text-slate-400 font-medium">(RTUs &amp; Equipment)</span>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p className="font-bold text-amber-600 dark:text-amber-400">+{customer.pricingRules?.partsMarkupPercentage ?? customer.pricingRules?.markupPercentage}%</p>
+                                                )}
+                                                {customer.pricingRules?.partsMarkupNotes && (
+                                                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 italic">
+                                                        {customer.pricingRules.partsMarkupNotes}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {(customer.submissionRules?.thirdPartyPortal?.required || customer.submissionRules?.thirdPartyPortal?.portalUrl || customer.submissionRules?.thirdPartyPortal?.username || customer.submissionRules?.requirePoNumber) && (
+                                            <div className="col-span-2 bg-gradient-to-br from-sky-50 to-indigo-50/40 dark:from-sky-950/20 dark:to-indigo-950/20 p-4 rounded-xl border border-sky-200 dark:border-sky-800/60 space-y-3 shadow-xs">
+                                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-200/80 dark:border-sky-800/50 pb-2.5">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-7 h-7 rounded-lg bg-sky-600 text-white flex items-center justify-center shadow-xs">
+                                                            <Key size={15} />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-black uppercase text-sky-900 dark:text-sky-200 tracking-wider">
+                                                                {customer.submissionRules.thirdPartyPortal?.portalName || 'Third-Party Vendor Portal'}
+                                                            </p>
+                                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                                                                Work Order &amp; Facility Management Credentials
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    {customer.submissionRules.thirdPartyPortal?.portalUrl && (
+                                                        <a 
+                                                            href={customer.submissionRules.thirdPartyPortal.portalUrl.startsWith('http') ? customer.submissionRules.thirdPartyPortal.portalUrl : `https://${customer.submissionRules.thirdPartyPortal.portalUrl}`}
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer"
+                                                            className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-lg shadow-xs flex items-center gap-1.5 transition-colors"
+                                                        >
+                                                            Launch Portal <ExternalLink size={12} />
+                                                        </a>
+                                                    )}
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                                                    {customer.submissionRules.thirdPartyPortal?.username && (
+                                                        <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Username / Contractor ID</span>
+                                                            <div className="flex items-center justify-between mt-0.5">
+                                                                <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{customer.submissionRules.thirdPartyPortal.username}</span>
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        navigator.clipboard.writeText(customer.submissionRules?.thirdPartyPortal?.username || '');
+                                                                        showToast.success('Username copied to clipboard!');
+                                                                    }}
+                                                                    className="text-slate-400 hover:text-sky-600 transition-colors p-0.5"
+                                                                    title="Copy Username"
+                                                                >
+                                                                    <Copy size={12} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {customer.submissionRules.thirdPartyPortal?.password && (
+                                                        <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Password</span>
+                                                            <div className="flex items-center justify-between mt-0.5">
+                                                                <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
+                                                                    {showPortalPassword ? customer.submissionRules.thirdPartyPortal.password : '••••••••'}
+                                                                </span>
+                                                                <div className="flex items-center gap-1">
+                                                                    <button 
+                                                                        onClick={() => setShowPortalPassword(!showPortalPassword)}
+                                                                        className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-0.5"
+                                                                        title={showPortalPassword ? "Hide password" : "Show password"}
+                                                                    >
+                                                                        {showPortalPassword ? <EyeOff size={12} /> : <Eye size={12} />}
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => {
+                                                                            navigator.clipboard.writeText(customer.submissionRules?.thirdPartyPortal?.password || '');
+                                                                            showToast.success('Password copied to clipboard!');
+                                                                        }}
+                                                                        className="text-slate-400 hover:text-sky-600 transition-colors p-0.5"
+                                                                        title="Copy Password"
+                                                                    >
+                                                                        <Copy size={12} />
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {customer.submissionRules.thirdPartyPortal?.phoneNumber && (
+                                                        <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase block">IVR Check-In Phone</span>
+                                                            <div className="flex items-center justify-between mt-0.5">
+                                                                <a href={`tel:${customer.submissionRules.thirdPartyPortal.phoneNumber.replace(/[^0-9+]/g, '')}`} className="font-bold text-sky-600 dark:text-sky-400 hover:underline">
+                                                                    {customer.submissionRules.thirdPartyPortal.phoneNumber}
+                                                                </a>
+                                                                {customer.submissionRules.thirdPartyPortal.pinCode && (
+                                                                    <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono font-semibold">
+                                                                        PIN: {customer.submissionRules.thirdPartyPortal.pinCode}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {customer.submissionRules.defaultNteLimit !== undefined && (
+                                                        <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase block">Default NTE Limit</span>
+                                                            <p className="font-extrabold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                                                ${customer.submissionRules.defaultNteLimit.toFixed(2)}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Compliance Badges */}
+                                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                                    {customer.submissionRules.requirePoNumber && (
+                                                        <span className="text-[10px] font-bold bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                                                            ✓ PO / WO# Required
+                                                        </span>
+                                                    )}
+                                                    {customer.submissionRules.requireSignedWorkOrder && (
+                                                        <span className="text-[10px] font-bold bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                                                            ✓ Manager Sign-Off Required
+                                                        </span>
+                                                    )}
+                                                    {customer.submissionRules.requireBeforeAfterPhotos && (
+                                                        <span className="text-[10px] font-bold bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                                                            ✓ Before/After Photos Required
+                                                        </span>
+                                                    )}
+                                                    {customer.submissionRules.requireEquipmentSerial && (
+                                                        <span className="text-[10px] font-bold bg-white dark:bg-slate-900 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
+                                                            ✓ Equipment Serial Required
+                                                        </span>
+                                                    )}
+                                                    {customer.submissionRules.doNotDiscussPricingWithStoreAssociate && (
+                                                        <span className="text-[10px] font-bold bg-amber-100 text-amber-900 dark:bg-amber-950/40 dark:text-amber-300 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-700">
+                                                            🔒 Do Not Discuss Pricing
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {(customer.submissionRules.thirdPartyPortal?.submissionNotes || customer.submissionRules.customSubmissionNotes) && (
+                                                    <p className="text-[11px] text-slate-600 dark:text-slate-300 bg-white/80 dark:bg-slate-900/80 p-2 rounded-lg border border-sky-100 dark:border-sky-900/30 italic">
+                                                        <span className="font-bold not-italic text-sky-700 dark:text-sky-300">Instructions: </span>
+                                                        {customer.submissionRules.thirdPartyPortal?.submissionNotes || customer.submissionRules.customSubmissionNotes}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+
                                         <div className="col-span-2">
                                             <p className="text-gray-500">Address</p>
                                             <p className="font-medium dark:text-white">
@@ -3222,38 +4506,126 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                 
                                 <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
                                     <div className="flex justify-between items-center mb-3">
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Site Properties</h4>
+                                        <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                            Site Properties 
+                                            {customer.serviceLocations && customer.serviceLocations.length > 0 && (
+                                                <span className="text-xs font-normal text-slate-500">
+                                                    ({locationSearchTerm.trim() ? `${(customer.serviceLocations || []).filter((loc: any) => {
+                                                        const term = locationSearchTerm.toLowerCase().trim();
+                                                        const name = (loc.name || loc.propertyName || '').toLowerCase();
+                                                        const address = (loc.address || '').toLowerCase();
+                                                        const city = (loc.city || '').toLowerCase();
+                                                        const state = (loc.state || '').toLowerCase();
+                                                        const zip = (loc.zip || '').toLowerCase();
+                                                        const storeNum = (loc.storeNumber || loc.locationNumber || loc.poNumber || '').toLowerCase();
+                                                        return name.includes(term) || address.includes(term) || city.includes(term) || state.includes(term) || zip.includes(term) || storeNum.includes(term);
+                                                    }).length} of ${customer.serviceLocations.length}` : customer.serviceLocations.length})
+                                                </span>
+                                            )}
+                                        </h4>
                                         <div className="flex gap-2">
                                             {customer.customerType === 'Property Management' && customer.serviceLocations && customer.serviceLocations.length > 0 && (
                                                 <Button onClick={handleBulkAdHocPMs} variant="secondary" className="text-[10px] py-1 px-2 h-auto flex items-center gap-1 bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100">
                                                     <Wrench size={12}/> Bulk Dispatch Maintenance
                                                 </Button>
                                             )}
-                                            <button title="Add Property" aria-label="Add Property" onClick={() => { setNewLocation({ name: '', address: '', city: '', state: '', zip: '', notes: '' }); setIsAddingLocation(true); }} className="text-primary-600 hover:text-primary-700">
+                                            <button title="Add Property" aria-label="Add Property" onClick={() => { setNewLocation({ name: '', address: '', city: '', state: '', zip: '', notes: '', storeNumber: '', locationNumber: '' }); setIsAddingLocation(!isAddingLocation); }} className="text-primary-600 hover:text-primary-700">
                                                 <PlusCircle size={18} />
                                             </button>
                                         </div>
                                     </div>
 
-                                    <div className="space-y-2 overflow-y-auto max-h-[30vh] custom-scrollbar pr-1">
-                                        {customer.serviceLocations && customer.serviceLocations.length > 0 ? customer.serviceLocations.map((loc: any) => (
-                                            <div key={loc.id} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded flex justify-between items-start transition-colors hover:border-primary-300">
-                                                <div>
-                                                    <p className="font-bold text-xs text-slate-800 dark:text-slate-100">{loc.name}</p>
-                                                    <p className="text-[10px] text-slate-500 mt-0.5">{loc.address}</p>
-                                                    {loc.city && <p className="text-[10px] text-slate-500">{loc.city}, {loc.state}</p>}
-                                                    {loc.poNumber && <p className="text-[10px] font-black text-emerald-600 mt-1 uppercase tracking-widest">PO: {loc.poNumber}</p>}
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <button title="Edit Property" aria-label="Edit Property" onClick={() => { setNewLocation({ ...loc, name: loc.name || loc.propertyName }); setIsAddingLocation(true); }} className="text-slate-400 hover:text-primary-600 transition-colors">
-                                                        <Edit size={14} />
-                                                    </button>
-                                                    <button title="Delete Property" aria-label="Delete Property" onClick={(e) => handleDeleteLocation(loc.id, e)} className="text-slate-400 hover:text-red-500 transition-colors">
-                                                        <TrashIcon size={14} />
-                                                    </button>
-                                                </div>
+                                    {/* Location Search Bar */}
+                                    {customer.serviceLocations && customer.serviceLocations.length > 0 && (
+                                        <div className="relative mb-2.5">
+                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={13} />
+                                            <input
+                                                type="text"
+                                                placeholder={t("Search locations by name, store #, address, city...")}
+                                                value={locationSearchTerm}
+                                                onChange={e => setLocationSearchTerm(e.target.value)}
+                                                className="w-full pl-8 pr-7 py-1.5 text-xs rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-primary-500 shadow-2xs"
+                                            />
+                                            {locationSearchTerm && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLocationSearchTerm('')}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                    title="Clear search"
+                                                >
+                                                    <XCircle size={13} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                    
+                                    {isAddingLocation && (
+                                        <div className="space-y-3 mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-600 shadow-inner animate-in fade-in slide-in-from-top-2">
+                                            <p className="text-xs font-bold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 pb-2">{newLocation.id ? 'Edit Property' : 'Add Property'}</p>
+                                            
+                                            <Input label="Location Name (e.g. Primary, Warehouse)" isBlock value={newLocation.name || ''} onChange={e => setNewLocation({...newLocation, name: e.target.value})} />
+                                            <Input label="Store # / Location Code" isBlock value={newLocation.storeNumber || newLocation.locationNumber || ''} onChange={e => setNewLocation({...newLocation, storeNumber: e.target.value, locationNumber: e.target.value})} placeholder="e.g. Store #4663, CK058, or PROP-A1" />
+                                            <Input label="Street Address" isBlock value={newLocation.address || ''} onChange={e => setNewLocation({...newLocation, address: e.target.value})} />
+                                            <Input label="City" isBlock value={newLocation.city || ''} onChange={e => setNewLocation({...newLocation, city: e.target.value})} />
+                                            <Input label="State" isBlock value={newLocation.state || ''} onChange={e => setNewLocation({...newLocation, state: e.target.value})} />
+                                            <Input label="Zip" isBlock value={newLocation.zip || ''} onChange={e => setNewLocation({...newLocation, zip: e.target.value})} />
+                                            
+                                            <div className="flex justify-end gap-2 pt-2">
+                                                <Button variant="secondary" onClick={() => setIsAddingLocation(false)} className="text-xs py-1.5 px-3 h-auto">Cancel</Button>
+                                                <Button onClick={handleAddLocation} className="text-xs py-1.5 px-3 h-auto">Save Property</Button>
                                             </div>
-                                        )) : (
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-2 overflow-y-auto max-h-[30vh] custom-scrollbar pr-1">
+                                        {customer.serviceLocations && customer.serviceLocations.length > 0 ? (() => {
+                                            const filteredLocs = customer.serviceLocations.filter((loc: any) => {
+                                                if (!locationSearchTerm.trim()) return true;
+                                                const term = locationSearchTerm.toLowerCase().trim();
+                                                const name = (loc.name || loc.propertyName || '').toLowerCase();
+                                                const address = (loc.address || '').toLowerCase();
+                                                const city = (loc.city || '').toLowerCase();
+                                                const state = (loc.state || '').toLowerCase();
+                                                const zip = (loc.zip || '').toLowerCase();
+                                                const storeNum = (loc.storeNumber || loc.locationNumber || loc.poNumber || '').toLowerCase();
+                                                const notes = (loc.notes || '').toLowerCase();
+                                                return name.includes(term) || address.includes(term) || city.includes(term) || state.includes(term) || zip.includes(term) || storeNum.includes(term) || notes.includes(term);
+                                            });
+
+                                            if (filteredLocs.length === 0) {
+                                                return (
+                                                    <div className="text-xs text-slate-500 italic p-4 text-center">
+                                                        No locations matching "{locationSearchTerm}".
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => setLocationSearchTerm('')} 
+                                                            className="block mx-auto mt-1.5 text-primary-600 hover:underline font-semibold not-italic text-xs"
+                                                        >
+                                                            Clear search
+                                                        </button>
+                                                    </div>
+                                                );
+                                            }
+
+                                            return filteredLocs.map((loc: any) => (
+                                                <div key={loc.id} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded flex justify-between items-start transition-colors hover:border-primary-300">
+                                                    <div>
+                                                        <p className="font-bold text-xs text-slate-800 dark:text-slate-100">{loc.name || loc.propertyName}</p>
+                                                        <p className="text-[10px] text-slate-500 mt-0.5">{loc.address}</p>
+                                                        {loc.city && <p className="text-[10px] text-slate-500">{loc.city}{loc.state ? `, ${loc.state}` : ''}{loc.zip ? ` ${loc.zip}` : ''}</p>}
+                                                        {(loc.storeNumber || loc.locationNumber || loc.poNumber) && <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 mt-1 uppercase tracking-wider">Store #: {loc.storeNumber || loc.locationNumber || loc.poNumber}</p>}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button title="Edit Property" aria-label="Edit Property" onClick={() => { setNewLocation({ ...loc, name: loc.name || loc.propertyName, storeNumber: loc.storeNumber || loc.locationNumber || loc.poNumber || '', locationNumber: loc.storeNumber || loc.locationNumber || loc.poNumber || '' }); setIsAddingLocation(true); }} className="text-slate-400 hover:text-primary-600 transition-colors">
+                                                            <Edit size={14} />
+                                                        </button>
+                                                        <button title="Delete Property" aria-label="Delete Property" onClick={(e) => handleDeleteLocation(loc.id, e)} className="text-slate-400 hover:text-red-500 transition-colors">
+                                                            <TrashIcon size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ));
+                                        })() : (
                                             <p className="text-xs text-slate-500 italic p-2 center text-center">No multiple properties listed. Default address used.</p>
                                         )}
                                     </div>
@@ -3265,11 +4637,140 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                          <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">
                                              {customer.customerType === 'Residential' ? t('Additional Contacts') : t('Company Contacts')}
                                          </h4>
-                                         <button title="Add Contact" aria-label="Add Contact" onClick={() => { setNewContact({ id: '', name: '', title: '', phone: '', email: '', isPrimary: false, portalRole: undefined, allowedLocationIds: [], portalUserStatus: undefined }); setIsAddingContact(true); }} className="text-primary-600 hover:text-primary-700">
+                                         <button title="Add Contact" aria-label="Add Contact" onClick={() => { setNewContact({ id: '', name: '', title: '', phone: '', email: '', isPrimary: false, isIncomingWorkOrderContact: false, contactRoles: [], portalRole: undefined, allowedLocationIds: [], portalUserStatus: undefined }); setIsAddingContact(!isAddingContact); }} className="text-primary-600 hover:text-primary-700">
                                              <PlusCircle size={18} />
                                          </button>
                                      </div>
                                      
+                                     {isAddingContact && (
+                                         <div className="space-y-3 mb-4 p-3 bg-white dark:bg-slate-700 rounded border border-slate-200 dark:border-slate-600 shadow-inner animate-in fade-in slide-in-from-top-2">
+                                             <p className="text-xs font-bold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-600 pb-2">{newContact.id ? 'Edit Contact' : 'Add Contact'}</p>
+                                             
+                                             <Input label="Name" value={newContact.name || ''} onChange={e => setNewContact({...newContact, name: e.target.value})} />
+                                             <Input label="Title/Role (Optional)" value={newContact.title || ''} onChange={e => setNewContact({...newContact, title: e.target.value})} />
+                                             <Input label="Phone" value={newContact.phone || ''} onChange={e => setNewContact({...newContact, phone: e.target.value})} />
+                                             <Input label="Email" value={newContact.email || ''} onChange={e => setNewContact({...newContact, email: e.target.value})} />
+
+                                             {/* Incoming Work Orders Contact Toggle */}
+                                             <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/50 space-y-1 mt-2">
+                                                 <label className="flex items-center gap-2 cursor-pointer">
+                                                     <input 
+                                                         type="checkbox" 
+                                                         checked={!!newContact.isIncomingWorkOrderContact} 
+                                                         onChange={e => setNewContact({
+                                                             ...newContact, 
+                                                             isIncomingWorkOrderContact: e.target.checked,
+                                                             contactRoles: e.target.checked
+                                                                 ? Array.from(new Set([...(newContact.contactRoles || []), 'incoming_workorders']))
+                                                                 : (newContact.contactRoles || []).filter((r: string) => r !== 'incoming_workorders')
+                                                         })} 
+                                                         className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4" 
+                                                     />
+                                                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                                         <Inbox size={13} className="text-amber-500" />
+                                                         Incoming Work Orders Contact
+                                                     </span>
+                                                 </label>
+                                                 <p className="text-[10px] text-slate-500 dark:text-slate-400 pl-6">
+                                                     All incoming work orders from this customer will arrive from this email address. Emails from this contact will be flagged in the Inbox for 1-click Work Order conversion.
+                                                 </p>
+                                             </div>
+
+                                             <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3 mt-2">
+                                                 <label className="flex items-center gap-2 cursor-pointer">
+                                                     <input 
+                                                         type="checkbox" 
+                                                         checked={!!newContact.portalRole} 
+                                                         onChange={e => setNewContact({
+                                                             ...newContact, 
+                                                             portalRole: e.target.checked ? 'corporate' : undefined,
+                                                             allowedLocationIds: []
+                                                         })} 
+                                                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
+                                                     />
+                                                     <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Enable Customer Portal Access</span>
+                                                 </label>
+
+                                                 {newContact.portalRole && (
+                                                     <div className="space-y-3 border-l-2 border-indigo-200 dark:border-indigo-800 pl-3">
+                                                         <Select 
+                                                             label="Portal Access Role" 
+                                                             value={newContact.portalRole} 
+                                                             onChange={e => setNewContact({
+                                                                 ...newContact, 
+                                                                 portalRole: e.target.value,
+                                                                 allowedLocationIds: []
+                                                             })}
+                                                         >
+                                                             <option value="corporate">Corporate Owner (Full Access)</option>
+                                                             <option value="regional">Regional Manager (Access to Selected Stores)</option>
+                                                             <option value="branch">Branch Manager (Access to Single Store)</option>
+                                                         </Select>
+
+                                                         {newContact.portalRole === 'branch' && (
+                                                             <Select 
+                                                                 label="Assign Single Store" 
+                                                                 value={newContact.allowedLocationIds?.[0] || ''} 
+                                                                 onChange={e => setNewContact({
+                                                                     ...newContact, 
+                                                                     allowedLocationIds: e.target.value ? [e.target.value] : []
+                                                                 })}
+                                                             >
+                                                                 <option value="">-- Select Store --</option>
+                                                                 {customer.serviceLocations?.map((loc: any) => (
+                                                                     <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name}</option>
+                                                                 ))}
+                                                             </Select>
+                                                         )}
+
+                                                         {newContact.portalRole === 'regional' && (
+                                                             <div className="space-y-1.5">
+                                                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assign Regional Stores</p>
+                                                                 <div className="max-h-28 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-2 bg-white dark:bg-slate-900 space-y-1 custom-scrollbar">
+                                                                     {customer.serviceLocations && customer.serviceLocations.length > 0 ? (
+                                                                         customer.serviceLocations.map((loc: any) => {
+                                                                             const isChecked = newContact.allowedLocationIds?.includes(loc.id);
+                                                                             return (
+                                                                                 <label key={loc.id} className="flex items-center gap-2 cursor-pointer text-xs">
+                                                                                     <input 
+                                                                                         type="checkbox" 
+                                                                                         checked={isChecked || false} 
+                                                                                         onChange={ev => {
+                                                                                             const currentIds = newContact.allowedLocationIds || [];
+                                                                                             const newIds = ev.target.checked 
+                                                                                                 ? [...currentIds, loc.id] 
+                                                                                                 : currentIds.filter((id: string) => id !== loc.id);
+                                                                                             setNewContact({ ...newContact, allowedLocationIds: newIds });
+                                                                                         }} 
+                                                                                         className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" 
+                                                                                     />
+                                                                                     <span className="text-slate-700 dark:text-slate-300 font-medium truncate">{loc.propertyName || loc.name}</span>
+                                                                                 </label>
+                                                                             );
+                                                                         })
+                                                                     ) : (
+                                                                         <p className="text-[10px] text-slate-400 italic">No storefront locations listed.</p>
+                                                                     )}
+                                                                 </div>
+                                                             </div>
+                                                         )}
+                                                     </div>
+                                                 )}
+                                             </div>
+
+                                             <div className="flex items-center justify-between pt-2">
+                                                 <label className="flex items-center gap-2 cursor-pointer">
+                                                     <input type="checkbox" checked={newContact.isPrimary} onChange={e => setNewContact({...newContact, isPrimary: e.target.checked})} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                                     <span className="text-xs font-medium dark:text-slate-300">Primary Contact</span>
+                                                 </label>
+                                                 <div className="flex justify-end gap-2">
+                                                     <Button variant="secondary" onClick={() => setIsAddingContact(false)} className="text-xs py-1.5 px-3 h-auto">Cancel</Button>
+                                                     <Button onClick={handleAddContact} className="text-xs py-1.5 px-3 h-auto">Save Contact</Button>
+                                                 </div>
+                                             </div>
+                                         </div>
+                                     )}
+
                                      <div className="space-y-2 overflow-y-auto max-h-[30vh] custom-scrollbar pr-1">
                                          {customer.contacts && customer.contacts.length > 0 ? customer.contacts.map((contact: any) => (
                                              <div key={contact.id} className="p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded flex justify-between items-start transition-colors hover:border-primary-300">
@@ -3277,6 +4778,11 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                                      <p className="font-bold text-xs text-slate-800 dark:text-slate-100 flex items-center gap-1.5 flex-wrap">
                                                          {contact.name} 
                                                          {contact.isPrimary && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 text-[10px] rounded uppercase font-bold">Primary</span>}
+                                                         {(contact.isIncomingWorkOrderContact || (contact.contactRoles && contact.contactRoles.includes('incoming_workorders'))) && (
+                                                             <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[9px] rounded uppercase font-black flex items-center gap-1 border border-amber-300 dark:border-amber-700">
+                                                                 <Inbox size={10} /> Incoming Work Orders
+                                                             </span>
+                                                         )}
                                                          {contact.portalRole && (
                                                              <span className={`px-1.5 py-0.5 text-[9px] rounded uppercase font-bold ${
                                                                  contact.portalRole === 'corporate' 
@@ -3327,6 +4833,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                  </div>
                             </div>
                         </div>
+                    </div>
                     )}
 
                     {activeTab === 'equipment' && (
@@ -3334,6 +4841,15 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="font-bold text-gray-900 dark:text-white">Assets & Locations</h3>
                                 <div className="flex gap-2">
+                                    {(customer.id === 'cust-1787187506048' || (customer.serviceLocations && customer.serviceLocations.length > 1) || customer.name?.toLowerCase().includes('impact')) && (
+                                        <Button 
+                                            onClick={() => setIsMallFilterModalOpen(true)} 
+                                            className="w-auto text-xs py-1 !bg-emerald-600 hover:!bg-emerald-700 !text-white border-0 flex items-center gap-1.5 shadow-sm font-bold"
+                                            title="View aggregate filter pull sheet grouped by mall cluster"
+                                        >
+                                            <Filter size={14}/> Mall Filter Requisition
+                                        </Button>
+                                    )}
                                     <Button onClick={() => window.open(`#/report/equipment/${customer.id}`, '_blank')} className="w-auto text-xs py-1 !bg-indigo-600 hover:!bg-indigo-700 !text-white border-0 flex items-center gap-1"><Printer size={14}/> Equipment Report</Button>
                                 </div>
                             </div>
@@ -3347,239 +4863,611 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
 
                     {activeTab === 'history' && (
                         <div className="space-y-4">
-                            {((customer.serviceLocations && customer.serviceLocations.length > 0) || customer.customerType === 'Property Management') && (
-                                <div className="flex justify-end">
-                                    <select 
-                                        title="Filter History by Location"
-                                        aria-label="Filter History by Location"
-                                        className="text-sm border-gray-300 rounded-md dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-                                        value={historyLocationFilter}
-                                        onChange={(e) => setHistoryLocationFilter(e.target.value)}
-                                    >
-                                        <option value="">All Locations</option>
-                                        <option value="default">Main Office / Unassigned</option>
-                                        {customer.serviceLocations?.map(loc => (
-                                            <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name}</option>
-                                        ))}
-                                    </select>
+                            {/* Summary & Metrics Bar */}
+                            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs bg-white dark:bg-slate-900">
+                                <div className="p-3 text-center border-r border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30">
+                                    <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Total Calls</span>
+                                    <p className="text-base font-black text-slate-800 dark:text-white mt-0.5">{historyStats.total}</p>
                                 </div>
-                            )}
-                            <table className="w-full text-sm text-left">
-                                <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-800">
-                                    <tr>
-                                        <th className="px-4 py-2">Date</th>
-                                        {((customer.serviceLocations && customer.serviceLocations.length > 0) || customer.customerType === 'Property Management') && <th className="px-4 py-2">Property</th>}
-                                        <th className="px-4 py-2">Service</th>
-                                        <th className="px-4 py-2">Tech</th>
-                                        <th className="px-4 py-2">Total</th>
-                                        <th className="px-4 py-2">Status</th>
-                                        <th className="px-4 py-2 text-center">Service Plan</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="history-tbody" className="divide-y divide-gray-200 dark:divide-gray-700">
-                                    {filteredHistoryJobs.map(job => (
-                                        <tr key={job.id} data-location={job.locationId || 'default'} className="hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer" onClick={() => setSelectedJobForModal(job)}>
-                                            <td className="px-4 py-3 text-gray-900 dark:text-white">{new Date(job.appointmentTime).toLocaleDateString()}</td>
-                                            {((customer.serviceLocations && customer.serviceLocations.length > 0) || customer.customerType === 'Property Management') && (
-                                                <td className="px-4 py-3 text-xs font-medium text-slate-700 dark:text-slate-300">
-                                                    {job.locationName || 'Main Office'}
-                                                </td>
-                                            )}
-                                            <td className="px-4 py-3">{job.tasks.join(', ')}</td>
-                                            <td className="px-4 py-3">
-                                                 <div>{job.assignedTechnicianName}</div>
-                                                 {job.assistants && job.assistants.length > 0 && (
-                                                     <div 
-                                                         className="text-[10px] text-slate-400 dark:text-slate-500 font-medium mt-0.5 cursor-help"
-                                                         title={job.assistants.map((id: string) => {
-                                                             const u = state.users?.find((user: any) => user.id === id);
-                                                             return u ? `${u.firstName} ${u.lastName}` : '';
-                                                         }).filter(Boolean).join(', ')}
-                                                     >
-                                                         + {job.assistants.length} Crew
-                                                     </div>
-                                                 )}
-                                             </td>
-                                            <td className="px-4 py-3 font-bold">${(job.invoice?.amount || 0).toFixed(2)}</td>
-                                            <td className="px-4 py-3">
-                                                <span className={`px-2 py-1 rounded text-xs font-bold ${job.jobStatus === 'Completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>{job.jobStatus}</span>
-                                            </td>
-                                            <td className="px-4 py-3 text-center">
-                                                <button
-                                                    type="button"
-                                                    title={job.isServicePlan ? "Part of Service Plan (click to remove)" : "Click to mark as part of Service Plan"}
-                                                    onClick={(e) => handleToggleServicePlan(job, e)}
-                                                    className={`px-2.5 py-1 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1 transition-all mx-auto ${
-                                                        job.isServicePlan 
-                                                            ? 'bg-purple-100 text-purple-800 border border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800 shadow-sm'
-                                                            : 'bg-slate-100 text-slate-600 hover:bg-purple-50 hover:text-purple-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-purple-900/30 dark:hover:text-purple-300 border border-slate-200 dark:border-slate-700'
-                                                    }`}
-                                                >
-                                                    {job.isServicePlan ? (
-                                                        <>
-                                                            <CheckCircle size={13} className="text-purple-600 dark:text-purple-400" />
-                                                            <span>Plan Visit</span>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <PlusCircle size={13} />
-                                                            <span>Cover with Plan</span>
-                                                        </>
-                                                    )}
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
+                                <div className="p-3 text-center border-r border-slate-200 dark:border-slate-800">
+                                    <span className="text-[9px] font-extrabold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Completed</span>
+                                    <p className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">{historyStats.completed}</p>
+                                </div>
+                                <div className="p-3 text-center border-r border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30">
+                                    <span className="text-[9px] font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">In Progress / Sched</span>
+                                    <p className="text-base font-black text-blue-600 dark:text-blue-400 mt-0.5">{historyStats.inProgress}</p>
+                                </div>
+                                <div className="p-3 text-center border-r border-slate-200 dark:border-slate-800">
+                                    <span className="text-[9px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">Needs Follow-Up</span>
+                                    <p className="text-base font-black text-amber-600 dark:text-amber-400 mt-0.5">{historyStats.needsFollowUp}</p>
+                                </div>
+                                <div className="p-3 text-center border-r border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/30">
+                                    <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Total Billed</span>
+                                    <p className="text-base font-bold text-slate-700 dark:text-slate-200 mt-0.5">${historyStats.totalBilled.toFixed(2)}</p>
+                                </div>
+                                <div className="p-3 text-center bg-emerald-50/20 dark:bg-emerald-950/20">
+                                    <span className="text-[9px] font-extrabold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider block">Total Paid</span>
+                                    <p className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-0.5">${historyStats.totalPaid.toFixed(2)}</p>
+                                </div>
+                            </div>
 
-                                        {activeTab === 'financials' && (
-                        <div className="space-y-6">
-                            {/* 1. Active Membership Section */}
-                            <div>
-                                <div className="flex justify-between items-center mb-3">
-                                    <h4 className="font-bold text-gray-900 dark:text-white">Active Membership</h4>
-                                    {!membership && (
-                                        <Button 
-                                            onClick={() => setIsEnrolling(!isEnrolling)} 
-                                            className="w-auto text-xs py-1 flex items-center gap-1 bg-purple-600 hover:bg-purple-700"
+                            {/* Toolbar & Filters */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50/80 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                                <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+                                    {/* Search input */}
+                                    <div className="relative flex-1 min-w-[200px]">
+                                        <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                                        <input 
+                                            type="text"
+                                            placeholder="Search by WO #, Invoice #, task, tech, location..."
+                                            value={historySearchTerm}
+                                            onChange={(e) => setHistorySearchTerm(e.target.value)}
+                                            className="w-full pl-8 pr-3 py-1.5 text-xs bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-primary-500 focus:outline-none"
+                                        />
+                                        {historySearchTerm && (
+                                            <button 
+                                                type="button" 
+                                                onClick={() => setHistorySearchTerm('')} 
+                                                className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                            >
+                                                <XCircle size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* Status Filter */}
+                                    <select 
+                                        aria-label="Filter History by Status"
+                                        className="text-xs py-1.5 px-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 font-bold focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                        value={historyStatusFilter}
+                                        onChange={(e) => setHistoryStatusFilter(e.target.value)}
+                                    >
+                                        <option value="ALL">All Statuses</option>
+                                        <option value="Scheduled">Scheduled</option>
+                                        <option value="In Progress">In Progress</option>
+                                        <option value="Completed">Completed</option>
+                                        <option value="Needs Follow-up">Needs Follow-up</option>
+                                        <option value="Cancelled">Cancelled</option>
+                                    </select>
+
+                                    {/* Location Filter */}
+                                    {((customer.serviceLocations && customer.serviceLocations.length > 0) || customer.customerType === 'Property Management') && (
+                                        <select 
+                                            title="Filter History by Location"
+                                            aria-label="Filter History by Location"
+                                            className="text-xs py-1.5 px-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 font-bold focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                            value={historyLocationFilter}
+                                            onChange={(e) => setHistoryLocationFilter(e.target.value)}
                                         >
-                                            <Sparkles size={14}/> Enroll Customer
-                                        </Button>
+                                            <option value="">All Locations</option>
+                                            <option value="default">Main Office / Unassigned</option>
+                                            {customer.serviceLocations?.map(loc => (
+                                                <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name}</option>
+                                            ))}
+                                        </select>
                                     )}
                                 </div>
 
-                                {isEnrolling && (
-                                    <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded border border-purple-200 dark:border-purple-800 animate-fade-in mb-4">
-                                        <div className="flex justify-between items-center mb-3">
-                                            <p className="text-xs font-bold text-purple-700 uppercase">Choose Plan for Staff Enrollment</p>
-                                        </div>
-                                        <div className="flex gap-4 mb-4">
-                                            <div className="flex-1">
-                                                <Input 
-                                                    type="number" 
-                                                    label="Number of Systems" 
-                                                    min="1" 
-                                                    value={enrollSystemCount.toString()} 
-                                                    onChange={(e) => setEnrollSystemCount(Math.max(1, parseInt(e.target.value) || 1))} 
-                                                />
-                                            </div>
-                                            <div className="flex-1">
-                                                <Input 
-                                                    type="number" 
-                                                    label="Price Override ($)" 
-                                                    placeholder="Optional custom price" 
-                                                    value={priceOverride.toString()} 
-                                                    onChange={(e) => setPriceOverride(e.target.value ? parseFloat(e.target.value) : '')} 
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 sm:grid-cols-3 gap-3">
-                                            {state.membershipPlans.map(plan => (
-                                                <button 
-                                                    key={plan.id}
-                                                    onClick={() => handleManualEnroll(plan)}
-                                                    className="p-3 bg-white dark:bg-gray-800 border-2 border-purple-100 dark:purple-800 rounded-lg hover:border-purple-500 text-left transition-all"
-                                                >
-                                                    <p className="font-bold text-sm text-gray-900 dark:text-white">{plan.name}</p>
-                                                    <p className="text-xs text-primary-600 font-bold">${plan.monthlyPrice}/mo base</p>
-                                                    {((plan.addonFeeAmount || 0) > 0 || (plan.addonFeePercent || 0) > 0) && (
-                                                        <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">
-                                                            +{plan.addonFeeName || 'Fee'}: {
-                                                                (plan.addonFeeAmount || 0) > 0 && (plan.addonFeePercent || 0) > 0
-                                                                    ? `${plan.addonFeeAmount.toFixed(2)} + ${plan.addonFeePercent}%`
-                                                                    : (plan.addonFeeAmount || 0) > 0
-                                                                        ? `${plan.addonFeeAmount.toFixed(2)}`
-                                                                        : `${plan.addonFeePercent}%`
-                                                            }
-                                                        </p>
-                                                    )}
-                                                    <p className="text-[10px] text-gray-400 mt-1">{plan.visitsPerYear} Visits • {plan.discountPercentage}% Off</p>
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <button onClick={() => setIsEnrolling(false)} className="text-xs text-gray-500 mt-3 hover:underline">Cancel Enrollment</button>
-                                    </div>
-                                )}
-
-                                {membership ? (
-                                    <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded border border-green-200 dark:border-green-800 flex justify-between items-center">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-green-100 dark:bg-green-800 rounded-full text-green-600">
-                                                <ShieldCheck size={20}/>
-                                            </div>
-                                            <div>
-                                                <h4 className="font-bold text-green-800 dark:text-green-300">{membership.planName} Membership</h4>
-                                                <p className="text-xs text-green-700 dark:text-green-400">Valid until {new Date(membership.endDate).toLocaleDateString()}</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="bg-green-200 text-green-800 text-[10px] px-2 py-1 rounded font-bold">ACTIVE</span>
-                                            <p className="text-xs text-green-600 font-bold mt-1">{membership.visitsRemaining} Visits Left</p>
-                                        </div>
-                                    </div>
-                                ) : !isEnrolling && (
-                                    <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded border border-gray-200 dark:border-gray-700 text-center text-sm text-gray-500 italic">
-                                        No active membership plan found.
-                                    </div>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    <Button 
+                                        type="button" 
+                                        onClick={() => setEditingAppointmentJob({ customerId: customer.id, customerName: customer.name } as any)}
+                                        className="text-xs py-1.5 px-3 bg-primary-600 hover:bg-primary-700 text-white font-extrabold rounded-lg shadow-xs flex items-center gap-1.5 border-0"
+                                    >
+                                        <PlusCircle size={14} /> + Book Service Call
+                                    </Button>
+                                </div>
                             </div>
 
-                            <hr className="border-slate-200 dark:border-slate-800 my-6" />
+                            {/* Operations-Style Service History Table */}
+                            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs bg-white dark:bg-slate-900">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse text-xs">
+                                        <thead className="bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-extrabold uppercase text-[9px] tracking-wider sticky top-0 z-10">
+                                            <tr>
+                                                <th className="px-4 py-3 min-w-[200px]">{t("Site Location & Ref #")}</th>
+                                                <th className="px-4 py-3 min-w-[180px]">{t("Appointment & Site Visit")}</th>
+                                                <th className="px-4 py-3 min-w-[190px]">{t("Invoice & Doc Status")}</th>
+                                                <th className="px-4 py-3 min-w-[170px]">{t("Linked Documents")}</th>
+                                                <th className="px-4 py-3 min-w-[160px]">{t("Status & Assignment")}</th>
+                                            </tr>
+                                        </thead>
+                                        {filteredHistoryJobs.length === 0 ? (
+                                            <tbody>
+                                                <tr>
+                                                    <td colSpan={5} className="px-4 py-12 text-center text-slate-400 italic">
+                                                        {historySearchTerm || historyStatusFilter !== 'ALL' || historyLocationFilter
+                                                            ? "No service calls matched your filter criteria."
+                                                            : "No service history recorded for this customer yet."}
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        ) : (
+                                            filteredHistoryJobs.map((job: Job) => {
+                                                const loc = customer.serviceLocations?.find((l: any) => l.id === job.locationId || l.address === job.address || l.name === job.locationName || l.propertyName === job.locationName);
+                                                const siteLocationName = resolveSiteLocationName(job, loc);
+                                                const siteAddress = formatFullAddress(job.address || loc?.address || customer.address || '');
 
-                            {/* 2. Statement of Account Section */}
-                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                {/* Statement Header */}
-                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-5 border-b border-slate-200 dark:border-slate-800 gap-4">
+                                                const relatedProposals = (state.proposals || []).filter((p: any) =>
+                                                    p.id === job.proposalId ||
+                                                    p.id === job.projectId ||
+                                                    p.jobId === job.id ||
+                                                    job.linkedProposalIds?.includes(p.id) ||
+                                                    p.linkedJobIds?.includes(job.id) ||
+                                                    (job.invoice?.id && p.invoiceId === job.invoice.id)
+                                                );
+
+                                                const poNumber = job.poNumber || (job as any).workOrderNumber || job.invoice?.poNumber || relatedProposals.find((p: any) => p.poNumber)?.poNumber;
+                                                const timeSummary = getJobTimeSummary(job);
+                                                const formattedIn = timeSummary.formattedInTime;
+                                                const formattedOut = timeSummary.formattedOutTime;
+                                                const formattedDuration = timeSummary.formattedDuration;
+
+                                                const techUser = employees.find(u => u.id === job.assignedTechnicianId);
+                                                const isSubcontractor = !!(job.assignedPartnerId || techUser?.role?.toLowerCase() === 'subcontractor' || job.assignedTechnicianName?.toLowerCase().includes('subcontractor'));
+
+                                                return (
+                                                    <tbody key={job.id} className="border-b border-slate-200 dark:border-slate-800 last:border-b-0 hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                                                        {/* Primary Row */}
+                                                        <tr id={`history-job-${job.id}`}>
+                                                            {/* 1. Site Location & Reference */}
+                                                            <td className="px-4 py-3 align-top">
+                                                                <div className="flex flex-col gap-1 max-w-[230px]">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-[9px] font-mono font-black px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                                                            JOB-{job.id.replace('job-', '')}
+                                                                        </span>
+                                                                        {((job as any).jobType || (job as any).type) && (
+                                                                            <span className="text-[10px] font-bold text-slate-500 truncate" title={(job as any).jobType || (job as any).type}>
+                                                                                {(job as any).jobType || (job as any).type}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {(siteLocationName || siteAddress) && (
+                                                                        <div className="pt-0.5 space-y-0.5">
+                                                                            <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider flex items-center gap-1">
+                                                                                <MapPin size={9} className="text-indigo-500" /> Property / Location
+                                                                            </span>
+                                                                            {siteLocationName && (
+                                                                                <strong className="text-slate-800 dark:text-slate-100 text-xs block truncate" title={siteLocationName}>
+                                                                                    {siteLocationName}
+                                                                                </strong>
+                                                                            )}
+                                                                            {siteAddress && (
+                                                                                <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate" title={siteAddress}>
+                                                                                    {siteAddress}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+
+                                                                    {poNumber && (
+                                                                        <div className="pt-1">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    dispatch({ type: 'SET_VIEWING_WORK_ORDER', payload: { workOrderNumber: poNumber, customerId: customer.id } });
+                                                                                }}
+                                                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors shadow-xs font-mono"
+                                                                                title="Click to view work order associations"
+                                                                            >
+                                                                                <Briefcase size={10} />
+                                                                                <span>WO: {poNumber}</span>
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {job.tasks && job.tasks.length > 0 && (
+                                                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1 italic mt-0.5">
+                                                                            {job.tasks.join(', ')}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+
+                                                            {/* 2. Appointment & Site Visit */}
+                                                            <td className="px-4 py-3 align-top whitespace-nowrap">
+                                                                <div className="flex flex-col gap-1 min-w-[170px]">
+                                                                    <div>
+                                                                        <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Scheduled Appt</span>
+                                                                        <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 dark:text-slate-100 mt-0.5">
+                                                                            <Calendar size={13} className="text-primary-600 dark:text-sky-400 shrink-0" />
+                                                                            <span>{new Date(job.appointmentTime || job.createdAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                                                        </div>
+                                                                        {job.appointmentTime && (
+                                                                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block ml-4">
+                                                                                {new Date(job.appointmentTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {(formattedIn || formattedOut || formattedDuration) ? (
+                                                                        <div className="pt-1 border-t border-slate-100 dark:border-slate-800 space-y-0.5 mt-0.5">
+                                                                            <span className="text-[9px] font-extrabold uppercase text-emerald-600 dark:text-emerald-400 tracking-wider flex items-center gap-1">
+                                                                                <Clock size={9} /> Site Visit
+                                                                            </span>
+                                                                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                                                                {formattedIn && <span className="text-emerald-700 dark:text-emerald-400">In: {formattedIn}</span>}
+                                                                                {formattedOut && <span className="text-slate-600 dark:text-slate-400">Out: {formattedOut}</span>}
+                                                                                {timeSummary.status === 'in_progress' && <span className="text-amber-600 dark:text-amber-400 font-black text-[9px] uppercase animate-pulse">In Progress</span>}
+                                                                            </div>
+                                                                            {formattedDuration && (
+                                                                                <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block">
+                                                                                    Duration: {formattedDuration}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 italic block pt-0.5">No check-in recorded</span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+
+                                                            {/* 3. Invoice & Doc Status */}
+                                                            <td className="px-4 py-3 align-top whitespace-nowrap">
+                                                                <div className="flex flex-col gap-1 max-w-[200px]">
+                                                                    {/* Payment status pill & breakdown */}
+                                                                    {(() => {
+                                                                        const inv = job.invoice || (job as any).financials || {};
+                                                                        const totalAmount = Number(inv.totalAmount || inv.amount || (job as any).totalCost || (job as any).estimatedCost || (job as any).quoteAmount || 0);
+
+                                                                        let amountPaid = Number(inv.amountPaid ?? (job as any).amountPaid ?? 0);
+                                                                        if (Array.isArray(inv.payments) && inv.payments.length > 0) {
+                                                                            const sumP = inv.payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+                                                                            if (sumP > amountPaid) amountPaid = sumP;
+                                                                        }
+
+                                                                        const depositAmount = Number(inv.depositAmount || (job as any).depositAmount || 0);
+                                                                        const isDepositPaid = inv.depositStatus === 'paid' || inv.depositPaid || (job as any).depositPaid;
+                                                                        if (isDepositPaid && depositAmount > 0 && amountPaid < depositAmount) {
+                                                                            amountPaid = depositAmount;
+                                                                        }
+
+                                                                        const isFullyPaid = inv.status === 'Paid' || (totalAmount > 0 && amountPaid >= totalAmount - 0.01);
+                                                                        const remainingUnpaid = isFullyPaid ? 0 : Math.max(0, totalAmount - amountPaid);
+                                                                        const isPartiallyPaid = !isFullyPaid && amountPaid > 0;
+
+                                                                        return (
+                                                                            <>
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <span className={`px-2 py-0.5 text-[10px] font-black rounded-full uppercase tracking-wider shadow-xs ${
+                                                                                        isFullyPaid ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800' :
+                                                                                        isPartiallyPaid ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800' :
+                                                                                        inv.status === 'Unpaid' || inv.sentAt || totalAmount > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800' :
+                                                                                        'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                                                                                    }`}>
+                                                                                        {isFullyPaid ? `✓ Paid${totalAmount > 0 ? ` ($${totalAmount.toFixed(2)})` : ''}` :
+                                                                                         isPartiallyPaid ? `Partially Paid` :
+                                                                                         totalAmount > 0 ? `Unpaid ($${remainingUnpaid.toFixed(2)})` :
+                                                                                         inv.status || 'No Invoice'}
+                                                                                    </span>
+                                                                                </div>
+
+                                                                                {/* Partial / Deposit breakdown */}
+                                                                                {isPartiallyPaid ? (
+                                                                                    <div className="flex flex-col gap-0.5 text-[10px] bg-blue-50/80 dark:bg-blue-950/40 p-1.5 rounded-md border border-blue-200/60 dark:border-blue-800/50 my-0.5 shadow-xs">
+                                                                                        <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 font-bold">
+                                                                                            <span>{isDepositPaid ? 'Deposit Paid:' : 'Paid To Date:'}</span>
+                                                                                            <span>${amountPaid.toFixed(2)}</span>
+                                                                                        </div>
+                                                                                        <div className="flex justify-between items-center text-amber-800 dark:text-amber-300 font-black">
+                                                                                            <span>Unpaid Balance:</span>
+                                                                                            <span>${remainingUnpaid.toFixed(2)}</span>
+                                                                                        </div>
+                                                                                        {totalAmount > 0 && (
+                                                                                            <div className="flex justify-between items-center text-slate-500 dark:text-slate-400 text-[9px] pt-0.5 border-t border-blue-200/50 dark:border-blue-800/50">
+                                                                                                <span>Total Invoice:</span>
+                                                                                                <span>${totalAmount.toFixed(2)}</span>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                ) : !isFullyPaid && totalAmount > 0 && depositAmount > 0 && (
+                                                                                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold block truncate mt-0.5">
+                                                                                        Deposit Req: ${depositAmount.toFixed(2)}
+                                                                                    </span>
+                                                                                )}
+
+                                                                                {isFullyPaid && (inv.paidDate || inv.paymentMethod) && (
+                                                                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block truncate mt-0.5">
+                                                                                        {inv.paidDate ? `Paid ${new Date(inv.paidDate).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' })}` : ''}
+                                                                                        {inv.paymentMethod ? ` (${inv.paymentMethod})` : ''}
+                                                                                    </span>
+                                                                                )}
+                                                                            </>
+                                                                        );
+                                                                    })()}
+
+                                                                    {/* Sent Documents & Job Record Log */}
+                                                                    <div className="flex flex-col gap-0.5 pt-1 border-t border-slate-100 dark:border-slate-800 text-[10px]">
+                                                                        {/* Job Record Verification / Sent Status */}
+                                                                        {job.jobRecordSignedOff || job.jobRecordSignedOffAt ? (
+                                                                            <span className="text-slate-700 dark:text-slate-300 font-semibold flex items-center gap-1" title={job.jobRecordSignedOffBy ? `Verified by ${job.jobRecordSignedOffBy}` : 'Job Record Verified'}>
+                                                                                <CheckCircle size={10} className="text-emerald-500 shrink-0" />
+                                                                                <span>Job Record: <strong className="font-bold text-emerald-700 dark:text-emerald-400">{job.jobRecordSignedOffAt ? `Verified ${new Date(job.jobRecordSignedOffAt).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' })}` : 'Verified'}</strong></span>
+                                                                            </span>
+                                                                        ) : (job as any).sentAt || (job as any).workOrderSentAt ? (
+                                                                            <span className="text-slate-600 dark:text-slate-400 font-medium flex items-center gap-1">
+                                                                                <Send size={10} className="text-indigo-500 shrink-0" />
+                                                                                <span>Job Record: <strong className="font-bold text-slate-800 dark:text-slate-200">Sent {new Date((job as any).sentAt || (job as any).workOrderSentAt).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' })}</strong></span>
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span className="text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
+                                                                                <Clock size={10} className="text-amber-500 shrink-0" />
+                                                                                <span>Job Record: <strong className="font-normal text-slate-600 dark:text-slate-400">Pending Sign-off</strong></span>
+                                                                            </span>
+                                                                        )}
+
+                                                                        {/* Invoice Sent */}
+                                                                        {(() => {
+                                                                            const invSentTime = job.invoice?.sentAt || (job as any).invoiceSentAt || (job.invoice as any)?.emailSentAt;
+                                                                            if (!invSentTime) return null;
+                                                                            const invDateStr = new Date(invSentTime).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' });
+                                                                            return (
+                                                                                <span className="text-slate-600 dark:text-slate-400 font-medium flex items-center gap-1" title={`Invoice sent ${new Date(invSentTime).toLocaleString()}`}>
+                                                                                    <Send size={10} className="text-blue-500 shrink-0" />
+                                                                                    <span>Invoice Sent: <strong className="font-bold text-slate-800 dark:text-slate-200">{invDateStr}</strong></span>
+                                                                                </span>
+                                                                            );
+                                                                        })()}
+
+                                                                        {/* Linked Proposals */}
+                                                                        {relatedProposals.map((p: any) => {
+                                                                            const propDisplay = resolveDocumentDisplayId('proposal', p).id;
+                                                                            const sentTimestamp = p.sentAt || p.sentDate || (job as any).proposalSentAt || (p.status === 'Sent' || p.status === 'Opened' || p.status === 'Accepted' ? p.updatedAt : null);
+                                                                            const dateStr = sentTimestamp ? new Date(sentTimestamp).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' }) : null;
+                                                                            return (
+                                                                                <span key={`sent-prop-${p.id}`} className="text-slate-600 dark:text-slate-400 font-medium flex items-center gap-1">
+                                                                                    <FileText size={10} className="text-purple-500 shrink-0" />
+                                                                                    <span>Prop #{propDisplay}: <strong className="font-bold text-slate-800 dark:text-slate-200">{dateStr ? `Sent ${dateStr}` : (p.status || 'Draft')}</strong></span>
+                                                                                </span>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+
+                                                            {/* 4. Linked Documents */}
+                                                            <td className="px-4 py-3 align-top">
+                                                                <div className="flex flex-wrap gap-1.5 max-w-[200px]">
+                                                                    {renderJobDocuments(job)}
+                                                                </div>
+                                                            </td>
+
+                                                            {/* 5. Status & Assignment */}
+                                                            <td className="px-4 py-3 align-top whitespace-nowrap">
+                                                                <div className="flex flex-col gap-1.5 min-w-[150px]">
+                                                                    {/* Status Selector */}
+                                                                    <div>
+                                                                        <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Status</span>
+                                                                        <select 
+                                                                            aria-label="Update Job Status"
+                                                                            title="Update Job Status"
+                                                                            value={job.jobStatus} 
+                                                                            onChange={(e) => handleJobStatusChange(job, e.target.value)} 
+                                                                            className="text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded p-1 w-full focus:ring-1 focus:ring-primary-500 font-bold"
+                                                                        >
+                                                                            <option value="Scheduled">Scheduled</option>
+                                                                            <option value="In Progress">In Progress</option>
+                                                                            <option value="Completed">Completed</option>
+                                                                            <option value="Needs Follow-up">Needs Follow-up</option>
+                                                                            <option value="Cancelled">Cancelled</option>
+                                                                        </select>
+                                                                    </div>
+
+                                                                    {/* Technician Assignment */}
+                                                                    <div>
+                                                                        <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Assigned Tech</span>
+                                                                        <select 
+                                                                            aria-label="Assign Technician"
+                                                                            title="Assign Technician"
+                                                                            value={job.assignedTechnicianId || (job.assignedPartnerId && job.assignedPartnerId !== state.currentOrganization?.id ? `partner:${job.assignedPartnerId}` : '')} 
+                                                                            onChange={(e) => handleJobAssignmentChange(job, e.target.value)} 
+                                                                            className="text-xs border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white rounded p-1 w-full focus:ring-1 focus:ring-primary-500"
+                                                                        >
+                                                                            <option value="">Unassigned</option>
+                                                                            <optgroup label="Internal Technicians">
+                                                                                {employees.map(tech => <option key={tech.id} value={tech.id}>{tech.firstName} {tech.lastName}</option>)}
+                                                                            </optgroup>
+                                                                            <optgroup label="Subcontractors & Partners">
+                                                                                <option value="partner:generic_subcontractor">🏢 Subcontractor (Generic)</option>
+                                                                                {linkedPartners.map(p => <option key={p.id} value={`partner:${p.linkedOrgId || p.id}`}>{p.companyName} {!p.linkedOrgId ? '(Internal 1099)' : ''}</option>)}
+                                                                            </optgroup>
+                                                                        </select>
+                                                                    </div>
+
+                                                                    {job.assistants && job.assistants.length > 0 && (
+                                                                        <div 
+                                                                            className="text-[10px] text-slate-400 dark:text-slate-500 font-medium cursor-help flex items-center gap-1"
+                                                                            title={job.assistants.map((id: string) => {
+                                                                                const u = employees.find((user: any) => user.id === id);
+                                                                                return u ? `${u.firstName} ${u.lastName}` : '';
+                                                                            }).filter(Boolean).join(', ')}
+                                                                        >
+                                                                            <Users size={11} /> + {job.assistants.length} Crew Members
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+
+                                                        {/* Secondary Actions Sub-Row */}
+                                                        <tr className="bg-slate-50/60 dark:bg-slate-900/30 border-t-0">
+                                                            <td colSpan={5} className="px-4 py-2 border-t-0">
+                                                                <div className="flex flex-wrap gap-1.5 items-center text-xs">
+                                                                    <span className="font-black text-slate-400 uppercase tracking-widest text-[9px] mr-1">Actions:</span>
+                                                                    
+                                                                    {/* View Details */}
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => setSelectedJobForModal(job)} 
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[11px] text-[#123A63] dark:text-sky-300 hover:bg-slate-100 font-bold shadow-xs transition-colors"
+                                                                        title="View Full Job Record & Work Details"
+                                                                    >
+                                                                        <Wrench size={12} />
+                                                                        View Details
+                                                                    </button>
+
+                                                                    {/* Edit Job Appointment */}
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => setEditingAppointmentJob(job)} 
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-purple-50/70 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 rounded text-[11px] text-purple-700 dark:text-purple-300 hover:bg-purple-100 font-bold shadow-xs transition-colors"
+                                                                        title="Edit Appointment Details"
+                                                                    >
+                                                                        <Edit size={12} />
+                                                                        Edit
+                                                                    </button>
+
+                                                                    {/* Invoice */}
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => setEditingInvoiceJobId(job.id)} 
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded text-[11px] text-amber-700 dark:text-amber-300 hover:bg-amber-100 font-bold shadow-xs transition-colors"
+                                                                        title="Create or Manage Invoice"
+                                                                    >
+                                                                        <DollarSign size={12} />
+                                                                        Invoice
+                                                                    </button>
+
+                                                                    {/* Send Email */}
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => setSendInvoiceModalConfig({ isOpen: true, job })} 
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded text-[11px] text-blue-700 dark:text-blue-300 hover:bg-blue-100 font-bold shadow-xs transition-colors"
+                                                                        title="Send Invoice or Job Record via Email"
+                                                                    >
+                                                                        <Mail size={12} />
+                                                                        Send Email
+                                                                    </button>
+
+                                                                    {/* SMS */}
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => setIsSendSmsModalOpen(true)} 
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-sky-50/70 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/40 rounded text-[11px] text-sky-700 dark:text-sky-300 hover:bg-sky-100 font-bold shadow-xs transition-colors"
+                                                                        title="SMS Customer"
+                                                                    >
+                                                                        <MessageSquare size={12} />
+                                                                        SMS
+                                                                    </button>
+
+                                                                    {/* Internal Notes */}
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setHistoryNotesJob(job);
+                                                                            setHistoryInternalNotes((job as any).internalNotes || (job as any).notes || '');
+                                                                        }} 
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded text-[11px] text-amber-700 dark:text-amber-300 hover:bg-amber-100 font-bold shadow-xs transition-colors"
+                                                                        title="Manage Internal Notes"
+                                                                    >
+                                                                        <AlignLeft size={12} />
+                                                                        Notes
+                                                                    </button>
+
+                                                                    {/* Associations */}
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => setLinkingJob(job)} 
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-cyan-50/70 dark:bg-cyan-950/20 border border-cyan-200 dark:border-cyan-900/40 rounded text-[11px] text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100 font-bold shadow-xs transition-colors"
+                                                                        title="View & Associate Documents, Proposals, Invoices & Files"
+                                                                    >
+                                                                        <Link2 size={12} />
+                                                                        Associations
+                                                                    </button>
+
+                                                                    {/* Copy Ref */}
+                                                                    <button 
+                                                                        type="button"
+                                                                        onClick={() => handleCopyJobRef(job.id)} 
+                                                                        className="flex items-center gap-1 px-2 py-1 bg-slate-50/70 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded text-[11px] text-slate-700 dark:text-slate-300 hover:bg-slate-100 font-bold shadow-xs transition-colors"
+                                                                        title="Copy JOB reference to clipboard"
+                                                                    >
+                                                                        <Copy size={12} />
+                                                                        Copy Ref
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                );
+                                            })
+                                        )}
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'financials' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                {/* Statement Header with Client & Account Summary */}
+                                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center pb-4 border-b border-slate-200 dark:border-slate-800 gap-3">
                                     <div>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <span className="p-1.5 rounded-lg bg-[#123A63]/10 text-[#123A63] dark:text-sky-400">
                                                 <DollarSign size={20} />
                                             </span>
-                                            <h4 className="font-extrabold text-2xl text-[#123A63] dark:text-sky-300 tracking-tight">Statement of Account</h4>
+                                            <h4 className="font-extrabold text-xl text-[#123A63] dark:text-sky-300 tracking-tight">Statement of Account</h4>
+                                            <span className="text-[10px] font-bold px-2.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-full border border-slate-200 dark:border-slate-700">
+                                                Terms: {customer.paymentTerms ? getPaymentTermsLabel(customer.paymentTerms) : 'Net 30'}
+                                            </span>
                                         </div>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Real-time ledger overview for corporate client and properties</p>
+                                        <div className="flex items-center gap-2.5 text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 flex-wrap font-medium">
+                                            <span>Client Code: <strong className="font-mono text-slate-700 dark:text-slate-200">{customer.id.slice(0, 8).toUpperCase()}</strong></span>
+                                            <span>&bull;</span>
+                                            <span>Account #: <strong className="font-mono text-[#123A63] dark:text-sky-400 font-bold">{customer.accountNumber || getOrGenerateAccountNumber(customer)}</strong></span>
+                                            {customer.email && (
+                                                <>
+                                                    <span>&bull;</span>
+                                                    <span>Email: <strong className="text-slate-700 dark:text-slate-200">{customer.email}</strong></span>
+                                                </>
+                                            )}
+                                            {customer.phone && (
+                                                <>
+                                                    <span>&bull;</span>
+                                                    <span>Phone: <strong className="text-slate-700 dark:text-slate-200">{customer.phone}</strong></span>
+                                                </>
+                                            )}
+                                            <span>&bull;</span>
+                                            <span>Date: <strong className="text-slate-700 dark:text-slate-200">{new Date().toLocaleDateString(undefined, { dateStyle: 'medium' })}</strong></span>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        <Button 
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 shrink-0 w-full sm:w-auto">
+                                        <button 
+                                            type="button"
+                                            onClick={() => setIsLogPaymentModalOpen(true)} 
+                                            className="text-xs py-1.5 px-3 flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm hover:shadow-emerald-600/20 transition-all border-0 cursor-pointer whitespace-nowrap"
+                                            title={t("Log Received Payment")}
+                                        >
+                                            <PlusCircle size={13}/> {t("Log Received Payment")}
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setIsCreatePaymentLinkOpen(true)} 
+                                            className="text-xs py-1.5 px-3 flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm hover:shadow-indigo-600/20 transition-all border-0 cursor-pointer whitespace-nowrap"
+                                            title={t("Request Deposit / Payment Link")}
+                                        >
+                                            <DollarSign size={13}/> {t("Request Deposit / Payment Link")}
+                                        </button>
+                                        <button 
+                                            type="button"
                                             onClick={handleDownloadPDF} 
-                                            variant="secondary"
-                                            className="text-xs py-2 px-4 flex items-center gap-2 border-slate-200 dark:border-slate-700 dark:text-gray-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all font-semibold rounded-lg shadow-sm"
+                                            className="text-xs py-1.5 px-3 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold rounded-lg shadow-sm border border-slate-600/50 dark:border-slate-700 transition-all cursor-pointer whitespace-nowrap"
+                                            title={t("Download Statement PDF")}
                                         >
-                                            <Download size={14}/> Download PDF
-                                        </Button>
-                                        <Button 
-                                            onClick={handleEmailStatement} 
-                                            className="text-xs py-2 px-4 flex items-center gap-2 bg-[#123A63] hover:bg-[#0f2d50] text-white font-semibold rounded-lg shadow-sm hover:shadow-[#123A63]/20 transition-all border-0"
+                                            <Download size={13}/> {t("Download PDF")}
+                                        </button>
+                                        <button 
+                                            type="button"
+                                            onClick={() => setIsEmailStatementModalOpen(true)} 
+                                            className="text-xs py-1.5 px-3 flex items-center justify-center gap-1.5 bg-[#123A63] hover:bg-[#0f2d50] text-white font-bold rounded-lg shadow-sm hover:shadow-[#123A63]/20 transition-all border-0 cursor-pointer whitespace-nowrap"
+                                            title={t("Email Statement of Account")}
                                         >
-                                            <Mail size={14}/> Email Statement
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                {/* Account Summary & Client Details */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50 dark:bg-slate-900/30 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                                    <div className="space-y-2">
-                                        <span className="text-[10px] font-bold text-[#123A63] dark:text-sky-400 uppercase tracking-widest block">Client Information</span>
-                                        <p className="font-extrabold text-base text-slate-800 dark:text-slate-100 leading-tight">{customer.name}</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">{customer.address}</p>
-                                        {(customer.email || customer.phone) && (
-                                            <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5 pt-1">
-                                                {customer.email && <p>Email: {customer.email}</p>}
-                                                {customer.phone && <p>Phone: {customer.phone}</p>}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="space-y-2 md:text-right flex flex-col justify-between items-start md:items-end">
-                                        <div>
-                                            <span className="text-[10px] font-bold text-[#123A63] dark:text-sky-400 uppercase tracking-widest block">Account Summary</span>
-                                            <p className="text-xs text-slate-600 dark:text-slate-350 mt-1">Client Code: <strong className="font-mono text-slate-800 dark:text-slate-100">{customer.id.slice(0, 8).toUpperCase()}</strong></p>
-                                            <p className="text-xs text-slate-600 dark:text-slate-350">Account Number: <strong className="text-[#123A63] dark:text-sky-400 font-extrabold">{customer.id.replace(/\D/g, '')}</strong></p>
-                                            <p className="text-xs text-slate-600 dark:text-slate-350">Payment Terms: <strong className="text-slate-800 dark:text-slate-100">{customer.paymentTerms || 'Net 30'}</strong></p>
-                                            <p className="text-xs text-slate-600 dark:text-slate-350">Statement Date: <strong className="text-slate-800 dark:text-slate-100">{new Date().toLocaleDateString(undefined, { dateStyle: 'medium' })}</strong></p>
-                                        </div>
+                                            <Mail size={13}/> {t("Email Statement")}
+                                        </button>
                                     </div>
                                 </div>
 
@@ -3608,107 +5496,211 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                 </div>
 
                                 {/* Statement Filters */}
-                                <div className="flex justify-between items-center pt-2">
-                                    <div className="flex gap-2">
+                                <div className="flex flex-wrap justify-between items-center pt-2 gap-2">
+                                    <div className="flex flex-wrap gap-2">
                                         <button 
                                             type="button" 
-                                            onClick={() => setStatementUnpaidOnly(false)} 
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${!statementUnpaidOnly ? 'bg-[#123A63] text-white border-[#123A63] shadow-sm' : 'bg-white text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-350 dark:border-slate-800 hover:bg-slate-50'}`}
+                                            onClick={() => { setStatementUnpaidOnly(false); setShowPaymentsLedger(false); }} 
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${!statementUnpaidOnly && !showPaymentsLedger ? 'bg-[#123A63] text-white border-[#123A63] shadow-sm' : 'bg-white text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-350 dark:border-slate-800 hover:bg-slate-50'}`}
                                         >
                                             Show All Activity
                                         </button>
                                         <button 
                                             type="button" 
-                                            onClick={() => setStatementUnpaidOnly(true)} 
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${statementUnpaidOnly ? 'bg-[#123A63] text-white border-[#123A63] shadow-sm' : 'bg-white text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-350 dark:border-slate-800 hover:bg-slate-50'}`}
+                                            onClick={() => { setStatementUnpaidOnly(true); setShowPaymentsLedger(false); }} 
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${statementUnpaidOnly && !showPaymentsLedger ? 'bg-[#123A63] text-white border-[#123A63] shadow-sm' : 'bg-white text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-350 dark:border-slate-800 hover:bg-slate-50'}`}
                                         >
                                             Show Open Invoices Only
+                                        </button>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setShowPaymentsLedger(!showPaymentsLedger)} 
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5 ${showPaymentsLedger ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm' : 'bg-white text-slate-600 border-slate-200 dark:bg-slate-900 dark:text-slate-350 dark:border-slate-800 hover:bg-slate-50'}`}
+                                        >
+                                            <Receipt size={13} />
+                                            Payment Receipts ({customerPayments.length})
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* Ledger Table */}
-                                <div className="border border-slate-200 dark:border-slate-850 rounded-2xl overflow-hidden shadow-sm bg-white dark:bg-slate-900">
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse text-xs">
-                                            <thead>
-                                                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-850 text-slate-500 font-extrabold uppercase text-[9px] tracking-wider">
-                                                    <th className="px-4 py-3">Date</th>
-                                                    <th className="px-4 py-3">Invoice #</th>
-                                                    <th className="px-4 py-3">Property Location</th>
-                                                    <th className="px-4 py-3">Reference / PO #</th>
-                                                    <th className="px-4 py-3 text-right">Debit (Dr)</th>
-                                                    <th className="px-4 py-3 text-right">Credit (Cr)</th>
-                                                    <th className="px-4 py-3 text-right">Balance</th>
-                                                    <th className="px-4 py-3 text-right">Running Bal</th>
-                                                    <th className="px-4 py-3">Due Date</th>
-                                                    <th className="px-4 py-3">Status</th>
-                                                    <th className="px-4 py-3 text-center">Linked Documents</th>
-                                                    <th className="px-4 py-3 text-center">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100 dark:divide-slate-850/60">
-                                                {statementJobs.length === 0 ? (
-                                                    <tr>
-                                                        <td colSpan={11} className="px-4 py-8 text-center text-slate-400 italic">No transactions found for this customer.</td>
+                                {/* Ledger / Receipts Table */}
+                                {showPaymentsLedger ? (
+                                    <div className="border border-slate-200 dark:border-slate-850 rounded-2xl overflow-hidden shadow-sm bg-white dark:bg-slate-900 animate-in fade-in duration-200">
+                                        <div className="bg-slate-50/80 dark:bg-slate-850/50 px-4 py-3 border-b border-slate-200 dark:border-slate-850 flex justify-between items-center">
+                                            <div className="flex items-center gap-2">
+                                                <Receipt size={16} className="text-emerald-600" />
+                                                <span className="font-extrabold text-sm text-[#123A63] dark:text-sky-300">Customer Payment Receipts & Allocation History</span>
+                                                <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400 rounded-full">
+                                                    {customerPayments.length} Total Receipts
+                                                </span>
+                                            </div>
+                                            <span className="text-xs text-slate-500 font-medium">Total Received: <strong className="text-emerald-600 font-mono font-bold">${statementTotals.totalPaid.toFixed(2)}</strong></span>
+                                        </div>
+                                        <div className="relative overflow-x-auto overflow-y-auto max-h-[520px] custom-scrollbar rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900">
+                                            <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                                                <thead className="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 shadow-xs">
+                                                    <tr className="text-slate-700 dark:text-slate-200 font-extrabold uppercase text-[9px] tracking-wider">
+                                                        <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Payment Date</th>
+                                                        <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Method</th>
+                                                        <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Check / Ref #</th>
+                                                        <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Applied Invoice</th>
+                                                        <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Property / Location</th>
+                                                        <th className="px-4 py-3 text-right sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Amount Received</th>
+                                                        <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Memo / Notes</th>
                                                     </tr>
-                                                ) : (
-                                                    statementJobs.map((tx, idx) => {
-                                                        const job = tx.job;
-                                                        const inv = tx.invoice || {};
-                                                        const amount = tx.total;
-                                                        const isPaid = inv.status === 'Paid';
-                                                        
-                                                        return (
-                                                            <tr key={job.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
-                                                                <td className="px-4 py-3 whitespace-nowrap text-slate-500 font-semibold">{new Date(job.appointmentTime).toLocaleDateString()}</td>
-                                                                <td className="px-4 py-3 whitespace-nowrap">
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-850/60">
+                                                    {customerPayments.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={7} className="px-4 py-8 text-center text-slate-400 italic">No payment receipts recorded for this customer yet.</td>
+                                                        </tr>
+                                                    ) : (
+                                                        customerPayments.map((p, pIdx) => (
+                                                            <tr key={p.id || pIdx} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
+                                                                <td className="px-4 py-3 whitespace-nowrap text-slate-500 font-semibold border-b border-slate-100 dark:border-slate-800/40">{p.date || 'N/A'}</td>
+                                                                <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100 dark:border-slate-800/40">
+                                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                                                        {p.method || 'Check'}
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-4 py-3 font-mono text-slate-700 dark:text-slate-350 font-bold border-b border-slate-100 dark:border-slate-800/40">{p.reference || '—'}</td>
+                                                                <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100 dark:border-slate-800/40">
                                                                     <button 
                                                                         type="button" 
-                                                                        onClick={() => setEditingInvoiceJobId(job.id)} 
+                                                                        onClick={() => setEditingInvoiceJobId(p.jobId)} 
                                                                         className="text-xs text-[#123A63] hover:underline font-extrabold font-mono uppercase bg-transparent border-0 p-0 cursor-pointer"
                                                                     >
-                                                                        #{inv.id || job.id.slice(0, 8)}
+                                                                        #{p.invoiceId}
                                                                     </button>
                                                                 </td>
-                                                                <td className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-350">{job.locationName || 'Main Office'}</td>
-                                                                <td className="px-4 py-3 text-slate-500 font-mono text-[10px]">{job.poNumber || 'N/A'}</td>
-                                                                <td className="px-4 py-3 text-right font-semibold text-slate-800 dark:text-slate-200">${amount.toFixed(2)}</td>
-                                                                <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-450">${isPaid ? amount.toFixed(2) : '0.00'}</td>
-                                                                <td className="px-4 py-3 text-right font-semibold text-slate-800 dark:text-slate-200">${(isPaid ? 0 : amount).toFixed(2)}</td>
-                                                                <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white">${tx.runningBalance?.toFixed(2) || '0.00'}</td>
-                                                                <td className="px-4 py-3 whitespace-nowrap text-slate-500 font-semibold">{inv.dueDate ? new Date(inv.dueDate.replace(/-/g, '/')).toLocaleDateString() : 'N/A'}</td>
-                                                                <td className="px-4 py-3 whitespace-nowrap">
-                                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                                                        isPaid 
-                                                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' 
-                                                                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'
-                                                                    }`}>{inv.status || 'Unpaid'}</span>
+                                                                <td className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-350 border-b border-slate-100 dark:border-slate-800/40">
+                                                                    <div className="font-bold text-slate-800 dark:text-slate-100">{p.locationName || 'Main Office'}</div>
+                                                                    {p.address && (
+                                                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-tight">{p.address}</div>
+                                                                    )}
                                                                 </td>
-                                                                <td className="px-4 py-3 text-center">
-                                                                    <div className="flex items-center justify-center gap-1">
-                                                                        {renderJobDocuments(job)}
-                                                                    </div>
-                                                                </td>
-                                                                <td className="px-4 py-3 text-center whitespace-nowrap">
-                                                                    <button 
-                                                                        type="button" 
-                                                                        onClick={() => setSendInvoiceModalConfig({ isOpen: true, job })}
-                                                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm"
-                                                                        title={t("Send Invoice")}
-                                                                    >
-                                                                        <Send size={10} />
-                                                                        {t("Send Invoice")}
-                                                                    </button>
-                                                                </td>
+                                                                <td className="px-4 py-3 text-right font-extrabold text-emerald-600 dark:text-emerald-450 font-mono text-sm border-b border-slate-100 dark:border-slate-800/40">${(Number(p.amount) || 0).toFixed(2)}</td>
+                                                                <td className="px-4 py-3 text-slate-500 text-xs italic border-b border-slate-100 dark:border-slate-800/40">{p.notes || '—'}</td>
                                                             </tr>
-                                                        );
-                                                    })
-                                                )}
-                                            </tbody>
-                                        </table>
+                                                        ))
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="relative overflow-x-auto overflow-y-auto max-h-[550px] sm:max-h-[650px] custom-scrollbar rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900">
+                                        <table className="w-full text-left border-separate border-spacing-0 text-xs">
+                                            <thead className="sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 shadow-xs">
+                                                <tr className="text-slate-700 dark:text-slate-200 font-extrabold uppercase text-[9px] tracking-wider">
+                                                    <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Date</th>
+                                                    <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Invoice #</th>
+                                                    <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Property Location</th>
+                                                    <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Reference / PO #</th>
+                                                    <th className="px-4 py-3 text-right sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Debit (Dr)</th>
+                                                    <th className="px-4 py-3 text-right sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Credit (Cr)</th>
+                                                    <th className="px-4 py-3 text-right sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Balance</th>
+                                                    <th className="px-4 py-3 text-right sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Running Bal</th>
+                                                    <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Due Date</th>
+                                                    <th className="px-4 py-3 sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Status</th>
+                                                    <th className="px-4 py-3 text-center sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Linked Documents</th>
+                                                    <th className="px-4 py-3 text-center sticky top-0 z-30 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 whitespace-nowrap">Actions</th>
+                                                </tr>
+                                            </thead>
+                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-850/60">
+                                                    {statementJobs.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={11} className="px-4 py-8 text-center text-slate-400 italic">No transactions found for this customer.</td>
+                                                        </tr>
+                                                    ) : (
+                                                        statementJobs.map((tx, idx) => {
+                                                            const job = tx.job;
+                                                            const inv = tx.invoice || {};
+                                                            const amount = tx.total;
+                                                            const clampedPaid = tx.paid;
+                                                            const remaining = tx.balance;
+                                                            const isPaid = inv.status === 'Paid' || (amount > 0 && remaining <= 0.01);
+                                                            const isPartiallyPaid = !isPaid && (inv.status === 'Partially Paid' || (clampedPaid > 0 && remaining > 0.01));
+                                                            const effectiveStatus = isPaid ? 'Paid' : isPartiallyPaid ? 'Partially Paid' : (inv.status || 'Unpaid');
+                                                            
+                                                            return (
+                                                                <tr key={job.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors">
+                                                                    <td className="px-4 py-3 whitespace-nowrap text-slate-500 font-semibold border-b border-slate-100 dark:border-slate-800/40">{new Date(job.appointmentTime).toLocaleDateString()}</td>
+                                                                    <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100 dark:border-slate-800/40">
+                                                                        <button 
+                                                                            type="button" 
+                                                                            onClick={() => setEditingInvoiceJobId(job.id)} 
+                                                                            className="text-xs text-[#123A63] hover:underline font-extrabold font-mono uppercase bg-transparent border-0 p-0 cursor-pointer"
+                                                                        >
+                                                                            #{inv.id || job.id.slice(0, 8)}
+                                                                        </button>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 font-semibold text-slate-700 dark:text-slate-350 border-b border-slate-100 dark:border-slate-800/40">
+                                                                        {(() => {
+                                                                            const loc = customer.serviceLocations?.find((l: any) => l.id === job.locationId || l.address === job.address || l.name === job.locationName || l.propertyName === job.locationName);
+                                                                            const siteLocName = resolveSiteLocationName(job, loc) || 'Main Office';
+                                                                            const siteAddress = formatFullAddress(job.address || loc?.address || customer.address || '');
+                                                                            return (
+                                                                                <>
+                                                                                    <div className="font-bold text-slate-800 dark:text-slate-100">{siteLocName}</div>
+                                                                                    {siteAddress && (
+                                                                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-tight">{siteAddress}</div>
+                                                                                    )}
+                                                                                </>
+                                                                            );
+                                                                        })()}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-slate-500 font-mono text-[10px] border-b border-slate-100 dark:border-slate-800/40">{job.poNumber || 'N/A'}</td>
+                                                                    <td className="px-4 py-3 text-right font-semibold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800/40">${amount.toFixed(2)}</td>
+                                                                    <td className="px-4 py-3 text-right font-semibold text-emerald-600 dark:text-emerald-450 border-b border-slate-100 dark:border-slate-800/40">
+                                                                        <div>${clampedPaid.toFixed(2)}</div>
+                                                                        {Array.isArray(inv.payments) && inv.payments.length > 0 && (
+                                                                            <div className="text-[9px] font-normal text-slate-500 dark:text-slate-400 mt-0.5 space-y-0.5">
+                                                                                {inv.payments.map((p: any, pIdx: number) => (
+                                                                                    <div key={p.id || pIdx} className="truncate" title={`${p.method || 'Payment'}${p.reference ? ` #${p.reference}` : ''}: $${Number(p.amount).toFixed(2)} on ${p.date || 'N/A'}`}>
+                                                                                        <span className="font-mono text-emerald-700 dark:text-emerald-400 font-bold">${Number(p.amount).toFixed(2)}</span>
+                                                                                        <span className="text-[8px] text-slate-400 ml-1">({p.method || 'Pay'}{p.reference ? ` #${p.reference}` : ''})</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-right font-semibold text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800/40">${remaining.toFixed(2)}</td>
+                                                                    <td className="px-4 py-3 text-right font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800/40">${tx.runningBalance?.toFixed(2) || '0.00'}</td>
+                                                                    <td className="px-4 py-3 whitespace-nowrap text-slate-500 font-semibold border-b border-slate-100 dark:border-slate-800/40">{inv.dueDate ? new Date(inv.dueDate.replace(/-/g, '/')).toLocaleDateString() : 'N/A'}</td>
+                                                                    <td className="px-4 py-3 whitespace-nowrap border-b border-slate-100 dark:border-slate-800/40">
+                                                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                                            isPaid 
+                                                                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' 
+                                                                                : isPartiallyPaid
+                                                                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-200'
+                                                                                : 'bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-400'
+                                                                        }`}>{effectiveStatus}</span>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center border-b border-slate-100 dark:border-slate-800/40">
+                                                                        <div className="flex items-center justify-center gap-1">
+                                                                            {renderJobDocuments(job)}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-center whitespace-nowrap border-b border-slate-100 dark:border-slate-800/40">
+                                                                        <button 
+                                                                            type="button" 
+                                                                            onClick={() => setSendInvoiceModalConfig({ isOpen: true, job })}
+                                                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm"
+                                                                            title={t("Send Invoice")}
+                                                                        >
+                                                                            <Send size={10} />
+                                                                            {t("Send Invoice")}
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                )}
 
                                 {/* Aging Summary box */}
                                 <div className="p-5 bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
@@ -3716,7 +5708,7 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                         <span className="text-[10px] font-bold text-[#123A63] dark:text-sky-400 uppercase tracking-widest block">Aging Analysis (Open Receivables)</span>
                                         <span className="text-[10px] text-slate-400 font-bold uppercase">As of Today</span>
                                     </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
                                         <div className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-center shadow-sm">
                                             <span className="text-[9px] font-bold text-slate-400 uppercase block">Current</span>
                                             <p className={`text-sm font-bold mt-1 ${statementTotals.aging.current > 0 ? 'text-slate-800 dark:text-slate-100 font-extrabold' : 'text-slate-700 dark:text-slate-250'}`}>${statementTotals.aging.current.toFixed(2)}</p>
@@ -3737,10 +5729,144 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                             <span className="text-[9px] font-bold text-slate-400 uppercase block">90+ Days</span>
                                             <p className={`text-sm font-bold mt-1 ${statementTotals.aging.older > 0 ? 'text-rose-600 dark:text-rose-450 font-extrabold' : 'text-slate-750 dark:text-slate-250'}`}>${statementTotals.aging.older.toFixed(2)}</p>
                                         </div>
+                                        <div className="p-3 bg-rose-50 dark:bg-rose-950/30 rounded-lg border border-rose-200 dark:border-rose-900/60 text-center shadow-sm">
+                                            <span className="text-[9px] font-black text-rose-600 dark:text-rose-400 uppercase block">&gt; 45 Days</span>
+                                            <p className={`text-sm font-black mt-1 ${statementTotals.aging.over45 > 0 ? 'text-rose-700 dark:text-rose-300 font-black' : 'text-slate-400'}`}>${statementTotals.aging.over45.toFixed(2)}</p>
+                                        </div>
                                     </div>
                                 </div>
+
+                                {/* Payment & Remittance Instructions */}
+                                <PaymentInstructionsCard 
+                                    organization={state.currentOrganization}
+                                    className="mt-4"
+                                    title="Remittance & Payment Instructions (Wire, Check, ACH)"
+                                    description="Customer remittance information configured by organization settings:"
+                                />
+
+                                <hr className="border-slate-200 dark:border-slate-800 my-6" />
+
+                                {/* Active Membership Section */}
+                                <div>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                            <ShieldCheck size={18} className="text-purple-600" />
+                                            <span>Active Membership &amp; Service Club</span>
+                                        </h4>
+                                        {!membership && (
+                                            <Button 
+                                                onClick={() => setIsEnrolling(!isEnrolling)} 
+                                                className="w-auto text-xs py-1 flex items-center gap-1 bg-purple-600 hover:bg-purple-700"
+                                            >
+                                                <Sparkles size={14}/> Enroll Customer
+                                            </Button>
+                                        )}
+                                    </div>
+
+                                    {isEnrolling && (
+                                        <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded border border-purple-200 dark:border-purple-800 animate-fade-in mb-4">
+                                            <div className="flex justify-between items-center mb-3">
+                                                <p className="text-xs font-bold text-purple-700 uppercase">Choose Plan for Staff Enrollment</p>
+                                            </div>
+                                            <div className="flex gap-4 mb-4">
+                                                <div className="flex-1">
+                                                    <Input 
+                                                        type="number" 
+                                                        label="Number of Systems" 
+                                                        min="1" 
+                                                        value={enrollSystemCount.toString()} 
+                                                        onChange={(e) => setEnrollSystemCount(Math.max(1, parseInt(e.target.value) || 1))} 
+                                                    />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <Input 
+                                                        type="number" 
+                                                        label="Price Override ($)" 
+                                                        placeholder="Optional custom price" 
+                                                        value={priceOverride.toString()} 
+                                                        onChange={(e) => setPriceOverride(e.target.value ? parseFloat(e.target.value) : '')} 
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 sm:grid-cols-3 gap-3">
+                                                {state.membershipPlans.map(plan => (
+                                                    <button 
+                                                        key={plan.id}
+                                                        onClick={() => handleManualEnroll(plan)}
+                                                        className="p-3 bg-white dark:bg-gray-800 border-2 border-purple-100 dark:purple-800 rounded-lg hover:border-purple-500 text-left transition-all cursor-pointer"
+                                                    >
+                                                        <p className="font-bold text-sm text-gray-900 dark:text-white">{plan.name}</p>
+                                                        <p className="text-xs text-primary-600 font-bold">${plan.monthlyPrice}/mo base</p>
+                                                        {((plan.addonFeeAmount || 0) > 0 || (plan.addonFeePercent || 0) > 0) && (
+                                                            <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">
+                                                                +{plan.addonFeeName || 'Fee'}: {
+                                                                    (plan.addonFeeAmount || 0) > 0 && (plan.addonFeePercent || 0) > 0
+                                                                        ? `${plan.addonFeeAmount.toFixed(2)} + ${plan.addonFeePercent}%`
+                                                                        : (plan.addonFeeAmount || 0) > 0
+                                                                            ? `${plan.addonFeeAmount.toFixed(2)}`
+                                                                            : `${plan.addonFeePercent}%`
+                                                                }
+                                                            </p>
+                                                        )}
+                                                        <p className="text-[10px] text-gray-400 mt-1">{plan.visitsPerYear} Visits • {plan.discountPercentage}% Off</p>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <button onClick={() => setIsEnrolling(false)} className="text-xs text-gray-500 mt-3 hover:underline">Cancel Enrollment</button>
+                                        </div>
+                                    )}
+
+                                    {membership ? (
+                                        <div className={`p-4 rounded border flex justify-between items-center ${
+                                            isRecurringMembership(membership)
+                                                ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                                                : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800'
+                                        }`}>
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-2 rounded-full ${
+                                                    isRecurringMembership(membership)
+                                                        ? 'bg-green-100 dark:bg-green-800 text-green-600'
+                                                        : 'bg-indigo-100 dark:bg-indigo-800 text-indigo-600 dark:text-indigo-300'
+                                                }`}>
+                                                    <ShieldCheck size={20}/>
+                                                </div>
+                                                <div>
+                                                    <h4 className={`font-bold ${
+                                                        isRecurringMembership(membership)
+                                                            ? 'text-green-800 dark:text-green-300'
+                                                            : 'text-indigo-900 dark:text-indigo-200'
+                                                    }`}>
+                                                        {membership.planName || (isRecurringMembership(membership) ? 'Active Membership' : 'Commercial Service Agreement')}
+                                                    </h4>
+                                                    <p className={`text-xs ${
+                                                        isRecurringMembership(membership)
+                                                            ? 'text-green-700 dark:text-green-400'
+                                                            : 'text-indigo-700 dark:text-indigo-400'
+                                                    }`}>
+                                                        Valid: {formatAgreementDate(membership)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className={`text-[10px] px-2 py-1 rounded font-bold ${
+                                                    isRecurringMembership(membership)
+                                                        ? 'bg-green-200 text-green-800'
+                                                        : 'bg-indigo-200 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200'
+                                                }`}>ACTIVE</span>
+                                                {isRecurringMembership(membership) ? (
+                                                    <p className="text-xs text-green-600 font-bold mt-1">{membership.visitsRemaining} Visits Left</p>
+                                                ) : (
+                                                    <p className="text-xs text-indigo-600 dark:text-indigo-300 font-semibold mt-1">Non-MRR Contract</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ) : !isEnrolling && (
+                                        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded border border-gray-200 dark:border-gray-700 text-center text-sm text-gray-500 italic">
+                                            No active membership plan found.
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
                     )}
 
                     {activeTab === 'warranties' && (
@@ -3932,9 +6058,11 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                             </div>
 
                             <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
-                                <h4 className="font-bold text-gray-900 dark:text-white mb-4">Warranty Disclaimer Agreements</h4>
                                 <WarrantySection 
                                     jobs={customerJobs} 
+                                    customer={customer}
+                                    organization={state.currentOrganization}
+                                    onIssueNewWarranty={() => setIsIssueWarrantyOpen(true)}
                                     onAcceptWarranty={async (job) => {
                                         const inv = job.invoice as any;
                                         const updatedJob = {
@@ -3986,6 +6114,14 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                     >
                                         <MessageSquare size={14} />
                                         {t("Send SMS")}
+                                    </Button>
+                                    <Button 
+                                        type="button"
+                                        onClick={() => setIsCreatePaymentLinkOpen(true)}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-3.5 flex items-center gap-1.5 shadow-md rounded-xl"
+                                    >
+                                        <DollarSign size={14} />
+                                        {t("Request Deposit")}
                                     </Button>
                                     <Button 
                                         type="button"
@@ -4670,8 +6806,8 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                                         </div>
                                                         <p>Dear {customer.name},</p>
                                                         {notificationTemplate === 'reminder'
-                                                            ? <p>This is a friendly reminder that your upcoming preventative maintenance service is scheduled for the target month of <strong>{customer.maintenanceAgreement?.visits.find((v: any) => v.id === selectedVisitForNotification)?.targetMonth}</strong> under your agreement.</p>
-                                                            : <p>We noticed that your scheduled preventative maintenance service for target month of <strong>{customer.maintenanceAgreement?.visits.find((v: any) => v.id === selectedVisitForNotification)?.targetMonth}</strong> is currently overdue.</p>
+                                                            ? <p>This is a friendly reminder that your upcoming preventative maintenance service is scheduled for the target month of <strong>{customer.maintenanceAgreement?.visits?.find((v: any) => v.id === selectedVisitForNotification)?.targetMonth}</strong> under your agreement.</p>
+                                                            : <p>We noticed that your scheduled preventative maintenance service for target month of <strong>{customer.maintenanceAgreement?.visits?.find((v: any) => v.id === selectedVisitForNotification)?.targetMonth}</strong> is currently overdue.</p>
                                                         }
                                                         <div style={{ backgroundColor: '#f8fafc', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '6px', margin: '15px 0' }}>
                                                             <h4 style={{ margin: '0 0 4px 0', fontSize: '12px' }}>Agreed Terms</h4>
@@ -4689,194 +6825,81 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                     )}
 
                     {activeTab === 'docs' && (
-                        <div 
-                            onDragEnter={handleDragDocs}
-                            onDragOver={handleDragDocs}
-                            onDragLeave={handleDragDocs}
-                            onDrop={handleDropDocs}
-                            className="space-y-6 relative"
-                        >
-                            {dragActiveDocs && (
-                                <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center border-4 border-dashed border-primary-500 rounded-2xl p-6 text-center animate-fade-in">
-                                    <div className="p-4 bg-primary-500/10 rounded-full border border-primary-500/30 mb-3 animate-bounce">
-                                        <Upload className="w-10 h-10 text-primary-500" />
-                                    </div>
-                                    <p className="text-sm font-bold text-white uppercase tracking-wider">Drop here to upload to Documents</p>
-                                    <p className="text-xs text-slate-400 mt-1">Supports images and PDFs</p>
-                                </div>
-                            )}
-                            {/* Upload Area & Header */}
-                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-gray-50 dark:bg-gray-800/40 p-4 rounded-xl border border-gray-100 dark:border-gray-805 shadow-sm">
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-900 dark:text-white">Customer Documents & Media</h3>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">View and manage photos, PDFs, and files uploaded for this customer or associated visits.</p>
-                                </div>
-                                <label className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-sm shrink-0">
-                                    <input type="file" onChange={(e) => handleFileUpload(e, 'document')} className="hidden" accept="image/*,application/pdf" />
-                                    <PlusCircle size={16} />
-                                    <span>Upload New File</span>
-                                </label>
-                            </div>
-
-                            {/* Grouped Files List */}
-                            {groupedFiles.length === 0 ? (
-                                <div className="text-center py-12 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl">
-                                    <FileText size={40} className="mx-auto text-gray-400 mb-3" />
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white">No documents or media found</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Upload files or complete jobs to see photos and files here.</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-8">
-                                    {groupedFiles.map(group => {
-                                        const renderFileCard = (file: StoredFile) => (
-                                            <div 
-                                                key={file.id} 
-                                                className="relative group bg-gray-100 dark:bg-gray-750 rounded-xl h-32 overflow-hidden border border-gray-200 dark:border-gray-700 shadow-sm"
-                                            >
-                                                <button type="button" onClick={() => setViewingFile(file)} className="absolute inset-0 w-full h-full text-left cursor-pointer hover:ring-2 hover:ring-primary-500 transition-all z-0 outline-none" title="View Document" aria-label="View Document">
-                                                    {file.fileType.includes('image') ? (
-                                                        <img src={file.dataUrl || (file as any).url} alt={file.fileName} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <div className="w-full h-full flex flex-col items-center justify-center text-xs text-gray-500 dark:text-gray-400 p-2 text-center">
-                                                            <FileText size={24} className="mb-1 text-gray-400"/>
-                                                            <span className="truncate w-full px-2">{file.fileName}</span>
-                                                        </div>
-                                                    )}
-                                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] p-2 text-center pointer-events-none">
-                                                        <p className="font-bold truncate w-full">{file.fileName}</p>
-                                                        <p className="opacity-75">{new Date(file.createdAt).toLocaleDateString()}</p>
-                                                    </div>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => handleDeleteFile(file, e)}
-                                                    className="absolute top-2 right-2 p-1.5 bg-red-600/90 text-white rounded-full transition-all shadow-lg backdrop-blur-sm hover:bg-red-700 hover:scale-110 z-10"
-                                                    title="Delete File"
-                                                    aria-label="Delete File"
-                                                    style={{ border: 'none' }}
-                                                >
-                                                    <TrashIcon size={12}/>
-                                                </button>
-                                            </div>
-                                        );
-
-                                        return (
-                                            <div key={group.id} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-150 dark:border-slate-800 shadow-sm overflow-hidden">
-                                                {/* Group Header */}
-                                                <div className="bg-slate-50 dark:bg-slate-800/50 px-4 py-3 border-b border-slate-150 dark:border-slate-800 flex justify-between items-center">
-                                                    <div>
-                                                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                                                            {group.title}
-                                                        </h4>
-                                                        {group.subtitle && (
-                                                            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase mt-0.5 tracking-wider">
-                                                                {group.subtitle}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                    <span className="text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold px-2 py-0.5 rounded-full">
-                                                        {(group.beforeFiles.length + group.afterFiles.length + group.otherFiles.length)} { (group.beforeFiles.length + group.afterFiles.length + group.otherFiles.length) === 1 ? 'file' : 'files' }
-                                                    </span>
-                                                </div>
-                                                
-                                                {/* Group Content */}
-                                                <div className="p-4 space-y-6">
-                                                    {/* Before and After Photos Grid */}
-                                                    {(group.beforeFiles.length > 0 || group.afterFiles.length > 0) && (
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                            {/* Before Section */}
-                                                            <div>
-                                                                <div className="flex items-center gap-2 mb-3">
-                                                                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                                                                    <h5 className="text-xs font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Before Repair</h5>
-                                                                </div>
-                                                                {group.beforeFiles.length === 0 ? (
-                                                                    <p className="text-xs text-slate-400 dark:text-slate-500 italic py-6 text-center bg-slate-50/50 dark:bg-slate-850/20 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-                                                                        No before photos
-                                                                    </p>
-                                                                ) : (
-                                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                                        {group.beforeFiles.map(renderFileCard)}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* After Section */}
-                                                            <div>
-                                                                <div className="flex items-center gap-2 mb-3">
-                                                                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                                                    <h5 className="text-xs font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">After Repair</h5>
-                                                                </div>
-                                                                {group.afterFiles.length === 0 ? (
-                                                                    <p className="text-xs text-slate-400 dark:text-slate-500 italic py-6 text-center bg-slate-50/50 dark:bg-slate-850/20 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-                                                                        No after photos
-                                                                    </p>
-                                                                ) : (
-                                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                                        {group.afterFiles.map(renderFileCard)}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Documents and Other Files Section */}
-                                                    {group.otherFiles.length > 0 && (
-                                                        <div className={(group.beforeFiles.length > 0 || group.afterFiles.length > 0) ? "pt-4 border-t border-slate-100 dark:border-slate-800" : ""}>
-                                                            <div className="flex items-center gap-2 mb-3">
-                                                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                                                <h5 className="text-xs font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">Documents & Other Files</h5>
-                                                            </div>
-                                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                                                                {group.otherFiles.map(renderFileCard)}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
+                        <CustomerDocumentDrive 
+                            customer={customer} 
+                            customerJobs={customerJobs} 
+                        />
                     )}
+
                 </div>
             </Modal>
 
             {/* FILE PREVIEW MODAL */}
-            {viewingFile && (
-                <Modal isOpen={!!viewingFile} onClose={() => setViewingFile(null)} title={viewingFile.fileName || "File Preview"} size="lg">
-                    <div className="space-y-4 p-4">
-                        <div className="bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center min-h-[300px] max-h-[70vh] shadow-2xl">
-                            {viewingFile.fileType.includes('image') ? (
-                                <img src={viewingFile.dataUrl || (viewingFile as any).url} className="max-w-full max-h-full object-contain" alt="Preview"/>
-                            ) : viewingFile.fileType.includes('pdf') ? (
-                                <iframe src={viewingFile.dataUrl} className="w-full h-[60vh] border-0" title="PDF Preview" />
-                            ) : (
-                                <div className="p-12 text-center text-white">
-                                    <FileText size={64} className="mx-auto mb-4 text-slate-500"/>
-                                    <p className="font-bold">No preview available</p>
-                                    <p className="text-sm text-slate-400 mt-1 mb-6">This file type ({viewingFile.fileType}) cannot be previewed directly.</p>
-                                    <a 
-                                        href={viewingFile.dataUrl} 
-                                        download={viewingFile.fileName} 
-                                        className="bg-primary-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-primary-700 transition-colors"
-                                    >
-                                        Download File
-                                    </a>
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex justify-between items-center bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
-                            <div className="flex-1 min-w-0 pr-4">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{viewingFile.fileType}</p>
-                                <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{viewingFile.fileName}</p>
+            {viewingFile && (() => {
+                const fileSrc = viewingFile.dataUrl || (viewingFile as any).url || '';
+                const fileInfo = detectFileType(fileSrc, viewingFile.fileName, viewingFile.fileType);
+                return (
+                    <Modal isOpen={!!viewingFile} onClose={() => setViewingFile(null)} title={viewingFile.fileName || "File Preview"} size="xl">
+                        <div className="space-y-4 p-4">
+                            <div className="bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center min-h-[350px] max-h-[70vh] shadow-2xl p-2">
+                                {fileInfo.isImage ? (
+                                    <img src={fileSrc} className="max-w-full max-h-[65vh] object-contain rounded-lg" alt={viewingFile.fileName || 'Preview'}/>
+                                ) : fileInfo.isHtml ? (
+                                    <iframe 
+                                        srcDoc={fileSrc.startsWith('data:text/html;base64,') ? decodeURIComponent(escape(atob(fileSrc.split('base64,')[1]))) : undefined}
+                                        src={!fileSrc.startsWith('data:text/html;base64,') ? fileSrc : undefined} 
+                                        className="w-full h-[60vh] border-0 bg-white rounded-lg" 
+                                        title={viewingFile.fileName || "HTML Preview"} 
+                                    />
+                                ) : fileInfo.isPdf ? (
+                                    <div className="w-full h-[60vh] flex flex-col space-y-2">
+                                        <iframe src={fileSrc} className="w-full h-full border-0 bg-white rounded-lg" title={viewingFile.fileName || "PDF Preview"} />
+                                    </div>
+                                ) : fileInfo.googleDocsViewerUrl ? (
+                                    <iframe src={fileInfo.googleDocsViewerUrl} className="w-full h-[60vh] border-0 bg-white rounded-lg" title={viewingFile.fileName || "Document Preview"} />
+                                ) : (
+                                    <div className="p-12 text-center text-white">
+                                        <FileText size={64} className="mx-auto mb-4 text-slate-500"/>
+                                        <p className="font-bold">{viewingFile.fileName || 'Document'}</p>
+                                        <p className="text-sm text-slate-400 mt-1 mb-6">Click below to open or download this file.</p>
+                                        {fileSrc && (
+                                            <a 
+                                                href={fileSrc} 
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                download={viewingFile.fileName} 
+                                                className="bg-primary-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-primary-700 transition-colors inline-flex items-center gap-2"
+                                            >
+                                                <Download size={16} /> Open / Download File
+                                            </a>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                            <Button variant="secondary" onClick={() => setViewingFile(null)} className="flex-shrink-0">Close Window</Button>
+                            <div className="flex justify-between items-center bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
+                                <div className="flex-1 min-w-0 pr-4">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{fileInfo.extension ? `.${fileInfo.extension}` : viewingFile.fileType}</p>
+                                    <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{viewingFile.fileName}</p>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    {fileSrc && (
+                                        <a
+                                            href={fileSrc}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            download={viewingFile.fileName}
+                                            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
+                                        >
+                                            <ExternalLink size={14} /> Open in New Tab
+                                        </a>
+                                    )}
+                                    <Button variant="secondary" onClick={() => setViewingFile(null)}>Close Window</Button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                </Modal>
-            )}
+                    </Modal>
+                );
+            })()}
 
             {/* QR CODE MODAL */}
             {viewQrAsset && (
@@ -4969,6 +6992,36 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                 />
             )}
 
+            {isCreatePaymentLinkOpen && (
+                <CreatePaymentLinkModal
+                    isOpen={isCreatePaymentLinkOpen}
+                    onClose={() => setIsCreatePaymentLinkOpen(false)}
+                    defaultCustomerId={customer?.id}
+                />
+            )}
+
+            {isLogPaymentModalOpen && customer && (
+                <LogReceivedPaymentModal
+                    isOpen={isLogPaymentModalOpen}
+                    onClose={() => setIsLogPaymentModalOpen(false)}
+                    customer={customer}
+                    jobs={customerJobs}
+                    zIndex="z-[10080]"
+                />
+            )}
+
+            {isEmailStatementModalOpen && customer && (
+                <EmailStatementModal
+                    isOpen={isEmailStatementModalOpen}
+                    onClose={() => setIsEmailStatementModalOpen(false)}
+                    customer={customer}
+                    org={state.currentOrganization}
+                    statementJobs={filteredStatementJobs}
+                    statementTotals={statementTotals}
+                    zIndex="z-[10080]"
+                />
+            )}
+
             {isLogCallModalOpen && (
                 <LogCallModal
                     isOpen={isLogCallModalOpen}
@@ -4976,6 +7029,68 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                     customerId={customer?.id}
                     recipientPhone={customer?.phone}
                 />
+            )}
+
+            {editingAppointmentJob && (
+                <JobAppointmentModal
+                    isOpen={!!editingAppointmentJob}
+                    onClose={() => setEditingAppointmentJob(null)}
+                    customerId={customer?.id}
+                    jobToEdit={editingAppointmentJob.id ? editingAppointmentJob : undefined}
+                />
+            )}
+
+            {linkingJob && (
+                <JobLinkingModal
+                    isOpen={!!linkingJob}
+                    onClose={() => setLinkingJob(null)}
+                    job={linkingJob}
+                />
+            )}
+
+            {activeSignOffJob && (
+                <SignOffModal
+                    isOpen={!!activeSignOffJob}
+                    onClose={() => setActiveSignOffJob(null)}
+                    job={activeSignOffJob}
+                    onSave={async (file: any, updatedFields?: any) => {
+                        const existingFiles = activeSignOffJob.files || [];
+                        const updatedFiles = updatedFields?.files || [...existingFiles, file];
+                        const updates = {
+                            files: updatedFiles,
+                            ...(updatedFields || {})
+                        };
+                        dispatch({ type: 'UPDATE_JOB', payload: { ...activeSignOffJob, ...updates } });
+                        setActiveSignOffJob(null);
+                    }}
+                />
+            )}
+
+            {historyNotesJob && (
+                <Modal
+                    isOpen={!!historyNotesJob}
+                    onClose={() => { setHistoryNotesJob(null); setHistoryInternalNotes(''); }}
+                    title={`Internal Notes - JOB-${historyNotesJob.id.replace('job-', '')}`}
+                    size="md"
+                >
+                    <div className="space-y-4">
+                        <Textarea
+                            label="Internal Office & Technician Notes"
+                            rows={5}
+                            value={historyInternalNotes}
+                            onChange={(e) => setHistoryInternalNotes(e.target.value)}
+                            placeholder="Enter private job notes, instructions, access info..."
+                        />
+                        <div className="flex justify-end gap-2">
+                            <Button variant="secondary" onClick={() => { setHistoryNotesJob(null); setHistoryInternalNotes(''); }}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleSaveHistoryNotes}>
+                                Save Notes
+                            </Button>
+                        </div>
+                    </div>
+                </Modal>
             )}
 
             {selectedCommForFullView && (
@@ -5052,216 +7167,115 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                 </Modal>
             )}
 
-            {/* SITE PROPERTY MODAL */}
-            {isAddingLocation && (
+            {/* TCPA Compliance Re-Subscription Verification Modal */}
+            {showSmsReConsentModal && (
                 <Modal
-                    isOpen={isAddingLocation}
-                    onClose={() => setIsAddingLocation(false)}
-                    title={newLocation.id ? "Edit Site Property" : "Add New Site Property"}
-                    size="lg"
-                    zIndex="z-[300]"
+                    isOpen={showSmsReConsentModal}
+                    onClose={() => setShowSmsReConsentModal(false)}
+                    title="TCPA Compliance: Re-Subscribe Customer to SMS"
                 >
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Input
-                                label="Location Name (e.g. Primary, Warehouse)"
-                                isBlock
-                                value={newLocation.name || ''}
-                                onChange={e => setNewLocation({ ...newLocation, name: e.target.value })}
-                            />
-                            <Input
-                                label="PO Number / Property Code"
-                                isBlock
-                                value={newLocation.poNumber || ''}
-                                onChange={e => setNewLocation({ ...newLocation, poNumber: e.target.value })}
-                                placeholder="e.g. PO-10293 or PROP-A1"
-                            />
+                    <div className="space-y-4 text-xs font-medium text-slate-600 dark:text-slate-300">
+                        <div className="bg-amber-50 dark:bg-amber-950/50 p-3.5 rounded-xl border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 space-y-2">
+                            <div className="flex items-center gap-2 font-bold text-amber-900 dark:text-amber-100 text-sm">
+                                <ShieldAlert size={18} className="text-amber-600 shrink-0" />
+                                <span>TCPA & Carrier Anti-Spam Safeguard</span>
+                            </div>
+                            <p>
+                                This customer previously opted out of SMS alerts ({formData.marketingConsent?.source || 'Twilio SMS Opt-Out'}). Under Federal TCPA regulations, mobile carriers forbid sending messages to opted-out numbers without explicit written or verbal customer consent.
+                            </p>
+                            <p className="font-semibold text-amber-900 dark:text-amber-100">
+                                ⚠️ Note: If the customer texted STOP to your Twilio number, Twilio carrier networks will still block outgoing SMS messages until the customer texts <strong>START</strong> to your number.
+                            </p>
                         </div>
-                        <Input
-                            label="Street Address"
-                            isBlock
-                            value={newLocation.address || ''}
-                            onChange={e => setNewLocation({ ...newLocation, address: e.target.value })}
-                        />
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <Input
-                                label="City"
-                                isBlock
-                                value={newLocation.city || ''}
-                                onChange={e => setNewLocation({ ...newLocation, city: e.target.value })}
+
+                        <div className="space-y-3">
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
+                                Re-Consent Verification Method <span className="text-rose-500">*</span>
+                            </label>
+                            <select
+                                value={reConsentReason}
+                                onChange={e => setReConsentReason(e.target.value)}
+                                className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl p-2.5 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-emerald-500"
+                            >
+                                <option value="Customer Verbal Request">Customer Verbal Request (In Person / Phone)</option>
+                                <option value="Customer Written Consent Form">Customer Written Consent Form</option>
+                                <option value="Customer Email / Portal Request">Customer Email or Portal Opt-In Request</option>
+                            </select>
+
+                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200">
+                                Compliance Audit Notes (Optional)
+                            </label>
+                            <textarea
+                                value={reConsentNotes}
+                                onChange={e => setReConsentNotes(e.target.value)}
+                                placeholder="e.g. Customer called customer service line on 8/10 requesting service updates via text..."
+                                rows={2}
+                                className="w-full bg-slate-100 dark:bg-slate-800 border-none rounded-xl p-2.5 text-xs font-medium text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-emerald-500"
                             />
-                            <Input
-                                label="State"
-                                isBlock
-                                value={newLocation.state || ''}
-                                onChange={e => setNewLocation({ ...newLocation, state: e.target.value })}
-                            />
-                            <Input
-                                label="Zip"
-                                isBlock
-                                value={newLocation.zip || ''}
-                                onChange={e => setNewLocation({ ...newLocation, zip: e.target.value })}
-                            />
+
+                            <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={reConsentCertify}
+                                    onChange={e => setReConsentCertify(e.target.checked)}
+                                    className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                                />
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-snug">
+                                    I certify under penalty of terms violation that this customer explicitly requested to re-subscribe to SMS alerts and that documentation is on file.
+                                </span>
+                            </label>
                         </div>
-                        <Textarea
-                            label="Property Notes (Optional)"
-                            value={newLocation.notes || ''}
-                            onChange={e => setNewLocation({ ...newLocation, notes: e.target.value })}
-                            placeholder="Access instructions, gate codes, property specifics..."
-                        />
-                        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-                            <Button variant="secondary" onClick={() => setIsAddingLocation(false)}>
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                            <Button variant="secondary" onClick={() => setShowSmsReConsentModal(false)}>
                                 Cancel
                             </Button>
-                            <Button onClick={handleAddLocation}>
-                                Save Property
+                            <Button
+                                variant="primary"
+                                disabled={!reConsentCertify}
+                                onClick={() => {
+                                    const adminName = `${state.currentUser?.firstName || ''} ${state.currentUser?.lastName || ''}`.trim() || 'Admin';
+                                    setFormData({
+                                        ...formData,
+                                        marketingConsent: {
+                                            ...formData.marketingConsent,
+                                            sms: true,
+                                            agreedAt: new Date().toISOString(),
+                                            unsubscribedAt: null,
+                                            source: `Admin Manual Re-subscribe (${reConsentReason}) by ${adminName}`,
+                                            optOutReason: null,
+                                            auditNotes: reConsentNotes
+                                        } as any
+                                    });
+                                    setShowSmsReConsentModal(false);
+                                    showToast.success("Customer SMS re-subscription verified & updated.");
+                                }}
+                            >
+                                Certify & Re-Subscribe
                             </Button>
                         </div>
                     </div>
                 </Modal>
             )}
 
-            {/* COMPANY CONTACT MODAL */}
-            {isAddingContact && (
-                <Modal
-                    isOpen={isAddingContact}
-                    onClose={() => setIsAddingContact(false)}
-                    title={newContact.id ? "Edit Contact Details" : "Add New Contact"}
-                    size="lg"
-                    zIndex="z-[300]"
-                >
-                    <div className="space-y-5">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Input
-                                label="Full Name"
-                                value={newContact.name || ''}
-                                onChange={e => setNewContact({ ...newContact, name: e.target.value })}
-                                placeholder="e.g. John Doe"
-                            />
-                            <Input
-                                label="Title / Role (Optional)"
-                                value={newContact.title || ''}
-                                onChange={e => setNewContact({ ...newContact, title: e.target.value })}
-                                placeholder="e.g. Facilities Manager"
-                            />
-                            <Input
-                                label="Phone Number"
-                                value={newContact.phone || ''}
-                                onChange={e => setNewContact({ ...newContact, phone: e.target.value })}
-                                placeholder="e.g. (555) 000-0000"
-                            />
-                            <Input
-                                label="Email Address"
-                                value={newContact.email || ''}
-                                onChange={e => setNewContact({ ...newContact, email: e.target.value })}
-                                placeholder="e.g. john@example.com"
-                            />
-                        </div>
+            {isIssueWarrantyOpen && customer && (
+                <IssueWarrantyModal 
+                    isOpen={isIssueWarrantyOpen}
+                    onClose={() => setIsIssueWarrantyOpen(false)}
+                    customer={customer}
+                    organization={state.currentOrganization}
+                    onSuccess={(newContract) => {
+                        setIsIssueWarrantyOpen(false);
+                    }}
+                />
+            )}
 
-                        {/* Customer Portal Access & Permissions */}
-                        <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                            <label className="flex items-center gap-2.5 cursor-pointer font-bold text-slate-800 dark:text-slate-200 text-sm">
-                                <input 
-                                    type="checkbox" 
-                                    checked={!!newContact.portalRole} 
-                                    onChange={e => setNewContact({
-                                        ...newContact, 
-                                        portalRole: e.target.checked ? 'corporate' : undefined,
-                                        allowedLocationIds: []
-                                    })} 
-                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
-                                />
-                                <span>Enable Customer Portal Access</span>
-                            </label>
-
-                            {newContact.portalRole && (
-                                <div className="space-y-4 pt-3 border-t border-slate-200 dark:border-slate-800 animate-fade-in">
-                                    <Select 
-                                        label="Portal Access Role" 
-                                        value={newContact.portalRole} 
-                                        onChange={e => setNewContact({
-                                            ...newContact, 
-                                            portalRole: e.target.value,
-                                            allowedLocationIds: []
-                                        })}
-                                    >
-                                        <option value="corporate">Corporate Owner (Full Access to All Properties)</option>
-                                        <option value="regional">Regional Manager (Access to Selected Stores)</option>
-                                        <option value="branch">Branch Manager (Access to Single Store)</option>
-                                    </Select>
-
-                                    {newContact.portalRole === 'branch' && (
-                                        <Select 
-                                            label="Assign Single Store" 
-                                            value={newContact.allowedLocationIds?.[0] || ''} 
-                                            onChange={e => setNewContact({
-                                                ...newContact, 
-                                                allowedLocationIds: e.target.value ? [e.target.value] : []
-                                            })}
-                                        >
-                                            <option value="">-- Select Store --</option>
-                                            {customer.serviceLocations?.map((loc: any) => (
-                                                <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name}</option>
-                                            ))}
-                                        </Select>
-                                    )}
-
-                                    {newContact.portalRole === 'regional' && (
-                                        <div className="space-y-2">
-                                            <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Assign Regional Stores</p>
-                                            <div className="max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl p-3 bg-white dark:bg-slate-950 space-y-2 custom-scrollbar">
-                                                {customer.serviceLocations && customer.serviceLocations.length > 0 ? (
-                                                    customer.serviceLocations.map((loc: any) => {
-                                                        const isChecked = newContact.allowedLocationIds?.includes(loc.id);
-                                                        return (
-                                                            <label key={loc.id} className="flex items-center gap-2 cursor-pointer text-xs p-1 hover:bg-slate-50 dark:hover:bg-slate-900 rounded transition-colors">
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    checked={isChecked || false} 
-                                                                    onChange={ev => {
-                                                                        const currentIds = newContact.allowedLocationIds || [];
-                                                                        const newIds = ev.target.checked 
-                                                                            ? [...currentIds, loc.id] 
-                                                                            : currentIds.filter((id: string) => id !== loc.id);
-                                                                        setNewContact({ ...newContact, allowedLocationIds: newIds });
-                                                                    }} 
-                                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
-                                                                />
-                                                                <span className="text-slate-800 dark:text-slate-200 font-medium">{loc.propertyName || loc.name}</span>
-                                                            </label>
-                                                        );
-                                                    })
-                                                ) : (
-                                                    <p className="text-xs text-slate-400 italic">No storefront locations listed.</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-700">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input 
-                                    type="checkbox" 
-                                    checked={newContact.isPrimary} 
-                                    onChange={e => setNewContact({ ...newContact, isPrimary: e.target.checked })} 
-                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" 
-                                />
-                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Set as Primary Contact</span>
-                            </label>
-                            <div className="flex justify-end gap-3">
-                                <Button variant="secondary" onClick={() => setIsAddingContact(false)}>
-                                    Cancel
-                                </Button>
-                                <Button onClick={handleAddContact}>
-                                    Save Contact
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                </Modal>
+            {isMallFilterModalOpen && customer && (
+                <MallFilterRequisitionModal
+                    isOpen={isMallFilterModalOpen}
+                    onClose={() => setIsMallFilterModalOpen(false)}
+                    customer={customer}
+                />
             )}
         </>
     );

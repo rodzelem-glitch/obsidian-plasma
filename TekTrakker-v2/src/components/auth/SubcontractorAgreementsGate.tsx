@@ -47,7 +47,7 @@ c) They shall not encourage or entice other employees or contractors of the Comp
 The Subcontractor acknowledges that any breach of these covenants will cause irreparable harm to the Company, entitling the Company to seek immediate injunctive relief in addition to monetary damages and legal fees.`;
 
 const SubcontractorAgreementsGate: React.FC<SubcontractorAgreementsGateProps> = ({ user, children }) => {
-    const { dispatch } = useAppContext();
+    const { state, dispatch } = useAppContext();
     const [signatureName, setSignatureName] = useState('');
     const [ndaAgreed, setNdaAgreed] = useState(false);
     const [nonCompeteAgreed, setNonCompeteAgreed] = useState(false);
@@ -56,8 +56,13 @@ const SubcontractorAgreementsGate: React.FC<SubcontractorAgreementsGateProps> = 
     const isSubcontractor = user && user.role === 'Subcontractor';
     const hasSigned = user && (user as any).signedAgreements === true;
 
-    // If not a subcontractor or already signed, proceed
-    if (!isSubcontractor || hasSigned) {
+    const compSettings = state.currentOrganization?.subcontractorComplianceSettings;
+    const isBypassed = compSettings?.enforceComplianceBeforeAssignment === false 
+        || compSettings?.allowTemporaryComplianceBypass === true 
+        || (user as any)?.temporaryComplianceBypass === true;
+
+    // If not a subcontractor, already signed, or compliance lock is bypassed, proceed
+    if (!isSubcontractor || hasSigned || isBypassed) {
         return <>{children}</>;
     }
 

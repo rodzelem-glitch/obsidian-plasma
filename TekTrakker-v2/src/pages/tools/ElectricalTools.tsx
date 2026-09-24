@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import Tesseract from 'tesseract.js';
+import { scanDataPlatePhoto } from '../../utils/dataPlateOcr';
 import { HardwareAPI } from '../../lib/HardwareIntegrationService';
 import { ToolReading } from '../../types';
 import { formatAddress } from '../../lib/utils';
@@ -36,6 +37,7 @@ const ElectricalTools: React.FC = () => {
     // --- SAVE MODAL ---
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [selectedJobId, setSelectedJobId] = useState('');
+    const [readingPhase, setReadingPhase] = useState<'before' | 'after'>('before');
     const [isSaving, setIsSaving] = useState(false);
     const [isBluetoothConnecting, setIsBluetoothConnecting] = useState(false);
     const [isScanningOCR, setIsScanningOCR] = useState(false);
@@ -84,26 +86,17 @@ const ElectricalTools: React.FC = () => {
 
     const processOCRImage = async (dataUrl: string) => {
         setIsScanningOCR(true);
-        showToast.info("Analyzing image with OCR...");
+        showToast.info("Analyzing data plate image with AI Vision...");
         try {
-            const result = await Tesseract.recognize(dataUrl, 'eng');
-            const text = result.data.text;
-            
-            const voltsMatch = text.match(/([\d]+\.?[\d]*)[\s]*V/i);
-            const ampsMatch = text.match(/([\d]+\.?[\d]*)[\s]*A/i);
-            const wattsMatch = text.match(/([\d]+\.?[\d]*)[\s]*W/i);
-            
-            let found = false;
-            
-            if (voltsMatch && voltsMatch[1]) { setVolts(prev => prev ? prev : voltsMatch[1]); found = true; }
-            if (ampsMatch && ampsMatch[1]) { setAmps(prev => prev ? prev : ampsMatch[1]); found = true; }
-            if (wattsMatch && wattsMatch[1]) { setWatts(prev => prev ? prev : wattsMatch[1]); found = true; }
-            
-            if (found) {
-                showToast.success("OCR Successful: Extracted meter values.");
-            } else {
-                showToast.warn("OCR couldn't find expected values. Please enter manually.");
-            }
+            const ocrData = await scanDataPlatePhoto(dataUrl, {
+                volts: volts,
+                amps: amps
+            });
+
+            if (ocrData.volts) setVolts(prev => prev ? prev : String(ocrData.volts));
+            if (ocrData.amps) setAmps(prev => prev ? prev : String(ocrData.amps));
+
+            showToast.success("AI Vision OCR Successful! Manual values preserved.");
         } catch (e) {
             console.error("OCR Error:", e);
             showToast.warn("OCR processing failed.");
@@ -136,18 +129,25 @@ const ElectricalTools: React.FC = () => {
 
     const handleOCRScan = async () => {
         try {
-            const image = await CapCamera.getPhoto({
-                quality: 90,
-                allowEditing: true,
-                resultType: CameraResultType.DataUrl,
-                source: CameraSource.Prompt
-            });
+            const isNative = (window as any).Capacitor?.isNativePlatform?.();
+            if (isNative) {
+                const image = await CapCamera.getPhoto({
+                    quality: 90,
+                    allowEditing: true,
+                    resultType: CameraResultType.DataUrl,
+                    source: CameraSource.Prompt
+                });
 
-            if (image.dataUrl) {
-                await processOCRImage(image.dataUrl);
+                if (image.dataUrl) {
+                    await processOCRImage(image.dataUrl);
+                    return;
+                }
+            } else {
+                fileInputRef.current?.click();
             }
         } catch (e) {
-            console.error("Camera Cancelled/Failed", e);
+            console.warn("Native camera cancelled/unavailable, falling back to file picker:", e);
+            fileInputRef.current?.click();
         }
     };
 
@@ -158,6 +158,7 @@ const ElectricalTools: React.FC = () => {
             const reading: ToolReading = {
                 id: `read_${Date.now()}`,
                 type: 'Electrical_Diagnostics',
+                phase: readingPhase,
                 timestamp: new Date().toISOString(),
                 data: {
                     ohmsLaw: ohmsResults,
@@ -167,7 +168,8 @@ const ElectricalTools: React.FC = () => {
             };
             const job = state.jobs.find(j => j.id === selectedJobId);
             if (job) {
-                const updatedReadings = [...(job.toolReadings || []), reading];
+                const currentReadings = Array.isArray(job.toolReadings) ? job.toolReadings : (job.toolReadings ? [job.toolReadings] : []);
+                const updatedReadings = [...currentReadings, reading];
                 await db.collection('jobs').doc(selectedJobId).update(cleanUndefinedFields({ toolReadings: updatedReadings }));
                 dispatch({ type: 'UPDATE_JOB', payload: { ...job, toolReadings: updatedReadings } });
             }
@@ -349,6 +351,35 @@ const ElectricalTools: React.FC = () => {
             <Modal isOpen={isSaveModalOpen} onClose={() => setIsSaveModalOpen(false)} title="Save Readings to Job">
                 <div className="space-y-4">
                     <p className="text-sm text-slate-500">Save current data to the digital job folder.</p>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">Repair Phase</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setReadingPhase('before')}
+                                className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all flex items-center justify-center gap-1 ${
+                                    readingPhase === 'before'
+                                        ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                }`}
+                            >
+                                🛠️ Before Repair
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setReadingPhase('after')}
+                                className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all flex items-center justify-center gap-1 ${
+                                    readingPhase === 'after'
+                                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                }`}
+                            >
+                                ✨ After Repair
+                            </button>
+                        </div>
+                    </div>
+
                     <Select label="Select Target Job" value={selectedJobId} onChange={e => setSelectedJobId(e.target.value)}>
                         <option value="">-- Choose an active job --</option>
                         {activeJobs.map(j => <option key={j.id} value={j.id}>{j.customerName} - {formatAddress(j.address)}</option>)}

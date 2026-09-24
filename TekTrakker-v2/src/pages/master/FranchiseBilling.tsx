@@ -8,7 +8,7 @@ import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
 import Modal from 'components/ui/Modal';
 import Toggle from 'components/ui/Toggle';
-import { CreditCard, Receipt, Building2, TrendingUp, Settings, Gift, Percent, Plus, Search, Palette, FileText, Trash2, Mail, Eye } from 'lucide-react';
+import { CreditCard, Receipt, Building2, TrendingUp, Settings, Gift, Percent, Plus, Search, Palette, FileText, Trash2, Mail, Eye, Lock, AlertCircle } from 'lucide-react';
 import { db } from 'lib/firebase';
 import type { Organization, Job } from 'types';
 
@@ -20,6 +20,7 @@ const FranchiseBilling: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'invoices' | 'settings' | null>(null);
     const [filterType, setFilterType] = useState<'all' | 'active' | 'expired' | 'enterprise' | 'trial'>('all');
     const [franchiseSettings, setFranchiseSettings] = useState<any>({
+        kortAccountId: '',
         stripeSecretKey: '',
         squareAccessToken: '',
         squareLocationId: '',
@@ -217,23 +218,56 @@ const FranchiseBilling: React.FC = () => {
                     </div>
 
                     <div className="space-y-8">
-                        {/* Stripe */}
-                        <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-2xl border">
-                            <h4 className="font-bold mb-4 text-[#635BFF] flex items-center gap-2">Stripe Integration</h4>
-                            <div className="grid grid-cols-1 gap-4">
-                                <Input label="Secret API Key (sk_live_...)" value={franchiseSettings.stripeSecretKey || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, stripeSecretKey: e.target.value})} placeholder="sk_live_..." />
-                                <Input label="Webhook Signing Secret (whsec_...)" value={franchiseSettings.stripeWebhookSecret || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, stripeWebhookSecret: e.target.value})} placeholder="whsec_..." />
+                        {/* TekTrakker Payments (Native) */}
+                        <div className="p-6 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h4 className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                                        <CreditCard size={18} /> TekTrakker Payments (Kort / Tilled)
+                                    </h4>
+                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
+                                        Native embedded merchant gateway for franchise royalty collections and subscription billing.
+                                    </p>
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 px-2.5 py-1 rounded-full border border-emerald-300 dark:border-emerald-700">
+                                    Primary Native Gateway
+                                </span>
                             </div>
+                            <Input label="Merchant Account ID (acct_...)" value={franchiseSettings.kortAccountId || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, kortAccountId: e.target.value})} placeholder="acct_..." />
                         </div>
 
-                        {/* Square */}
-                        <div className="p-6 bg-slate-50 dark:bg-slate-800 rounded-2xl border">
-                            <h4 className="font-bold mb-4 text-slate-800 dark:text-slate-200 flex items-center gap-2">Square Integration</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Input label="Production Access Token" value={franchiseSettings.squareAccessToken || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, squareAccessToken: e.target.value})} placeholder="sq0p..." />
-                                <Input label="Location ID" value={franchiseSettings.squareLocationId || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, squareLocationId: e.target.value})} placeholder="L..." />
+                        {/* Special Request Underwriting Fallbacks */}
+                        <details className="group border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-slate-50 dark:bg-slate-900/50">
+                            <summary className="p-4 cursor-pointer font-bold text-xs uppercase tracking-wider text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                    <Lock size={14} className="text-amber-500" />
+                                    Special Request Underwriting Fallbacks (Square & Stripe)
+                                </span>
+                                <span className="text-[10px] text-amber-600 font-semibold bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">Special Request Only</span>
+                            </summary>
+                            <div className="p-6 space-y-6 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                                <div className="flex items-start gap-2 text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
+                                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-amber-600" />
+                                    <span>TekTrakker Payments is the required default gateway. External fallback gateways require an official underwriting exemption and incur separate merchant gateway processing fees.</span>
+                                </div>
+                                {/* Stripe */}
+                                <div className="space-y-4">
+                                    <h5 className="font-bold text-sm text-[#635BFF]">Stripe Fallback</h5>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        <Input label="Secret API Key (sk_live_...)" value={franchiseSettings.stripeSecretKey || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, stripeSecretKey: e.target.value})} placeholder="sk_live_..." />
+                                        <Input label="Webhook Signing Secret (whsec_...)" value={franchiseSettings.stripeWebhookSecret || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, stripeWebhookSecret: e.target.value})} placeholder="whsec_..." />
+                                    </div>
+                                </div>
+                                {/* Square */}
+                                <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                    <h5 className="font-bold text-sm text-slate-800 dark:text-slate-200">Square Fallback</h5>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <Input label="Production Access Token" value={franchiseSettings.squareAccessToken || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, squareAccessToken: e.target.value})} placeholder="sq0p..." />
+                                        <Input label="Location ID" value={franchiseSettings.squareLocationId || ''} onChange={(e) => setFranchiseSettings({...franchiseSettings, squareLocationId: e.target.value})} placeholder="L..." />
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        </details>
 
                         <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800">
                             <h4 className="font-bold mb-4 text-blue-800 dark:text-blue-200">Set the Plans & Pricing for your Customers</h4>

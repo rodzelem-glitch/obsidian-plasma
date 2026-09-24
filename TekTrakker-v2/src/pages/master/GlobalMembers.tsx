@@ -14,6 +14,7 @@ import {
     ArrowUpRight, AlertCircle, Ban, Trash2
 } from 'lucide-react';
 import { globalConfirm } from "lib/globalConfirm";
+import { calculateAgreementMRR, isRecurringMembership, formatAgreementDate } from '../../lib/membershipHelper';
 
 const GlobalMembers: React.FC = () => {
     const { state, impersonateOrganization } = useAppContext();
@@ -64,21 +65,20 @@ const GlobalMembers: React.FC = () => {
 
     const metrics = useMemo(() => {
         const activeOnly = allAgreements.filter(a => a.status === 'Active');
+        const activeMemberships = activeOnly.filter(isRecurringMembership);
         const cancelled = allAgreements.filter(a => a.status === 'Cancelled');
         
-        const mrr = activeOnly.reduce((sum, a) => {
-            return sum + (a.billingCycle === 'Monthly' ? a.price : a.price / 12);
-        }, 0);
+        const mrr = calculateAgreementMRR(activeOnly);
 
         const totalEver = allAgreements.length;
         const churnRate = totalEver > 0 ? (cancelled.length / totalEver) * 100 : 0;
 
-        const healthScore = activeOnly.length > 0 
-            ? (activeOnly.filter(a => a.visitsRemaining > 0).length / activeOnly.length) * 100 
+        const healthScore = activeMemberships.length > 0 
+            ? (activeMemberships.filter(a => (a.visitsRemaining || 0) > 0).length / activeMemberships.length) * 100 
             : 0;
 
         return { 
-            activeCount: activeOnly.length, 
+            activeCount: activeMemberships.length, 
             cancelledCount: cancelled.length,
             mrr, 
             churnRate, 
@@ -229,7 +229,7 @@ const GlobalMembers: React.FC = () => {
                                     {agreement.status}
                                 </span>
                             </td>
-                            <td className="px-6 py-5 text-xs text-slate-500 font-bold">{new Date(agreement.endDate).toLocaleDateString()}</td>
+                            <td className="px-6 py-5 text-xs text-slate-500 font-bold">{formatAgreementDate(agreement)}</td>
                             <td className="px-6 py-5 flex items-center gap-2">
                                 <button onClick={() => handleInvestigate(agreement.organizationId)} className="p-2.5 bg-sky-50 dark:bg-sky-900/30 rounded-lg text-sky-600 dark:text-sky-300 hover:bg-sky-100 transition-all" title="Investigate Org">
                                     <ExternalLink size={18}/>
@@ -275,7 +275,7 @@ const GlobalMembers: React.FC = () => {
                             <div key={a.id} className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
                                 <div>
                                     <p className="font-black text-slate-900 dark:text-white">{a.customerName}</p>
-                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Renews: {new Date(a.endDate).toLocaleDateString()} • {getOrgName(a.organizationId)}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Renews: {formatAgreementDate(a)} • {getOrgName(a.organizationId)}</p>
                                 </div>
                                 <div className="text-right">
                                     <p className="font-black text-amber-600 text-sm uppercase">Next 30 Days</p>

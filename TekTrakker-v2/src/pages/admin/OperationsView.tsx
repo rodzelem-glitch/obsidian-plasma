@@ -21,6 +21,10 @@ const OperationsView: React.FC = () => {
         } else if (tab === 'dispatch') {
             setActiveTab('dispatch');
         }
+
+        if (searchParams.get('new') === 'true' || searchParams.get('book') === 'true' || searchParams.get('newJob') === 'true') {
+            setIsBookingOpen(true);
+        }
     }, [searchParams]);
 
     return (

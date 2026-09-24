@@ -104,7 +104,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
     const [isConverting, setIsConverting] = useState(false);
 
     // Derived values with memoization for performance and stability
-    const { isProposal, isOther, prop, job, id, total, subtotal, tax, customerName, address, date, status, signature, items } = useMemo(() => {
+    const { isProposal, isOther, prop, job, id, total, subtotal, tax, taxRatePct, customerName, address, date, status, signature, items } = useMemo(() => {
         const isProposal = type === 'Proposal';
         const isOther = type === 'Other';
         
@@ -132,6 +132,8 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
         const total = (isProposal ? prop?.total : (job?.invoice?.totalAmount || job?.invoice?.amount)) || 0;
         const subtotal = (isProposal ? prop?.subtotal : job?.invoice?.subtotal) || 0;
         const tax = (isProposal ? prop?.taxAmount : job?.invoice?.taxAmount) || 0;
+        const taxRateVal = (isProposal ? prop?.taxRate : job?.invoice?.taxRate) ?? (org?.taxRate ? org.taxRate / 100 : 0.0825);
+        const taxRatePct = (taxRateVal * 100).toFixed(2).replace(/\.00$/, '');
         const customerName = isProposal ? prop?.customerName : (isOther ? (data.customerName || '') : job?.customerName);
         
         const addressObj = isProposal ? (state.customers.find(c => c.name === prop?.customerName)?.address) : (isOther ? (data.address || '') : job?.address);
@@ -146,8 +148,8 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                 ? (data?.signatureImage || data?.signatureDataUrl || data?.signature || null) 
                 : (job?.invoiceSignature || null));
 
-        return { isProposal, isOther, prop, job, id, total, subtotal, tax, customerName, address, date, status, signature, items };
-    }, [type, data, state.proposals, state.jobs, state.customers]);
+        return { isProposal, isOther, prop, job, id, total, subtotal, tax, taxRatePct, customerName, address, date, status, signature, items };
+    }, [type, data, state.proposals, state.jobs, state.customers, org]);
 
     const calculateAvailableTiers = () => {
         if (!isProposal || !prop) return [];
@@ -351,7 +353,9 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                                     {multiTiers.map(t => (
                                         <div key={t.tier} onClick={() => onSelectTier?.(t.tier)} className={`p-6 border-2 rounded-2xl bg-white transition-all ${onSelectTier ? 'cursor-pointer hover:border-primary-400 hover:shadow-xl' : 'border-slate-200'} flex flex-col shadow-sm`}>
                                             <h3 className="text-center font-black text-xl uppercase mb-6 text-slate-800 tracking-tighter">{t.tier}</h3>
-                                            <div className="text-center mb-6 border-b pb-4">
+                                            <div className="text-center mb-6 border-b pb-4 space-y-1">
+                                                <div className="text-xs text-slate-400 font-bold uppercase">Subtotal: ${t.subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                                                <div className="text-xs text-slate-400 font-bold uppercase">Sales Tax ({taxRatePct}%): ${t.taxAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
                                                 <div className="text-3xl font-black tracking-tighter text-slate-900">${t.total.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
                                             </div>
                                             <div className="space-y-3 mb-6 flex-1">
@@ -408,7 +412,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                                         <span className="font-black text-slate-900">${subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                                     </div>
                                     <div className="flex justify-between text-sm">
-                                        <span className="font-bold text-slate-400 uppercase">Tax</span>
+                                        <span className="font-bold text-slate-400 uppercase">Sales Tax ({taxRatePct}%)</span>
                                         <span className="font-black text-slate-900">${tax.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                                     </div>
                                     <div className="flex justify-between items-center pt-4 border-t-2 border-slate-900">

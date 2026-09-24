@@ -8,10 +8,9 @@ interface ProjectAnalyticsProps {
 }
 
 const ProjectAnalytics: React.FC<ProjectAnalyticsProps> = ({ project }) => {
-    if (!project) return null;
-
     // Collect ALL tasks across the entire project (flat + WBS hierarchy)
     const allTasks = useMemo(() => {
+        if (!project) return [];
         const tasks: ProjectTask[] = [...(project.projectTasks || []), ...(project.backlog || [])];
         for (const phase of (project.phases || [])) {
             for (const del of (phase.deliverables || [])) {
@@ -27,6 +26,8 @@ const ProjectAnalytics: React.FC<ProjectAnalyticsProps> = ({ project }) => {
             return true;
         });
     }, [project]);
+
+    if (!project) return null;
 
     const totalTasks = allTasks.length;
     const completedTasks = allTasks.filter(t => t.status === 'Completed').length;

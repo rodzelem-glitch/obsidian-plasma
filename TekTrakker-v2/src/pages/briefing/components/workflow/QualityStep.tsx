@@ -1,10 +1,13 @@
-import React from 'react';
-import { ShieldCheck, Camera, ClipboardList, Import, Wrench, Heart } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShieldCheck, Camera, ClipboardList, Import, Wrench, Heart, FileText } from 'lucide-react';
 import Card from '../../../../components/ui/Card';
 import Button from '../../../../components/ui/Button';
 import Textarea from '../../../../components/ui/Textarea';
 import { VoiceInput } from '../../../../components/ui/VoiceInput';
 import { useLanguage } from 'context/LanguageContext';
+import { useAppContext } from 'context/AppContext';
+import { isHvacTrade } from '../../../../utils/tradeResolver';
+import { globalConfirm } from '../../../../lib/globalConfirm';
 
 interface ChecklistItem {
     id: string;
@@ -31,6 +34,10 @@ interface QualityStepProps {
     thankYouNote: string;
     setThankYouNote: (val: string) => void;
     hidden?: boolean;
+    verificationOutcome?: any;
+    setVerificationOutcome?: (val: any) => void;
+    hvacType?: string | null;
+    job?: any;
 }
 
 const QualityStep: React.FC<QualityStepProps> = ({
@@ -50,19 +57,149 @@ const QualityStep: React.FC<QualityStepProps> = ({
     setTechRecommendations,
     thankYouNote,
     setThankYouNote,
-    hidden
+    hidden = false,
+    verificationOutcome = {},
+    setVerificationOutcome,
+    hvacType,
+    job,
 }) => {
     const { t } = useLanguage();
+    const { state } = useAppContext();
+    const isHvac = isHvacTrade(job, state.currentOrganization);
+    const [activeNotesTab, setActiveNotesTab] = useState<'completion' | 'recommendations' | 'thankyou'>('completion');
 
+    const handleUpdateOutcomeField = (field: string, value: any) => {
+        if (setVerificationOutcome) {
+            setVerificationOutcome({
+                ...verificationOutcome,
+                [field]: value
+            });
+        }
+    };
 
     if (hidden) return null;
     return (
         <div className="space-y-6 text-center">
-            <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
                 <ShieldCheck size={48} className="text-slate-400"/>
             </div>
-            <h3 className="text-xl font-bold">{t("Quality Check")}</h3>
+            <h3 className="text-xl font-bold">{t("Quality Check & Verification")}</h3>
             
+            {/* Repair Verification Outcomes Card */}
+            <Card className="text-left bg-blue-50/50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900">
+                <h4 className="font-bold text-blue-900 dark:text-blue-300 mb-2 flex items-center gap-2">
+                    <ShieldCheck size={18} className="text-blue-600 dark:text-blue-400" />
+                    {t("Repair Verification Outcome (Required)")}
+                </h4>
+                <p className="text-xs text-slate-500 mb-4">{t("Select the verified operational outcome of the repair before completing work.")}</p>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{t("Outcome Status")}</label>
+                        <select 
+                            value={verificationOutcome.outcome || ''} 
+                            onChange={e => handleUpdateOutcomeField('outcome', e.target.value)}
+                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-3 font-semibold text-sm text-slate-800 dark:text-slate-100"
+                        >
+                            <option value="">{t("-- Select Verification Outcome --")}</option>
+                            <option value="Repair Verified — Operating Properly">🟢 {t("Repair Verified — Operating Properly")}</option>
+                            <option value="Repair Completed — Additional Concern Found">🟡 {t("Repair Completed — Additional Concern Found")}</option>
+                            <option value="Temporary Repair Only">🟠 {t("Temporary Repair Only")}</option>
+                            <option value="Unable to Verify">⚪ {t("Unable to Verify")}</option>
+                            <option value="Equipment Not Operational">🔴 {t("Equipment Not Operational")}</option>
+                            <option value="Return Visit Required">🔵 {t("Return Visit Required")}</option>
+                        </select>
+                    </div>
+
+                    {/* Conditional Verification Readings */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-blue-200/60 dark:border-blue-900/60">
+                        {isHvac ? (
+                            <>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{t("Final Temperature Split (°F)")}</label>
+                                    <input 
+                                        type="text"
+                                        placeholder={t("e.g. Supply 55°F / Return 72°F (17°F split)")}
+                                        value={verificationOutcome.tempSplit || ''}
+                                        onChange={e => handleUpdateOutcomeField('tempSplit', e.target.value)}
+                                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{t("Electrical Readings (Volts/Amps)")}</label>
+                                    <input 
+                                        type="text"
+                                        placeholder={t("e.g. L1-L2 238V, Compressor 14.2A")}
+                                        value={verificationOutcome.electricalReadings || ''}
+                                        onChange={e => handleUpdateOutcomeField('electricalReadings', e.target.value)}
+                                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{t("Refrigerant Operating Pressures")}</label>
+                                    <input 
+                                        type="text"
+                                        placeholder={t("e.g. Suction 125 psi, Liquid 340 psi")}
+                                        value={verificationOutcome.refrigerantReadings || ''}
+                                        onChange={e => handleUpdateOutcomeField('refrigerantReadings', e.target.value)}
+                                        className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
+                                    />
+                                </div>
+                            </>
+                        ) : (
+                            <div className="md:col-span-2">
+                                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">{t("Tool / Field Diagnostic Readings (Volts, Amps, Resistance, Specs)")}</label>
+                                <input 
+                                    type="text"
+                                    placeholder={t("e.g. 120V / 12A, 1.2 Ohms, Torque/Pressure verified")}
+                                    value={verificationOutcome.electricalReadings || ''}
+                                    onChange={e => handleUpdateOutcomeField('electricalReadings', e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs"
+                                />
+                            </div>
+                        )}
+                        <div className="grid grid-cols-3 gap-2">
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">{t("Drain")}</label>
+                                <select 
+                                    value={verificationOutcome.drainOperation || 'Pass'}
+                                    onChange={e => handleUpdateOutcomeField('drainOperation', e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs font-bold"
+                                >
+                                    <option value="Pass">Pass</option>
+                                    <option value="Fail">Fail</option>
+                                    <option value="N/A">N/A</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">{t("Thermostat")}</label>
+                                <select 
+                                    value={verificationOutcome.thermostatOperation || 'Pass'}
+                                    onChange={e => handleUpdateOutcomeField('thermostatOperation', e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs font-bold"
+                                >
+                                    <option value="Pass">Pass</option>
+                                    <option value="Fail">Fail</option>
+                                    <option value="N/A">N/A</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">{t("Safeties")}</label>
+                                <select 
+                                    value={verificationOutcome.safetyControlOperation || 'Pass'}
+                                    onChange={e => handleUpdateOutcomeField('safetyControlOperation', e.target.value)}
+                                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-1.5 text-xs font-bold"
+                                >
+                                    <option value="Pass">Pass</option>
+                                    <option value="Fail">Fail</option>
+                                    <option value="N/A">N/A</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Card>
+
             <Card className="text-left">
                 <div className="flex justify-between items-center mb-4">
                     <h4 className="font-bold flex items-center gap-2">
@@ -81,12 +218,12 @@ const QualityStep: React.FC<QualityStepProps> = ({
                                 )}
                                 {onCheckAll && (
                                     <button 
-                                        onClick={() => {
-                                            if (window.confirm(t("Are you sure you want to mark all checklist items as completed? Please confirm you have physically performed these checks."))) {
+                                        onClick={async () => {
+                                            if (await globalConfirm(t("Are you sure you want to mark all checklist items as completed? Please confirm you have physically performed these checks."), t("Complete All Checks"), t("Check All"), t("Cancel"))) {
                                                 onCheckAll();
                                             }
                                         }} 
-                                        className="text-[10px] uppercase font-black text-emerald-600 hover:underline"
+                                        className="text-[10px] uppercase font-black text-emerald-600 hover:underline cursor-pointer"
                                     >
                                         {t("Check All")}
                                     </button>
@@ -132,88 +269,118 @@ const QualityStep: React.FC<QualityStepProps> = ({
                 )}
             </Card>
 
-            <Card className="text-left">
-                <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold">{t("Job Completion Notes")}</h4>
-                    <VoiceInput onResult={(text) => setCompletionNotes(completionNotes + ' ' + text)} />
-                </div>
-                <Textarea 
-                    rows={3} 
-                    value={completionNotes} 
-                    onChange={e => setCompletionNotes(e.target.value)} 
-                    placeholder={t("Summary for invoice...")} 
-                />
-            </Card>
+            {/* Unified 3-Tab Notes Card */}
+            <Card className="p-0 overflow-hidden text-left border border-slate-200 dark:border-slate-800">
+                {/* Tab Headers */}
+                <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900 overflow-x-auto">
+                    <button
+                        type="button"
+                        onClick={() => setActiveNotesTab('completion')}
+                        className={`flex-1 py-3 px-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+                            activeNotesTab === 'completion'
+                                ? 'border-emerald-600 text-emerald-600 bg-white dark:bg-slate-900 dark:text-emerald-400 font-extrabold'
+                                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                    >
+                        <FileText size={15} />
+                        <span>{t("Completion Notes")}</span>
+                        {completionNotes.trim() ? <span className="w-2 h-2 rounded-full bg-emerald-500" /> : null}
+                    </button>
 
-            <Card className="text-left bg-purple-50 border-purple-200">
-                <h4 className="font-bold mb-2 text-purple-700 flex items-center gap-2">
-                    <span className="sparkles-icon">✨</span> {t("Membership Reminder")}
-                </h4>
-                <p className="text-xs text-purple-600 mb-2">{t("Did you offer the customer a membership plan to save money on today's visit?")}</p>
-                <label className="flex items-center gap-3 p-2 bg-white rounded border border-purple-200 cursor-pointer mt-2">
-                    <input 
-                        type="checkbox" 
-                        checked={membershipOffered || false} 
-                        onChange={(e) => setMembershipOffered && setMembershipOffered(e.target.checked)}
-                        className="w-5 h-5 rounded border-purple-300 text-purple-600 focus:ring-purple-500"
-                    />
-                    <span className="text-sm font-semibold text-purple-800">
-                        {t("Yes, I discussed a membership plan with the customer")}
-                    </span>
-                </label>
-            </Card>
+                    <button
+                        type="button"
+                        onClick={() => setActiveNotesTab('recommendations')}
+                        className={`flex-1 py-3 px-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+                            activeNotesTab === 'recommendations'
+                                ? 'border-purple-600 text-purple-600 bg-white dark:bg-slate-900 dark:text-purple-400 font-extrabold'
+                                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                    >
+                        <Wrench size={15} />
+                        <span>{t("Direct Recommendations")}</span>
+                        {techRecommendations.trim() ? <span className="w-2 h-2 rounded-full bg-purple-500" /> : null}
+                    </button>
 
-            <Card className="text-left">
-                <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold">{t("Customer Feedback")}</h4>
-                    <VoiceInput onResult={(text) => setCustomerFeedback(customerFeedback + ' ' + text)} />
+                    <button
+                        type="button"
+                        onClick={() => setActiveNotesTab('thankyou')}
+                        className={`flex-1 py-3 px-3 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+                            activeNotesTab === 'thankyou'
+                                ? 'border-blue-600 text-blue-600 bg-white dark:bg-slate-900 dark:text-blue-400 font-extrabold'
+                                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                    >
+                        <Heart size={15} />
+                        <span>{t("Thank You Note")}</span>
+                        {thankYouNote.trim() ? <span className="w-2 h-2 rounded-full bg-blue-500" /> : null}
+                    </button>
                 </div>
-                <Textarea 
-                    rows={2} 
-                    value={customerFeedback} 
-                    onChange={e => setCustomerFeedback(e.target.value)} 
-                    placeholder={t("Customer comments...")} 
-                />
-            </Card>
 
-            <Card className="text-left bg-emerald-50/30 border-emerald-200/60 dark:bg-emerald-950/10 dark:border-emerald-900/40">
-                <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2">
-                        <Wrench size={18} className="text-emerald-600 dark:text-emerald-500" />
-                        {t("Direct Technician Recommendations")}
-                    </h4>
-                    <VoiceInput onResult={(text) => setTechRecommendations(techRecommendations + ' ' + text)} />
-                </div>
-                <p className="text-xs text-emerald-600 dark:text-emerald-500/80 mb-2">
-                    {t("These recommendations push directly to the customer portal and job history immediately, bypassing any billing or proposal gates.")}
-                </p>
-                <Textarea 
-                    rows={3} 
-                    value={techRecommendations} 
-                    onChange={e => setTechRecommendations(e.target.value)} 
-                    placeholder={t("Enter recommendations for the customer/property manager...")} 
-                    className="bg-white dark:bg-slate-900 border-emerald-100 dark:border-emerald-900"
-                />
-            </Card>
+                {/* Tab Content */}
+                <div className="p-4">
+                    {activeNotesTab === 'completion' && (
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center flex-wrap gap-2">
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded border bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300">
+                                    🔒 VISIBILITY: CUSTOMER / INVOICE / JOB RECORD HISTORY
+                                </span>
+                                <VoiceInput onResult={(text) => setCompletionNotes(completionNotes + ' ' + text)} />
+                            </div>
+                            <h4 className="font-extrabold text-xs text-slate-900 dark:text-white uppercase tracking-wider">{t("Job Completion Notes")}</h4>
+                            <Textarea 
+                                rows={4} 
+                                value={completionNotes} 
+                                onChange={e => setCompletionNotes(e.target.value)} 
+                                placeholder={t("Summary for invoice...")} 
+                                className="bg-white dark:bg-slate-900 text-xs"
+                            />
+                        </div>
+                    )}
 
-            <Card className="text-left bg-indigo-50/30 border-indigo-200/60 dark:bg-indigo-950/10 dark:border-indigo-900/40">
-                <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold text-indigo-800 dark:text-indigo-400 flex items-center gap-2">
-                        <Heart size={18} className="text-indigo-600 dark:text-indigo-500" />
-                        {t("Technician Thank You Note")}
-                    </h4>
-                    <VoiceInput onResult={(text) => setThankYouNote(thankYouNote + ' ' + text)} />
+                    {activeNotesTab === 'recommendations' && (
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center flex-wrap gap-2">
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded border bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950 dark:text-purple-300">
+                                    🔒 VISIBILITY: PROPERTY MANAGER / CUSTOMER / PROPOSAL / INVOICE
+                                </span>
+                                <VoiceInput onResult={(text) => setTechRecommendations(techRecommendations + ' ' + text)} />
+                            </div>
+                            <h4 className="font-extrabold text-xs text-purple-900 dark:text-purple-300 uppercase tracking-wider">{t("Direct Technician Recommendations")}</h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                {t("These recommendations push directly to the customer portal and job history immediately, bypassing any billing or proposal gates.")}
+                            </p>
+                            <Textarea 
+                                rows={4} 
+                                value={techRecommendations} 
+                                onChange={e => setTechRecommendations(e.target.value)} 
+                                placeholder={t("Enter recommendations for the customer/property manager...")} 
+                                className="bg-white dark:bg-slate-900 text-xs"
+                            />
+                        </div>
+                    )}
+
+                    {activeNotesTab === 'thankyou' && (
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center flex-wrap gap-2">
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded border bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-300">
+                                    🔒 VISIBILITY: CUSTOMER MESSAGE
+                                </span>
+                                <VoiceInput onResult={(text) => setThankYouNote(thankYouNote + ' ' + text)} />
+                            </div>
+                            <h4 className="font-extrabold text-xs text-blue-900 dark:text-blue-300 uppercase tracking-wider">{t("Technician Thank You Note")}</h4>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                {t("Personalize a thank you message to show on the customer's job report.")}
+                            </p>
+                            <Textarea 
+                                rows={4} 
+                                value={thankYouNote} 
+                                onChange={e => setThankYouNote(e.target.value)} 
+                                placeholder={t("e.g. Thank you for your business! It was a pleasure servicing your equipment today. Please let us know if you need anything else.")} 
+                                className="bg-white dark:bg-slate-900 text-xs"
+                            />
+                        </div>
+                    )}
                 </div>
-                <p className="text-xs text-indigo-600 dark:text-indigo-550/80 mb-2">
-                    {t("Personalize a thank you message to show on the customer's job report.")}
-                </p>
-                <Textarea 
-                    rows={3} 
-                    value={thankYouNote} 
-                    onChange={e => setThankYouNote(e.target.value)} 
-                    placeholder={t("e.g. Thank you for your business! It was a pleasure servicing your equipment today. Please let us know if you need anything else.")} 
-                    className="bg-white dark:bg-slate-900 border-indigo-100 dark:border-indigo-900"
-                />
             </Card>
         </div>
     );

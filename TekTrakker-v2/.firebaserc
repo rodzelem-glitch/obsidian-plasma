@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "tektrakker"
+  },
+  "targets": {},
+  "etags": {
+    "tektrakker": {
+      "extensionInstances": {
+        "firestore-send-email": "aace5da5c02b40b932b21652a46500688674910a02221ac0c8aea5194d7c4fa5"
+      }
+    }
   }
 }

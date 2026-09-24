@@ -163,7 +163,10 @@ const telemetryWatcherHandler = async (snap, context) => {
         // Step 2: Retrieve Gemini API key and call Gemini to formulate patch
         const apiKey = await retrieveGeminiApiKey(eventData);
         const genAI = new generative_ai_1.GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-3.8-flash',
+            generationConfig: { thinkingConfig: { thinkingBudget: 0 } }
+        });
         const fileContent = findFileContent(affectedFile);
         let prompt = `You are an autonomic self-healing AI coding assistant.
 You received a telemetry warning/error in the system.

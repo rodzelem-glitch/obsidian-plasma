@@ -951,7 +951,7 @@ export default function Home() {
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
                             <h3 className="font-bold text-slate-900 mb-2">Q: How is TekTrakker priced, and are there per-user seat limits?</h3>
                             <p className="text-slate-600 text-sm leading-relaxed font-medium">
-                                A: TekTrakker offers transparent, flat-rate pricing tiers. The Starter plan is $49/month (1 user limit), the Growth plan is $149/month (includes 5 users, excess users at $30/mo), and the Enterprise plan is $350/month with unlimited users. Unlike other platforms, there are no hidden booking fees or transaction commissions.
+                                A: TekTrakker offers transparent, flat-rate pricing tiers. Individual seat add-ons are disabled to enforce tier limits; to add more user licenses for your dispatchers, technicians, or office managers, please upgrade to the next subscription tier. Plan User Quotas: Starter (1 User Seat), Growth (5 User Seats), and Enterprise (Unlimited Seats).
                             </p>
                         </div>
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">

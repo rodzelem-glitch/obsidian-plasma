@@ -10,16 +10,16 @@ const RosterTable: React.FC<RosterTableProps> = ({ stats }) => {
     return (
         <Card>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Full Roster</h3>
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead className="bg-gray-50 dark:bg-gray-800">
+            <div className="overflow-x-auto overflow-y-auto max-h-[70vh] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <table className="min-w-full border-separate border-spacing-0 divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 shadow-xs border-b border-gray-200 dark:border-gray-700">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Rank</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Technician</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Revenue</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Jobs</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Avg Ticket</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Avg Time on Site</th>
+                            <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Rank</th>
+                            <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Technician</th>
+                            <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Revenue</th>
+                            <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Jobs</th>
+                            <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Avg Ticket</th>
+                            <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Avg Time on Site</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">

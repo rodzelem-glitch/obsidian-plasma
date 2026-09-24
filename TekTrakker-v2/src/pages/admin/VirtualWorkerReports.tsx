@@ -208,11 +208,12 @@ const VirtualWorkerReports: React.FC = () => {
       const fileName = `AI_Report_${cleanPrompt}_${dateStr}.pdf`;
       
       const opt: any = {
-        margin:       [0.4, 0.4, 0.4, 0.4], // 0.4in margins
+        margin:       [0.25, 0.25, 0.25, 0.25],
         filename:     fileName,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 790, backgroundColor: '#ffffff' },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+        html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 780, backgroundColor: '#ffffff' },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'], avoid: ['.pdf-card', '.pdf-avoid-break', 'tr', 'img', 'blockquote', 'h1', 'h2', 'h3', 'h4'] }
       };
       
       const pdfDataUri = await html2pdf().from(clone).set(opt).output('datauristring');

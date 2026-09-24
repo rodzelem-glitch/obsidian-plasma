@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { 
     ArrowRight, CheckCircle2, Shield, Zap, Lock, 
     Check, X, Bot, Building2, User, Users 
@@ -11,21 +13,40 @@ import { LandingFooter } from '../components/LandingFooter';
 
 export default function Pricing() {
     const [isAnnual, setIsAnnual] = useState(false);
+    const [liveSettings, setLiveSettings] = useState<any>(null);
+
+    useEffect(() => {
+        try {
+            const unsub = onSnapshot(doc(db, 'platformSettings', 'global'), (docSnap) => {
+                if (docSnap.exists()) {
+                    setLiveSettings(docSnap.data());
+                }
+            });
+            return () => unsub();
+        } catch (e) {
+            console.warn("Failed to subscribe to live platform settings:", e);
+        }
+    }, []);
+
+    const starterCfg = liveSettings?.plans?.starter;
+    const growthCfg = liveSettings?.plans?.growth;
+    const businessCfg = liveSettings?.plans?.business;
+    const enterpriseCfg = liveSettings?.plans?.enterprise;
 
     const plans = [
         {
             name: "Starter Plan",
             desc: "Perfect for solo operators and independent tradespeople.",
-            priceMonthly: 49,
-            priceAnnual: 550,
-            maxUsers: "1 User Included",
+            priceMonthly: starterCfg?.monthly ?? 49,
+            priceAnnual: starterCfg?.annual ?? 550,
+            maxUsers: starterCfg?.unlimitedUsers ? "Unlimited Users Included" : `Up to ${starterCfg?.maxUsers ?? 1} User${(starterCfg?.maxUsers ?? 1) > 1 ? 's' : ''} Included`,
             features: [
                 "Single User Account",
                 "Basic CRM & Client Profiles",
                 "Mobile App (Offline Sync)",
                 "Estimates & Invoicing",
-                "Online Booking Widget",
-                "Standard Email Support",
+                "2,500 Transactional Emails / mo",
+                starterCfg?.supportResponseTime ? `${starterCfg.supportResponseTime}` : "3-Day Guarantee Support",
                 "1,000,000 AI Tokens / Month"
             ],
             cta: "Start 14-Day Free Trial",
@@ -35,38 +56,58 @@ export default function Pricing() {
         {
             name: "Growth Plan",
             desc: "Designed for expanding service teams and active dispatcher routing.",
-            priceMonthly: 149,
-            priceAnnual: 1500,
-            maxUsers: "Up to 5 Users Included",
+            priceMonthly: growthCfg?.monthly ?? 249,
+            priceAnnual: growthCfg?.annual ?? 2499,
+            maxUsers: growthCfg?.unlimitedUsers ? "Unlimited Users Included" : `Up to ${growthCfg?.maxUsers ?? 5} Users Included`,
             features: [
                 "Up to 5 User Accounts",
                 "Advanced Drag-and-Drop Dispatch",
+                "10,000 Transactional Emails / mo",
                 "Geofenced Time & Mileage Tracking",
                 "Good, Better, Best Proposal Engine",
                 "QuickBooks Online Integration",
-                "24/7 Priority Support",
-                "1,500,000 AI Tokens / Month"
+                growthCfg?.supportResponseTime ? `${growthCfg.supportResponseTime}` : "24-Hour Support SLA",
+                "3,000,000 AI Tokens / Month"
             ],
             cta: "Start 14-Day Free Trial",
             ctaLink: "https://app.tektrakker.com/#/login?view=register_business&plan=growth",
             popular: true
         },
         {
+            name: "Business Plan",
+            desc: "Scale your team with multi-trade divisions and high AI capacity.",
+            priceMonthly: businessCfg?.monthly ?? 399,
+            priceAnnual: businessCfg?.annual ?? 3999,
+            maxUsers: businessCfg?.unlimitedUsers ? "Unlimited Users Included" : `Up to ${businessCfg?.maxUsers ?? 15} Users Included`,
+            features: [
+                "Up to 15 User Accounts",
+                "Up to 5 Division & Trade Slots",
+                "35,000 Transactional Emails / mo",
+                "Advanced Multi-Department Workflows",
+                "Subcontractor & Vendor Hub",
+                businessCfg?.supportResponseTime ? `${businessCfg.supportResponseTime}` : "Same-Day Priority SLA",
+                "5,000,000 AI Tokens / Month"
+            ],
+            cta: "Start 14-Day Free Trial",
+            ctaLink: "https://app.tektrakker.com/#/login?view=register_business&plan=business",
+            popular: false
+        },
+        {
             name: "Enterprise Plan",
             desc: "Unlimited power for large fleets and multi-location operations.",
-            priceMonthly: 350,
-            priceAnnual: 3500,
-            maxUsers: "Unlimited Users Included",
+            priceMonthly: enterpriseCfg?.monthly ?? 749,
+            priceAnnual: enterpriseCfg?.annual ?? 7499,
+            maxUsers: (enterpriseCfg?.unlimitedUsers !== false) ? "Unlimited Users Included" : `Up to ${enterpriseCfg?.maxUsers ?? 'Unlimited'} Users Included`,
             features: [
                 "Unlimited User Accounts",
-                "Full Custom Branding",
-                "API Access & Webhooks",
-                "Collaborative Operations Board",
-                "Custom Field Technician Tools",
-                "Dedicated Success Manager",
-                "10,000,000 AI Tokens / Month"
+                "Unlimited Division & Franchise Slots",
+                "100,000 Transactional Emails / mo",
+                "Full Custom Branding & Webhooks",
+                "API Access & Custom Integrations",
+                enterpriseCfg?.supportResponseTime ? `${enterpriseCfg.supportResponseTime}` : "1-2 Hour Dedicated Support SLA",
+                "15,000,000 AI Tokens / Month"
             ],
-            cta: "Start Unlimited Trial",
+            cta: "Contact Enterprise Sales",
             ctaLink: "https://app.tektrakker.com/#/login?view=register_business&plan=enterprise",
             popular: false
         }
@@ -110,7 +151,7 @@ export default function Pricing() {
                 </div>
 
                 {/* Pricing Cards Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch mb-24">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch mb-24">
                     {plans.map((plan, i) => {
                         const price = isAnnual ? plan.priceAnnual : plan.priceMonthly;
                         const pricePeriod = isAnnual ? "/yr" : "/mo";
@@ -241,7 +282,7 @@ export default function Pricing() {
                                     <div className="flex justify-between items-baseline">
                                         <span className="text-slate-700 font-bold text-sm">One-Time Lifetime</span>
                                         <div className="text-right">
-                                            <span className="text-2xl font-black text-indigo-600">$1,999</span>
+                                            <span className="text-2xl font-black text-indigo-600">$2,500</span>
                                             <span className="text-slate-500 text-xs font-bold"> flat</span>
                                         </div>
                                     </div>
@@ -250,10 +291,10 @@ export default function Pricing() {
                                 <div className="space-y-2">
                                     <div className="flex justify-between text-xs font-bold">
                                         <span className="text-slate-700">AI Power Pack (Top-up)</span>
-                                        <span className="text-emerald-600 font-extrabold">+$10.00</span>
+                                        <span className="text-emerald-600 font-extrabold">+$5.00</span>
                                     </div>
                                     <p className="text-[11px] text-slate-500 leading-relaxed font-semibold">
-                                        We never auto-charge overages. If you reach your plan's token limit, top up with 1,000,000 extra tokens for just $10.
+                                        We never auto-charge overages. If you reach your plan's token limit, top up with 1,000,000 extra tokens for just $5.
                                     </p>
                                 </div>
 
@@ -281,7 +322,7 @@ export default function Pricing() {
                             </div>
                             <h3 className="text-2xl font-black text-slate-900">White-Label Franchise PAAS License</h3>
                             <p className="text-slate-600 text-sm leading-relaxed max-w-2xl font-medium">
-                                Run the entire TekTrakker platform on your custom domain with your logo and brand colors. Turnkey corporate infrastructure. Custom Setup: $1,500 DNS/setup + $999/mo base subscription, plus revenue share options or a $48,000 Lifetime Access License.
+                                Run the entire TekTrakker platform on your custom domain with your logo and brand colors. Turnkey corporate infrastructure. Custom Setup: $1,500 DNS/setup + $999/mo base subscription, plus revenue share options or a $35,000 Lifetime Access License.
                             </p>
                         </div>
                     </div>
@@ -301,13 +342,14 @@ export default function Pricing() {
                     </div>
 
                     <div className="w-full overflow-x-auto border border-slate-200 rounded-3xl bg-white shadow-xl">
-                        <table className="w-full border-collapse text-left min-w-[700px]">
+                        <table className="w-full border-collapse text-left min-w-[800px]">
                             <thead>
                                 <tr className="border-b border-slate-200 bg-slate-50">
                                     <th className="p-6 text-sm font-black uppercase tracking-wider text-slate-500">Core Capabilities</th>
-                                    <th className="p-6 text-sm font-black uppercase tracking-wider text-slate-800">Starter ($49/mo)</th>
-                                    <th className="p-6 text-sm font-black uppercase tracking-wider text-slate-800">Growth ($149/mo)</th>
-                                    <th className="p-6 text-sm font-black uppercase tracking-wider text-slate-800">Enterprise ($350/mo)</th>
+                                    <th className="p-6 text-sm font-black uppercase tracking-wider text-slate-800">Starter (${starterCfg?.monthly ?? 49}/mo)</th>
+                                    <th className="p-6 text-sm font-black uppercase tracking-wider text-slate-800">Growth (${growthCfg?.monthly ?? 249}/mo)</th>
+                                    <th className="p-6 text-sm font-black uppercase tracking-wider text-slate-800">Business (${businessCfg?.monthly ?? 399}/mo)</th>
+                                    <th className="p-6 text-sm font-black uppercase tracking-wider text-slate-800">Enterprise (${enterpriseCfg?.monthly ?? 749}/mo)</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
@@ -315,16 +357,26 @@ export default function Pricing() {
                                     <td className="p-6 font-bold text-slate-900 text-sm">Included User Seats</td>
                                     <td className="p-6 text-sm">1 User</td>
                                     <td className="p-6 text-sm">5 Users</td>
+                                    <td className="p-6 text-sm font-bold text-slate-900">{businessCfg?.maxUsers ?? 15} Users</td>
                                     <td className="p-6 text-sm font-bold text-indigo-600">Unlimited Users</td>
                                 </tr>
                                 <tr>
-                                    <td className="p-6 font-bold text-slate-900 text-sm">Additional User Cost</td>
-                                    <td className="p-6 text-sm">Not Available</td>
-                                    <td className="p-6 text-sm">$30 / user / month</td>
-                                    <td className="p-6 text-sm text-emerald-600 font-bold">$0 (Included)</td>
+                                    <td className="p-6 font-bold text-slate-900 text-sm">Included Emails / Month</td>
+                                    <td className="p-6 text-sm">2,500</td>
+                                    <td className="p-6 text-sm">10,000</td>
+                                    <td className="p-6 text-sm">35,000</td>
+                                    <td className="p-6 text-sm font-bold text-indigo-600">100,000</td>
+                                </tr>
+                                <tr>
+                                    <td className="p-6 font-bold text-slate-900 text-sm">AI Processing Tokens</td>
+                                    <td className="p-6 text-sm">1,000,000</td>
+                                    <td className="p-6 text-sm">3,000,000</td>
+                                    <td className="p-6 text-sm font-bold">{businessCfg?.aiTokens ? (businessCfg.aiTokens).toLocaleString() : "5,000,000"}</td>
+                                    <td className="p-6 text-sm font-bold text-indigo-600">15,000,000</td>
                                 </tr>
                                 <tr>
                                     <td className="p-6 font-bold text-slate-900 text-sm">Customer Database (CRM)</td>
+                                    <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
@@ -334,9 +386,11 @@ export default function Pricing() {
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
+                                    <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                 </tr>
                                 <tr>
                                     <td className="p-6 font-bold text-slate-900 text-sm">Online Booking Widget</td>
+                                    <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
@@ -346,10 +400,12 @@ export default function Pricing() {
                                     <td className="p-6"><X className="text-slate-300" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
+                                    <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                 </tr>
                                 <tr>
                                     <td className="p-6 font-bold text-slate-900 text-sm">Good/Better/Best Estimating</td>
                                     <td className="p-6"><X className="text-slate-300" size={20} /></td>
+                                    <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                 </tr>
@@ -358,21 +414,18 @@ export default function Pricing() {
                                     <td className="p-6"><X className="text-slate-300" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
-                                </tr>
-                                <tr>
-                                    <td className="p-6 font-bold text-slate-900 text-sm">Monthly AI Token Limit</td>
-                                    <td className="p-6 text-sm">1,000,000 Tokens</td>
-                                    <td className="p-6 text-sm">1,500,000 Tokens</td>
-                                    <td className="p-6 text-sm font-bold text-indigo-650">10,000,000 Tokens</td>
+                                    <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                 </tr>
                                 <tr>
                                     <td className="p-6 font-bold text-slate-900 text-sm">Custom Branding & Subdomain</td>
+                                    <td className="p-6"><X className="text-slate-300" size={20} /></td>
                                     <td className="p-6"><X className="text-slate-300" size={20} /></td>
                                     <td className="p-6"><X className="text-slate-300" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
                                 </tr>
                                 <tr>
                                     <td className="p-6 font-bold text-slate-900 text-sm">Developer API & Webhooks</td>
+                                    <td className="p-6"><X className="text-slate-300" size={20} /></td>
                                     <td className="p-6"><X className="text-slate-300" size={20} /></td>
                                     <td className="p-6"><X className="text-slate-300" size={20} /></td>
                                     <td className="p-6"><Check className="text-indigo-600" size={20} /></td>
@@ -414,19 +467,19 @@ export default function Pricing() {
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
                             <h3 className="font-bold text-slate-900 mb-2">Q: How much does TekTrakker cost, and is there an annual discount?</h3>
                             <p className="text-slate-600 text-sm leading-relaxed font-medium">
-                                A: TekTrakker offers three flat-rate SaaS plans: the Starter Plan is $49/mo (or $550/yr), the Growth Plan is $149/mo (or $1,500/yr), and the Enterprise Plan is $350/mo (or $3,500/yr). Choosing an annual plan saves you up to 20% compared to month-to-month billing.
+                                A: TekTrakker offers four flat-rate SaaS plans: the Starter Plan is $49/mo (or $550/yr), the Growth Plan is $249/mo (or $2,499/yr), the Business Plan is $399/mo (or $3,999/yr), and the Enterprise Plan is $749/mo (or $7,499/yr). Choosing an annual plan saves you money compared to month-to-month billing.
                             </p>
                         </div>
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
                             <h3 className="font-bold text-slate-900 mb-2">Q: Are there user seat limits or excess user fees?</h3>
                             <p className="text-slate-600 text-sm leading-relaxed font-medium">
-                                A: The Starter Plan is limited to 1 user. The Growth Plan includes up to 5 user slots, with additional users costing $30/user/month. The Enterprise Plan has no seat limits and includes unlimited office and field users for a flat $350/month fee.
+                                A: Individual seat add-ons are disabled to enforce tier limits. To add more user licenses for your dispatchers, technicians, or office managers, please upgrade to the next subscription tier. Plan User Quotas: Starter (1 User Seat), Growth (5 User Seats), Business (15 User Seats), and Enterprise (Unlimited Seats).
                             </p>
                         </div>
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
                             <h3 className="font-bold text-slate-900 mb-2">Q: How is the AI Virtual Worker priced and billed?</h3>
                             <p className="text-slate-600 text-sm leading-relaxed font-medium">
-                                A: The AI Virtual Worker is available as a platform-wide add-on for $49.99/month (or a $1,999 one-time lifetime license). This add-on gives your system the ability to automate scheduling, dispatching, and invoicing in the background. It consumes AI Tokens from your plan's monthly allocation.
+                                A: The AI Virtual Worker is available as a platform-wide add-on for $49.99/month (or a $2,500 one-time lifetime license). This add-on gives your system the ability to automate scheduling, dispatching, and invoicing in the background. It consumes AI Tokens from your plan's monthly allocation.
                             </p>
                         </div>
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
@@ -438,7 +491,7 @@ export default function Pricing() {
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
                             <h3 className="font-bold text-slate-900 mb-2">Q: Do you offer a plan for large franchises or white-label partners?</h3>
                             <p className="text-slate-600 text-sm leading-relaxed font-medium">
-                                A: Yes! We offer a completely dedicated White-Label Franchise PAAS License. This program allows you to run TekTrakker under your own brand, logo, and domain. It costs a $1,500 one-time Setup/DNS fee and a $999/month flat retainer, plus usage-based revenue sharing ($10/user/mo and $19.99/virtual worker/mo). You can also secure a Franchise Lifetime Access License for $48,000.
+                                A: Yes! We offer a completely dedicated White-Label Franchise PAAS License. This program allows you to run TekTrakker under your own brand, logo, and domain. It costs a $1,500 one-time Setup/DNS fee and a $999/month flat retainer, plus usage-based revenue sharing ($10/user/mo and $19.99/virtual worker/mo). You can also secure a Franchise Lifetime Access License for $35,000.
                             </p>
                         </div>
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">

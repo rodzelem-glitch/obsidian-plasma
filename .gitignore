@@ -17,4 +17,9 @@ TekTrakker-v2/scratch/
 !tsconfig.json
 !firebase.json
 !metadata.json
+TekAir_Internal_Documents/
+TekAir_SBA_Loan_Documents/
+*.csv
+scrape_hvac_leads.py
+
 

@@ -1,10 +1,11 @@
 
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket, DollarSign, Terminal, PhoneCall } from 'lucide-react';
+import { LayoutDashboard, Building2, Users, ShieldCheck, CreditCard, Briefcase, UserCheck, FileText, BarChart2, MessageSquare, BrainCircuit, Database, Network, Megaphone, Mail, Rocket, DollarSign, Terminal, PhoneCall, Trophy } from 'lucide-react';
 import type { User } from '../../types';
 import { useAppContext } from '../../context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
+import { setActiveView } from 'lib/viewState';
 
 interface MasterSidebarProps {
   user: User;
@@ -26,14 +27,11 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
       group: 'Core Admin',
       items: [
         { path: '/master/dashboard', label: 'Overview', icon: LayoutDashboard },
-        { path: '/master/analytics', label: 'Platform Analytics', icon: BarChart2 },
-        { path: '/master/telephony', label: 'Telephony Analytics', icon: PhoneCall },
+        { path: '/master/awards', label: 'TekTrakker Awards Issuer', icon: Trophy },
+        { path: '/master/analytics', label: 'Metrics & Analytics', icon: BarChart2 },
         { path: '/master/integration-requests', label: 'Integration Requests', icon: Network },
         { path: '/master/campaigns', label: 'Campaign Studio', icon: Megaphone },
         { path: '/master/drip-campaigns', label: 'Drip Sequences', icon: Rocket },
-        { path: '/master/ai-usage', label: 'AI Usage Metrics', icon: BrainCircuit },
-        { path: '/master/ai-reports', label: 'AI Worker Reports', icon: FileText },
-        { path: '/master/storage-usage', label: 'Storage Metrics', icon: Database },
       ]
     },
     {
@@ -54,7 +52,7 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
         { path: '/master/users', label: 'Global Users', icon: Users },
         { path: '/master/customers', label: 'Global Customers', icon: UserCheck },
         { path: '/master/sales-team', label: 'Sales Force', icon: Briefcase },
-        { path: '/master/messages', label: 'Messages', icon: MessageSquare },
+        { path: '/master/communications', label: 'Communications', icon: MessageSquare },
         { path: '/master/inbox', label: 'Email Hub', icon: Mail },
       ]
     },
@@ -134,7 +132,10 @@ const MasterSidebar: React.FC<MasterSidebarProps> = ({ user, onLogout, isOpen = 
         <div className="p-4 pb-[calc(1rem+var(--sab,env(safe-area-inset-bottom,0px)))] border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 space-y-3">
             {isPlatformOwner && (
                 <button
-                    onClick={() => navigate('/sales/dashboard')}
+                    onClick={() => {
+                        setActiveView('sales', user.id);
+                        navigate('/sales/dashboard');
+                    }}
                     className="w-full flex items-center justify-center px-4 py-2 border border-purple-500 text-purple-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-purple-900/30 focus:outline-none transition-colors"
                 >
                     {t('Switch to Sales View')}

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../lib/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useAppContext } from '../../context/AppContext';
-import { MessageSquare, PhoneCall, DollarSign, TrendingUp, ShieldAlert, BarChart3, Search, Calendar } from 'lucide-react';
+import { MessageSquare, PhoneCall, DollarSign, TrendingUp, ShieldAlert, BarChart3, Search, Calendar, Mail } from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 
@@ -18,9 +18,10 @@ interface SmsUsageRecord {
 
 const TelephonyAnalytics: React.FC = () => {
   const { state } = useAppContext();
-  const { allOrganizations } = state;
+  const { allOrganizations, currentUser } = state;
 
   const [usageRecords, setUsageRecords] = useState<SmsUsageRecord[]>([]);
+  const [emailUsageMap, setEmailUsageMap] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCycle, setSelectedCycle] = useState('All');
@@ -36,22 +37,55 @@ const TelephonyAnalytics: React.FC = () => {
   useEffect(() => {
     const fetchUsage = async () => {
       setLoading(true);
+
+      // 1. Fetch SMS usage
       try {
-        const querySnapshot = await getDocs(collection(db, 'smsUsage'));
+        let smsQuery;
+        if (currentUser?.role === 'master_admin' || !currentUser?.organizationId) {
+          smsQuery = collection(db, 'smsUsage');
+        } else {
+          smsQuery = query(collection(db, 'smsUsage'), where('organizationId', '==', currentUser.organizationId));
+        }
+
+        const querySnapshot = await getDocs(smsQuery);
         const records: SmsUsageRecord[] = [];
-        querySnapshot.forEach((doc) => {
-          records.push({ id: doc.id, ...doc.data() } as SmsUsageRecord);
+        querySnapshot.forEach((doc: any) => {
+          records.push({ id: doc.id, ...(doc.data() || {}) } as SmsUsageRecord);
         });
         setUsageRecords(records);
       } catch (error) {
-        console.error("Error fetching SMS usage metrics:", error);
+        console.error("Error fetching SMS messaging usage metrics:", error);
+      }
+
+      // 2. Fetch Email usage
+      try {
+        let emailQuery;
+        if (currentUser?.role === 'master_admin' || !currentUser?.organizationId) {
+          emailQuery = collection(db, 'emailUsage');
+        } else {
+          emailQuery = query(collection(db, 'emailUsage'), where('organizationId', '==', currentUser.organizationId));
+        }
+
+        const emailSnap = await getDocs(emailQuery);
+        const eMap: Record<string, number> = {};
+        emailSnap.forEach((doc: any) => {
+          const data = doc.data() as any;
+          if (data && data.organizationId) {
+            const key = `${data.organizationId}_${data.billingCycle || 'All'}`;
+            eMap[key] = (eMap[key] || 0) + (data.totalEmailsSent || 0);
+            eMap[data.organizationId] = (eMap[data.organizationId] || 0) + (data.totalEmailsSent || 0);
+          }
+        });
+        setEmailUsageMap(eMap);
+      } catch (error) {
+        console.error("Error fetching email usage metrics:", error);
       } finally {
         setLoading(false);
       }
     };
 
     fetchUsage();
-  }, []);
+  }, [currentUser]);
 
   // Map organization names
   const orgNameMap = useMemo(() => {
@@ -80,6 +114,7 @@ const TelephonyAnalytics: React.FC = () => {
       const totalSms = sent + received;
       
       const voiceMinutes = record.totalVoiceMinutes || 0; 
+      const emailCount = emailUsageMap[`${record.organizationId}_${record.billingCycle}`] || emailUsageMap[record.organizationId] || 0;
       
       // Revenue (charged to user)
       const smsRevenue = totalSms * SMS_RATE;
@@ -100,12 +135,13 @@ const TelephonyAnalytics: React.FC = () => {
         received,
         totalSms,
         voiceMinutes,
+        emailCount,
         totalRevenue,
         totalCost,
         profit
       };
     });
-  }, [usageRecords, orgNameMap]);
+  }, [usageRecords, orgNameMap, emailUsageMap]);
 
   // Filter records based on search and cycle selectors
   const filteredRecords = useMemo(() => {
@@ -122,6 +158,7 @@ const TelephonyAnalytics: React.FC = () => {
     let sent = 0;
     let received = 0;
     let voice = 0;
+    let emails = 0;
     let revenue = 0;
     let cost = 0;
 
@@ -129,6 +166,7 @@ const TelephonyAnalytics: React.FC = () => {
       sent += r.sent;
       received += r.received;
       voice += r.voiceMinutes;
+      emails += r.emailCount;
       revenue += r.totalRevenue;
       cost += r.totalCost;
     });
@@ -138,6 +176,7 @@ const TelephonyAnalytics: React.FC = () => {
       received,
       totalSms: sent + received,
       voice,
+      emails,
       revenue,
       cost,
       profit: revenue - cost
@@ -258,6 +297,7 @@ const TelephonyAnalytics: React.FC = () => {
                 <tr className="bg-slate-50 dark:bg-slate-800/50 text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
                   <th className="p-4">Organization</th>
                   <th className="p-4">Billing Cycle</th>
+                  <th className="p-4 text-center">Emails Sent</th>
                   <th className="p-4 text-center">SMS Sent</th>
                   <th className="p-4 text-center">SMS Received</th>
                   <th className="p-4 text-center">Voice Minutes</th>
@@ -274,6 +314,7 @@ const TelephonyAnalytics: React.FC = () => {
                       <span className="block font-mono text-[10px] text-slate-400 mt-0.5">{record.organizationId}</span>
                     </td>
                     <td className="p-4 font-mono">{record.billingCycle}</td>
+                    <td className="p-4 text-center font-bold text-blue-600 dark:text-blue-400 font-mono">{record.emailCount.toLocaleString()}</td>
                     <td className="p-4 text-center">{record.sent.toLocaleString()}</td>
                     <td className="p-4 text-center">{record.received.toLocaleString()}</td>
                     <td className="p-4 text-center">{record.voiceMinutes.toLocaleString()} min</td>

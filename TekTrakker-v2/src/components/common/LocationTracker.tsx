@@ -22,6 +22,7 @@ const LocationTracker: React.FC = () => {
     const { currentUser: user } = state;
     const [showDisclosure, setShowDisclosure] = useState(false);
     const triggerWatchRef = useRef<() => void>();
+    const onDeclineRef = useRef<() => void>();
 
     // Active shift for the current user: at least one shift with no clockOut
     // Handles both array and mapped object representations of shiftLogs safely
@@ -36,20 +37,22 @@ const LocationTracker: React.FC = () => {
     useEffect(() => {
         if (!user) return;
 
-        const isTechnician = (
-            user.role === 'employee' || 
-            user.role === 'both' || 
-            user.role === 'supervisor' || 
-            user.role === 'Technician' || 
-            user.role === 'Subcontractor' || 
-            user.role === 'admin' // Admins in field should also be tracked
+        const role = (user.role || '').toLowerCase();
+        const isEligibleRole = (
+            role === 'employee' || 
+            role === 'both' || 
+            role === 'supervisor' || 
+            role === 'technician' || 
+            role === 'subcontractor' || 
+            role === 'admin' ||
+            role === 'master_admin'
         );
 
-        if (!isTechnician || !hasActiveShift) {
+        if (!isEligibleRole) {
             return;
         }
 
-        console.log(`[LocationTracker] Starting real-time location watch for ${user.firstName}...`);
+        console.log(`[LocationTracker] Starting real-time location watch for ${user.firstName} (hasActiveShift=${hasActiveShift})...`);
         
         let watchId: any = null;
         let lastUpdateTime = 0;
@@ -118,32 +121,40 @@ const LocationTracker: React.FC = () => {
                             console.error("[LocationTracker] Foreground permission request error:", err);
                         }
                     };
+                    onDeclineRef.current = () => {
+                        console.log("[LocationTracker] Foreground location permission declined by user.");
+                    };
                     setShowDisclosure(true);
                     return;
                 }
 
-                // Foreground is granted, check background
-                try {
-                    const bgStatus = await BackgroundLocationPermission.checkBackgroundPermission();
-                    if (!bgStatus.granted) {
-                        triggerWatchRef.current = async () => {
-                            try {
-                                const result = await BackgroundLocationPermission.requestBackgroundPermission();
-                                if (result.granted) {
-                                    showToast.success('Background location permission granted');
-                                    startWatching();
-                                } else {
-                                    showToast.warn('Please select "Allow all the time" in your device Settings to track shifts in the background.');
+                // Foreground is granted. If actively clocked into a shift, check/prompt for background tracking
+                if (hasActiveShift) {
+                    try {
+                        const bgStatus = await BackgroundLocationPermission.checkBackgroundPermission();
+                        if (!bgStatus.granted) {
+                            triggerWatchRef.current = async () => {
+                                try {
+                                    const result = await BackgroundLocationPermission.requestBackgroundPermission();
+                                    if (result.granted) {
+                                        showToast.success('Background location permission granted');
+                                    } else {
+                                        showToast.warn('Please select "Allow all the time" in your device Settings to track shifts in the background.');
+                                    }
+                                } catch (err) {
+                                    console.error("[LocationTracker] Background permission request error:", err);
                                 }
-                            } catch (err) {
-                                console.error("[LocationTracker] Background permission request error:", err);
-                            }
-                        };
-                        setShowDisclosure(true);
-                        return;
+                                setupWatch(true);
+                            };
+                            onDeclineRef.current = () => {
+                                setupWatch(true);
+                            };
+                            setShowDisclosure(true);
+                            return;
+                        }
+                    } catch (e) {
+                        console.warn("[LocationTracker] Background permission check failed (might not be running on Android native):", e);
                     }
-                } catch (e) {
-                    console.warn("[LocationTracker] Background permission check failed (might not be running on Android native):", e);
                 }
 
                 let consecutiveErrors = 0;
@@ -264,14 +275,19 @@ const LocationTracker: React.FC = () => {
                 }
             }
         };
-    }, [user?.id, hasActiveShift, dispatch]);
+    }, [user?.id, user?.role, hasActiveShift, dispatch]);
 
     if (!showDisclosure) return null;
 
     return (
         <Modal
             isOpen={showDisclosure}
-            onClose={() => setShowDisclosure(false)}
+            onClose={() => {
+                setShowDisclosure(false);
+                if (onDeclineRef.current) {
+                    onDeclineRef.current();
+                }
+            }}
             title="Location Services Required"
             size="md"
         >
@@ -281,11 +297,11 @@ const LocationTracker: React.FC = () => {
                 </div>
                 
                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                    Enable Background Location Tracking
+                    Enable Location Tracking
                 </h3>
                 
                 <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed text-left">
-                    TekTrakker collects location data to track your position during active shifts. This data is used to:
+                    TekTrakker collects location data to track your position while logged in and during active shifts. This data is used to:
                 </p>
                 
                 <ul className="text-sm text-slate-600 dark:text-slate-300 text-left space-y-2 list-disc list-inside w-full">
@@ -296,10 +312,10 @@ const LocationTracker: React.FC = () => {
 
                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/30 rounded-xl p-3.5 text-left w-full">
                     <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">
-                        🔒 Active Background Tracking Only
+                        🔒 Field Tracking Notice
                     </p>
                     <p className="text-xs text-amber-700/90 dark:text-amber-400/90 leading-relaxed">
-                        Location is accessed in the background (even when the app is closed or not in use) **only when you are actively clocked in**. Tracking stops automatically when you clock out.
+                        Location is accessed while logged in to provide live dispatch coordinates, and runs in the background on mobile devices when actively clocked into a shift.
                     </p>
                 </div>
 
@@ -315,7 +331,12 @@ const LocationTracker: React.FC = () => {
                 <div className="flex flex-col sm:flex-row gap-2 w-full pt-2">
                     <Button 
                         variant="secondary" 
-                        onClick={() => setShowDisclosure(false)}
+                        onClick={() => {
+                            setShowDisclosure(false);
+                            if (onDeclineRef.current) {
+                                onDeclineRef.current();
+                            }
+                        }}
                         className="w-full sm:w-1/2 order-2 sm:order-1"
                     >
                         Decline

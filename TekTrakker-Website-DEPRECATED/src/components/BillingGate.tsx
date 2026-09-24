@@ -17,12 +17,13 @@ const BillingGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const isOrgAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'both';
 
     // Rigid Access Control Logic
+    const isFreeOrPartner = !!org?.isFreeAccess || !!(org as any)?.isPartnerAccount || !!state.isDemoMode || org?.id === 'apex-org-456' || !!org?.id?.startsWith('demo-') || !!(org?.name && (org.name.toLowerCase().includes('demo') || org.name.toLowerCase().includes('test')));
     const isExpired = org?.subscriptionExpiryDate && new Date(org.subscriptionExpiryDate) < new Date();
     const isCancelled = org?.subscriptionStatus === 'cancelled';
     const isPastDue = org?.subscriptionStatus === 'past_due';
     
-    // Master Admin can bypass billing locks to manage the platform
-    const isBlocked = !isMasterAdmin && (isExpired || isCancelled || isPastDue);
+    // Master Admin & Complimentary / Demo / Test / Partner Orgs bypass billing locks
+    const isBlocked = !isMasterAdmin && !isFreeOrPartner && (isExpired || isCancelled || isPastDue);
 
     useEffect(() => {
         let mounted = true;

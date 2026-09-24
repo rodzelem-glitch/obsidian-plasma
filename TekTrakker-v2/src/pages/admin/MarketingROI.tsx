@@ -83,7 +83,7 @@ const MarketingROI: React.FC = () => {
 
             const result = await callGeminiAI({ 
                 prompt,
-                modelName: "gemini-3.6-flash" 
+                modelName: "gemini-3.7-flash" 
             });
             const data = result.data as { text: string };
             setAiInsights(data.text);

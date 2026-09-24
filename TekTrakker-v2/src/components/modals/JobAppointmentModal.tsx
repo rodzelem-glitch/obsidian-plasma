@@ -4,7 +4,8 @@ import React, { useState, useMemo } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useAppContext } from 'context/AppContext';
-import { db } from 'lib/firebase';
+import { db, functions } from 'lib/firebase';
+import { httpsCallable } from 'firebase/functions';
 
 import type { Customer, Job, Subcontractor } from '../../types';
 import CustomerSearch from './job-appointment/CustomerSearch';
@@ -12,10 +13,14 @@ import AssignmentType from './job-appointment/AssignmentType';
 import CrewSelect from './job-appointment/CrewSelect';
 import JobDetails from './job-appointment/JobDetails';
 import AddSubcontractorModal from './AddSubcontractorModal';
-import { hasPermission , cleanUndefinedFields } from 'lib/utils';
-import { AlertCircle, Link2, FileText, UploadCloud, X, History, RotateCcw, Building2, Calendar, User, CheckCircle2 } from 'lucide-react';
+import { hasPermission, cleanUndefinedFields, sanitizeCustomer, sanitizeAddressFields } from 'lib/utils';
+import { getNextJobNumber, extractJobSlug, resolveJobInvoiceNumber, resolveJobProposalNumber } from 'lib/numbering';
+import { AlertCircle, Link2, FileText, UploadCloud, X, History, RotateCcw, Building2, Calendar, User, CheckCircle2, Plus, MapPin, UserPlus, Paperclip, Download } from 'lucide-react';
 import DocumentPreview from '../ui/DocumentPreview';
 import { extractTextFromPdf, parseWorkOrderText } from '../../utils/workOrderParser';
+import { LocationSearchSelector } from '../common/LocationSearchSelector';
+
+import LocationAuditModal from './LocationAuditModal';
 
 interface JobAppointmentModalProps {
     isOpen: boolean;
@@ -23,37 +28,47 @@ interface JobAppointmentModalProps {
     customerId?: string; // Optional customer ID for "create on the fly"
     jobToEdit?: Job | null;
     parentJobToLink?: Job | null;
+    projectId?: string;
 }
 
 const JOB_TYPES: Record<string, string[]> = {
     'HVAC': ['Repair', 'Maintenance', 'Installation', 'Estimate', 'Inspection', 'Service Call', 'Tune-Up'],
-    'Plumbing': ['Leak Repair', 'Drain Cleaning', 'Water Heater', 'Installation', 'Estimate', 'Inspection'],
-    'Electrical': ['Troubleshooting', 'Installation', 'Panel Upgrade', 'Lighting', 'Estimate', 'Inspection'],
-    'Landscaping': ['Mowing', 'Pruning', 'Cleanup', 'Installation', 'Irrigation', 'Estimate'],
-    'General': ['Repair', 'Installation', 'Estimate', 'Consultation', 'Service Call'],
-    'Cleaning': ['Standard Clean', 'Deep Clean', 'Move-in/out', 'Commercial', 'Estimate'],
-    'Painting': ['Interior', 'Exterior', 'Prep', 'Touch-up', 'Estimate'],
-    'Roofing': ['Inspection', 'Repair', 'Replacement', 'Tarping', 'Estimate'],
-    'Contracting': ['Renovation', 'Repair', 'New Build', 'Estimate', 'Consultation'],
-    'Masonry': ['Repair', 'Installation', 'Restoration', 'Estimate'],
-    'Telecommunications': ['Install', 'Repair', 'Troubleshoot', 'Estimate'],
-    'Solar': ['Install', 'Maintenance', 'Repair', 'Cleaning', 'Estimate'],
-    'Security': ['Install', 'Service', 'Monitoring Setup', 'Estimate'],
-    'Pet Grooming': ['Grooming', 'Bath', 'Nail Trim', 'Check-up']
+    'Plumbing': ['Leak Repair', 'Drain Cleaning', 'Water Heater', 'Installation', 'Estimate', 'Inspection', 'Sewer Scope', 'Backflow Test'],
+    'Electrical': ['Troubleshooting', 'Installation', 'Panel Upgrade', 'Lighting', 'EV Charger', 'Generator', 'Estimate', 'Inspection'],
+    'Landscaping': ['Mowing', 'Pruning', 'Cleanup', 'Installation', 'Irrigation', 'Landscape Lighting', 'Softscaping', 'Hardscaping', 'Estimate'],
+    'General': ['Repair', 'Assembly & Mounting', 'Doors & Windows', 'Carpentry', 'Drywall Patching', 'Minor Plumbing', 'Minor Electrical', 'Installation', 'Estimate', 'Service Call'],
+    'Cleaning': ['Standard Clean', 'Deep Clean', 'Move-in/out', 'Commercial', 'Carpet Cleaning', 'Post-Construction', 'Sanitization', 'Estimate'],
+    'Painting': ['Interior', 'Exterior', 'Cabinet Refinishing', 'Deck Staining', 'Pressure Washing', 'Prep', 'Touch-up', 'Estimate'],
+    'Roofing': ['Inspection', 'Repair', 'Replacement', 'Gutter Repair', 'Flashing', 'Tarping', 'Estimate'],
+    'Contracting': ['Renovation', 'Framing', 'Drywall & Trim', 'Flooring', 'Tile & Bath', 'Repair', 'New Build', 'Estimate', 'Consultation'],
+    'Masonry': ['Tuckpointing', 'Brick & Block Repair', 'Concrete Flatwork', 'Stone Veneer', 'Chimney Repair', 'Restoration', 'Estimate'],
+    'Telecommunications': ['Structured Cabling', 'Fiber Optic Splicing', 'Network Equipment', 'Wi-Fi Survey', 'Audio/Visual', 'Install', 'Repair', 'Troubleshoot', 'Estimate'],
+    'Solar': ['PV Array Install', 'Inverter Replacement', 'Battery Backup', 'Panel Cleaning', 'Maintenance', 'Repair', 'Inspection', 'Estimate'],
+    'Security': ['CCTV Installation', 'Access Control', 'Intrusion Alarm', 'Service', 'Monitoring Setup', 'Inspection', 'Estimate'],
+    'Pet Grooming': ['Full Grooming', 'Bath & De-Shed', 'Nail Trim & File', 'Ear & Teeth Care', 'Puppy Package', 'Sanitary Trim', 'Check-up']
 };
 
-const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClose, customerId, jobToEdit, parentJobToLink }) => {
+const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClose, customerId, jobToEdit, parentJobToLink, projectId }) => {
     const { state, dispatch } = useAppContext();
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-    
-    // Update selected customer if customerId changes
-    React.useEffect(() => {
-        if (customerId) {
-            setSelectedCustomer(state.customers.find(c => c.id === customerId) || null);
-        } else if (!jobToEdit) {
-            setSelectedCustomer(null);
-        }
-    }, [customerId, state.customers, jobToEdit]);
+    const [isChangingCustomer, setIsChangingCustomer] = useState(false);
+    const [autoMatchedBadge, setAutoMatchedBadge] = useState<string | null>(null);
+    const [auditLocationId, setAuditLocationId] = useState<string | null>(null);
+    const [attachedInboundFiles, setAttachedInboundFiles] = useState<Array<{ id: string; name: string; url: string; dataUrl?: string; type?: string; uploadedAt?: string }>>([]);
+
+    // Work Order Customer Creation & Location Creation State
+    const [unmatchedCustomerPrompt, setUnmatchedCustomerPrompt] = useState<{ name: string; address?: string; phone?: string; email?: string } | null>(null);
+    const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+
+    const [unmatchedLocationPrompt, setUnmatchedLocationPrompt] = useState<{ propertyName?: string; address: string } | null>(null);
+    const [isSavingLocation, setIsSavingLocation] = useState(false);
+
+    const [isManualLocationModalOpen, setIsManualLocationModalOpen] = useState(false);
+    const [manualSiteName, setManualSiteName] = useState('');
+    const [manualSiteAddress, setManualSiteAddress] = useState('');
+    const [manualSiteCity, setManualSiteCity] = useState('');
+    const [manualSiteState, setManualSiteState] = useState('');
+    const [manualSiteZip, setManualSiteZip] = useState('');
 
     // Form State
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -66,9 +81,11 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
     const [partnerId, setPartnerId] = useState('');
     const [assistantIds, setAssistantIds] = useState<string[]>([]);
     const [partnerPayoutAmount, setPartnerPayoutAmount] = useState<number | undefined>(undefined);
+    const [partnerNteAmount, setPartnerNteAmount] = useState<number | undefined>(undefined);
+    const [subcontractorPhone, setSubcontractorPhone] = useState<string>('');
     const [notes, setNotes] = useState('');
     const [leadSource, setLeadSource] = useState('Call-In');
-    const selectedProjectId = ''; 
+    const [selectedProjectId, setSelectedProjectId] = useState<string>(jobToEdit?.projectId || projectId || ''); 
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isHighPriority, setIsHighPriority] = useState(false);
     const [selectedPropertyId, setSelectedPropertyId] = useState('');
@@ -78,11 +95,24 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
     const [previewDoc, setPreviewDoc] = useState<{ type: 'Proposal' | 'Invoice' | 'Other'; data: any } | null>(null);
 
     const customerJobs = useMemo(() => {
-        if (!selectedCustomer) return [];
-        return (state.jobs || [])
-            .filter(j => j.customerId === selectedCustomer.id && j.id !== jobToEdit?.id && !j.deleted && !j.archived)
+        const custId = selectedCustomer?.id || parentJobToLink?.customerId;
+        const custName = selectedCustomer?.name || parentJobToLink?.customerName;
+
+        let list = (state.jobs || [])
+            .filter(j => 
+                ((custId && j.customerId === custId) || 
+                 (custName && j.customerName && j.customerName.toLowerCase().trim() === custName.toLowerCase().trim()) ||
+                 (parentJobToLink && j.id === parentJobToLink.id)) &&
+                j.id !== jobToEdit?.id && 
+                !j.deleted
+            )
             .sort((a, b) => new Date(b.appointmentTime || b.createdAt || 0).getTime() - new Date(a.appointmentTime || a.createdAt || 0).getTime());
-    }, [selectedCustomer, state.jobs, jobToEdit]);
+
+        if (parentJobToLink && !list.some(j => j.id === parentJobToLink.id)) {
+            list.unshift(parentJobToLink);
+        }
+        return list;
+    }, [selectedCustomer, state.jobs, jobToEdit, parentJobToLink]);
 
     const handleSelectParentJob = (jobId: string) => {
         setSelectedParentJobId(jobId);
@@ -96,8 +126,9 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
         if (parent.locationId) {
             setSelectedPropertyId(parent.locationId);
         }
-        if (parent.proposalId) {
-            setProposalId(parent.proposalId);
+        const parentPropId = parent.proposalId || (parent.linkedProposalIds && parent.linkedProposalIds[0]);
+        if (parentPropId) {
+            setProposalId(parentPropId);
         }
         if (parent.poNumber) {
             setPoNumber(parent.poNumber);
@@ -148,14 +179,142 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                 throw new Error("The uploaded file contains no readable text.");
             }
 
-            const parsed = parseWorkOrderText(text, state.customers);
+            let parsed = parseWorkOrderText(text, state.customers);
+
+            // Attempt AI enhancement via Gemini if available
+            try {
+                const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
+                const customerSummaries = state.customers.map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    address: c.address || '',
+                    locations: (c.serviceLocations || []).map(l => ({ id: l.id, name: l.propertyName || l.name, address: l.address }))
+                }));
+
+                const aiPrompt = `You are a field service operations dispatcher AI. Analyze this uploaded work order text and extract structured appointment metadata.
+Match against one of our existing database customers if applicable.
+
+CRITICAL PARSING DIRECTIVES:
+1. NEVER confuse "Technician", "Vendor", "Contractor", or "Subcontractor" (e.g. TekAir Inc) with the Customer or Service Location!
+2. The "Customer" (extractedCustomerName) is the Purchaser/Client company issuing the work order (e.g. 23rd Group Facility Services).
+3. The "Service Address" (extractedServiceAddress) is the site address where work is performed (e.g. 6170 I.H.-10 East, San Antonio TX 78219 / TA San Antonio). NEVER extract the Technician/Vendor address (e.g. 2618 Middleground) as the service address!
+4. Extract NTE amount if present (e.g. 2820.00).
+
+Database Customers:
+${JSON.stringify(customerSummaries, null, 2)}
+
+Work Order Document Text:
+"""
+${text.slice(0, 6000)}
+"""
+
+Return strictly valid JSON with no extra markdown formatting:
+{
+  "matchedCustomerId": "customer ID from list or null",
+  "matchedPropertyId": "location ID from customer's locations or 'default' or null",
+  "extractedCustomerName": "Extracted customer or company name if not matched, or null",
+  "extractedServiceAddress": "Extracted service street address or null",
+  "extractedPhone": "Extracted contact phone or null",
+  "extractedEmail": "Extracted contact email or null",
+  "poNumber": "extracted PO or WO # or null",
+  "nteAmount": "extracted NTE amount if present or null",
+  "date": "YYYY-MM-DD or null",
+  "timeSlot": "HH:MM in 24hr format or null",
+  "priority": "High" or "Normal",
+  "jobType": "Repair", "Maintenance", "Installation", "Estimate", or "Service Call",
+  "visitType": "Diagnostic Only", "Diagnostic & Repair", "Repair", or "Maintenance",
+  "notes": "Clean summary of scope of work, problem description, or special instructions ONLY"
+}`;
+
+                const res: any = await callGeminiAI({
+                    prompt: aiPrompt,
+                    modelName: "gemini-3.7-flash"
+                });
+
+                const rawAiText = res.data?.text || res.data?.result || res.data;
+                if (rawAiText && typeof rawAiText === 'string') {
+                    const cleanJsonStr = rawAiText.replace(/```json/g, '').replace(/```/g, '').trim();
+                    const aiResult = JSON.parse(cleanJsonStr);
+
+                    if (aiResult.matchedCustomerId) {
+                        const cust = state.customers.find(c => c.id === aiResult.matchedCustomerId);
+                        if (cust) parsed.matchedCustomer = cust;
+                    }
+                    if (aiResult.matchedPropertyId) parsed.matchedPropertyId = aiResult.matchedPropertyId;
+                    if (aiResult.extractedCustomerName) parsed.extractedCustomerName = aiResult.extractedCustomerName;
+                    if (aiResult.extractedServiceAddress) parsed.extractedAddress = aiResult.extractedServiceAddress;
+                    if (aiResult.extractedPhone) parsed.extractedPhone = aiResult.extractedPhone;
+                    if (aiResult.extractedEmail) parsed.extractedEmail = aiResult.extractedEmail;
+                    if (aiResult.poNumber) parsed.poNumber = aiResult.poNumber;
+                    if (aiResult.date && /^\d{4}-\d{2}-\d{2}$/.test(aiResult.date)) parsed.date = aiResult.date;
+                    if (aiResult.timeSlot) parsed.timeSlot = aiResult.timeSlot;
+                    if (aiResult.priority === 'High') parsed.priority = 'High';
+                    if (aiResult.jobType) parsed.jobType = aiResult.jobType;
+                    if (aiResult.visitType) parsed.visitType = aiResult.visitType;
+                    if (aiResult.notes) parsed.notes = aiResult.notes;
+                }
+            } catch (aiErr) {
+                console.warn("AI enhancement unavailable or timed out, using rule-based parsing fallback:", aiErr);
+            }
             
             // Prefill states
             if (parsed.matchedCustomer) {
                 setSelectedCustomer(parsed.matchedCustomer);
+                setIsChangingCustomer(false);
+                setAutoMatchedBadge(parsed.matchedCustomer.name);
+                setUnmatchedCustomerPrompt(null);
                 showToast.success(`Matched customer: ${parsed.matchedCustomer.name}`);
+
+                // Infer or match service location
+                let targetLocId = parsed.matchedPropertyId || '';
+                if (!targetLocId && parsed.extractedAddress && parsed.extractedAddress.length > 5) {
+                    const locAddrPart = parsed.extractedAddress.split(',')[0].trim().toLowerCase();
+                    const matchedLoc = (parsed.matchedCustomer.serviceLocations || []).find(l => l.address && l.address.toLowerCase().includes(locAddrPart));
+                    if (matchedLoc) {
+                        targetLocId = matchedLoc.id;
+                    }
+                }
+                if (!targetLocId) {
+                    if (parsed.matchedCustomer.customerType === 'Residential') {
+                        targetLocId = parsed.matchedCustomer.serviceLocations?.[0]?.id || 'default';
+                    } else if (parsed.matchedCustomer.serviceLocations && parsed.matchedCustomer.serviceLocations.length === 1) {
+                        targetLocId = parsed.matchedCustomer.serviceLocations[0].id;
+                    }
+                }
+                if (targetLocId) {
+                    setSelectedPropertyId(targetLocId);
+                }
+
+                // Check if work order specified a new site address not listed under this customer
+                if (parsed.extractedAddress && parsed.extractedAddress.length > 5) {
+                    const locAddrPart = parsed.extractedAddress.split(',')[0].trim().toLowerCase();
+                    const hasLoc = (parsed.matchedCustomer.serviceLocations || []).some(l => l.address && l.address.toLowerCase().includes(locAddrPart));
+                    if (!hasLoc) {
+                        setUnmatchedLocationPrompt({
+                            address: parsed.extractedAddress,
+                            propertyName: parsed.extractedPropertyName || 'New Site Location'
+                        });
+                    } else {
+                        setUnmatchedLocationPrompt(null);
+                    }
+                } else {
+                    setUnmatchedLocationPrompt(null);
+                }
             } else {
-                showToast.warn("Could not auto-match customer. Please select manually.");
+                // Customer NOT matched -> Prompt creation with approval
+                const extractedName = parsed.extractedCustomerName || parsed.customerName;
+                if (extractedName && extractedName.trim().length > 2) {
+                    setUnmatchedCustomerPrompt({
+                        name: extractedName.trim(),
+                        address: parsed.extractedAddress || '',
+                        phone: parsed.extractedPhone || '',
+                        email: parsed.extractedEmail || ''
+                    });
+                } else {
+                    setUnmatchedCustomerPrompt(null);
+                }
+                setUnmatchedLocationPrompt(null);
+                showToast.warn("Could not auto-match customer. Review creation prompt or select manually.");
             }
 
             if (parsed.matchedPropertyId) {
@@ -172,6 +331,9 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
             }
             if (parsed.jobType) {
                 setJobType(parsed.jobType);
+            }
+            if (parsed.visitType) {
+                setVisitType(parsed.visitType);
             }
             if (parsed.priority === 'High') {
                 setIsHighPriority(true);
@@ -190,6 +352,155 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
             setIsParsing(false);
             // Reset the input value so the same file can be uploaded again if needed
             e.target.value = '';
+        }
+    };
+
+    // Handler to create new customer account from work order with user approval
+    const handleCreateCustomerFromWO = async () => {
+        if (!unmatchedCustomerPrompt) return;
+        setIsCreatingCustomer(true);
+        try {
+            const newCustId = `cust_${Date.now()}`;
+            const initLocId = `loc_${Date.now()}`;
+            const cleanAddr = sanitizeAddressFields(unmatchedCustomerPrompt.address);
+            
+            const newLocs = cleanAddr.address ? [{
+                id: initLocId,
+                name: 'Main Site',
+                propertyName: 'Main Site',
+                address: cleanAddr.address,
+                city: cleanAddr.city || undefined,
+                state: cleanAddr.state || undefined,
+                zip: cleanAddr.zip || undefined,
+                createdAt: new Date().toISOString(),
+                organizationId: state.currentOrganization?.id || ''
+            }] : [];
+
+            const newCustomer: Customer = sanitizeCustomer({
+                id: newCustId,
+                name: unmatchedCustomerPrompt.name,
+                email: unmatchedCustomerPrompt.email || '',
+                phone: unmatchedCustomerPrompt.phone || '',
+                address: cleanAddr.address,
+                city: cleanAddr.city || undefined,
+                state: cleanAddr.state || undefined,
+                zip: cleanAddr.zip || undefined,
+                customerType: 'Residential',
+                organizationId: state.currentOrganization?.id || '',
+                createdAt: new Date().toISOString(),
+                serviceLocations: newLocs
+            });
+
+            await db.collection('customers').doc(newCustId).set(cleanUndefinedFields(newCustomer));
+            if (newLocs.length > 0) {
+                await db.collection('serviceLocations').doc(initLocId).set(cleanUndefinedFields(newLocs[0]));
+            }
+
+            dispatch({ type: 'ADD_CUSTOMER', payload: newCustomer });
+            setSelectedCustomer(newCustomer);
+            if (newLocs.length > 0) {
+                setSelectedPropertyId(initLocId);
+            } else {
+                setSelectedPropertyId('default');
+            }
+            setUnmatchedCustomerPrompt(null);
+            showToast.success(`Created and selected customer "${newCustomer.name}"!`);
+        } catch (err: any) {
+            console.error("Error creating customer from work order:", err);
+            showToast.error("Failed to create customer: " + (err.message || err));
+        } finally {
+            setIsCreatingCustomer(false);
+        }
+    };
+
+    // Handler to add detected new site location to existing customer
+    const handleAddLocationFromWO = async () => {
+        if (!unmatchedLocationPrompt || !selectedCustomer) return;
+        setIsSavingLocation(true);
+        try {
+            const newLocId = `loc_${Date.now()}`;
+            const cleanLocAddr = sanitizeAddressFields(unmatchedLocationPrompt.address, selectedCustomer.city, selectedCustomer.state, selectedCustomer.zip);
+            const newLoc = {
+                id: newLocId,
+                name: unmatchedLocationPrompt.propertyName || 'New Site Location',
+                propertyName: unmatchedLocationPrompt.propertyName || 'New Site Location',
+                address: cleanLocAddr.address,
+                city: cleanLocAddr.city || undefined,
+                state: cleanLocAddr.state || undefined,
+                zip: cleanLocAddr.zip || undefined,
+                createdAt: new Date().toISOString(),
+                organizationId: state.currentOrganization?.id || ''
+            };
+
+            const updatedLocations = [...(selectedCustomer.serviceLocations || []), newLoc];
+            await db.collection('customers').doc(selectedCustomer.id).update(cleanUndefinedFields({ serviceLocations: updatedLocations }));
+            await db.collection('serviceLocations').doc(newLocId).set(cleanUndefinedFields(newLoc));
+
+            const updatedCust = { ...selectedCustomer, serviceLocations: updatedLocations };
+            dispatch({ type: 'UPDATE_CUSTOMER', payload: updatedCust });
+            setSelectedCustomer(updatedCust);
+            setSelectedPropertyId(newLocId);
+            setUnmatchedLocationPrompt(null);
+            showToast.success("Added new site location to customer!");
+        } catch (err: any) {
+            console.error("Error adding location:", err);
+            showToast.error("Failed to add location: " + (err.message || err));
+        } finally {
+            setIsSavingLocation(false);
+        }
+    };
+
+    // Handler to manually save a new site location created on the fly
+    const handleSaveManualLocation = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!selectedCustomer) {
+            showToast.error("Please select a customer first.");
+            return;
+        }
+        if (!manualSiteAddress.trim()) {
+            showToast.error("Please enter a street address for the site location.");
+            return;
+        }
+
+        setIsSavingLocation(true);
+        try {
+            const newLocId = `loc_${Date.now()}`;
+            const cleanLocAddr = sanitizeAddressFields(manualSiteAddress.trim(), manualSiteCity.trim() || selectedCustomer.city, manualSiteState.trim() || selectedCustomer.state, manualSiteZip.trim() || selectedCustomer.zip);
+
+            const newLoc = {
+                id: newLocId,
+                name: manualSiteName.trim() || 'Site Location',
+                propertyName: manualSiteName.trim() || 'Site Location',
+                address: cleanLocAddr.address,
+                city: cleanLocAddr.city || undefined,
+                state: cleanLocAddr.state || undefined,
+                zip: cleanLocAddr.zip || undefined,
+                createdAt: new Date().toISOString(),
+                organizationId: state.currentOrganization?.id || ''
+            };
+
+            const updatedLocations = [...(selectedCustomer.serviceLocations || []), newLoc];
+            await db.collection('customers').doc(selectedCustomer.id).update(cleanUndefinedFields({ serviceLocations: updatedLocations }));
+            await db.collection('serviceLocations').doc(newLocId).set(cleanUndefinedFields(newLoc));
+
+            const updatedCustomer = { ...selectedCustomer, serviceLocations: updatedLocations };
+            dispatch({ type: 'UPDATE_CUSTOMER', payload: updatedCustomer });
+            setSelectedCustomer(updatedCustomer);
+            setSelectedPropertyId(newLocId);
+            
+            // Reset form
+            setManualSiteName('');
+            setManualSiteAddress('');
+            setManualSiteCity('');
+            setManualSiteState('');
+            setManualSiteZip('');
+            setIsManualLocationModalOpen(false);
+            showToast.success(`Added and selected site location "${newLoc.name}"!`);
+        } catch (err: any) {
+            console.error("Error saving manual location:", err);
+            showToast.error("Failed to save location: " + (err.message || err));
+        } finally {
+            setIsSavingLocation(false);
         }
     };
 
@@ -222,6 +533,8 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                 setPartnerId(jobToEdit.assignedPartnerId || '');
                 setAssistantIds(jobToEdit.assistants || []);
                 setPartnerPayoutAmount(jobToEdit.partnerPayoutAmount || undefined);
+                setPartnerNteAmount(jobToEdit.subcontractorNteAmount || jobToEdit.partnerNteAmount || (jobToEdit as any).subcontractorNTE || undefined);
+                setSubcontractorPhone(jobToEdit.subcontractorPhone || (jobToEdit.subcontractorWorkOrder as any)?.customSubPhone || '');
                 setNotes(jobToEdit.specialInstructions || '');
                 setLeadSource(jobToEdit.source || 'Call-In');
                 setIsHighPriority(jobToEdit.priority === 'High');
@@ -229,11 +542,14 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                 setSelectedDiagChecklists(jobToEdit.requiredDiagnosisChecklistIds || []);
                 setSelectedQualChecklists(jobToEdit.requiredQualityChecklistIds || []);
                 setSelectedCustomer(state.customers.find(c => c.id === jobToEdit.customerId) || null);
+                setSelectedParentJobId(jobToEdit.parentJobId || '');
                 setProposalId(jobToEdit.proposalId || '');
                 setPoNumber(jobToEdit.poNumber || '');
                 setDivisionId(jobToEdit.divisionId || '');
                 setSelectedPropertyId(jobToEdit.locationId || 'default');
+                setSelectedProjectId(jobToEdit.projectId || projectId || '');
             } else if (parentJobToLink) {
+                setSelectedProjectId(parentJobToLink.projectId || projectId || '');
                 setDate(new Date().toISOString().split('T')[0]);
                 setTimeSlot('09:00');
                 setDuration(parentJobToLink.duration || 120);
@@ -244,7 +560,12 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                 setPartnerId('');
                 setAssistantIds([]);
                 setPartnerPayoutAmount(undefined);
+                setPartnerNteAmount(undefined);
+                setSubcontractorPhone('');
                 
+                // Pre-fill link to parent job
+                setSelectedParentJobId(parentJobToLink.id);
+
                 const parentCode = parentJobToLink.id.slice(-6).toUpperCase();
                 const postponedPart = parentJobToLink.repairPostponedReason ? `\nPostponed Reason: ${parentJobToLink.repairPostponedReason}` : '';
                 setNotes(`[Follow-up for Job #${parentCode}]${postponedPart}\nOriginal Notes: ${parentJobToLink.specialInstructions || 'None'}\n\n`);
@@ -254,12 +575,92 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                 setSelectedWaivers(parentJobToLink.requiredWaiverIds || []);
                 setSelectedDiagChecklists(parentJobToLink.requiredDiagnosisChecklistIds || []);
                 setSelectedQualChecklists(parentJobToLink.requiredQualityChecklistIds || []);
-                setSelectedCustomer(state.customers.find(c => c.id === parentJobToLink.customerId) || null);
-                setProposalId(parentJobToLink.proposalId || '');
+                
+                // Robustly match customer by ID or Name
+                let matchedCust = state.customers.find(c => 
+                    c.id === parentJobToLink.customerId || 
+                    (c.name && parentJobToLink.customerName && c.name.toLowerCase().trim() === parentJobToLink.customerName.toLowerCase().trim())
+                ) || null;
+
+                if (!matchedCust && parentJobToLink.customerId) {
+                    matchedCust = {
+                        id: parentJobToLink.customerId,
+                        name: parentJobToLink.customerName || 'Customer',
+                        phone: parentJobToLink.customerPhone || '',
+                        email: parentJobToLink.customerEmail || '',
+                        address: parentJobToLink.address || '',
+                        customerType: 'Residential',
+                        createdAt: new Date().toISOString()
+                    } as Customer;
+                }
+                setSelectedCustomer(matchedCust);
+
+                const effectivePropId = parentJobToLink.proposalId || (parentJobToLink.linkedProposalIds && parentJobToLink.linkedProposalIds[0]) || '';
+                setProposalId(effectivePropId);
                 setPoNumber(parentJobToLink.poNumber || '');
                 setDivisionId(parentJobToLink.divisionId || '');
-                setSelectedPropertyId(parentJobToLink.locationId || 'default');
+
+                // Robustly match service location / property ID
+                let targetPropId = parentJobToLink.locationId || '';
+                if (matchedCust && matchedCust.serviceLocations && matchedCust.serviceLocations.length > 0) {
+                    const matchedLoc = matchedCust.serviceLocations.find((loc: any) => 
+                        loc.id === parentJobToLink.locationId ||
+                        (parentJobToLink.address && loc.address && loc.address.toLowerCase().trim() === parentJobToLink.address.toLowerCase().trim()) ||
+                        (parentJobToLink.locationName && loc.name && loc.name.toLowerCase().trim() === parentJobToLink.locationName.toLowerCase().trim()) ||
+                        (parentJobToLink.locationName && loc.propertyName && loc.propertyName.toLowerCase().trim() === parentJobToLink.locationName.toLowerCase().trim())
+                    );
+                    if (matchedLoc) {
+                        targetPropId = matchedLoc.id;
+                    } else if (!targetPropId) {
+                        targetPropId = matchedCust.serviceLocations[0]?.id || (matchedCust.customerType !== 'Property Management' ? 'default' : '');
+                    }
+                } else if (!targetPropId) {
+                    targetPropId = 'default';
+                }
+                setSelectedPropertyId(targetPropId);
             } else {
+                const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+                const emailParam = params.get('email') ? decodeURIComponent(params.get('email')!) : null;
+                const notesParam = params.get('notes') ? decodeURIComponent(params.get('notes')!) : null;
+                const attsParam = params.get('attachments') ? decodeURIComponent(params.get('attachments')!) : null;
+
+                if (attsParam) {
+                    try {
+                        const list = JSON.parse(attsParam);
+                        if (Array.isArray(list) && list.length > 0) {
+                            const formatted = list.map((a: any, idx: number) => ({
+                                id: `inbound_${Date.now()}_${idx}`,
+                                name: a.filename || a.name || `Attachment_${idx + 1}`,
+                                url: a.url,
+                                dataUrl: a.url,
+                                type: a.contentType || a.type || 'application/octet-stream',
+                                uploadedAt: new Date().toISOString()
+                            }));
+                            setAttachedInboundFiles(formatted);
+                        } else {
+                            setAttachedInboundFiles([]);
+                        }
+                    } catch (err) {
+                        console.warn('Failed to parse email attachments param:', err);
+                        setAttachedInboundFiles([]);
+                    }
+                } else {
+                    setAttachedInboundFiles([]);
+                }
+
+                let matchedCust = customerId ? (state.customers.find(c => c.id === customerId) || null) : null;
+                if (!matchedCust && emailParam) {
+                    const emailClean = (emailParam.match(/<([^>]+)>/)?.[1] || emailParam).trim().toLowerCase();
+                    matchedCust = state.customers.find(c => {
+                        if (c.email && c.email.toLowerCase().trim() === emailClean) return true;
+                        if (c.contacts && c.contacts.some((cnt: any) => typeof cnt?.email === 'string' && cnt.email.toLowerCase().trim() === emailClean)) return true;
+                        return false;
+                    }) || null;
+                }
+
+                setSelectedCustomer(matchedCust);
+                setSelectedParentJobId('');
+                setSelectedPropertyId(matchedCust?.serviceLocations?.[0]?.id || (matchedCust && matchedCust.customerType !== 'Property Management' ? 'default' : ''));
                 setDate(new Date().toISOString().split('T')[0]);
                 setTimeSlot('09:00');
                 setDuration(120);
@@ -270,8 +671,8 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                 setPartnerId('');
                 setAssistantIds([]);
                 setPartnerPayoutAmount(undefined);
-                setNotes('');
-                setLeadSource('Call-In');
+                setNotes(notesParam || '');
+                setLeadSource(emailParam ? 'Email / Web Inbound' : 'Call-In');
                 setIsHighPriority(false);
                 setSelectedWaivers([]);
                 setSelectedDiagChecklists([]);
@@ -280,19 +681,9 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                 setPoNumber('');
                 setDivisionId('');
                 setBlacklistBypass(false);
-                setSelectedPropertyId('');
             }
         }
-    }, [isOpen, jobToEdit, parentJobToLink, state.customers]);
-
-    React.useEffect(() => {
-        if (!jobToEdit && selectedCustomer && selectedPropertyId) {
-            const loc = selectedCustomer.serviceLocations?.find(l => l.id === selectedPropertyId);
-            if (loc && loc.poNumber) {
-                setPoNumber(loc.poNumber);
-            }
-        }
-    }, [selectedPropertyId, selectedCustomer, jobToEdit]);
+    }, [isOpen, customerId, jobToEdit, parentJobToLink]);
 
     const industry = state.currentOrganization?.industry || 'General';
     const availableTypes = JOB_TYPES[industry] || JOB_TYPES['General'];
@@ -305,20 +696,38 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
 
     const partners = useMemo(() => {
         if (!state.subcontractors || state.subcontractors.length === 0) return [];
-        const linkedSubs = state.subcontractors.filter((sub: Subcontractor) => sub.handshakeStatus === 'Linked' && sub.linkedOrgId);
-        return linkedSubs.map((sub: Subcontractor) => ({
-            id: sub.linkedOrgId as string,
-            name: sub.companyName
-        }));
-    }, [state.subcontractors]);
+        const currentOrgId = state.currentOrganization?.id;
+        return state.subcontractors
+            .filter((sub: Subcontractor) => 
+                (sub.organizationId === currentOrgId || sub.linkedOrgId === currentOrgId) && 
+                sub.status !== 'Inactive'
+            )
+            .map((sub: Subcontractor) => ({
+                id: (sub.linkedOrgId || sub.id) as string,
+                name: sub.companyName,
+                isInternal: !sub.linkedOrgId
+            }));
+    }, [state.subcontractors, state.currentOrganization]);
 
-    const handleSelectCustomer = (customer: Customer) => {
+    const handleSelectCustomer = (customer: Customer, keepPropertyId?: string) => {
         setSelectedCustomer(customer);
-        setSelectedPropertyId('');
+        setIsChangingCustomer(false);
+        setAutoMatchedBadge(null);
         setProposalId('');
         setBlacklistBypass(false);
-        if (!jobToEdit) {
-            setPoNumber(customer.poNumber || '');
+
+        if (keepPropertyId) {
+            setSelectedPropertyId(keepPropertyId);
+        } else if (customer.customerType === 'Residential') {
+            // Residential customers automatically default to 'default' or primary address location
+            setSelectedPropertyId(customer.serviceLocations?.[0]?.id || 'default');
+        } else {
+            // Commercial / Property Management: default to single service location if available, otherwise '' for multi-location picker
+            if (customer.serviceLocations && customer.serviceLocations.length === 1) {
+                setSelectedPropertyId(customer.serviceLocations[0].id);
+            } else {
+                setSelectedPropertyId('');
+            }
         }
     };
 
@@ -374,31 +783,56 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
         try {
             let dispatchAddress = selectedCustomer.address || 'Address Pending';
             let locationName: string | null = null;
+            let locCity: string | null = null;
+            let locState: string | null = null;
+            let locZip: string | null = null;
             if (selectedPropertyId && selectedPropertyId !== 'default') {
                 const loc = selectedCustomer.serviceLocations?.find(l => l.id === selectedPropertyId);
                 if (loc) {
                     dispatchAddress = loc.address;
                     locationName = loc.propertyName || loc.name || null;
+                    locCity = loc.city || null;
+                    locState = loc.state || null;
+                    locZip = loc.zip || null;
+                } else if (selectedCustomer.customerType !== 'Commercial' && selectedCustomer.customerType !== 'Property Management') {
+                    locCity = selectedCustomer.city || null;
+                    locState = selectedCustomer.state || null;
+                    locZip = selectedCustomer.zip || null;
                 }
+            } else if (selectedCustomer.customerType !== 'Commercial' && selectedCustomer.customerType !== 'Property Management') {
+                locCity = selectedCustomer.city || null;
+                locState = selectedCustomer.state || null;
+                locZip = selectedCustomer.zip || null;
             }
 
                 if (jobToEdit) {
                     let combinedInstructions = notes;
-                    if (originalDiagnosticJob && !notes.includes(`[Diagnostic Notes`)) {
-                        combinedInstructions = `${notes}\n\n[Diagnostic Notes from Job #${originalDiagnosticJob.id.slice(-6).toUpperCase()}]:\n${originalDiagnosticJob.notes?.diagnosis || 'No diagnosis recorded'}`;
+                    const parentJobForEdit = (jobToEdit.parentJobId && originalDiagnosticJob && originalDiagnosticJob.id === jobToEdit.parentJobId) ? originalDiagnosticJob : null;
+                    if (parentJobForEdit && !notes.includes(`[Diagnostic Notes`)) {
+                        combinedInstructions = `${notes}\n\n[Diagnostic Notes from Job #${parentJobForEdit.id.slice(-6).toUpperCase()}]:\n${parentJobForEdit.notes?.diagnosis || 'No diagnosis recorded'}`;
                     }
 
                     const updatePayload: Partial<Job> = {
                         duration,
                         appointmentTime: appointmentTimeIso,
                         address: dispatchAddress,
+                        city: locCity !== null ? locCity : (jobToEdit.city || null),
+                        state: locState !== null ? locState : (jobToEdit.state || null),
+                        zip: locZip !== null ? locZip : (jobToEdit.zip || null),
+                        serviceLocationCity: locCity !== null ? locCity : ((jobToEdit as any)?.serviceLocationCity || null),
+                        serviceLocationState: locState !== null ? locState : ((jobToEdit as any)?.serviceLocationState || null),
+                        serviceLocationZip: locZip !== null ? locZip : ((jobToEdit as any)?.serviceLocationZip || null),
+                        serviceLocationAddress: dispatchAddress || null,
                         tasks: [finalJobType],
                         priority: isHighPriority ? 'High' : 'Normal',
                         assignedTechnicianId: assignMode === 'internal' ? (technicianId || null) : null,
                         assignedTechnicianName: assignMode === 'internal' ? (tech ? `${tech.firstName} ${tech.lastName}` : 'Unassigned') : (partner ? `Partner: ${partner.name}` : null),
                         assignedPartnerId: assignMode === 'partner' ? (partnerId || null) : null,
-                        partnerAllowDirectPayment: assignMode === 'partner' ? !!state.subcontractors.find(s => s.linkedOrgId === partnerId)?.allowDirectPayment : false,
+                        partnerAllowDirectPayment: assignMode === 'partner' ? !!state.subcontractors.find(s => s.linkedOrgId === partnerId || s.id === partnerId)?.allowDirectPayment : false,
                         partnerPayoutAmount: (partnerPayoutAmount && (assignMode === 'partner' || (tech && tech.role === 'Subcontractor'))) ? partnerPayoutAmount : null,
+                        subcontractorNteAmount: (partnerNteAmount && (assignMode === 'partner' || (tech && tech.role === 'Subcontractor'))) ? partnerNteAmount : null,
+                        partnerNteAmount: (partnerNteAmount && (assignMode === 'partner' || (tech && tech.role === 'Subcontractor'))) ? partnerNteAmount : null,
+                        subcontractorPhone: subcontractorPhone ? subcontractorPhone.trim() : null,
                         assistants: assignMode === 'internal' ? assistantIds : [],
                         specialInstructions: combinedInstructions,
                         source: leadSource,
@@ -407,33 +841,36 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         requiredQualityChecklistIds: selectedQualChecklists,
                         locationId: selectedPropertyId && selectedPropertyId !== 'default' ? selectedPropertyId : null,
                         locationName: locationName === undefined ? null : (locationName || null),
-                        poNumber: poNumber ? poNumber.trim() : null,
+                        poNumber: poNumber ? poNumber.replace(/#/g, '').trim() : null,
                         proposalId: proposalId || null,
                         divisionId: divisionId || null,
-                        visitType: visitType
+                        industry: ((state.currentOrganization?.divisions || []).find((d: any) => d.id === divisionId) as any)?.trade || ((state.currentOrganization?.divisions || []).find((d: any) => d.id === divisionId) as any)?.industryTrade || state.currentOrganization?.industry || 'HVAC',
+                        trade: ((state.currentOrganization?.divisions || []).find((d: any) => d.id === divisionId) as any)?.trade || ((state.currentOrganization?.divisions || []).find((d: any) => d.id === divisionId) as any)?.industryTrade || state.currentOrganization?.industry || 'HVAC',
+                        visitType: visitType,
+                        projectId: selectedProjectId !== undefined ? (selectedProjectId || null) : (jobToEdit.projectId || null)
                     };
 
-                    if (originalDiagnosticJob) {
+                    if (parentJobForEdit) {
                         const mergedFiles = [
                             ...(jobToEdit.files || []),
-                            ...(originalDiagnosticJob.files || []).map(f => ({
+                            ...(parentJobForEdit.files || []).map(f => ({
                                 ...f,
                                 id: f.id.startsWith('copied-') ? f.id : `copied-${f.id}-${Date.now()}`
                             }))
                         ];
                         updatePayload.files = mergedFiles.filter((v, i, a) => a.findIndex(t => t.dataUrl === v.dataUrl) === i);
 
+                        const safeJobToEditUnits = Array.isArray(jobToEdit.unitStates) ? jobToEdit.unitStates : [];
+                        const safeParentUnits = Array.isArray(parentJobForEdit.unitStates) ? parentJobForEdit.unitStates : [];
                         const mergedUnitStates = [
-                            ...(jobToEdit.unitStates || []),
-                            ...(originalDiagnosticJob.unitStates || [])
+                            ...safeJobToEditUnits,
+                            ...safeParentUnits
                         ];
                         updatePayload.unitStates = mergedUnitStates.filter((v, i, a) => a.findIndex(t => t.assetId === v.assetId) === i);
 
-                        if (originalDiagnosticJob.techRecommendations) {
-                            updatePayload.techRecommendations = originalDiagnosticJob.techRecommendations;
+                        if (parentJobForEdit.techRecommendations) {
+                            updatePayload.techRecommendations = parentJobForEdit.techRecommendations;
                         }
-                        
-                        (updatePayload as any).parentJobId = originalDiagnosticJob.id;
                     }
 
                     if (assignMode === 'partner' && partnerId) {
@@ -448,33 +885,44 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
 
                     // Handle unlinking of old proposal
                     if (jobToEdit.proposalId && jobToEdit.proposalId !== proposalId) {
-                        await db.collection('proposals').doc(jobToEdit.proposalId).update(cleanUndefinedFields({
-                            jobId: null,
-                            poNumber: null,
-                            updatedAt: new Date().toISOString()
-                        }));
                         const oldProp = state.proposals.find(p => p.id === jobToEdit.proposalId);
-                        if (oldProp) {
-                            dispatch({
-                                type: 'UPDATE_PROPOSAL',
-                                payload: { ...oldProp, jobId: null, poNumber: null }
-                            });
+                        // Only clear jobId if the old proposal actually pointed to this job!
+                        if (!oldProp?.jobId || oldProp.jobId === jobToEdit.id) {
+                            await db.collection('proposals').doc(jobToEdit.proposalId).update(cleanUndefinedFields({
+                                jobId: null,
+                                poNumber: null,
+                                updatedAt: new Date().toISOString()
+                            }));
+                            if (oldProp) {
+                                dispatch({
+                                    type: 'UPDATE_PROPOSAL',
+                                    payload: { ...oldProp, jobId: null, poNumber: null }
+                                });
+                            }
                         }
                     }
 
                     // Handle linking of new proposal
                     if (proposalId) {
                         const targetPoNumber = poNumber ? poNumber.trim() : null;
-                        await db.collection('proposals').doc(proposalId).update(cleanUndefinedFields({
-                            jobId: jobToEdit.id,
-                            poNumber: targetPoNumber,
-                            updatedAt: new Date().toISOString()
-                        }));
                         const targetProp = state.proposals.find(p => p.id === proposalId);
+                        const isPrimaryJob = !targetProp?.jobId || targetProp.jobId === jobToEdit.id;
+                        const updatedJobIds = Array.from(new Set([...(targetProp?.linkedJobIds || []), jobToEdit.id]));
+
+                        const propUpdates: any = {
+                            linkedJobIds: updatedJobIds,
+                            updatedAt: new Date().toISOString()
+                        };
+                        if (isPrimaryJob) {
+                            propUpdates.jobId = jobToEdit.id;
+                            propUpdates.poNumber = targetPoNumber;
+                        }
+
+                        await db.collection('proposals').doc(proposalId).update(cleanUndefinedFields(propUpdates));
                         if (targetProp) {
                             dispatch({
                                 type: 'UPDATE_PROPOSAL',
-                                payload: { ...targetProp, jobId: jobToEdit.id, poNumber: targetPoNumber }
+                                payload: { ...targetProp, ...propUpdates }
                             });
                         }
                     }
@@ -485,22 +933,30 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         await sendNotification(technicianId, {
                             title: "New Job Assigned",
                             body: `You have been assigned to ${selectedCustomer.name} (Rescheduled).`,
-                            type: 'job_assignment'
-                        });
+                            type: 'job_assignment',
+                            link: `/briefing?jobId=${jobToEdit.id}`,
+                            data: {
+                                jobId: jobToEdit.id,
+                                customerId: selectedCustomer?.id,
+                                type: 'job_assignment'
+                            }
+                        }, activeOrgId);
                     }
 
                     onClose();
                 } else {
                     let combinedInstructions = notes || '';
-                    const parentJob = parentJobToLink || customerJobs.find(j => j.id === selectedParentJobId) || originalDiagnosticJob;
+                    const parentJob = parentJobToLink || (selectedParentJobId ? customerJobs.find(j => j.id === selectedParentJobId) : null);
                     if (parentJob && !notes.includes('[Follow-up')) {
                         const parentCode = parentJob.id.slice(-6).toUpperCase();
                         combinedInstructions = `${notes || ''}\n\n[Diagnostic Notes from Job #${parentCode}]:\n${parentJob.notes?.diagnosis || 'No diagnosis recorded'}`;
                     }
 
+                    const nextJobId = await getNextJobNumber(activeOrgId);
                     const newJobData: Job = {
                         duration,
-                        id: `job-${Date.now()}`,
+                        id: nextJobId,
+                        jobNumber: nextJobId,
                         organizationId: activeOrgId,
                         customerName: selectedCustomer.name,
                         firstName: selectedCustomer.firstName || null,
@@ -508,6 +964,13 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         customerPhone: selectedCustomer.phone || '',
                         customerEmail: selectedCustomer.email || '',
                         address: dispatchAddress,
+                        city: locCity || null,
+                        state: locState || null,
+                        zip: locZip || null,
+                        serviceLocationCity: locCity || null,
+                        serviceLocationState: locState || null,
+                        serviceLocationZip: locZip || null,
+                        serviceLocationAddress: dispatchAddress || null,
                         locationId: selectedPropertyId && selectedPropertyId !== 'default' ? selectedPropertyId : null,
                         locationName: locationName || null,
                         poNumber: poNumber ? poNumber.trim() : null,
@@ -519,8 +982,11 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         assignedTechnicianId: assignMode === 'internal' ? (technicianId || null) : null,
                         assignedTechnicianName: assignMode === 'internal' ? (tech ? `${tech.firstName} ${tech.lastName}` : 'Unassigned') : (partner ? `Partner: ${partner.name}` : null),
                         assignedPartnerId: assignMode === 'partner' ? (partnerId || null) : null,
-                        partnerAllowDirectPayment: assignMode === 'partner' ? !!state.subcontractors.find(s => s.linkedOrgId === partnerId)?.allowDirectPayment : false,
+                        partnerAllowDirectPayment: assignMode === 'partner' ? !!state.subcontractors.find(s => s.linkedOrgId === partnerId || s.id === partnerId)?.allowDirectPayment : false,
                         partnerPayoutAmount: (partnerPayoutAmount && (assignMode === 'partner' || (tech && tech.role === 'Subcontractor'))) ? partnerPayoutAmount : null,
+                        subcontractorNteAmount: (partnerNteAmount && (assignMode === 'partner' || (tech && tech.role === 'Subcontractor'))) ? partnerNteAmount : null,
+                        partnerNteAmount: (partnerNteAmount && (assignMode === 'partner' || (tech && tech.role === 'Subcontractor'))) ? partnerNteAmount : null,
+                        subcontractorPhone: subcontractorPhone ? subcontractorPhone.trim() : null,
                         assistants: assignMode === 'internal' ? assistantIds : [],
                         specialInstructions: combinedInstructions,
                         source: leadSource || 'Call-In',
@@ -532,7 +998,8 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         requiredQualityChecklistIds: selectedQualChecklists,
                         proposalId: proposalId || null,
                         divisionId: divisionId || null,
-                        visitType: visitType
+                        visitType: visitType,
+                        files: attachedInboundFiles || []
                     };
 
                     if (parentJob) {
@@ -540,11 +1007,25 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                             ...f,
                             id: f.id.startsWith('copied-') ? f.id : `copied-${f.id}-${Date.now()}`
                         }));
-                        newJobData.unitStates = parentJob.unitStates || [];
+                        newJobData.unitStates = Array.isArray(parentJob.unitStates) ? parentJob.unitStates : [];
                         newJobData.techRecommendations = parentJob.techRecommendations || '';
                         newJobData.parentJobId = parentJob.id;
                         newJobData.isFollowUp = true;
                         newJobData.linkedJobIds = Array.from(new Set([parentJob.id, ...(parentJob.linkedJobIds || [])]));
+
+                        // Auto-link parent job proposals to the new follow-up job
+                        const parentPropId = parentJob.proposalId || proposalId || (parentJob.linkedProposalIds && parentJob.linkedProposalIds[0]);
+                        if (parentPropId) {
+                            newJobData.proposalId = parentPropId;
+                        }
+                        const combinedPropIds = Array.from(new Set([
+                            ...(proposalId ? [proposalId] : []),
+                            ...(parentJob.proposalId ? [parentJob.proposalId] : []),
+                            ...(parentJob.linkedProposalIds || [])
+                        ]));
+                        if (combinedPropIds.length > 0) {
+                            newJobData.linkedProposalIds = combinedPropIds;
+                        }
                     }
 
                     if (assignMode === 'partner' && partnerId) {
@@ -593,19 +1074,40 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                     await batch.commit();
                     dispatch({ type: 'ADD_JOB', payload: newJobData });
 
-                // Handle linking of proposal
-                if (proposalId) {
-                    const targetPoNumber = newJobData.poNumber || null;
-                    await db.collection('proposals').doc(proposalId).update(cleanUndefinedFields({
-                        jobId: newJobData.id,
-                        poNumber: targetPoNumber,
-                        updatedAt: new Date().toISOString()
-                    }));
-                    const targetProp = state.proposals.find(p => p.id === proposalId);
+                // Handle linking of proposal and linkedProposalIds
+                const allLinkedProps = Array.from(new Set([
+                    ...(proposalId ? [proposalId] : []),
+                    ...(newJobData.proposalId ? [newJobData.proposalId] : []),
+                    ...(newJobData.linkedProposalIds || [])
+                ]));
+
+                for (const propId of allLinkedProps) {
+                    const targetProp = state.proposals?.find(p => p.id === propId);
                     if (targetProp) {
+                        const existingLinkedJobs = Array.from(new Set([
+                            newJobData.id,
+                            ...(targetProp.linkedJobIds || []),
+                            ...(targetProp.jobId ? [targetProp.jobId] : [])
+                        ]));
+                        const targetPoNumber = newJobData.poNumber || targetProp.poNumber || null;
+                        const propRefNum = targetProp.referenceNumber || (targetProp.id.startsWith('PROP-') && !targetProp.id.includes(extractJobSlug(newJobData.id)) ? targetProp.id : null);
+                        await db.collection('proposals').doc(propId).update(cleanUndefinedFields({
+                            jobId: targetProp.jobId || newJobData.id,
+                            linkedJobIds: existingLinkedJobs,
+                            poNumber: targetPoNumber,
+                            referenceNumber: propRefNum,
+                            updatedAt: new Date().toISOString()
+                        })).catch(() => {});
+
                         dispatch({
                             type: 'UPDATE_PROPOSAL',
-                            payload: { ...targetProp, jobId: newJobData.id, poNumber: targetPoNumber }
+                            payload: {
+                                ...targetProp,
+                                jobId: targetProp.jobId || newJobData.id,
+                                linkedJobIds: existingLinkedJobs,
+                                poNumber: targetPoNumber,
+                                referenceNumber: propRefNum
+                            }
                         });
                     }
                 }
@@ -617,14 +1119,26 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                             await sendNotification(technicianId, {
                                 title: "🚨 EMERGENCY: High Priority Job",
                                 body: `You have an urgent dispatch for ${selectedCustomer.name}. Please check your route immediately.`,
-                                type: 'urgent_job'
-                            });
+                                type: 'urgent_job',
+                                link: `/briefing?jobId=${newJobData.id}`,
+                                data: {
+                                    jobId: newJobData.id,
+                                    customerId: selectedCustomer?.id,
+                                    type: 'urgent_job'
+                                }
+                            }, activeOrgId);
                         } else {
                             await sendNotification(technicianId, {
                                 title: "New Job Dispatched",
                                 body: `You have been dispatched to ${selectedCustomer.name}.`,
-                                type: 'job_assignment'
-                            });
+                                type: 'job_assignment',
+                                link: `/briefing?jobId=${newJobData.id}`,
+                                data: {
+                                    jobId: newJobData.id,
+                                    customerId: selectedCustomer?.id,
+                                    type: 'job_assignment'
+                                }
+                            }, activeOrgId);
                         }
                     } catch (notifError) {
                         console.error("Failed to send notification:", notifError);
@@ -695,12 +1209,129 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         </div>
                     )}
 
-                    {/* Only show customer search for new jobs, editing jobs binds customer tightly */}
-                    {!jobToEdit && !customerId && <CustomerSearch customers={state.customers} onSelectCustomer={handleSelectCustomer} />}
-                    {jobToEdit && selectedCustomer && (
-                        <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg flex justify-between items-center">
-                            <span className="font-bold text-gray-800 dark:text-gray-200">Customer:</span>
-                            <span className="text-gray-600 dark:text-gray-400 font-medium">{selectedCustomer.name}</span>
+                    {/* Unmatched Customer Creation Prompt */}
+                    {unmatchedCustomerPrompt && !selectedCustomer && (
+                        <div className="bg-amber-50 dark:bg-amber-950/40 p-4 border border-amber-300 dark:border-amber-700/80 rounded-xl space-y-3 shadow-sm">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-xs">
+                                    <UserPlus size={16} className="text-amber-600 shrink-0" />
+                                    <span>Work Order Customer Not Found in Database</span>
+                                </div>
+                                <button type="button" onClick={() => setUnmatchedCustomerPrompt(null)} className="text-amber-500 hover:text-amber-700">
+                                    <X size={14} />
+                                </button>
+                            </div>
+                            <div className="text-xs text-amber-900/90 dark:text-amber-200/90 space-y-1 bg-white/70 dark:bg-amber-900/20 p-3 rounded-lg border border-amber-200/60 dark:border-amber-800/40">
+                                <p><strong>Parsed Customer:</strong> {unmatchedCustomerPrompt.name}</p>
+                                {unmatchedCustomerPrompt.address && <p><strong>Address:</strong> {unmatchedCustomerPrompt.address}</p>}
+                                {unmatchedCustomerPrompt.phone && <p><strong>Phone:</strong> {unmatchedCustomerPrompt.phone}</p>}
+                                {unmatchedCustomerPrompt.email && <p><strong>Email:</strong> {unmatchedCustomerPrompt.email}</p>}
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <Button 
+                                    type="button" 
+                                    size="sm" 
+                                    onClick={handleCreateCustomerFromWO} 
+                                    disabled={isCreatingCustomer} 
+                                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs py-1.5 px-3 rounded-lg flex items-center gap-1.5 shadow-sm"
+                                >
+                                    <UserPlus size={14} />
+                                    {isCreatingCustomer ? "Creating Customer..." : "Approve & Create Customer"}
+                                </Button>
+                                <button type="button" onClick={() => setUnmatchedCustomerPrompt(null)} className="text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400">
+                                    Dismiss / Select Manually
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Customer Selection / Selected Customer Card */}
+                    {selectedCustomer && !isChangingCustomer ? (
+                        <div className="bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-200 dark:border-slate-700/80 rounded-2xl shadow-sm space-y-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-start gap-3 min-w-0">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black text-lg shrink-0">
+                                        {(selectedCustomer.name || 'C').charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-extrabold text-slate-900 dark:text-white text-base">
+                                                {selectedCustomer.name}
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${
+                                                selectedCustomer.customerType === 'Residential'
+                                                    ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800'
+                                                    : selectedCustomer.customerType === 'Property Management'
+                                                        ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
+                                                        : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
+                                            }`}>
+                                                {selectedCustomer.customerType || 'Residential'}
+                                            </span>
+                                            {autoMatchedBadge && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                                    ✨ Auto-Matched
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-xs text-slate-500 dark:text-slate-400 font-medium flex items-center gap-2 mt-1 flex-wrap">
+                                            {selectedCustomer.address && <span>📍 {selectedCustomer.address}</span>}
+                                            {selectedCustomer.phone && <span>📞 {selectedCustomer.phone}</span>}
+                                            {selectedCustomer.email && <span>✉️ {selectedCustomer.email}</span>}
+                                        </div>
+                                    </div>
+                                </div>
+                                {!jobToEdit && !customerId && (
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => setIsChangingCustomer(true)}
+                                        className="text-xs py-1.5 px-3 self-start sm:self-center shrink-0 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200"
+                                    >
+                                        Change Customer
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        !jobToEdit && !customerId && (
+                            <div className="space-y-2 bg-slate-50/50 dark:bg-slate-900/40 p-4 border border-slate-200 dark:border-slate-800 rounded-2xl">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">Select Customer</span>
+                                    {selectedCustomer && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsChangingCustomer(false)}
+                                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-semibold"
+                                        >
+                                            Keep current ({selectedCustomer.name})
+                                        </button>
+                                    )}
+                                </div>
+                                <CustomerSearch customers={state.customers} onSelectCustomer={(c) => handleSelectCustomer(c)} />
+                            </div>
+                        )
+                    )}
+
+                    {/* Detected New Site Location Prompt */}
+                    {unmatchedLocationPrompt && selectedCustomer && (
+                        <div className="bg-indigo-50 dark:bg-indigo-950/40 p-3 border border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center justify-between gap-3 text-xs shadow-sm">
+                            <div className="space-y-0.5">
+                                <span className="font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                                    <MapPin size={14} className="text-indigo-600 shrink-0" />
+                                    New Site Location Specified in Work Order
+                                </span>
+                                <p className="text-indigo-700 dark:text-indigo-300 font-medium pl-5">{unmatchedLocationPrompt.address}</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Button type="button" size="sm" onClick={handleAddLocationFromWO} disabled={isSavingLocation} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs py-1 px-3 rounded-lg flex items-center gap-1">
+                                    <Plus size={13} />
+                                    {isSavingLocation ? "Saving..." : "Add & Select Site"}
+                                </Button>
+                                <button type="button" onClick={() => setUnmatchedLocationPrompt(null)} className="text-slate-400 hover:text-slate-600">
+                                    <X size={14} />
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -730,28 +1361,89 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                             )}
                         </div>
                     )}
-                    
-                    {selectedCustomer && (selectedCustomer.customerType === 'Property Management' || (selectedCustomer.serviceLocations && selectedCustomer.serviceLocations.length > 0)) && (
-                        <div className="bg-amber-50 dark:bg-amber-900/30 p-4 border border-amber-200 dark:border-amber-800 rounded-xl">
-                            <label htmlFor="propertySelect" className="block text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 mb-2 flex items-center gap-1.5">
-                                <Building2 size={15} /> Service Location / Property Target
-                            </label>
-                            <select 
-                                id="propertySelect"
-                                title="Select Destination Target"
-                                aria-label="Select Destination Target"
-                                className="w-full rounded-lg border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-xs py-2.5 px-3 font-medium shadow-sm focus:border-amber-500 focus:ring-amber-500"
-                                value={selectedPropertyId}
-                                onChange={(e) => setSelectedPropertyId(e.target.value)}
-                                required
-                            >
-                                <option value="">-- Please Explicitly Select A Property --</option>
-                                {selectedCustomer.customerType !== 'Property Management' && <option value="default">Primary: {selectedCustomer.address}</option>}
-                                {(selectedCustomer.serviceLocations || []).map((loc: NonNullable<Customer['serviceLocations']>[0]) => (
-                                    <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name} - {loc.address} {loc.city ? `(${loc.city})` : ''}</option>
-                                ))}
-                            </select>
-                        </div>
+
+                    {/* Location Section */}
+                    {selectedCustomer && (
+                        selectedCustomer.customerType === 'Residential' ? (
+                            <div className="bg-slate-50/80 dark:bg-slate-800/50 p-4 border border-slate-200 dark:border-slate-700/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-200 dark:border-blue-900/50">
+                                        <MapPin size={20} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Residential Dispatch Address</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAuditLocationId(selectedPropertyId || 'default')}
+                                            className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1.5 text-left flex-wrap"
+                                            title="Click to view all work history, jobs & documents for this location"
+                                        >
+                                            <span className="truncate">{selectedCustomer.address || 'Main Customer Address'}</span>
+                                            <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 px-2 py-0.5 rounded-full shrink-0 border border-indigo-200 dark:border-indigo-800">
+                                                View Docs & History ↗
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                                {selectedCustomer.serviceLocations && selectedCustomer.serviceLocations.length > 1 && (
+                                    <Button
+                                        type="button"
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => setIsManualLocationModalOpen(true)}
+                                        className="text-xs py-1.5 px-3 self-start sm:self-center"
+                                    >
+                                        + Add Alt Site Location
+                                    </Button>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="bg-amber-50/70 dark:bg-amber-950/30 p-4 border border-amber-200 dark:border-amber-800/80 rounded-2xl space-y-3 shadow-sm">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                                        <Building2 size={16} className="text-amber-600" />
+                                        Target Property / Service Location
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        {selectedPropertyId && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setAuditLocationId(selectedPropertyId)}
+                                                className="text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-200 transition-all flex items-center gap-1"
+                                                title="View all jobs, work orders, proposals, and documents for this site"
+                                            >
+                                                <FileText size={12} /> View Location History & Docs ↗
+                                            </button>
+                                        )}
+                                        <Button
+                                            type="button"
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => setIsManualLocationModalOpen(true)}
+                                            className="text-[10px] py-1 px-2.5 bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 hover:bg-amber-200"
+                                        >
+                                            + Add New Location
+                                        </Button>
+                                    </div>
+                                </div>
+                                <LocationSearchSelector 
+                                    locations={selectedCustomer.serviceLocations || []}
+                                    selectedLocationId={selectedPropertyId}
+                                    onSelectLocation={(loc) => setSelectedPropertyId(loc.id)}
+                                    label=""
+                                    placeholder="Search location name, store #1042, address, city, zip, building..."
+                                    allowAddNew={true}
+                                    onAddNew={() => setIsManualLocationModalOpen(true)}
+                                    customerDefaultAddress={{
+                                        name: `${selectedCustomer.name} (Main HQ Site)`,
+                                        address: selectedCustomer.address,
+                                        city: selectedCustomer.city || '',
+                                        state: selectedCustomer.state || '',
+                                        zip: selectedCustomer.zip || ''
+                                    }}
+                                />
+                            </div>
+                        )
                     )}
 
                     {/* Follow-Up / Previous Job Link Dropdown */}
@@ -805,6 +1497,10 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         openAddSubcontractorModal={() => setIsAddSubcontractorModalOpen(true)}
                         partnerPayoutAmount={partnerPayoutAmount}
                         setPartnerPayoutAmount={setPartnerPayoutAmount}
+                        partnerNteAmount={partnerNteAmount}
+                        setPartnerNteAmount={setPartnerNteAmount}
+                        subcontractorPhone={subcontractorPhone}
+                        setSubcontractorPhone={setSubcontractorPhone}
                     />
 
                     {showCrewSelect && assignMode === 'internal' && (
@@ -875,7 +1571,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                                     const locSuffix = matchesLoc ? ' (Matches Location)' : '';
                                     return (
                                         <option key={p.id} value={p.id}>
-                                            Proposal #{p.id.slice(-6).toUpperCase()} - {title} (${p.total.toFixed(2)}) | {locInfo} ({dateStr}){locSuffix}
+                                            Proposal #{p.proposalNumber || p.id} - {title} (${(Number(p.total) || 0).toFixed(2)}) | {locInfo} ({dateStr}){locSuffix}
                                         </option>
                                     );
                                 })}
@@ -919,11 +1615,27 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                                 )}
 
                                 {/* Job Files List */}
-                                {jobToEdit?.files && jobToEdit.files.length > 0 && (
+                                {((jobToEdit?.files && jobToEdit.files.length > 0) || (attachedInboundFiles && attachedInboundFiles.length > 0)) && (
                                     <div className="space-y-1.5 bg-white dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                                         <span className="block text-[9px] font-black uppercase text-slate-400 tracking-wider mb-2">Attached Job Files / Receipts / Work Orders</span>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            {jobToEdit.files.map((file: any, i: number) => {
+                                            {attachedInboundFiles.map((file: any, i: number) => (
+                                                <a
+                                                    key={`inbound-${i}`}
+                                                    href={file.url}
+                                                    download={file.name}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="p-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 rounded-lg text-[10px] font-bold text-blue-700 dark:text-blue-300 flex items-center justify-between border border-blue-200 dark:border-blue-800 truncate"
+                                                >
+                                                    <span className="truncate flex items-center gap-1.5">
+                                                        <Paperclip size={12} className="shrink-0 text-blue-500" />
+                                                        {file.name}
+                                                    </span>
+                                                    <Download size={12} className="shrink-0 text-blue-500 ml-1" />
+                                                </a>
+                                            ))}
+                                            {jobToEdit?.files && jobToEdit.files.map((file: any, i: number) => {
                                                 const displayTitle = file.metadata?.label || file.fileName || 'Attached File';
                                                 const isHtml = file.fileName?.toLowerCase().endsWith('.html') || file.dataUrl?.includes('text/html');
                                                 
@@ -981,7 +1693,7 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                         </div>
                     )}
 
-                    <div className="flex justify-end gap-3 pt-4">
+                    <div className="flex items-center justify-end gap-3 pt-3 pb-1 sticky bottom-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 z-20 -mx-4 sm:-mx-6 px-4 sm:px-6 mt-4">
                         <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
                         <Button 
                             type="submit" 
@@ -1000,7 +1712,79 @@ const JobAppointmentModal: React.FC<JobAppointmentModalProps> = ({ isOpen, onClo
                     data={previewDoc.data}
                 />
             )}
+            {isManualLocationModalOpen && selectedCustomer && (
+                <Modal isOpen={isManualLocationModalOpen} onClose={() => setIsManualLocationModalOpen(false)} title={`Add Site Location for ${selectedCustomer.name}`} size="md">
+                    <form onSubmit={handleSaveManualLocation} className="space-y-4 p-1">
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">Property / Site Name</label>
+                            <input 
+                                type="text" 
+                                placeholder="e.g. Building B, Suite 200, West Site" 
+                                value={manualSiteName} 
+                                onChange={e => setManualSiteName(e.target.value)} 
+                                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium"
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">Street Address</label>
+                            <input 
+                                type="text" 
+                                placeholder="e.g. 100 Main St" 
+                                value={manualSiteAddress} 
+                                onChange={e => setManualSiteAddress(e.target.value)} 
+                                className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium"
+                                required
+                            />
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">City</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="City" 
+                                    value={manualSiteCity} 
+                                    onChange={e => setManualSiteCity(e.target.value)} 
+                                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">State</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="State" 
+                                    value={manualSiteState} 
+                                    onChange={e => setManualSiteState(e.target.value)} 
+                                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">ZIP</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="ZIP" 
+                                    value={manualSiteZip} 
+                                    onChange={e => setManualSiteZip(e.target.value)} 
+                                    className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-medium"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-700">
+                            <Button type="button" variant="secondary" size="sm" onClick={() => setIsManualLocationModalOpen(false)}>Cancel</Button>
+                            <Button type="submit" size="sm" disabled={isSavingLocation} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
+                                {isSavingLocation ? "Saving Location..." : "Save & Select Location"}
+                            </Button>
+                        </div>
+                    </form>
+                </Modal>
+            )}
             <AddSubcontractorModal isOpen={isAddSubcontractorModalOpen} onClose={() => setIsAddSubcontractorModalOpen(false)} onSave={handleSaveSubcontractor} subcontractor={null} />
+            <LocationAuditModal 
+                isOpen={!!auditLocationId} 
+                onClose={() => setAuditLocationId(null)} 
+                customerId={selectedCustomer?.id}
+                locationId={auditLocationId || undefined}
+            />
         </>
     );
 };

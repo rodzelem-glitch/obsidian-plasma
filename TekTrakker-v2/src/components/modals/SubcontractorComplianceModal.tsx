@@ -5,6 +5,7 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import showToast from '../../lib/toast';
 import { db } from '../../lib/firebase';
+import { cleanUndefinedFields, compressFile, openDocumentUrl } from '../../lib/utils';
 import { sendNotification, sendEmail } from '../../lib/notificationService';
 import { useAppContext } from '../../context/AppContext';
 import { 
@@ -42,13 +43,12 @@ export const SubcontractorComplianceModal: React.FC<SubcontractorComplianceModal
         state.currentOrganization?.subcontractorComplianceSettings
     );
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, docKey: string) => {
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, docKey: string) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = async () => {
-            const uploadedUrl = reader.result as string;
+        try {
+            const uploadedUrl = await compressFile(file, 0.8);
             const newDoc: SubcontractorComplianceDoc = {
                 id: `doc-${docKey}-${Date.now()}`,
                 docKey,
@@ -56,32 +56,32 @@ export const SubcontractorComplianceModal: React.FC<SubcontractorComplianceModal
                 fileUrl: uploadedUrl,
                 fileName: file.name,
                 uploadedAt: new Date().toISOString(),
-                expiresAt: expiresAt || undefined,
+                ...(expiresAt ? { expiresAt } : {}),
                 status: 'pending'
             };
 
             const existingDocs = subcontractor.complianceDocs || [];
             const filteredDocs = existingDocs.filter(d => d.docKey !== docKey);
-            const updatedDocs = [...filteredDocs, newDoc];
+            const rawDocs = [...filteredDocs, newDoc];
+            const updatedDocs: SubcontractorComplianceDoc[] = JSON.parse(JSON.stringify(rawDocs));
 
             const updatedSub: Subcontractor = {
                 ...subcontractor,
                 complianceDocs: updatedDocs
             };
 
-            try {
-                await db.collection('subcontractors').doc(subcontractor.id).update({
+            if (!state.isDemoMode) {
+                await db.collection('subcontractors').doc(subcontractor.id).update(cleanUndefinedFields({
                     complianceDocs: updatedDocs
-                });
-                onUpdateSubcontractor(updatedSub);
-                showToast.success(`Uploaded ${file.name} for review.`);
-                setExpiresAt('');
-            } catch (err: any) {
-                console.error("Failed to upload compliance doc:", err);
-                showToast.error("Failed to save upload: " + err.message);
+                }));
             }
-        };
-        reader.readAsDataURL(file);
+            onUpdateSubcontractor(updatedSub);
+            showToast.success(`Uploaded ${file.name} for review.`);
+            setExpiresAt('');
+        } catch (err: any) {
+            console.error("Failed to upload compliance doc:", err);
+            showToast.error("Failed to save upload: " + err.message);
+        }
     };
 
     const handleUpdateDocStatus = async (docKey: string, status: SubcontractorComplianceDoc['status']) => {
@@ -90,7 +90,12 @@ export const SubcontractorComplianceModal: React.FC<SubcontractorComplianceModal
 
         let updatedDocs: SubcontractorComplianceDoc[];
         if (targetDoc) {
-            updatedDocs = existingDocs.map(d => d.docKey === docKey ? { ...d, status, verifiedAt: new Date().toISOString(), verifiedBy: state.currentUser?.email } : d);
+            updatedDocs = existingDocs.map(d => d.docKey === docKey ? { 
+                ...d, 
+                status, 
+                verifiedAt: new Date().toISOString(), 
+                ...(state.currentUser?.email ? { verifiedBy: state.currentUser.email } : {})
+            } : d);
         } else {
             const def = ALL_COMPLIANCE_DOCUMENTS.find(d => d.key === docKey);
             updatedDocs = [...existingDocs, {
@@ -100,19 +105,23 @@ export const SubcontractorComplianceModal: React.FC<SubcontractorComplianceModal
                 status,
                 uploadedAt: new Date().toISOString(),
                 verifiedAt: new Date().toISOString(),
-                verifiedBy: state.currentUser?.email
+                ...(state.currentUser?.email ? { verifiedBy: state.currentUser.email } : {})
             }];
         }
 
+        const cleanedDocs: SubcontractorComplianceDoc[] = JSON.parse(JSON.stringify(updatedDocs));
+
         const updatedSub: Subcontractor = {
             ...subcontractor,
-            complianceDocs: updatedDocs
+            complianceDocs: cleanedDocs
         };
 
         try {
-            await db.collection('subcontractors').doc(subcontractor.id).update({
-                complianceDocs: updatedDocs
-            });
+            if (!state.isDemoMode) {
+                await db.collection('subcontractors').doc(subcontractor.id).update(cleanUndefinedFields({
+                    complianceDocs: cleanedDocs
+                }));
+            }
             onUpdateSubcontractor(updatedSub);
             showToast.success(`Updated document status to ${status.toUpperCase()}`);
         } catch (err: any) {
@@ -132,14 +141,36 @@ export const SubcontractorComplianceModal: React.FC<SubcontractorComplianceModal
         };
 
         try {
-            await db.collection('subcontractors').doc(subcontractor.id).update({
-                contracts: updatedContracts
-            });
+            if (!state.isDemoMode) {
+                await db.collection('subcontractors').doc(subcontractor.id).update(cleanUndefinedFields({
+                    contracts: updatedContracts
+                }));
+            }
             onUpdateSubcontractor(updatedSub);
             showToast.success("Contract record updated.");
         } catch (err: any) {
             console.error(err);
             showToast.error("Failed to save contract: " + err.message);
+        }
+    };
+
+    const handleToggleBypass = async (bypass: boolean) => {
+        try {
+            if (!state.isDemoMode) {
+                await db.collection('subcontractors').doc(subcontractor.id).update(cleanUndefinedFields({
+                    temporaryComplianceBypass: bypass,
+                    complianceBypassReason: bypass ? 'Emergency work authorized - paperwork pending' : ''
+                }));
+            }
+            onUpdateSubcontractor({
+                ...subcontractor,
+                temporaryComplianceBypass: bypass,
+                complianceBypassReason: bypass ? 'Emergency work authorized - paperwork pending' : ''
+            });
+            showToast.success(bypass ? "Emergency compliance lock bypass granted!" : "Emergency compliance lock bypass removed.");
+        } catch (err: any) {
+            console.error("Failed to update compliance bypass:", err);
+            showToast.error("Failed to update bypass setting: " + err.message);
         }
     };
 
@@ -156,7 +187,13 @@ export const SubcontractorComplianceModal: React.FC<SubcontractorComplianceModal
 
             const payload = {
                 title: `Action Required: Subcontractor Compliance Documents`,
-                body: `${orgName} requires compliance documents (${missingList}) to be uploaded before work orders can be dispatched.`
+                body: `${orgName} requires compliance documents (${missingList}) to be uploaded before work orders can be dispatched.`,
+                type: 'subcontractor_compliance',
+                link: '/admin/contracting',
+                data: {
+                    subcontractorId: subcontractor.id,
+                    type: 'subcontractor_compliance'
+                }
             };
 
             if (subcontractor.linkedOrgId) {
@@ -202,37 +239,65 @@ export const SubcontractorComplianceModal: React.FC<SubcontractorComplianceModal
         >
             <div className="space-y-6 max-h-[80vh] overflow-y-auto pr-1">
                 {/* Summary Banner */}
-                <div className={`p-4 rounded-2xl border flex items-center justify-between gap-4 ${
+                <div className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-4 ${
                     complianceResult.isCompliant 
-                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200' 
-                        : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200' 
+                        : 'bg-amber-500/10 border-amber-500/40 text-amber-950 dark:text-amber-200'
                 }`}>
                     <div className="flex items-center gap-3">
                         {complianceResult.isCompliant ? (
-                            <CheckCircle2 className="w-8 h-8 text-emerald-500 shrink-0" />
+                            <CheckCircle2 className="w-8 h-8 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         ) : (
-                            <AlertTriangle className="w-8 h-8 text-amber-500 shrink-0" />
+                            <AlertTriangle className="w-8 h-8 text-amber-600 dark:text-amber-400 shrink-0" />
                         )}
                         <div>
-                            <span className="font-extrabold text-sm block">
+                            <span className="font-extrabold text-sm block text-slate-900 dark:text-white">
                                 {complianceResult.isCompliant 
                                     ? "Subcontractor Fully Compliant" 
                                     : `Pending ${complianceResult.missingDocKeys.length} Compliance Items`}
                             </span>
-                            <p className="text-xs opacity-80 leading-normal">
+                            <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-normal mt-0.5">
                                 {complianceResult.fulfilledCount} of {complianceResult.totalRequiredCount} required documents verified and active.
                             </p>
                         </div>
                     </div>
-                    <Button
+                    <button
                         type="button"
                         onClick={handleSendComplianceReminder}
                         disabled={isSendingReminder}
-                        className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 text-xs font-bold shrink-0"
+                        className={`px-4 py-2.5 rounded-xl text-white font-black text-xs shadow-md flex items-center gap-2 shrink-0 transition-all disabled:opacity-50 ${
+                            complianceResult.isCompliant
+                                ? 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800'
+                                : 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800'
+                        }`}
                     >
-                        <Send className="w-3.5 h-3.5 mr-1 text-indigo-500" />
+                        <Send className="w-4 h-4 text-white" />
                         {isSendingReminder ? "Sending..." : "Send Reminder"}
-                    </Button>
+                    </button>
+                </div>
+
+                {/* Emergency Lock Bypass Toggle */}
+                <div className="p-4 bg-amber-500/10 border border-amber-300 dark:border-amber-800 rounded-2xl flex items-center justify-between gap-4">
+                    <div>
+                        <span className="font-extrabold text-xs text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                            Emergency Compliance Lock Bypass
+                        </span>
+                        <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80 mt-0.5">
+                            Bypass compliance requirements for this subcontractor so work orders can be assigned immediately during urgent jobs while paperwork is handled afterwards.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => handleToggleBypass(!subcontractor.temporaryComplianceBypass)}
+                        className={`px-3 py-1.5 rounded-xl font-bold text-xs shadow-sm transition-all border shrink-0 ${
+                            subcontractor.temporaryComplianceBypass 
+                                ? 'bg-amber-500 text-white border-amber-600 shadow-amber-500/20' 
+                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-700 hover:bg-amber-50'
+                        }`}
+                    >
+                        {subcontractor.temporaryComplianceBypass ? '⚡ Lock Bypassed (Active)' : 'Grant Lock Bypass'}
+                    </button>
                 </div>
 
                 {/* Subcontractor Contracts & Master Agreements */}
@@ -378,14 +443,13 @@ export const SubcontractorComplianceModal: React.FC<SubcontractorComplianceModal
                                             />
                                         </label>
                                         {doc?.fileUrl && (
-                                            <a 
-                                                href={doc.fileUrl} 
-                                                target="_blank" 
-                                                rel="noreferrer" 
-                                                className="text-slate-500 hover:text-indigo-600 font-bold flex items-center gap-1"
+                                            <button 
+                                                type="button"
+                                                onClick={() => openDocumentUrl(doc.fileUrl)} 
+                                                className="text-slate-500 hover:text-indigo-600 font-bold flex items-center gap-1 bg-transparent border-0 cursor-pointer text-xs"
                                             >
                                                 View Document <ExternalLink className="w-3 h-3" />
-                                            </a>
+                                            </button>
                                         )}
                                     </div>
                                 </div>

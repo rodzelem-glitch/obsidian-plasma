@@ -7,3 +7,30 @@ importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-comp
 self.addEventListener('push', function (event) {
   console.log('[FCM-SW] Push Message Received.', event);
 });
+
+self.addEventListener('notificationclick', function(event) {
+  console.log('[FCM-SW] Notification Clicked:', event);
+  event.notification.close();
+  const data = event.notification.data || {};
+  const targetUrl = data.url || data.link || '/';
+  const cleanRoute = targetUrl.replace(/^(\/#\/|#\/)/, '/');
+  const targetHashUrl = '/#' + (cleanRoute.startsWith('/') ? cleanRoute : '/' + cleanRoute);
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      for (let i = 0; i < clientList.length; i++) {
+        const client = clientList[i];
+        if (client.url && 'focus' in client) {
+          client.focus();
+          if ('navigate' in client) {
+            client.navigate(targetHashUrl);
+          }
+          return;
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetHashUrl);
+      }
+    })
+  );
+});

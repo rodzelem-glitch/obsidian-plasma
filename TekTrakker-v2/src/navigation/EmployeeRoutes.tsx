@@ -26,15 +26,18 @@ const EmployeeRoutes: React.FC<{ user: User, handleLogout: () => void, isDemoMod
         <BillingGate>
           <EmployeeLayout user={user} onLogout={handleLogout}>
               <Routes>
+                <Route path="" element={<DailyBriefing />} />
                 <Route path="/" element={<DailyBriefing />} />
-                <Route path="/scheduling" element={<JobScheduling />} />
-                <Route path="/proposal" element={<FieldProposal />} />
-                <Route path="/payments" element={<PaymentsAndOrders />} />
-                <Route path="/tools" element={<IndustryToolsHub />} />
-                <Route path="/messages" element={<Messages />} />
-                <Route path="/timelog" element={<TimeAndMileage />} />
-                <Route path="/hr" element={<HRResources />} />
-                <Route path="/training" element={<TrainingHub user={user} />} />
+                <Route path="scheduling" element={<JobScheduling />} />
+                <Route path="proposal" element={<FieldProposal />} />
+                <Route path="payments" element={<PaymentsAndOrders />} />
+                <Route path="tools" element={<IndustryToolsHub />} />
+                <Route path="messages" element={<Messages />} />
+                <Route path="communications" element={<Messages />} />
+                <Route path="phone" element={<Navigate to="/briefing/communications?tab=phone" replace />} />
+                <Route path="timelog" element={<TimeAndMileage />} />
+                <Route path="hr" element={<HRResources />} />
+                <Route path="training" element={<TrainingHub user={user} />} />
                 <Route path="*" element={<Navigate to={getRedirectPath()} replace />} />
               </Routes>
           </EmployeeLayout>

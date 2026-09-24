@@ -418,7 +418,7 @@ const CUSTOM_TOURS: Record<string, TourStep[] | { admin: TourStep[], tech: TourS
         },
         {
             title: 'Invoice Ledger 📊',
-            description: 'Review pending invoices, Stripe processing statuses, and aging balances.',
+            description: 'Review pending invoices, payment processing statuses, and aging balances.',
             targetSelector: '[data-tour="financials-invoices-tab"]',
             position: 'bottom',
             icon: '📊',

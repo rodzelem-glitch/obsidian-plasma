@@ -17,20 +17,20 @@ const ProposalsSection: React.FC<ProposalsSectionProps> = ({ proposals, onViewPr
             </h3>
             <div className="space-y-3">
                 {proposals.map(prop => (
-                    <div key={prop.id} className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex justify-between items-center shadow-sm">
+                    <div key={prop.id} className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-sm">
                         <div>
-                            <p className="font-black text-slate-900 dark:text-white">{prop.selectedOption || 'Standard'} Proposal</p>
+                            <p className="font-black text-slate-900 dark:text-white text-sm sm:text-base">{prop.selectedOption || 'Standard'} Proposal</p>
                             <p className="text-xs text-slate-500">{new Date(prop.createdAt).toLocaleDateString()}</p>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4">
                             <span className="font-black text-lg text-primary-600">${prop.total.toFixed(0)}</span>
                             {prop.status === 'Sent' || prop.status === 'Opened' ? (
-                                <Button onClick={() => onViewProposal(prop)} className="px-4 py-1 text-xs font-black uppercase bg-emerald-600 hover:bg-emerald-700">Review & Accept</Button>
+                                <Button onClick={() => onViewProposal(prop)} className="px-4 py-1.5 text-xs font-black uppercase bg-emerald-600 hover:bg-emerald-700 cursor-pointer">Review & Accept</Button>
                             ) : (
-                                <span onClick={() => onViewProposal(prop)} className={`px-2 py-1 rounded-full text-[10px] font-black uppercase cursor-pointer ${
-                                    prop.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700' : 
-                                    prop.status === 'Opened' ? 'bg-indigo-100 text-indigo-700' : 
-                                    'bg-slate-100 text-slate-700'
+                                <span onClick={() => onViewProposal(prop)} className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase cursor-pointer ${
+                                    prop.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 
+                                    prop.status === 'Opened' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' : 
+                                    'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
                                 }`}>
                                     {prop.status}
                                 </span>

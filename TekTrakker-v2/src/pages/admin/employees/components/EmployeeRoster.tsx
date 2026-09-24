@@ -3,7 +3,7 @@ import React from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import { User } from 'types';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Clock } from 'lucide-react';
 
 interface EmployeeRosterProps {
     employees: User[];
@@ -34,9 +34,45 @@ const EmployeeRoster: React.FC<EmployeeRosterProps> = ({
         return isRecentLogin || isRecentLoc;
     };
 
+    const formatLastLogin = (lastLoginAt?: string) => {
+        if (!lastLoginAt) return <span className="text-slate-400 italic text-xs">Never</span>;
+        try {
+            const d = new Date(lastLoginAt);
+            if (isNaN(d.getTime())) return <span className="text-slate-400 italic text-xs">Never</span>;
+
+            const now = new Date();
+            const diffMs = now.getTime() - d.getTime();
+            const diffMins = Math.floor(diffMs / (1000 * 60));
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+            let relative = '';
+            if (diffMins < 2) relative = 'Just now';
+            else if (diffMins < 60) relative = `${diffMins}m ago`;
+            else if (diffHours < 24) relative = `${diffHours}h ago`;
+            else if (diffDays === 1) relative = 'Yesterday';
+            else if (diffDays < 30) relative = `${diffDays}d ago`;
+            else relative = d.toLocaleDateString();
+
+            return (
+                <div className="flex flex-col">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-indigo-500 shrink-0" />
+                        {relative}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                        {d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                </div>
+            );
+        } catch {
+            return <span className="text-slate-400 italic text-xs">Never</span>;
+        }
+    };
+
     return (
         <Card>
-            <Table headers={['Name / ID', 'Role', 'Contact', 'Status', 'Actions']}>
+            <Table headers={['Name / ID', 'Role', 'Contact', 'Status', 'Last Login', 'Actions']}>
                 {employees.map(emp => {
                     const online = isOnline(emp);
                     return (
@@ -61,6 +97,9 @@ const EmployeeRoster: React.FC<EmployeeRosterProps> = ({
                                     {online ? 'Online recently' : 'Offline'}
                                 </div>
                             </td>
+                            <td className="px-6 py-4 text-sm">
+                                {formatLastLogin(emp.lastLoginAt)}
+                            </td>
                             <td className="px-6 py-4 flex gap-3 items-center">
                                 <button onClick={() => handleEdit(emp)} className="text-blue-600 hover:underline text-sm font-bold">Edit</button>
                                 {emp.role === 'Subcontractor' && onViewTechs && (
@@ -73,7 +112,7 @@ const EmployeeRoster: React.FC<EmployeeRosterProps> = ({
                     );
                 })}
                 {employees.length === 0 && (
-                    <tr><td colSpan={5} className="p-4 md:p-8 text-center text-gray-500">No employees found.</td></tr>
+                    <tr><td colSpan={6} className="p-4 md:p-8 text-center text-gray-500">No employees found.</td></tr>
                 )}
             </Table>
         </Card>

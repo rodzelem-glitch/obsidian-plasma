@@ -26,6 +26,7 @@ interface RepairStepProps {
     setWorkNotes: (notes: string) => void;
     handlePhotoUpload: (e: React.ChangeEvent<HTMLInputElement>, label: string) => void;
     takeNativePhoto: () => void;
+    pickGalleryPhotos?: () => void;
     files: StoredFile[];
     onDeletePhoto: (file: StoredFile) => void;
     onViewPhoto: (file: StoredFile) => void;
@@ -62,6 +63,7 @@ const RepairStep: React.FC<RepairStepProps> = ({
     setWorkNotes,
     handlePhotoUpload,
     takeNativePhoto,
+    pickGalleryPhotos,
     files,
     onDeletePhoto,
     onViewPhoto,
@@ -223,8 +225,13 @@ const RepairStep: React.FC<RepairStepProps> = ({
                         {t("Record unit condition before and after performing repairs.")}
                     </p>
                     <div className="space-y-4">
-                        {assets.map((asset) => {
-                            const stateObj = unitStates.find(s => s.assetId === asset.id) || { 
+                        {assets.map((asset, assetIdx) => {
+                            const getAssetId = (a: any) => a.id || a.equipmentId || a._id || a.assetTag || a.name || '';
+                            const assetId = getAssetId(asset) || `unit-${assetIdx + 1}`;
+
+                            const stateObj = unitStates.find(s => s.assetId === assetId) || { 
+                                assetId: assetId,
+                                includeOnWorkOrder: true,
                                 health: mapConditionToHealth(asset.condition), 
                                 healthBefore: mapConditionToHealth(asset.condition),
                                 healthAfter: 'Good',
@@ -235,30 +242,29 @@ const RepairStep: React.FC<RepairStepProps> = ({
                             const healthBefore = stateObj.healthBefore || stateObj.health || mapConditionToHealth(asset.condition);
                             const healthAfter = stateObj.healthAfter || 'Good';
                             
-                            const handleUpdateUnitState = (assetId: string, field: string, val: string) => {
-                                if (setUnitStates) {
-                                    const updated = unitStates.map(s => {
-                                        if (s.assetId === assetId) {
-                                            return { ...s, [field]: val };
-                                        }
-                                        return s;
+                            const handleUpdateUnitState = (targetAssetId: string, fieldOrUpdates: string | Record<string, any>, val?: any) => {
+                                if (!setUnitStates || !targetAssetId) return;
+                                const updatesObj = typeof fieldOrUpdates === 'object' ? fieldOrUpdates : { [fieldOrUpdates]: val };
+                                const existingStates = [...(unitStates || [])];
+                                const idx = existingStates.findIndex(s => s.assetId === targetAssetId);
+                                if (idx > -1) {
+                                    existingStates[idx] = { ...existingStates[idx], ...updatesObj };
+                                } else {
+                                    const defaultHealth = mapConditionToHealth(asset.condition);
+                                    existingStates.push({
+                                        assetId: targetAssetId,
+                                        includeOnWorkOrder: true,
+                                        health: defaultHealth,
+                                        healthBefore: defaultHealth,
+                                        healthAfter: 'Good',
+                                        ...updatesObj
                                     });
-                                    // if not in list, add it
-                                    if (!unitStates.some(s => s.assetId === assetId)) {
-                                        updated.push({
-                                            assetId,
-                                            health: field === 'health' || field === 'healthBefore' ? val : mapConditionToHealth(asset.condition),
-                                            healthBefore: field === 'healthBefore' ? val : mapConditionToHealth(asset.condition),
-                                            healthAfter: field === 'healthAfter' ? val : 'Good',
-                                            [field]: val
-                                        });
-                                    }
-                                    setUnitStates(updated);
                                 }
+                                setUnitStates(existingStates);
                             };
 
                             return (
-                                <div key={asset.id} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm text-left space-y-3">
+                                <div key={assetId} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm text-left space-y-3">
                                     <div className="flex justify-between items-center">
                                         <div className="font-bold text-sm text-slate-850 dark:text-white flex items-center gap-2">
                                             <span>{asset.name || asset.type}</span>
@@ -299,10 +305,7 @@ const RepairStep: React.FC<RepairStepProps> = ({
                                                         <button
                                                             type="button"
                                                             key={val}
-                                                            onClick={() => {
-                                                                handleUpdateUnitState(asset.id, 'healthBefore', val);
-                                                                handleUpdateUnitState(asset.id, 'health', val);
-                                                            }}
+                                                            onClick={() => handleUpdateUnitState(assetId, { healthBefore: val, health: val })}
                                                             className={`py-1 text-[9px] font-bold border rounded-lg transition-all text-center cursor-pointer ${
                                                                 isSelected ? colorClasses : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600'
                                                             }`}
@@ -328,7 +331,7 @@ const RepairStep: React.FC<RepairStepProps> = ({
                                                         <button
                                                             type="button"
                                                             key={val}
-                                                            onClick={() => handleUpdateUnitState(asset.id, 'healthAfter', val)}
+                                                            onClick={() => handleUpdateUnitState(assetId, 'healthAfter', val)}
                                                             className={`py-1 text-[9px] font-bold border rounded-lg transition-all text-center cursor-pointer ${
                                                                 isSelected ? colorClasses : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600'
                                                             }`}
@@ -370,14 +373,24 @@ const RepairStep: React.FC<RepairStepProps> = ({
                         <Camera size={24} className="text-slate-400 mb-1"/>
                         <span className="text-[10px] font-bold text-slate-500">{t("Camera")}</span>
                     </button>
-                    <label htmlFor="repair-gallery" className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors bg-white dark:bg-slate-900 dark:border-slate-700">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (pickGalleryPhotos) {
+                                pickGalleryPhotos();
+                            } else {
+                                document.getElementById('repair-gallery')?.click();
+                            }
+                        }}
+                        className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors bg-white dark:bg-slate-900 dark:border-slate-700"
+                    >
                         <Plus size={24} className="text-slate-400 mb-1"/>
                         <span className="text-[10px] font-bold text-slate-500">{t("Gallery")}</span>
                         <input id="repair-gallery" type="file" multiple accept="image/*" onChange={(e) => handlePhotoUpload(e, 'After')} className="hidden" />
-                    </label>
+                    </button>
                 </div>
                 <div className="flex items-start overflow-x-auto gap-3 pb-2 custom-scrollbar w-full">
-                    {files.filter(f => { const lbl = f.metadata?.label || f.label; return lbl === 'Completed Work' || lbl === 'After'; }).map(f => (
+                    {files.filter(f => { const url = f.dataUrl || f.url; return f.fileType?.startsWith('image/') || (f as any).contentType?.startsWith('image/') || f.type === 'Photo' || (url && url.match(/\.(jpeg|jpg|png|webp|gif|heic)($|\?)/i)); }).map(f => (
                         <div key={f.id} className="relative w-32 rounded-xl flex flex-col border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-md shrink-0 overflow-hidden group">
                             <div className="relative w-full h-24 overflow-hidden bg-slate-900">
                                 <button 
@@ -402,27 +415,49 @@ const RepairStep: React.FC<RepairStepProps> = ({
                             </div>
                             <div className="p-1.5 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30 flex flex-col gap-1">
                                 <select
-                                    value={f.metadata?.assetId || ''}
+                                    value={f.assetId || f.metadata?.assetId || ''}
                                     onChange={(e) => onAssignPhotoToAsset?.(f.id, e.target.value)}
                                     className="w-full text-[10px] py-1 px-1.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 font-medium cursor-pointer"
                                 >
                                     <option value="">{t("General Photo")}</option>
-                                    {assets && assets.map(asset => (
-                                        <option key={asset.id} value={asset.id}>
-                                            {asset.name || `${asset.brand} ${t(asset.type)}`} {asset.serial ? `(${asset.serial.slice(-4)})` : ''}
-                                        </option>
-                                    ))}
+                                    {assets && assets.map(asset => {
+                                        const serialText = asset.serial || asset.serialNumber ? ` • S/N: ${asset.serial || asset.serialNumber}` : '';
+                                        const modelText = asset.model || asset.modelNumber ? ` • M/N: ${asset.model || asset.modelNumber}` : '';
+                                        const brandText = asset.brand ? ` (${asset.brand})` : '';
+                                        return (
+                                            <option key={asset.id} value={asset.id}>
+                                                {asset.name || `${asset.brand || ''} ${t(asset.type || 'Unit')}`.trim()}{brandText}{modelText}{serialText}
+                                            </option>
+                                        );
+                                    })}
                                 </select>
-                                <select
-                                    value={f.metadata?.label || f.label || ''}
-                                    onChange={(e) => onUpdatePhotoLabel?.(f.id, e.target.value)}
-                                    className="w-full text-[10px] py-1 px-1.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 font-medium cursor-pointer"
-                                >
-                                    <option value="Before">{t("Before")}</option>
-                                    <option value="After">{t("After")}</option>
-                                    <option value="Pre-Work">{t("Pre-Work")}</option>
-                                    <option value="Completed Work">{t("Completed Work")}</option>
-                                </select>
+                                <div className="flex flex-col gap-1">
+                                    <input
+                                        type="text"
+                                        list={`repair-label-options-${f.id}`}
+                                        placeholder="Label (e.g. Heater Coil)"
+                                        value={f.metadata?.label || f.label || ''}
+                                        onChange={(e) => onUpdatePhotoLabel?.(f.id, e.target.value)}
+                                        className="w-full text-[10px] py-1 px-1.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 font-medium"
+                                    />
+                                    <datalist id={`repair-label-options-${f.id}`}>
+                                        <option value="Before" />
+                                        <option value="Pre-Work" />
+                                        <option value="Heater Coil" />
+                                        <option value="Compressor" />
+                                        <option value="Evaporator Coil" />
+                                        <option value="Capacitor" />
+                                        <option value="Blower Motor" />
+                                        <option value="Control Board" />
+                                        <option value="Thermostat" />
+                                        <option value="Electrical Panel" />
+                                        <option value="Filter Drier" />
+                                        <option value="Drain Pan" />
+                                        <option value="Data Plate Tag" />
+                                        <option value="After" />
+                                        <option value="Completed Work" />
+                                    </datalist>
+                                </div>
                             </div>
                         </div>
                     ))}

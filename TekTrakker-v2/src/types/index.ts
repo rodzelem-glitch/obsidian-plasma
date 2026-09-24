@@ -10,3 +10,4 @@ export * from './tool';
 export * from './user';
 export * from './integration';
 export * from './franchise';
+export * from './tradePartner';

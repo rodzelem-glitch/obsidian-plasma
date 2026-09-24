@@ -28,7 +28,7 @@ export const ROOFING_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organizationId'>[
     // --- 4. ATTIC VENTILATION ---
     { name: 'Static Box Vent (Install/Replace)', description: 'Install standard 750 slant-back roof vent.', baseCost: 18, avgLabor: 1.0, category: 'Roofing' },
     { name: 'Ridge Vent Installation - Per 4ft Section', description: 'Cut slot and install low-profile shingle-over ridge vent.', baseCost: 15, avgLabor: 0.75, category: 'Roofing' },
-    { name: 'Power Attic Fan - Roof Mounted', description: 'Install 110V thermostatic controlled exhaust fan (Excludes Electric).', baseCost: 145, avgLabor: 2.0, category: 'Electrical' },
+    { name: 'Power Attic Fan - Roof Mounted', description: 'Install 110V thermostatic controlled exhaust fan (Excludes Electric).', baseCost: 145, avgLabor: 2.0, category: 'Roofing' },
     { name: 'Solar Attic Fan - Installation', description: 'Install high-efficiency solar-powered roof exhaust fan.', baseCost: 350, avgLabor: 2.0, category: 'Roofing' },
     { name: 'Turbine Vent (Replace Head)', description: 'Replace noisy or seized 12" or 14" wind turbine head.', baseCost: 65, avgLabor: 1.0, category: 'Roofing' },
     { name: 'Soffit Vent Installation (Intake)', description: 'Cut and install under-eave intake vents for balanced airflow.', baseCost: 8, avgLabor: 1.0, category: 'Roofing' },

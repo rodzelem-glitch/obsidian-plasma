@@ -51,22 +51,11 @@ export const uploadFileToStorage = async (path: string, fileData: File | string)
             if (orgId) {
                 const orgUsageRef = db.collection('storageUsage').doc(orgId);
                 
-                // Using transaction ensures we don't overwrite limits
-                await db.runTransaction(async (t) => {
-                    const doc = await t.get(orgUsageRef);
-                    if (doc.exists) {
-                        t.update(orgUsageRef, { 
-                            totalBytesUsed: firebase.firestore.FieldValue.increment(byteSize),
-                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    } else {
-                        t.set(orgUsageRef, { 
-                            totalBytesUsed: byteSize, 
-                            lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
-                            limitBytes: null
-                        });
-                    }
-                });
+                // Atomically update storage metrics without transaction version contention
+                await orgUsageRef.set({
+                    totalBytesUsed: firebase.firestore.FieldValue.increment(byteSize),
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
             }
         } catch (dbError) {
             console.error("Non-fatal: Failed to log storage metrics", dbError);

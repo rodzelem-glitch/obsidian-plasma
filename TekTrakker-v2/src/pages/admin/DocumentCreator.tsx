@@ -190,7 +190,7 @@ const DocumentCreator: React.FC = () => {
             const systemInstruction = "You are a business operations assistant. Format your response as clean, well-structured HTML using elements like <h2>, <p>, <ul>, and <li> for easy readability. Do not include ```html blocks.";
             const fullPrompt = `${systemInstruction}\n\n${aiPrompt}`;
             
-            const result = await callGeminiAI({ prompt: fullPrompt, modelName: "gemini-3.6-flash" }); 
+            const result = await callGeminiAI({ prompt: fullPrompt, modelName: "gemini-3.7-flash" }); 
             const data = result.data as { text: string };
             
             setEditingDoc(prev => prev ? { ...prev, content: data.text } : null);
@@ -255,8 +255,11 @@ const DocumentCreator: React.FC = () => {
         const recipient = selectedRecipient as { companyName?: string, firstName?: string, lastName?: string, paymentType?: string, paymentPercentage?: number, commissionRate?: number };
         
         (state.expenses || []).forEach(e => {
-            const payeeMatches = e.paidById === selected1099User;
-            const vendorMatches = e.vendor === recipient.companyName || e.vendor === `${recipient.firstName} ${recipient.lastName}`;
+            const payeeMatches = e.paidById === selected1099User || (e as any).subcontractorId === selected1099User;
+            const vendorMatches = e.vendor === recipient.companyName 
+                || e.vendor === `${recipient.firstName} ${recipient.lastName}`
+                || ((recipient as any).contactName && e.vendor === (recipient as any).contactName)
+                || ((recipient as any).legalCompanyName && e.vendor === (recipient as any).legalCompanyName);
             if (payeeMatches || vendorMatches) {
                 payouts.push({
                     id: e.id,
@@ -324,24 +327,27 @@ const DocumentCreator: React.FC = () => {
             
             const wrapper = document.createElement('div');
             wrapper.innerHTML = DOMPurify.sanitize(doc.content);
-            wrapper.style.padding = '24px'; // 0.25in padding for professional margin spacing inside PDF
+            wrapper.style.padding = '0px';
+            wrapper.style.margin = '0px';
             wrapper.style.fontFamily = 'system-ui, -apple-system, sans-serif';
             wrapper.style.color = '#000';
             wrapper.style.lineHeight = '1.6';
-            wrapper.style.width = '720px'; // Exact printable width in pixels for Letter page (7.5 inches at 96 DPI)
+            wrapper.style.width = '780px'; // Exact printable width in pixels for Letter page
             wrapper.style.height = 'auto';
             wrapper.style.overflow = 'visible';
             
             // Basic styling for prose
             const style = document.createElement('style');
             style.textContent = `
-                h1, h2, h3, h4 { margin-top: 24px; margin-bottom: 16px; font-weight: bold; }
-                p { margin-bottom: 16px; }
+                h1, h2, h3, h4 { margin-top: 24px; margin-bottom: 16px; font-weight: bold; break-inside: avoid; page-break-inside: avoid; }
+                p { margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
                 ul { list-style-type: disc; margin-left: 24px; margin-bottom: 16px; }
                 ol { list-style-type: decimal; margin-left: 24px; margin-bottom: 16px; }
-                li { margin-bottom: 8px; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+                li { margin-bottom: 8px; break-inside: avoid; page-break-inside: avoid; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
+                tr { break-inside: avoid; page-break-inside: avoid; }
                 th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+                .avoid-break, .pdf-card, .pdf-avoid-break { break-inside: avoid !important; page-break-inside: avoid !important; }
             `;
             wrapper.appendChild(style);
 
@@ -354,11 +360,12 @@ const DocumentCreator: React.FC = () => {
             document.body.appendChild(container);
 
             const opt: Record<string, unknown> = {
-                margin:       0.5,
+                margin:       [0.25, 0.25, 0.25, 0.25],
                 filename:     `${doc.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
                 image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 720 },
-                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 780, backgroundColor: '#ffffff' },
+                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
+                pagebreak:    { mode: ['css', 'legacy'], avoid: ['tr', 'img', 'blockquote', 'h1', 'h2', 'h3', 'h4', '.avoid-break', '.pdf-card', '.pdf-avoid-break'] }
             };
 
             await html2pdf().from(wrapper).set(opt).save();

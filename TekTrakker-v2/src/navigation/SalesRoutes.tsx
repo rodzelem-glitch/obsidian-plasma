@@ -30,6 +30,8 @@ const SalesRoutes: React.FC<{ user: User, handleLogout: () => void }> = ({ user,
         <Route path="tools" element={<SalesTools />} />
         <Route path="expenses" element={<SalesExpenses />} />
         <Route path="messages" element={<Messages />} />
+        <Route path="communications" element={<Messages />} />
+        <Route path="phone" element={<Navigate to="/sales/communications?tab=phone" replace />} />
         <Route path="mailing-lists" element={<MailingListManager />} />
         <Route path="*" element={<Navigate to="/sales/dashboard" replace />} />
       </Routes>

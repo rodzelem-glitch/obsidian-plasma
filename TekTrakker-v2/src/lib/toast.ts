@@ -18,17 +18,38 @@ const defaultOptions: ToastOptions = {
 };
 
 export const showToast = {
-    success: (message: string, options?: ToastOptions) => 
-        toast.success(message, { ...defaultOptions, autoClose: 2500, ...options }),
+    success: (message: string, options?: ToastOptions) => {
+        try {
+            return toast.success(message, { ...defaultOptions, autoClose: 2500, ...options });
+        } catch (e) {
+            console.error('[Toast Error]', e);
+        }
+    },
     
-    error: (message: string, options?: ToastOptions) => 
-        toast.error(message, { ...defaultOptions, autoClose: 4000, ...options }),
+    error: (message: string, options?: ToastOptions) => {
+        try {
+            return toast.error(message, { ...defaultOptions, autoClose: 4000, ...options });
+        } catch (e) {
+            console.error('[Toast Error]', e);
+        }
+    },
     
-    info: (message: string, options?: ToastOptions) => 
-        toast.info(message, { ...defaultOptions, ...options }),
+    info: (message: string, options?: ToastOptions) => {
+        try {
+            return toast.info(message, { ...defaultOptions, ...options });
+        } catch (e) {
+            console.error('[Toast Error]', e);
+        }
+    },
     
-    warn: (message: string, options?: ToastOptions) => 
-        toast.warn(message, { ...defaultOptions, autoClose: 4000, ...options }),
+    warn: (message: string, options?: ToastOptions) => {
+        try {
+            return toast.warn(message, { ...defaultOptions, autoClose: 4000, ...options });
+        } catch (e) {
+            console.error('[Toast Error]', e);
+        }
+    },
 };
 
 export default showToast;
+

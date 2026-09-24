@@ -4,6 +4,7 @@ import type { User } from 'types';
 import SalesSidebar from './SalesSidebar';
 import TopNavActions from '../common/TopNavActions';
 import PageHeader from '../ui/PageHeader';
+import RouteErrorBoundary from '../common/RouteErrorBoundary';
 
 interface SalesLayoutProps {
   user: User;
@@ -47,7 +48,9 @@ const SalesLayout: React.FC<SalesLayoutProps> = ({ user, onLogout, children }) =
 
             <div className="min-h-full max-w-7xl mx-auto pb-8">
               <PageHeader />
-              {children}
+              <RouteErrorBoundary>
+                {children}
+              </RouteErrorBoundary>
             </div>        </main>
       </div>
     </div>

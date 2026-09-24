@@ -174,7 +174,7 @@ export default function VirtualWorkerMarketing() {
                                     <p className="text-slate-300 font-bold mb-1">1,000,000 Tokens</p>
                                     <p className="text-emerald-400 text-sm font-bold flex items-center gap-1"><CheckCircle size={14}/> No auto-overcharges</p>
                                 </div>
-                                <p className="text-4xl font-black text-indigo-400">$10</p>
+                                <p className="text-4xl font-black text-indigo-400">$5</p>
                             </div>
                         </div>
                     </div>

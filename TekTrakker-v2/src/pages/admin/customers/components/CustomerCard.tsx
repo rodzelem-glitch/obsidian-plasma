@@ -2,6 +2,7 @@
 import React from 'react';
 import { Customer } from '../../../../types/types';
 import { useLanguage } from '../../../../context/LanguageContext';
+import { formatAddress } from 'lib/utils';
 
 interface CustomerCardProps {
     customer: Customer;
@@ -28,7 +29,35 @@ const CustomerCard: React.FC<CustomerCardProps> = ({ customer, onSelectCustomer 
             </div>
             <div className="text-sm text-gray-600 dark:text-gray-400">{customer.phone}</div>
             <div className="text-sm text-gray-600 dark:text-gray-400">{customer.email}</div>
-            <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">{customer.address}</div>
+            <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">{formatAddress(customer.address)}</div>
+
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                <button
+                    type="button"
+                    onClick={() => onSelectCustomer(customer.id)}
+                    className="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-1"
+                >
+                    {t("View Master File")}
+                </button>
+                <div className="flex items-center gap-2">
+                    {customer.phone && (
+                        <a
+                            href={`tel:${customer.phone}`}
+                            className="px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-colors"
+                        >
+                            {t("Call")}
+                        </a>
+                    )}
+                    {customer.email && (
+                        <a
+                            href={`mailto:${customer.email}`}
+                            className="px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors"
+                        >
+                            {t("Email")}
+                        </a>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };

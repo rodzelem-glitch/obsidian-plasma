@@ -6,6 +6,7 @@ import { Download, Database, UploadCloud, FileUp, Search, Trash2, RefreshCw, Und
 import { db, firebase } from 'lib/firebase';
 import { useAppContext } from 'context/AppContext';
 import showToast from 'lib/toast';
+import { globalConfirm } from 'lib/globalConfirm';
 
 interface DataTabProps {
     handleExportData: (type: 'customers' | 'jobs' | 'inventory', format: 'csv' | 'json') => void;
@@ -72,7 +73,7 @@ const DataTab: React.FC<DataTabProps> = ({
     }, [state.currentOrganization?.id]);
 
     const handleRestore = async (record: any) => {
-        const confirmRestore = window.confirm(`Are you sure you want to restore this ${record.recordType.toLowerCase()}?`);
+        const confirmRestore = await globalConfirm(`Are you sure you want to restore this ${record.recordType.toLowerCase()}?`, `Restore ${record.recordType}`, 'Restore', 'Cancel');
         if (!confirmRestore) return;
 
         try {

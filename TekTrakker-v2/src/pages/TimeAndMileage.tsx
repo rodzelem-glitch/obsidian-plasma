@@ -16,8 +16,10 @@ import { useNavigate } from 'react-router-dom';
 import { db } from 'lib/firebase';
 import { globalConfirm } from "lib/globalConfirm";
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import WebCameraModal from 'pages/briefing/components/WebCameraModal';
 import { getCurrentLocation } from 'lib/geolocation';
 import { uploadFileToStorage } from 'lib/storageService';
+import { parseReceiptImage } from '../utils/receiptOcr';
 
 const TimeAndMileage: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -32,6 +34,7 @@ const TimeAndMileage: React.FC = () => {
     const [newVehicleLog, setNewVehicleLog] = useState({ 
         type: 'Mileage' as 'Fuel' | 'Maintenance' | 'Mileage', 
         cost: '', 
+        tax: '',
         miles: '', // Calculated Total
         startMiles: '', // IRS Start
         endMiles: '', // IRS End
@@ -42,6 +45,7 @@ const TimeAndMileage: React.FC = () => {
     const [isCompanyVehicle, setIsCompanyVehicle] = useState(false);
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [capturedReceiptData, setCapturedReceiptData] = useState<string | null>(null);
+    const [isWebCameraOpen, setIsWebCameraOpen] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     
@@ -233,6 +237,11 @@ const TimeAndMileage: React.FC = () => {
             return;
         }
 
+        if ((newVehicleLog.type === 'Fuel' || newVehicleLog.type === 'Maintenance') && isCompanyVehicle && !newVehicleLog.startMiles && !newVehicleLog.endMiles && !newVehicleLog.miles) {
+            showToast.warn("Current vehicle odometer reading is required when logging fuel or maintenance for company vehicles.");
+            return;
+        }
+
         setUploading(true);
 
         try {
@@ -314,16 +323,29 @@ const TimeAndMileage: React.FC = () => {
                 }
             }
 
+            const costVal = parseFloat(newVehicleLog.cost) || 0;
+            const taxVal = parseFloat(newVehicleLog.tax) || 0;
+            const subtotalVal = taxVal > 0 ? Math.max(0, costVal - taxVal) : costVal;
+            const vendorVal = newVehicleLog.notes ? (newVehicleLog.notes.split('\n')[0]) : newVehicleLog.type;
+            const primaryReceipt = receiptUrlValue || receiptDataValue;
+
             const log: VehicleLog = {
                 id: targetLogId,
                 organizationId: activeOrgId,
                 vehicleId: assignedVehicleId,
                 userId: user.id,
+                userName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.id,
                 date: effectiveIsEditMode && existingLog ? existingLog.date : nowIso.split('T')[0],
                 startTime: finalStartTime,
                 endTime: finalEndTime,
                 type: newVehicleLog.type,
-                cost: parseFloat(newVehicleLog.cost) || 0,
+                category: newVehicleLog.type,
+                cost: costVal,
+                amount: costVal,
+                tax: taxVal > 0 ? taxVal : undefined,
+                taxAmount: taxVal > 0 ? taxVal : undefined,
+                subtotal: subtotalVal,
+                vendor: vendorVal,
                 mileage: parseFloat(effectiveMiles) || 0,
                 startMileage: parseFloat(effectiveStartMiles) || 0, 
                 endMileage: parseFloat(effectiveEndMiles) || 0,
@@ -331,6 +353,7 @@ const TimeAndMileage: React.FC = () => {
                 notes: newVehicleLog.notes,
                 receiptData: receiptDataValue, 
                 receiptUrl: receiptUrlValue,
+                receiptUrls: primaryReceipt ? [primaryReceipt] : [],
                 location: existingLog?.location || mappedLoc,
                 startLocation: finalStartLocation,
                 endLocation: finalEndLocation
@@ -346,7 +369,7 @@ const TimeAndMileage: React.FC = () => {
                 dispatch({ type: 'ADD_VEHICLE_LOG', payload: log });
             }
 
-            setNewVehicleLog({ type: 'Mileage', cost: '', miles: '', startMiles: '', endMiles: '', notes: '', id: '' });
+            setNewVehicleLog({ type: 'Mileage', cost: '', tax: '', miles: '', startMiles: '', endMiles: '', notes: '', id: '' });
             setReceiptFile(null);
             setCapturedReceiptData(null);
             setIsEditMode(false);
@@ -360,11 +383,28 @@ const TimeAndMileage: React.FC = () => {
         }
     };
 
+    const scanReceiptInTimeAndMileage = async (input: File | string) => {
+        try {
+            const parsed = await parseReceiptImage(input);
+            setNewVehicleLog(prev => ({
+                ...prev,
+                cost: parsed.cost || prev.cost,
+                tax: parsed.tax || prev.tax,
+                notes: parsed.vendor && !prev.notes ? parsed.vendor : prev.notes,
+            }));
+            if (parsed.cost) showToast.success(`${t("Extracted Cost:")} $${parsed.cost}`);
+            if (parsed.tax) showToast.info(`${t("Extracted Tax:")} $${parsed.tax}`);
+        } catch (err) {
+            console.warn("Receipt scan skipped:", err);
+        }
+    };
+
     const handleEditVehicleLog = (log: VehicleLog) => {
         setNewVehicleLog({ 
             id: log.id, 
             type: log.type, 
             cost: log.cost ? log.cost.toString() : '0', 
+            tax: log.tax ? log.tax.toString() : '',
             miles: log.mileage ? log.mileage.toString() : '',
             startMiles: log.startMileage ? log.startMileage.toString() : '',
             endMiles: log.endMileage ? log.endMileage.toString() : '',
@@ -386,10 +426,32 @@ const TimeAndMileage: React.FC = () => {
             try {
                 await db.collection('vehicleLogs').doc(id).delete();
                 dispatch({ type: 'DELETE_VEHICLE_LOG', payload: id });
+                showToast.success(t("Mileage log deleted."));
             } catch (e) {
                 console.error(e);
                 showToast.warn("Delete failed.");
             }
+        }
+    };
+
+    const handleToggleVehicleClassification = async (log: VehicleLog) => {
+        if (state.isDemoMode) {
+            showToast.warn("This feature is disabled in demo mode.");
+            return;
+        }
+        try {
+            const updatedClassification = !log.isCompanyVehicle;
+            await db.collection('vehicleLogs').doc(log.id).update({
+                isCompanyVehicle: updatedClassification
+            });
+            dispatch({
+                type: 'UPDATE_VEHICLE_LOG',
+                payload: { ...log, isCompanyVehicle: updatedClassification }
+            });
+            showToast.success(updatedClassification ? t("Marked as Company Vehicle") : t("Marked as Personal Vehicle"));
+        } catch (e) {
+            console.error(e);
+            showToast.warn(t("Classification update failed."));
         }
     };
 
@@ -558,7 +620,7 @@ const TimeAndMileage: React.FC = () => {
             <Card id="log-form-container" className={`transition-all duration-300 ${isEditMode ? 'ring-2 ring-amber-500 dark:ring-amber-400 bg-amber-50/10 dark:bg-amber-900/10 shadow-lg shadow-amber-500/20' : ''}`}>
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-primary-600 dark:text-primary-400">{isEditMode ? t('Edit Log') : t('Mileage & Expenses')}</h3>
-                    {isEditMode && <button onClick={() => {setIsEditMode(false); setNewVehicleLog({type:'Mileage', cost:'', miles:'', startMiles: '', endMiles: '', notes:'', id:''}); setReceiptFile(null); setCapturedReceiptData(null)}} className="text-xs text-red-700 dark:text-red-400 font-bold hover:underline">{t("Cancel Edit")}</button>}
+                    {isEditMode && <button onClick={() => {setIsEditMode(false); setNewVehicleLog({type:'Mileage', cost:'', tax:'', miles:'', startMiles: '', endMiles: '', notes:'', id:''}); setReceiptFile(null); setCapturedReceiptData(null)}} className="text-xs text-red-700 dark:text-red-400 font-bold hover:underline">{t("Cancel Edit")}</button>}
                 </div>
                 
                 <form onSubmit={handleVehicleLogSubmit} className="space-y-4 mb-6">
@@ -606,7 +668,10 @@ const TimeAndMileage: React.FC = () => {
                             </div>
                         </div>
                     ) : (
-                        <Input label={t("Cost ($)")} type="number" step="0.01" value={newVehicleLog.cost} onChange={e => setNewVehicleLog({...newVehicleLog, cost: e.target.value})} required isBlock />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input label={t("Total Cost ($)")} type="number" step="0.01" value={newVehicleLog.cost} onChange={e => setNewVehicleLog({...newVehicleLog, cost: e.target.value})} required isBlock />
+                            <Input label={t("Sales Tax ($)")} type="number" step="0.01" value={newVehicleLog.tax} onChange={e => setNewVehicleLog({...newVehicleLog, tax: e.target.value})} isBlock />
+                        </div>
                     )}
                     
                     <Input label={t("Notes / Description")} type="text" value={newVehicleLog.notes} onChange={e => setNewVehicleLog({...newVehicleLog, notes: e.target.value})} isBlock />
@@ -622,19 +687,25 @@ const TimeAndMileage: React.FC = () => {
                                     variant="secondary"
                                     onClick={async () => {
                                         try {
-                                            const image = await Camera.getPhoto({
-                                                quality: 60,
-                                                allowEditing: true,
-                                                resultType: CameraResultType.Base64,
-                                                source: CameraSource.Prompt
-                                            });
-                                            if (image.base64String) {
-                                                const dataUrl = `data:image/jpeg;base64,${image.base64String}`;
-                                                setCapturedReceiptData(dataUrl);
-                                                showToast.warn("Photo captured!");
+                                            const isNative = (window as any).Capacitor?.isNativePlatform?.();
+                                            if (isNative) {
+                                                const image = await Camera.getPhoto({
+                                                    quality: 60,
+                                                    allowEditing: true,
+                                                    resultType: CameraResultType.Base64,
+                                                    source: CameraSource.Camera
+                                                });
+                                                if (image.base64String) {
+                                                    const dataUrl = `data:image/jpeg;base64,${image.base64String}`;
+                                                    setCapturedReceiptData(dataUrl);
+                                                    showToast.success("Photo captured!");
+                                                    scanReceiptInTimeAndMileage(dataUrl);
+                                                }
+                                            } else {
+                                                setIsWebCameraOpen(true);
                                             }
                                         } catch (e) {
-                                            console.error("Camera Cancelled/Failed", e);
+                                            setIsWebCameraOpen(true);
                                         }
                                     }}
                                     className="flex-1 flex items-center justify-center gap-2 py-2"
@@ -644,20 +715,50 @@ const TimeAndMileage: React.FC = () => {
                                 <div className="relative flex-1">
                                     <input 
                                         type="file" 
-                                        accept="image/*" 
+                                        multiple
+                                        accept="image/*,.pdf" 
                                         onChange={e => {
-                                            setReceiptFile(e.target.files ? e.target.files[0] : null);
-                                            setCapturedReceiptData(null);
+                                            const files = e.target.files ? Array.from(e.target.files) : [];
+                                            if (files.length > 0) {
+                                                setReceiptFile(files[0]);
+                                                setCapturedReceiptData(null);
+                                                files.forEach(f => scanReceiptInTimeAndMileage(f));
+                                                showToast.info(t(`Selected ${files.length} receipt photo(s). OCR scanning in progress...`));
+                                            }
                                         }}
-                                        className="hidden"
+                                        className="hidden" 
                                         id="manual-file-upload"
-                                        aria-label="Upload Receipt"
-                                        title="Upload Receipt"
+                                        aria-label="Upload Receipts"
+                                        title="Upload Receipts"
                                     />
                                     <Button 
                                         type="button" 
                                         variant="secondary" 
-                                        onClick={() => document.getElementById('manual-file-upload')?.click()}
+                                        onClick={async () => {
+                                            try {
+                                                const isNative = (window as any).Capacitor?.isNativePlatform?.();
+                                                if (isNative) {
+                                                    const result = await Camera.pickImages({ quality: 80, limit: 0 });
+                                                    if (result.photos && result.photos.length > 0) {
+                                                        const filePromises = result.photos.map(async (p, idx) => {
+                                                            const res = await fetch(p.webPath);
+                                                            const blob = await res.blob();
+                                                            return new File([blob], `receipt_${Date.now()}_${idx}.jpg`, { type: 'image/jpeg' });
+                                                        });
+                                                        const converted = await Promise.all(filePromises);
+                                                        setReceiptFile(converted[0]);
+                                                        setCapturedReceiptData(null);
+                                                        converted.forEach(f => scanReceiptInTimeAndMileage(f));
+                                                        showToast.info(t(`Selected ${converted.length} receipt photo(s). OCR scanning in progress...`));
+                                                        return;
+                                                    }
+                                                }
+                                            } catch (err: any) {
+                                                const msg = (err?.message || '').toLowerCase();
+                                                if (msg.includes('cancel') || msg.includes('dismiss')) return;
+                                            }
+                                            document.getElementById('manual-file-upload')?.click();
+                                        }}
                                         className="w-full h-full flex items-center justify-center gap-2 py-2"
                                     >
                                         <Paperclip size={16} /> {t("Choose File")}
@@ -703,16 +804,29 @@ const TimeAndMileage: React.FC = () => {
                              </p>
                            </div>
                            <div className="flex flex-col items-end gap-1">
-                               {log.type === 'Mileage' ? (
-                                   <p className="font-bold text-gray-900 dark:text-white">{log.mileage} mi</p>
-                               ) : (
-                                   <p className="font-bold text-gray-900 dark:text-white">${log.cost.toFixed(2)}</p>
-                               )}
-                               <div className="flex gap-2 text-xs">
-                                   {(log.receiptData || log.receiptUrl) && <button onClick={() => handleViewReceipt(log)} className="text-primary-600 dark:text-primary-400 hover:underline">{t("Receipt")}</button>}
-                                   <button onClick={() => handleEditVehicleLog(log)} className="text-blue-600 dark:text-blue-400 hover:underline">{t("Edit")}</button>
-                                   <button onClick={() => handleDeleteVehicleLog(log.id)} className="text-red-600 dark:text-red-400 hover:underline">{t("Del")}</button>
-                                </div>
+                                {log.type === 'Mileage' ? (
+                                    <p className="font-bold text-gray-900 dark:text-white font-mono">
+                                        {(log.miles || log.mileage || (log.endMileage && log.startMileage ? log.endMileage - log.startMileage : 0)).toFixed(1)} mi
+                                    </p>
+                                ) : (
+                                    <p className="font-bold text-gray-900 dark:text-white font-mono">${(log.cost || 0).toFixed(2)}</p>
+                                )}
+                                <div className="flex items-center gap-2 text-xs flex-wrap justify-end">
+                                    <button 
+                                        onClick={() => handleToggleVehicleClassification(log)} 
+                                        className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border transition-all ${
+                                            log.isCompanyVehicle 
+                                                ? 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-800' 
+                                                : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                                        }`}
+                                        title={t("Click to toggle classification")}
+                                    >
+                                        {log.isCompanyVehicle ? t("Company") : t("Personal")}
+                                    </button>
+                                    {(log.receiptData || log.receiptUrl) && <button onClick={() => handleViewReceipt(log)} className="text-primary-600 dark:text-primary-400 hover:underline">{t("Receipt")}</button>}
+                                    <button onClick={() => handleEditVehicleLog(log)} className="text-blue-600 dark:text-blue-400 hover:underline">{t("Edit")}</button>
+                                    <button onClick={() => handleDeleteVehicleLog(log.id)} className="text-red-600 dark:text-red-400 hover:underline">{t("Del")}</button>
+                                 </div>
                            </div>
                         </div>
                     )) : <p className="text-sm text-gray-500 text-center py-4">{t("No logs yet.")}</p>}
@@ -721,15 +835,15 @@ const TimeAndMileage: React.FC = () => {
 
             <Card>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t("Recent Shifts")}</h3>
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                        <thead className="bg-gray-50 dark:bg-gray-800">
+                <div className="overflow-x-auto overflow-y-auto max-h-[60vh] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                    <table className="min-w-full border-separate border-spacing-0 divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 shadow-xs border-b border-gray-200 dark:border-gray-700">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("Date")}</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("Start")}</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("End")}</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("Total")}</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("Location")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("Date")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("Start")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("End")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("Total")}</th>
+                                <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{t("Location")}</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800/50 divide-y divide-gray-200 dark:divide-gray-700">
@@ -815,6 +929,18 @@ const TimeAndMileage: React.FC = () => {
                         </div>
                     </div>
                 </Modal>
+            )}
+
+            {isWebCameraOpen && (
+                <WebCameraModal
+                    isOpen={isWebCameraOpen}
+                    onClose={() => setIsWebCameraOpen(false)}
+                    onCapture={(dataUrl) => {
+                        setCapturedReceiptData(dataUrl);
+                        showToast.success("Photo captured!");
+                        scanReceiptInTimeAndMileage(dataUrl);
+                    }}
+                />
             )}
         </div>
     );

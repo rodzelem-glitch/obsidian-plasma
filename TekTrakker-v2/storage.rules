@@ -83,14 +83,17 @@ service firebase.storage {
 
     // Public Applicant Portal (Resumes)
     match /organizations/{orgId}/applicants/{fileName} {
-      allow write: if true; // Anonymous public submissions allowed
+      allow write: if request.resource.size < 15 * 1024 * 1024
+                   && request.resource.contentType.matches('application/pdf|image/.*|application/msword|application/vnd.openxmlformats-officedocument.*');
       allow read: if isOrgMember(orgId) || isPlatformAdmin();
     }
 
     // Safely isolated User/Employee internal directories
     match /organizations/{orgId}/users/{userId}/{allPaths=**} {
-      // Employees/Techs can govern their own files natively
-      allow read, write: if (isCustomerOwner(userId) && isInternalStaff()) || isPlatformAdmin() || (isOrgMember(orgId) && isOrgAdmin());
+      // Employees/Techs can govern their own files natively without relying on cross-service lookups
+      allow read, write: if (isSignedIn() && (request.auth.uid == userId || (request.auth.token.email != null && request.auth.token.email == userId)))
+                         || isPlatformAdmin() 
+                         || (isOrgMember(orgId) && isOrgAdmin());
     }
 
     // Special isolation for Customer-uploaded portal documents
@@ -106,7 +109,8 @@ service firebase.storage {
 
     // Public guest upload directory for subcontractor/third-party technicians
     match /organizations/{orgId}/public_uploads/{jobId}/{fileName} {
-      allow write: if true; // Allow anonymous writes
+      allow write: if request.resource.size < 25 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*|application/pdf');
       allow read: if isOrgMember(orgId) || isPlatformAdmin(); // Enforce reading isolation
     }
 

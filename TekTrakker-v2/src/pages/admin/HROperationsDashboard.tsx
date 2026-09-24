@@ -9,6 +9,7 @@ import type { User } from 'types';
 import { db } from '../../lib/firebase';
 import { cleanUndefinedFields } from 'lib/utils';
 import showToast from 'lib/toast';
+import { globalConfirm } from 'lib/globalConfirm';
 
 import TimeSheetReview from './TimeSheetReview';
 import EmployeeScheduling from './EmployeeScheduling';
@@ -72,7 +73,7 @@ const HROperationsDashboard: React.FC = () => {
                 <div className="flex justify-end mb-4 gap-4">
                     <button 
                         onClick={async () => {
-                            if (!window.confirm("Are you sure you want to completely unlink Gusto? This will remove the UUID and Employee syncs.")) return;
+                            if (!(await globalConfirm("Are you sure you want to completely unlink Gusto? This will remove the UUID and Employee syncs.", "Unlink Gusto Integration", "Unlink Gusto", "Cancel"))) return;
                             try {
                                 const orgId = state.currentOrganization?.id;
                                 if (!orgId) return;
@@ -431,6 +432,7 @@ const HROperationsDashboard: React.FC = () => {
                                         <tr className="bg-slate-100/50 dark:bg-slate-950/60 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                                             <th className="p-4 font-bold text-xs tracking-widest uppercase">{t('Team Member')}</th>
                                             <th className="p-4 font-bold text-xs tracking-widest uppercase">{t('Platform Role')}</th>
+                                            <th className="p-4 font-bold text-xs tracking-widest uppercase">{t('Last Login')}</th>
                                             <th className="p-4 font-bold text-xs tracking-widest uppercase">
                                                 {activePayrollService === 'none' 
                                                     ? t('Local Pay Rate') 
@@ -471,6 +473,43 @@ const HROperationsDashboard: React.FC = () => {
                                                         <span className="bg-slate-100 dark:bg-slate-900 text-slate-600 dark:text-slate-400 px-3 py-1 rounded-xl text-xs font-bold capitalize border border-slate-200 dark:border-slate-800">
                                                             {user.role?.replace('_', ' ') || 'Contractor'}
                                                         </span>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        {(() => {
+                                                            const lastLoginAt = user.lastLoginAt;
+                                                            if (!lastLoginAt) return <span className="text-slate-400 italic text-xs">Never</span>;
+                                                            try {
+                                                                const d = new Date(lastLoginAt);
+                                                                if (isNaN(d.getTime())) return <span className="text-slate-400 italic text-xs">Never</span>;
+                                                                const now = new Date();
+                                                                const diffMs = now.getTime() - d.getTime();
+                                                                const diffMins = Math.floor(diffMs / (1000 * 60));
+                                                                const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                                                                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+                                                                let relative = '';
+                                                                if (diffMins < 2) relative = 'Just now';
+                                                                else if (diffMins < 60) relative = `${diffMins}m ago`;
+                                                                else if (diffHours < 24) relative = `${diffHours}h ago`;
+                                                                else if (diffDays === 1) relative = 'Yesterday';
+                                                                else if (diffDays < 30) relative = `${diffDays}d ago`;
+                                                                else relative = d.toLocaleDateString();
+
+                                                                return (
+                                                                    <div className="flex flex-col">
+                                                                        <span className="font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center gap-1">
+                                                                            <Clock className="w-3 h-3 text-indigo-500 shrink-0" />
+                                                                            {relative}
+                                                                        </span>
+                                                                        <span className="text-[10px] text-slate-400 font-mono">
+                                                                            {d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            } catch {
+                                                                return <span className="text-slate-400 italic text-xs">Never</span>;
+                                                            }
+                                                        })()}
                                                     </td>
                                                     <td className="p-4">
                                                         {activePayrollService === 'gusto' || activePayrollService === 'adp' ? (

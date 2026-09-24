@@ -262,11 +262,20 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
             }
         } catch (error: any) {
             console.error("AI Communication Error", error);
+            const isDemandSpikeOrBusy = 
+                error?.code === 'functions/resource-exhausted' || 
+                error?.code === 'functions/unavailable' || 
+                error?.message?.includes('503') || 
+                error?.message?.includes('high demand') ||
+                error?.message?.includes('overloaded');
+
             setMessages(prev => [...prev, {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
                 content: (error?.code === 'functions/failed-precondition' || error?.code === 'functions/permission-denied')
                     ? error.message
+                    : isDemandSpikeOrBusy
+                    ? (error?.message && !error.message.includes('[GoogleGenerativeAI Error]') && !error.message.includes('INTERNAL') ? error.message : "I'm temporarily experiencing a high volume of requests right now. Please wait about 10 seconds and resend your message. I apologize for the inconvenience!")
                     : "I'm experiencing a high volume of requests right now and my connection timed out. Could you please try sending that again?",
                 timestamp: new Date()
             }]);

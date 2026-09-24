@@ -10,6 +10,7 @@ import { Upload } from 'lucide-react';
 import { db } from 'lib/firebase';
 import { useAppContext } from 'context/AppContext';
 import { uploadFileToStorage } from 'lib/storageService';
+import { offlineSyncManager } from 'lib/offlineSyncManager';
 
 
 
@@ -44,24 +45,74 @@ const ProjectTaskWorkflowModal = ({ isOpen, onClose, task, project }: { isOpen: 
             if (file) {
                 const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'upload.jpg';
                 const path = `organizations/${project.organizationId}/projects/${project.id}/files/${Date.now()}_${safeName}`;
-                const downloadUrl = await uploadFileToStorage(path, file);
+                const fileId = `file-${Date.now()}`;
+                let downloadUrl = '';
+                let isOfflineQueued = false;
+
+                if (state.isDemoMode) {
+                    downloadUrl = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.readAsDataURL(file);
+                    });
+                } else {
+                    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                        isOfflineQueued = true;
+                    } else {
+                        try {
+                            downloadUrl = await uploadFileToStorage(path, file);
+                        } catch (upErr: any) {
+                            console.warn("[ProjectTaskWorkflowModal] Direct storage upload failed, queueing offline:", upErr);
+                            isOfflineQueued = true;
+                        }
+                    }
+
+                    if (isOfflineQueued) {
+                        downloadUrl = await new Promise<string>((resolve) => {
+                            const reader = new FileReader();
+                            reader.onload = () => resolve(reader.result as string);
+                            reader.readAsDataURL(file);
+                        });
+
+                        await offlineSyncManager.registerPendingUpload({
+                            id: fileId,
+                            parentCollection: 'projects',
+                            parentId: project.id,
+                            orgId: project.organizationId,
+                            storagePath: path,
+                            dataUrl: downloadUrl,
+                            fileName: file.name,
+                            fileType: file.type,
+                            timestamp: Date.now()
+                        });
+                    }
+                }
+
                 const newFile = {
-                    id: `file-${Date.now()}`,
+                    id: fileId,
                     organizationId: project.organizationId,
                     parentId: project.id,
                     parentType: 'project' as const,
                     fileName: file.name,
                     fileType: file.type,
                     dataUrl: downloadUrl,
+                    url: downloadUrl,
                     createdAt: new Date().toISOString(),
                     uploadedBy: state.currentUser?.id || 'tech',
-                    metadata: { taskId: task.id, label: 'Task Update' }
+                    metadata: { taskId: task.id, label: 'Task Update', pendingUpload: isOfflineQueued }
                 };
                 updates.files = [...(project.files || []), newFile];
             }
 
             await db.collection('projects').doc(project.id).update(cleanUndefinedFields(updates));
             dispatch({ type: 'UPDATE_PROJECT', payload: { ...project, ...updates } });
+            
+            if (file && (typeof navigator !== 'undefined' && !navigator.onLine)) {
+                showToast.info("Task photo saved locally. Will sync when online!");
+            } else {
+                showToast.success("Task updated successfully!");
+            }
+
             setNotes(''); setFile(null); onClose();
         } catch (e) { showToast.warn("Failed to update task."); } finally { setIsSaving(false); }
     };

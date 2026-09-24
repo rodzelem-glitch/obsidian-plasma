@@ -6,12 +6,14 @@ import { doc, getDoc, setDoc, addDoc, collection } from 'firebase/firestore';
 import { db, functions, firebase } from '../../lib/firebase';
 import { httpsCallable } from 'firebase/functions';
 import showToast from 'lib/toast';
+import { globalConfirm } from 'lib/globalConfirm';
 import {
   ArrowLeft, Search, Filter, CheckCircle2, Plus, ExternalLink, Key, Shield,
   CreditCard, FileText, TrendingUp, Truck, Users, Phone, Camera, Wrench,
   BarChart3, ShieldCheck, Globe, Star, Zap, Package, Lock, GraduationCap,
   Banknote, ShoppingCart, Headphones, Hammer, AlertCircle,
-  Cpu, Home, Leaf, Thermometer, MessageSquare, Mail, PhoneCall, CloudSun, Code, Copy
+  Cpu, Home, Leaf, Thermometer, MessageSquare, Mail, PhoneCall, CloudSun, Code, Copy,
+  Sparkles, RefreshCw
 } from 'lucide-react';
 
 // ── Integration catalog ──
@@ -25,6 +27,7 @@ interface Integration {
   fields: { key: string; label: string; type?: string; placeholder?: string; options?: { value: string; label: string }[] }[];
   learnMoreUrl?: string;
   platformLevel?: boolean;
+  specialRequestOnly?: boolean;
   isStubbed?: boolean;
   isExternalLink?: boolean;
   actionText?: string;
@@ -43,7 +46,34 @@ const INTEGRATIONS: Integration[] = [
   { id: 'acumatica', name: 'Acumatica', description: 'Enterprise ERP integration for multi-entity accounting, job costing, and AP/AR automation.', category: 'Accounting', icon: FileText, iconColor: 'text-blue-700', fields: [{ key: 'acumaticaUrl', label: 'Instance URL', placeholder: 'https://yourcompany.acumatica.com' }, { key: 'acumaticaUser', label: 'API Username' }, { key: 'acumaticaPassword', label: 'API Password', type: 'password' }], isStubbed: true },
   { id: 'netsuite', name: 'NetSuite (Oracle)', description: 'Sync financials, customers, and work orders with your Oracle NetSuite ERP.', category: 'Accounting', icon: FileText, iconColor: 'text-red-700', fields: [{ key: 'netsuiteAccountId', label: 'Account ID' }, { key: 'netsuiteConsumerKey', label: 'Consumer Key' }, { key: 'netsuiteConsumerSecret', label: 'Consumer Secret', type: 'password' }, { key: 'netsuiteTokenId', label: 'Token ID' }, { key: 'netsuiteTokenSecret', label: 'Token Secret', type: 'password' }], isStubbed: true },
   // Payment Gateways
-  { id: 'kort', name: 'TekTrakker Payment Processing', description: 'Process credit cards natively within your platform. Enjoy lower rates and deep integration.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-emerald-500', fields: [{ key: 'kortAccountId', label: 'Merchant Account ID', placeholder: 'acct_...' }] },
+  { id: 'kort', name: 'TekTrakker Payment Processing', description: 'Process credit cards natively within your platform. Enjoy lower rates, automated batching, and deep dispatch integration.', category: 'Payment Gateways', icon: CreditCard, iconColor: 'text-emerald-500', fields: [{ key: 'kortAccountId', label: 'Merchant Account ID', placeholder: 'acct_...' }] },
+  {
+    id: 'square',
+    name: 'Square (Restricted Fallback)',
+    description: 'Legacy payment gateway fallback. Available strictly for organizations unable to obtain Kort / Tilled underwriting approval.',
+    category: 'Payment Gateways',
+    icon: CreditCard,
+    iconColor: 'text-amber-500',
+    specialRequestOnly: true,
+    fields: [
+      { key: 'squareAppId', label: 'Square Application ID', placeholder: 'sq0idp-...' },
+      { key: 'squareAccessToken', label: 'Square Access Token', type: 'password', placeholder: 'EAAA...' },
+      { key: 'squareLocationId', label: 'Square Location ID', placeholder: 'L...' }
+    ]
+  },
+  {
+    id: 'stripe',
+    name: 'Stripe (Restricted Fallback)',
+    description: 'Legacy payment gateway fallback. Available strictly for organizations with documented underwriting exemption from TekTrakker.',
+    category: 'Payment Gateways',
+    icon: CreditCard,
+    iconColor: 'text-amber-500',
+    specialRequestOnly: true,
+    fields: [
+      { key: 'stripePublishableKey', label: 'Stripe Publishable Key', placeholder: 'pk_live_...' },
+      { key: 'stripeSecretKey', label: 'Stripe Secret Key', type: 'password', placeholder: 'sk_live_...' }
+    ]
+  },
   // Financing
   { id: 'hearth', name: 'Hearth', description: 'Offer customers instant financing options directly on proposals and invoices.', category: 'Financing', icon: CreditCard, iconColor: 'text-teal-600', fields: [{ key: 'hearthApiKey', label: 'API Key', type: 'password', placeholder: 'hearth_...' }], learnMoreUrl: 'https://www.gethearth.com' },
   // Marketing & CRM
@@ -137,6 +167,7 @@ const IntegrationsMarketplace: React.FC = () => {
   const [configuring, setConfiguring] = useState<string | null>(null);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [certifiedFallback, setCertifiedFallback] = useState<Record<string, boolean>>({});
 
   // Widget states
   const [bookingWidgetMode, setBookingWidgetMode] = useState<'inline'|'popup'>('inline');
@@ -187,6 +218,7 @@ const IntegrationsMarketplace: React.FC = () => {
   const [showPlatform, setShowPlatform] = useState(true);
 
   const filtered = INTEGRATIONS.filter(i => {
+    if (i.id === 'paypal') return false;
     const isTestOrg = orgId === 'tektestsub' || state.allOrganizations?.find(o => o.id === orgId)?.name?.toLowerCase().includes('tektest');
     const matchCat = category === 'All' || i.category === category;
     const matchSearch = !search || i.name.toLowerCase().includes(search.toLowerCase()) || i.description.toLowerCase().includes(search.toLowerCase());
@@ -196,11 +228,86 @@ const IntegrationsMarketplace: React.FC = () => {
   // Sort: BYOK first, then platform-level
   const sorted = [...filtered].sort((a, b) => (a.platformLevel ? 1 : 0) - (b.platformLevel ? 1 : 0));
 
-  const handleEnable = (integration: Integration) => {
+  const [isProvisioningTwilio, setIsProvisioningTwilio] = useState(false);
+  const handleAutoProvisionTwilioMarketplace = async () => {
+    if (!orgId) return;
+    setIsProvisioningTwilio(true);
+    try {
+      const provisionFn = httpsCallable(functions, 'provisionOrgTwilioSubaccount');
+      const res: any = await provisionFn({
+        organizationId: orgId,
+        friendlyName: state.currentOrganization?.name || 'TekTrakker Organization'
+      });
+      const subSid = res?.data?.subaccountSid;
+      const phoneNum = res?.data?.phoneNumber;
+      if (subSid) setFieldValues(prev => ({ ...prev, twilioSid: subSid }));
+      if (phoneNum) setFieldValues(prev => ({ ...prev, twilioNumber: phoneNum }));
+
+      const secDoc = await getDoc(doc(db, 'organizations', orgId, 'secrets', 'config'));
+      if (secDoc.exists()) {
+        const cfg = secDoc.data()?.twilioConfig;
+        if (cfg) {
+          setFieldValues(prev => ({
+            ...prev,
+            twilioSid: cfg.subaccountSid || cfg.accountSid || prev.twilioSid,
+            twilioToken: cfg.authToken || prev.twilioToken,
+            twilioNumber: cfg.phoneNumber || prev.twilioNumber
+          }));
+        }
+      }
+      showToast.success(`Dedicated Twilio Subaccount auto-provisioned! ${phoneNum ? `Line: ${phoneNum}` : ''}`);
+    } catch (err: any) {
+      console.error('Provision error:', err);
+      showToast.error(`Could not auto-provision Twilio subaccount: ${err.message}`);
+    } finally {
+      setIsProvisioningTwilio(false);
+    }
+  };
+
+  const handleEnable = async (integration: Integration) => {
     setConfiguring(integration.id);
     const existing = enabledIntegrations[integration.id] || {};
     const vals: Record<string, string> = {};
     integration.fields.forEach(f => { vals[f.key] = existing[f.key] || ''; });
+
+    if (integration.id === 'twilio' && orgId) {
+      try {
+        const secDoc = await getDoc(doc(db, 'organizations', orgId, 'secrets', 'config'));
+        if (secDoc.exists()) {
+          const cfg = secDoc.data()?.twilioConfig;
+          if (cfg) {
+            vals.twilioSid = cfg.subaccountSid || cfg.accountSid || vals.twilioSid || '';
+            vals.twilioToken = cfg.authToken || vals.twilioToken || '';
+            vals.twilioNumber = cfg.phoneNumber || vals.twilioNumber || '';
+          }
+        }
+      } catch (e) {}
+    }
+
+    if ((integration.id === 'square' || integration.id === 'stripe') && orgId) {
+      try {
+        const secDoc = await getDoc(doc(db, 'organizations', orgId, 'secrets', 'config'));
+        if (secDoc.exists()) {
+          const cfg = secDoc.data();
+          if (integration.id === 'square') {
+            vals.squareAppId = cfg?.squareAppId || vals.squareAppId || '';
+            vals.squareAccessToken = cfg?.squareAccessToken || vals.squareAccessToken || '';
+            vals.squareLocationId = cfg?.squareLocationId || vals.squareLocationId || '';
+          }
+          if (integration.id === 'stripe') {
+            vals.stripePublishableKey = cfg?.stripePublishableKey || vals.stripePublishableKey || '';
+            vals.stripeSecretKey = cfg?.stripeSecretKey || vals.stripeSecretKey || '';
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (existing && Object.keys(existing).length > 0) {
+      setCertifiedFallback(prev => ({ ...prev, [integration.id]: true }));
+    } else {
+      setCertifiedFallback(prev => ({ ...prev, [integration.id]: false }));
+    }
+
     setFieldValues(vals);
   };
 
@@ -213,6 +320,30 @@ const IntegrationsMarketplace: React.FC = () => {
       await setDoc(doc(db, 'organizations', orgId, 'settings', 'marketplace_integrations'), { integrations: updated }, { merge: true });
       setEnabledIntegrations(updated);
       setConfiguring(null);
+
+      // Handle Twilio saving to secrets/config and org
+      if (integration.id === 'twilio') {
+        const { twilioSid, twilioToken, twilioNumber } = fieldValues;
+        await setDoc(doc(db, 'organizations', orgId, 'secrets', 'config'), {
+          twilioConfig: cleanUndefinedFields({
+            subaccountSid: twilioSid || '',
+            accountSid: twilioSid || '',
+            authToken: twilioToken || '',
+            phoneNumber: twilioNumber || '',
+            isSubaccount: true,
+            updatedAt: new Date().toISOString()
+          })
+        }, { merge: true });
+
+        if (twilioNumber) {
+          await setDoc(doc(db, 'organizations', orgId), {
+            twilioPhoneNumber: twilioNumber,
+            phoneSystemEnabled: true,
+            telephonyActive: true
+          }, { merge: true });
+        }
+        showToast.success('Twilio credentials and phone number saved!');
+      }
 
       // Handle specific integrations that require instant cloud function execution
       if (integration.id === 'ringcentral') {
@@ -304,6 +435,43 @@ const IntegrationsMarketplace: React.FC = () => {
         });
       }
 
+      if (integration.id === 'square') {
+        const { squareAppId, squareAccessToken, squareLocationId } = fieldValues;
+        await setDoc(doc(db, 'organizations', orgId, 'secrets', 'config'), {
+          squareAppId: squareAppId || '',
+          squareAccessToken: squareAccessToken || '',
+          squareLocationId: squareLocationId || '',
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        await setDoc(doc(db, 'organizations', orgId), {
+          defaultPaymentGateway: 'square'
+        }, { merge: true });
+        if (state.currentOrganization) {
+          dispatch({
+            type: 'UPDATE_ORGANIZATION',
+            payload: { ...state.currentOrganization, defaultPaymentGateway: 'square' }
+          });
+        }
+      }
+
+      if (integration.id === 'stripe') {
+        const { stripePublishableKey, stripeSecretKey } = fieldValues;
+        await setDoc(doc(db, 'organizations', orgId, 'secrets', 'config'), {
+          stripePublishableKey: stripePublishableKey || '',
+          stripeSecretKey: stripeSecretKey || '',
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        await setDoc(doc(db, 'organizations', orgId), {
+          defaultPaymentGateway: 'stripe'
+        }, { merge: true });
+        if (state.currentOrganization) {
+          dispatch({
+            type: 'UPDATE_ORGANIZATION',
+            payload: { ...state.currentOrganization, defaultPaymentGateway: 'stripe' }
+          });
+        }
+      }
+
       showToast.success(`${integration.name} has been enabled!`);
     } catch (e: unknown) {
       showToast.warn('Failed to save: ' + (e as Error).message);
@@ -332,6 +500,18 @@ const IntegrationsMarketplace: React.FC = () => {
             gustoOnboardingUrl: undefined
           }
         });
+      }
+
+      if (integrationId === 'square' || integrationId === 'stripe') {
+        await setDoc(doc(db, 'organizations', orgId), {
+          defaultPaymentGateway: 'kort'
+        }, { merge: true });
+        if (state.currentOrganization) {
+          dispatch({
+            type: 'UPDATE_ORGANIZATION',
+            payload: { ...state.currentOrganization, defaultPaymentGateway: 'kort' }
+          });
+        }
       }
 
       showToast.success(`${name} has been disabled.`);
@@ -415,7 +595,11 @@ const IntegrationsMarketplace: React.FC = () => {
                         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-100 dark:border-slate-700">{integration.category}</span>
                       </div>
                     </div>
-                    {isPlatform ? (
+                    {integration.specialRequestOnly ? (
+                      <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-full border border-amber-200 dark:border-amber-800">
+                        <Lock size={10} /> {isEnabled ? 'Active Fallback' : 'Restricted Fallback'}
+                      </span>
+                    ) : isPlatform ? (
                       <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-full border border-amber-200 dark:border-amber-800">
                         <Lock size={10} /> Partnership
                       </span>
@@ -466,6 +650,36 @@ const IntegrationsMarketplace: React.FC = () => {
                       <Shield size={12} /> API Credentials
                     </h4>
                     
+                    {integration.specialRequestOnly && (
+                      <div className="mb-4 bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-800 rounded-xl p-4 text-xs text-amber-900 dark:text-amber-200 shadow-sm">
+                        <div className="flex items-start gap-2.5">
+                          <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                          <div className="space-y-2 flex-1">
+                            <h5 className="font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider text-[11px]">
+                              Restricted Underwriting Fallback Gateway
+                            </h5>
+                            <p className="leading-relaxed">
+                              TekTrakker Payments (powered by Kort / Tilled) is the required standard for all accounts. 
+                              Third-party processors like {integration.name.replace(' (Restricted Fallback)', '')} incur higher rates and do not support automated native batch payouts.
+                              This fallback is <strong>restricted exclusively</strong> to businesses that have submitted a special underwriting request or received an official merchant exemption.
+                            </p>
+                            <div className="pt-2 border-t border-amber-200 dark:border-amber-800/60 flex items-start gap-2">
+                              <input
+                                id={`certify-${integration.id}`}
+                                type="checkbox"
+                                checked={!!certifiedFallback[integration.id]}
+                                onChange={(e) => setCertifiedFallback(prev => ({ ...prev, [integration.id]: e.target.checked }))}
+                                className="mt-0.5 w-4 h-4 text-amber-600 rounded border-amber-300 focus:ring-amber-500"
+                              />
+                              <label htmlFor={`certify-${integration.id}`} className="text-[11px] font-bold text-amber-900 dark:text-amber-200 cursor-pointer select-none">
+                                I certify that this organization has an active underwriting exemption and requires this fallback gateway.
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     {integration.isStubbed && integration.id !== 'kort' && (
                       <div className="mb-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-400">
                         <div className="flex items-start gap-2">
@@ -490,19 +704,60 @@ const IntegrationsMarketplace: React.FC = () => {
                     )}
 
                     {integration.id === 'twilio' && (
-                      <div className="mb-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-400">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <strong>Twilio BYOK Webhook Setup:</strong> To use your own phone number for messaging and voice calls, configure the following webhooks (HTTP POST) in your Twilio Console for this number:
-                            <div className="mt-2 space-y-1.5 font-mono text-[10px]">
-                              <div>
-                                <span className="font-sans font-semibold text-slate-500 dark:text-slate-400">Incoming Messages Webhook:</span>
-                                <code className="block mt-0.5 p-1 bg-blue-100 dark:bg-blue-950 rounded select-all text-blue-600 dark:text-blue-400">https://us-central1-tektrakker.cloudfunctions.net/twilioInboundSms</code>
-                              </div>
-                              <div>
-                                <span className="font-sans font-semibold text-slate-500 dark:text-slate-400">Incoming Voice Webhook:</span>
-                                <code className="block mt-0.5 p-1 bg-blue-100 dark:bg-blue-950 rounded select-all text-blue-600 dark:text-blue-400">https://us-central1-tektrakker.cloudfunctions.net/twilioInboundVoice</code>
+                      <div className="space-y-4 mb-4">
+                        {/* 1-Click Auto-Provisioning Card */}
+                        <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950/40 dark:to-orange-950/30 p-4 rounded-xl border border-red-200 dark:border-red-800/60 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h5 className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <Sparkles size={14} className="text-red-600" />
+                                1-Click Subaccount Auto-Provisioning
+                              </h5>
+                              <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                                Instantly generate a dedicated, isolated Twilio subaccount and local business phone line.
+                              </p>
+                            </div>
+                            {!!fieldValues.twilioSid && (
+                              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                                Active
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isProvisioningTwilio}
+                            onClick={handleAutoProvisionTwilioMarketplace}
+                            className="w-full text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-md shadow-red-600/20 active:scale-98 transition-all disabled:opacity-50"
+                          >
+                            {isProvisioningTwilio ? (
+                              <>
+                                <RefreshCw size={14} className="animate-spin" />
+                                <span>Provisioning Dedicated Subaccount...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Zap size={14} />
+                                <span>{fieldValues.twilioSid ? 'Re-Provision / Refresh Subaccount' : '⚡ Auto-Provision Subaccount & Local Number'}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* BYOK Webhook Setup */}
+                        <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-400">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <strong>Twilio BYOK Webhook Setup (Optional if manually configured):</strong> To use your own phone number for messaging and voice calls, configure the following webhooks (HTTP POST) in your Twilio Console:
+                              <div className="mt-2 space-y-1.5 font-mono text-[10px]">
+                                <div>
+                                  <span className="font-sans font-semibold text-slate-500 dark:text-slate-400">Incoming Messages Webhook:</span>
+                                  <code className="block mt-0.5 p-1 bg-blue-100 dark:bg-blue-950 rounded select-all text-blue-600 dark:text-blue-400">https://us-central1-tektrakker.cloudfunctions.net/twilioInboundSms?orgId={orgId}</code>
+                                </div>
+                                <div>
+                                  <span className="font-sans font-semibold text-slate-500 dark:text-slate-400">Incoming Voice Webhook:</span>
+                                  <code className="block mt-0.5 p-1 bg-blue-100 dark:bg-blue-950 rounded select-all text-blue-600 dark:text-blue-400">https://us-central1-tektrakker.cloudfunctions.net/twilioInboundVoice?orgId={orgId}</code>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -579,7 +834,7 @@ const IntegrationsMarketplace: React.FC = () => {
                                       </button>
                                       <button 
                                           onClick={async () => {
-                                              if (!window.confirm("Are you sure you want to disconnect this merchant account? This will stop native payment processing.")) return;
+                                              if (!(await globalConfirm("Are you sure you want to disconnect this merchant account? This will stop native payment processing.", "Disconnect Merchant Account", "Disconnect", "Cancel"))) return;
                                               try {
                                                   setFieldValues({ ...fieldValues, kortAccountId: '' });
                                                   await setDoc(doc(db, 'organizations', orgId), { kortAccountId: null }, { merge: true });
@@ -601,36 +856,7 @@ const IntegrationsMarketplace: React.FC = () => {
                                   </div>
                               </div>
                           )
-                      ) : (integration.id === 'stripe' || integration.id === 'square') ? (
-                          <div className="space-y-4">
-                            <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-xl flex items-start gap-3">
-                              <AlertCircle size={20} className="text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
-                              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                                <span className="font-bold text-amber-800 dark:text-amber-400 block mb-1">Integration Restrictive Hold</span>
-                                Direct integrations with Stripe and Square are restricted by default to prioritize TekTrakker Payments (Kort). To request activation of this gateway, please contact your account representative or submit a support request.
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => window.open(`mailto:support@tektrakker.com?subject=Payment Gateway Activation Request - Org: ${orgId || 'Unknown'}&body=Hi TekTrakker Team,%0D%0A%0D%0AI would like to request payment gateway activation for ${integration.name} on my TekTrakker organization (ID: ${orgId || 'Unknown'}).`, '_blank')}
-                              className="w-full text-xs font-bold bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-lg transition-colors inline-flex items-center justify-center gap-1.5"
-                            >
-                              <Mail size={14} /> Request Gateway Activation
-                            </button>
-                            {integration.fields.map(field => (
-                              <div key={field.key} className="opacity-50 pointer-events-none">
-                                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">{field.label}</label>
-                                <input
-                                  type="text"
-                                  disabled
-                                  value={fieldValues[field.key] || ''}
-                                  placeholder={field.placeholder || ''}
-                                  className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 text-sm cursor-not-allowed"
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
+                      ) : (
                         integration.fields.map(field => (
                           <div key={field.key} className={field.type === 'checkbox' ? 'flex items-center gap-3 pt-2' : ''}>
                             {field.type === 'checkbox' ? (
@@ -681,7 +907,11 @@ const IntegrationsMarketplace: React.FC = () => {
                       )}
                     </div>
                     <div className="flex gap-2 mt-4">
-                      <button onClick={() => handleSave(integration)} disabled={saving || integration.id === 'stripe' || integration.id === 'square'} className="flex-1 px-4 py-2.5 text-xs font-bold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors">
+                      <button 
+                        onClick={() => handleSave(integration)} 
+                        disabled={saving || (integration.specialRequestOnly && !certifiedFallback[integration.id])} 
+                        className="flex-1 px-4 py-2.5 text-xs font-bold bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
                         {saving ? 'Saving...' : isEnabled ? 'Update' : 'Enable & Save'}
                       </button>
                       <button onClick={() => setConfiguring(null)} className="px-4 py-2.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">

@@ -167,15 +167,7 @@ const OrganizationPublicSite: React.FC = () => {
         };
     }, [orgId, slug]);
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center bg-white"><div className="animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full"></div></div>;
-    if (!org) return <div className="min-h-screen flex items-center justify-center bg-white text-gray-500">Organization not found.</div>;
-
-    const brandColor = org.primaryColor || '#0284c7';
-    const city = org.address?.city || 'YOUR AREA';
-    const state = org.address?.state || '';
-    const zip = org.address?.zip || '';
-    const street = org.address?.street || '';
-
+    const brandColor = org?.primaryColor || '#0284c7';
     const containerRef = React.useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -183,6 +175,14 @@ const OrganizationPublicSite: React.FC = () => {
             containerRef.current.style.setProperty('--org-brand', brandColor);
         }
     }, [brandColor]);
+
+    if (loading) return <div className="min-h-screen flex items-center justify-center bg-white"><div className="animate-spin h-8 w-8 border-4 border-gray-300 border-t-blue-600 rounded-full"></div></div>;
+    if (!org) return <div className="min-h-screen flex items-center justify-center bg-white text-gray-500">Organization not found.</div>;
+
+    const city = org.address?.city || 'YOUR AREA';
+    const state = org.address?.state || '';
+    const zip = org.address?.zip || '';
+    const street = org.address?.street || '';
 
     return (
         <div ref={containerRef} className="min-h-screen bg-white font-sans text-slate-900">

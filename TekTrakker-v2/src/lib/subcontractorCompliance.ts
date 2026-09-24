@@ -115,6 +115,7 @@ export const getDefaultComplianceSettings = (): SubcontractorComplianceSettings 
     });
     return {
         enforceComplianceBeforeAssignment: true,
+        allowTemporaryComplianceBypass: true,
         notifyOnLink: true,
         expiryWarningDays: 30,
         requiredDocuments

@@ -1,12 +1,13 @@
 
 import React, { useState } from 'react';
-import { FileText, Download, Star } from 'lucide-react';
+import { FileText, Download, Star, ChevronDown } from 'lucide-react';
 import Button from 'components/ui/Button';
 import type { Job, BusinessDocument, Review, StoredFile } from 'types';
 import { useAppContext } from 'context/AppContext';
 import { useReviewEligibility } from 'hooks/useReviewEligibility';
 import ReviewModal from 'components/modals/ReviewModal';
 import DocumentPreview from 'components/ui/DocumentPreview';
+import { isInternalExpenseFile } from 'lib/utils';
 
 interface ServiceHistorySectionProps {
     jobs: Job[];
@@ -20,6 +21,7 @@ interface ServiceHistorySectionProps {
 const ServiceHistorySection: React.FC<ServiceHistorySectionProps> = ({ jobs, onViewReport, customerId, organizationId, organizationName, customerName }) => {
     const { state, dispatch } = useAppContext();
     const { documents } = state;
+    const [isCollapsed, setIsCollapsed] = useState(true);
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [viewingPastDocument, setViewingPastDocument] = useState<{ title: string; htmlContent?: string; dataUrl?: string } | null>(null);
     const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
@@ -61,43 +63,69 @@ const ServiceHistorySection: React.FC<ServiceHistorySectionProps> = ({ jobs, onV
     };
 
     return (
-        <section>
-            <div className="flex justify-between items-center mb-4">
+        <section className="space-y-4">
+            <div 
+                onClick={() => setIsCollapsed(prev => !prev)}
+                className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 cursor-pointer group select-none bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:border-blue-400 transition-all"
+            >
                 <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-wider">
-                    <FileText className="text-blue-600" size={20} /> Service History
+                    <FileText className="text-blue-600" size={20} />
+                    <span>Service History</span>
+                    <span className="bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 text-xs px-2 py-0.5 rounded-full font-bold">
+                        {jobs.length}
+                    </span>
                 </h3>
-                <div className="flex gap-2">
-                    <Button onClick={() => {
-                        const csvContent = "data:text/csv;charset=utf-8," 
-                            + "Date,Property Location,PO Number,Service,Total,Status\n"
-                            + jobs.map(j => `"${new Date(j.appointmentTime).toLocaleDateString()}","${j.locationName || 'Main Office'}","${j.poNumber || ''}","${j.tasks.join(', ')}","${j.invoice?.amount || 0}","${j.jobStatus}"`).join("\n");
-                        const encodedUri = encodeURI(csvContent);
-                        const link = document.createElement("a");
-                        link.setAttribute("href", encodedUri);
-                        link.setAttribute("download", `Service_History_${customerName || 'Export'}.csv`);
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                    }} variant="secondary" size="sm" className="flex items-center gap-1">
-                        <Download size={14} /> Export CSV
-                    </Button>
-                    {!loading && canReview && (
-                        <Button onClick={() => setIsReviewModalOpen(true)} variant="outline" size="sm" className="flex items-center gap-1">
-                            <Star size={14} className="text-amber-400" />
-                            Leave a Review
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Button onClick={() => {
+                            const csvContent = "data:text/csv;charset=utf-8," 
+                                + "Date,Property Location,PO Number,Service,Total,Status\n"
+                                + jobs.map(j => `"${new Date(j.appointmentTime).toLocaleDateString()}","${j.locationName || 'Main Office'}","${j.poNumber || ''}","${(j.tasks || []).join(', ')}","${j.invoice?.amount || 0}","${j.jobStatus}"`).join("\n");
+                            const encodedUri = encodeURI(csvContent);
+                            const link = document.createElement("a");
+                            link.setAttribute("href", encodedUri);
+                            link.setAttribute("download", `Service_History_${customerName || 'Export'}.csv`);
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        }} variant="secondary" size="sm" className="flex items-center gap-1">
+                            <Download size={14} /> Export CSV
                         </Button>
-                    )}
-                    {!loading && hasReviewed && (
-                        <p className="text-sm text-slate-500 font-medium self-center">Thanks for your feedback!</p>
-                    )}
+                        {!loading && canReview && (
+                            <Button onClick={() => setIsReviewModalOpen(true)} variant="outline" size="sm" className="flex items-center gap-1">
+                                <Star size={14} className="text-amber-400" />
+                                Leave a Review
+                            </Button>
+                        )}
+                        {!loading && hasReviewed && (
+                            <p className="text-xs text-slate-500 font-medium self-center">Thanks for your feedback!</p>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs font-bold text-slate-500 group-hover:text-blue-600 transition-colors shrink-0">
+                        <span>{isCollapsed ? 'Show History' : 'Collapse'}</span>
+                        <ChevronDown size={18} className={`transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} />
+                    </div>
                 </div>
             </div>
-            <div className="space-y-3">
+
+            {!isCollapsed && (
+                <div className="space-y-3">
                 {jobs.map(job => {
                     const jobDocs = getJobDocuments(job.id);
-                    const jobFiles = (job.files || []).filter(f => !f.metadata?.isActionRequired || f.metadata?.status !== 'Pending Signature');
+                    const jobFiles = (job.files || []).filter(f => !isInternalExpenseFile(f) && (!f.metadata?.isActionRequired || f.metadata?.status !== 'Pending Signature'));
                     const otherFiles = jobFiles.filter(f => !f.fileType?.startsWith('image/') && !f.dataUrl?.startsWith('data:image/'));
                     const linkedProposal = state.proposals.find(p => p.id === job.proposalId || p.jobId === job.id);
+
+                    const unitList = Array.isArray(job.unitStates) 
+                        ? job.unitStates 
+                        : (job.unitStates && typeof job.unitStates === 'object' 
+                            ? Object.entries(job.unitStates).map(([assetId, health]) => ({ 
+                                assetId, 
+                                health: typeof health === 'string' ? health : (health as any)?.healthAfter || 'Good',
+                                healthAfter: typeof health === 'string' ? health : (health as any)?.healthAfter || 'Good'
+                              })) 
+                            : []);
 
                     return (
                         <div key={job.id} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border-2 border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
@@ -105,7 +133,7 @@ const ServiceHistorySection: React.FC<ServiceHistorySectionProps> = ({ jobs, onV
                                 <div>
                                     <div className="flex items-center gap-2 mb-1">
                                         <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                        <p className="font-black text-slate-900 dark:text-white text-lg">{job.tasks.join(', ')}</p>
+                                        <p className="font-black text-slate-900 dark:text-white text-lg">{(job.tasks || []).join(', ') || 'Service Call'}</p>
                                     </div>
                                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{new Date(job.appointmentTime).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                                     {job.poNumber && (
@@ -116,9 +144,9 @@ const ServiceHistorySection: React.FC<ServiceHistorySectionProps> = ({ jobs, onV
                             </div>
 
                             {/* Serviced Units & System Health Summary */}
-                            {job.unitStates && job.unitStates.length > 0 && (
+                            {unitList.length > 0 && (
                                 <div className="mb-4 flex flex-wrap gap-2">
-                                    {job.unitStates.map((unit: any, idx: number) => {
+                                    {unitList.map((unit: any, idx: number) => {
                                         const customerRec = state.customers?.find(c => c.id === job.customerId);
                                         const asset = customerRec?.equipment?.find((e: any) => e.id === unit.assetId);
                                         const name = asset?.name || asset?.type || 'System';
@@ -250,7 +278,8 @@ const ServiceHistorySection: React.FC<ServiceHistorySectionProps> = ({ jobs, onV
                     )
                 })}
                 {jobs.length === 0 && <p className="text-slate-400 text-sm italic py-4">No completed jobs yet.</p>}
-            </div>
+                </div>
+            )}
 
             <ReviewModal 
                 isOpen={isReviewModalOpen}
@@ -301,6 +330,7 @@ const ServiceHistorySection: React.FC<ServiceHistorySectionProps> = ({ jobs, onV
                     <DocumentPreview 
                         type={previewDoc.type} 
                         data={previewDoc.data} 
+                        organization={state.currentOrganization}
                         onClose={() => setPreviewDoc(null)} 
                         isInternal={false} 
                     />

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Input from 'components/ui/Input';
 import Button from 'components/ui/Button';
+import AutoResizeTextarea from 'components/ui/AutoResizeTextarea';
 import { BidLineItem, ProposalPreset } from 'types';
 import { Trash2, Plus, Sparkles } from 'lucide-react';
 import Modal from 'components/ui/Modal';
@@ -134,20 +135,12 @@ const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, 
                         {lineItems.map((item) => (
                             <div key={item.id} className="flex items-start gap-2 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm hover:border-primary-300 transition-colors group">
                                 <div className="flex-[3_3_0%] min-w-[250px]">
-                                    <textarea 
-                                        className="w-full text-sm bg-transparent border-transparent hover:border-slate-300 focus:border-primary-500 focus:bg-white transition-all shadow-none rounded-md p-2 resize-none overflow-hidden h-auto min-h-[38px]" 
+                                    <AutoResizeTextarea 
+                                        className="w-full text-sm bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-primary-500 focus:bg-white dark:focus:bg-slate-800 transition-all shadow-none rounded-md p-2 text-slate-800 dark:text-slate-200" 
                                         value={localItems[item.id]?.description || ''} 
-                                        onChange={(e) => {
-                                            handleLocalChange(item.id, 'description', e.target.value);
-                                            e.target.style.height = 'auto';
-                                            e.target.style.height = e.target.scrollHeight + 'px';
-                                        }} 
+                                        onChange={(e) => handleLocalChange(item.id, 'description', e.target.value)} 
                                         placeholder="Item description"
-                                        rows={1}
-                                        onFocus={(e) => {
-                                            e.target.style.height = 'auto';
-                                            e.target.style.height = e.target.scrollHeight + 'px';
-                                        }}
+                                        minHeight={38}
                                     />
                                 </div>
                                 <div className="flex-[0.5_0.5_0%] min-w-[80px] pt-1">
@@ -213,16 +206,12 @@ const PricingTab: React.FC<PricingTabProps> = ({ lineItems, onUpdate, onDelete, 
                     <div className="p-2 border-t border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 mt-2 rounded-b-xl">
                         <div className="flex items-start gap-2">
                             <div className="flex-[3_3_0%] min-w-[250px]">
-                                <textarea 
-                                    className="w-full text-sm rounded-md border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 p-2 resize-none overflow-hidden h-auto min-h-[38px]" 
+                                <AutoResizeTextarea 
+                                    className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 shadow-sm focus:border-primary-500 focus:ring-primary-500 p-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200" 
                                     placeholder="Enter new item description..." 
                                     value={newItem.description || ''} 
-                                    onChange={(e) => {
-                                        setNewItem({...newItem, description: e.target.value});
-                                        e.target.style.height = 'auto';
-                                        e.target.style.height = e.target.scrollHeight + 'px';
-                                    }} 
-                                    rows={1}
+                                    onChange={(e) => setNewItem({...newItem, description: e.target.value})} 
+                                    minHeight={38}
                                 />
                             </div>
                             <div className="flex-[0.5_0.5_0%] min-w-[80px]">

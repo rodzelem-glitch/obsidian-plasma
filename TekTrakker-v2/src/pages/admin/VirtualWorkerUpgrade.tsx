@@ -91,7 +91,7 @@ const VirtualWorkerUpgrade: React.FC = () => {
                                         showToast.warn('Error: Product misconfigured. Please contact support.');
                                     }
                                 } else {
-                                    showToast.warn('Redirecting to Secure Stripe Web Checkout...');
+                                    showToast.warn('Redirecting to Secure Payment Portal...');
                                 }
                             } catch (e: any) {
                                 if (!e.userCancelled) showToast.warn('Purchase Failed: ' + e.message);
@@ -130,7 +130,7 @@ const VirtualWorkerUpgrade: React.FC = () => {
 
                     {platform === 'web' && (
                         <>
-                            <p>Payment will be securely processed via Stripe at the confirmation of purchase. Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current billing cycle.</p>
+                            <p>Payment will be securely processed at the confirmation of purchase. Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current billing cycle.</p>
                             <p>You can manage and cancel your subscriptions by going to the Organization Billing portal after purchase.</p>
                         </>
                     )}

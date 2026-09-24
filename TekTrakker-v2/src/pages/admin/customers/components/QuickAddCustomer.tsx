@@ -1,4 +1,4 @@
-import { cleanUndefinedFields } from '../../../../lib/utils';
+import { cleanUndefinedFields, sanitizeCustomer } from '../../../../lib/utils';
 import React, { useState } from 'react';
 import Button from '../../../../components/ui/Button';
 import { useAppContext } from '../../../../context/AppContext';
@@ -16,6 +16,10 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
+    const [address, setAddress] = useState('');
+    const [city, setCity] = useState('');
+    const [stateProv, setStateProv] = useState('');
+    const [zip, setZip] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
     const handleAddCustomer = async () => {
@@ -30,18 +34,21 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
 
         setIsSaving(true);
         try {
-            const newCustomer: Customer = {
+            const newCustomer: Customer = sanitizeCustomer({
                 id: `cust-${Date.now()}`,
                 organizationId: state.currentOrganization.id,
                 name,
                 phone,
                 email,
-                address: '',
+                address,
+                city,
+                state: stateProv,
+                zip,
                 customerType: 'Residential', // Default
                 hvacSystem: { brand: 'N/A', type: 'N/A' },
                 serviceHistory: [],
                 createdAt: new Date().toISOString()
-            };
+            });
 
             if (!state.isDemoMode) {
                 // Save to Firestore. The real-time listener in AppContext/CustomerManagement
@@ -72,6 +79,10 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
             setName('');
             setPhone('');
             setEmail('');
+            setAddress('');
+            setCity('');
+            setStateProv('');
+            setZip('');
             console.log("Customer creation successful!");
         } catch (error) {
             console.error("Error creating customer:", error);
@@ -82,32 +93,64 @@ const QuickAddCustomer: React.FC<QuickAddCustomerProps> = ({ onCustomerCreated }
     };
 
     return (
-        <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
-            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">{t("Quick Add Customer")}</h3>
+        <div className="p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 space-y-4">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white">{t("Quick Add Customer")}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <input
                     type="text"
                     placeholder={t("Name *")}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="p-2 border rounded-md"
+                    className="p-2 border rounded-md dark:bg-slate-900 dark:border-slate-700 dark:text-white"
                 />
                 <input
                     type="text"
                     placeholder={t("Phone")}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="p-2 border rounded-md"
+                    className="p-2 border rounded-md dark:bg-slate-900 dark:border-slate-700 dark:text-white"
                 />
                 <input
                     type="email"
                     placeholder={t("Email")}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="p-2 border rounded-md"
+                    className="p-2 border rounded-md dark:bg-slate-900 dark:border-slate-700 dark:text-white"
                 />
             </div>
-            <Button onClick={handleAddCustomer} data-tour="save-customer-btn" disabled={isSaving} className="mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <input
+                    type="text"
+                    placeholder={t("Street Address")}
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="p-2 border rounded-md sm:col-span-2 dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                />
+                <input
+                    type="text"
+                    placeholder={t("City")}
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="p-2 border rounded-md dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                    <input
+                        type="text"
+                        placeholder={t("State")}
+                        value={stateProv}
+                        onChange={(e) => setStateProv(e.target.value)}
+                        className="p-2 border rounded-md dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                    />
+                    <input
+                        type="text"
+                        placeholder={t("Zip")}
+                        value={zip}
+                        onChange={(e) => setZip(e.target.value)}
+                        className="p-2 border rounded-md dark:bg-slate-900 dark:border-slate-700 dark:text-white"
+                    />
+                </div>
+            </div>
+            <Button onClick={handleAddCustomer} data-tour="save-customer-btn" disabled={isSaving}>
                 {isSaving ? t('Adding...') : t('Add Customer')}
             </Button>
         </div>

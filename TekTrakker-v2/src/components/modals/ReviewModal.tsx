@@ -7,6 +7,7 @@ import Button from 'components/ui/Button';
 import Textarea from 'components/ui/Textarea';
 import { Star } from 'lucide-react';
 import { db } from 'lib/firebase';
+import { useAppContext } from 'context/AppContext';
 import type { Review } from 'types';
 
 interface ReviewModalProps {
@@ -32,7 +33,9 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, organization
 
         setIsSubmitting(true);
         try {
-            const newReview: Omit<Review, 'id'> = {
+            const reviewId = `review-${Date.now()}`;
+            const newReview: Review = {
+                id: reviewId,
                 organizationId,
                 customerId,
                 customerName,
@@ -42,9 +45,14 @@ const ReviewModal: React.FC<ReviewModalProps> = ({ isOpen, onClose, organization
                 status: 'approved', // Auto-approved for now
             };
 
-            const docRef = await db.collection('reviews').add(cleanUndefinedFields(newReview));
+            const { state } = useAppContext();
+            if (!state.isDemoMode) {
+                const docRef = await db.collection('reviews').add(cleanUndefinedFields(newReview));
+                newReview.id = docRef.id;
+            }
             
-            onReviewSubmitted({ ...newReview, id: docRef.id });
+            onReviewSubmitted(newReview);
+            showToast.success("Review submitted successfully!");
             
             // Reset form and close modal
             setContent('');

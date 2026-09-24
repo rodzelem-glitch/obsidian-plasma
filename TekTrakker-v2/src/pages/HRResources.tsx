@@ -1,7 +1,7 @@
 import { cleanUndefinedFields } from '../lib/utils';
 
 import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
 import Card from 'components/ui/Card';
@@ -21,6 +21,7 @@ import Modal from 'components/ui/Modal';
 const HRResources: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const location = useLocation();
+    const navigate = useNavigate();
     const [view, setView] = useState<'menu' | 'handbook' | 'safety' | 'certs' | 'onboarding'>('menu');
     const { currentUser: user } = state;
     const { t } = useLanguage();
@@ -59,7 +60,22 @@ const HRResources: React.FC = () => {
             try {
                 const doc = await db.collection('users').doc(user.id).collection('private').doc('sensitive').get();
                 if (doc.exists) {
-                    setSensitiveData(doc.data());
+                    const data = doc.data();
+                    setSensitiveData(data);
+                    // Self-healing: if direct deposit is recorded in sensitive data but not reflected on user hiringPacketStatus, sync it
+                    if (data?.directDeposit?.preference && !user.hiringPacketStatus?.directDepositCompleted) {
+                        const updatedPacket = {
+                            ...(user.hiringPacketStatus || {}),
+                            directDepositCompleted: true
+                        };
+                        await db.collection('users').doc(user.id).update(cleanUndefinedFields({
+                            hiringPacketStatus: updatedPacket
+                        })).catch(err => console.warn("Failed to auto-sync direct deposit status:", err));
+                        dispatch({
+                            type: 'UPDATE_EMPLOYEE',
+                            payload: { id: user.id, hiringPacketStatus: updatedPacket } as any
+                        });
+                    }
                 }
             } catch (err) {
                 console.error("Failed to load employee sensitive onboarding data:", err);
@@ -106,6 +122,7 @@ const HRResources: React.FC = () => {
 
             const updatedSubmissions = {
                 ...(sensitiveData?.formSubmissions || {}),
+                ...(user.formSubmissions || {}),
                 [formId]: {
                     timestamp: new Date().toISOString(),
                     fileUrl: url,
@@ -123,9 +140,10 @@ const HRResources: React.FC = () => {
                 formSubmissions: updatedSubmissions
             }), { merge: true });
 
-            // Update status on the public user profile document
+            // Update status AND formSubmissions on the public user profile document (synced with HiringPacketView Admin Compliance)
             await db.collection('users').doc(user.id).update(cleanUndefinedFields({
-                hiringPacketStatus: updatedHiringPacketStatus
+                hiringPacketStatus: updatedHiringPacketStatus,
+                formSubmissions: updatedSubmissions
             }));
 
             setSensitiveData(prev => ({
@@ -289,9 +307,21 @@ const HRResources: React.FC = () => {
         <div className="p-4 sm:p-6 lg:p-8 space-y-6 pb-24 max-w-7xl mx-auto">
             {view === 'menu' ? (
                 <>
-                    <header className="mb-8">
-                        <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{t("HR & Safety Resources")}</h1>
-                        <p className="text-slate-500 mt-2">{t("Select a category below to access policies, report incidents, or manage your certifications.")}</p>
+                    <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/briefing')}
+                                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-extrabold text-xs transition-all shadow-xs shrink-0"
+                            >
+                                <ArrowLeft size={16} />
+                                {t("Back to Briefing")}
+                            </button>
+                            <div>
+                                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">{t("HR & Safety Resources")}</h1>
+                                <p className="text-slate-500 mt-0.5 text-xs sm:text-sm">{t("Select a category below to access policies, report incidents, or manage your certifications.")}</p>
+                            </div>
+                        </div>
                     </header>
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

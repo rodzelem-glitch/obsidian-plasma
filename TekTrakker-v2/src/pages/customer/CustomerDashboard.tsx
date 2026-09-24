@@ -12,13 +12,15 @@ import {
     DollarSign, SettingsIcon, LogOut, HelpCircle, TrashIcon, Link as LinkIcon, 
     Search, Printer, Shield
 } from '@constants';
+import { Sparkles, CreditCard, Users, UserCheck, X, CheckCircle2, RotateCcw, AlertCircle } from 'lucide-react';
 import { db, auth } from 'lib/firebase';
 import type { Customer, MembershipPlan, ServiceAgreement, Job, Proposal, User as AppUser, Organization, BusinessDocument, EquipmentAsset } from 'types';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import SignaturePad, { SignaturePadHandle } from 'components/ui/SignaturePad';
 import { QRCodeCanvas } from 'qrcode.react';
-import { formatAddress, matchTier, displayTierName , cleanUndefinedFields } from 'lib/utils';
-import { APEX_MOCK_DOCUMENTS, MILE_HIGH_MOCK_ORG } from 'lib/mock-data/apex-demo';
+import { formatAddress, matchTier, displayTierName, cleanUndefinedFields, getAvailableProposalTiers, getProposalTierLabel } from 'lib/utils';
+import { computeCanonicalFinancials } from 'lib/financialCalculator';
+import { APEX_MOCK_DOCUMENTS, APEX_MOCK_JOBS, APEX_MOCK_PROPOSALS, MILE_HIGH_MOCK_ORG } from 'lib/mock-data/apex-demo';
 import showToast from 'lib/toast';
 
 // Modular Components
@@ -33,9 +35,22 @@ import ActionRequiredSection from './components/ActionRequiredSection';
 import AssetsSection from './components/AssetsSection';
 import PhotosDocumentsSection from './components/PhotosDocumentsSection';
 import WarrantySection from './components/WarrantySection';
+import LocationCardsSection from './components/LocationCardsSection';
+import LocationDetailModal from './components/LocationDetailModal';
+import WorkOrdersSection from './components/WorkOrdersSection';
+import UnitDetailModal from './components/UnitDetailModal';
+import CustomerProfileModal from './components/CustomerProfileModal';
+import CustomerReferralSection from './components/CustomerReferralSection';
+import ReferralTrackerModal from './components/ReferralTrackerModal';
+import SubmitPaymentModal from './components/SubmitPaymentModal';
+import CustomerWarrantyPurchaseModal from './components/CustomerWarrantyPurchaseModal';
+import DesignateContactsModal from './components/DesignateContactsModal';
+import ContractedRatesAndAgreementsSection from './components/ContractedRatesAndAgreementsSection';
+import CustomMaintenanceScheduleSection from './components/CustomMaintenanceScheduleSection';
+import CreateWorkOrderModal from './components/CreateWorkOrderModal';
 import JobDetailModal from 'components/modals/JobDetailModal';
 import JobAppointmentModal from 'components/modals/JobAppointmentModal';
-import type { StoredFile } from 'types';
+import type { StoredFile, CustomerReferral, ServiceLocation } from 'types';
 import { uploadFileToStorage } from 'lib/storageService';
 
 
@@ -49,6 +64,24 @@ const CustomerDashboard: React.FC = () => {
     const [activeOrg, setActiveOrg] = useState<Organization | null>(null);
     const [orgPlans, setOrgPlans] = useState<MembershipPlan[]>([]);
     const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
+    const [selectedLocationForModal, setSelectedLocationForModal] = useState<ServiceLocation | null>(null);
+    const [viewingInvoiceJob, setViewingInvoiceJob] = useState<Job | null>(null);
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [referrals, setReferrals] = useState<CustomerReferral[]>([]);
+    const [isReferralTrackerOpen, setIsReferralTrackerOpen] = useState(false);
+
+    useEffect(() => {
+        if (!currentUser?.uid || isDemoMode) return;
+        const unsub = db.collection('referrals')
+            .where('referrerUserId', '==', currentUser.uid)
+            .onSnapshot(snap => {
+                const list = snap.docs.map(doc => ({ ...doc.data(), id: doc.id } as CustomerReferral));
+                setReferrals(list);
+            }, err => {
+                console.error('[CustomerDashboard] Error fetching referrals:', err);
+            });
+        return unsub;
+    }, [currentUser, isDemoMode]);
 
     useEffect(() => {
         if (currentUser) {
@@ -91,9 +124,28 @@ const CustomerDashboard: React.FC = () => {
     const [viewingDocumentToSign, setViewingDocumentToSign] = useState<BusinessDocument | null>(null);
     const [viewingWarrantyJob, setViewingWarrantyJob] = useState<Job | null>(null);
     const [isWarrantyModalOpen, setIsWarrantyModalOpen] = useState(false);
+    const [isContactsModalOpen, setIsContactsModalOpen] = useState(false);
+    const [contactsModalLocationId, setContactsModalLocationId] = useState<string | null>(null);
+    const [contactsModalJobId, setContactsModalJobId] = useState<string | null>(null);
     const [editingJob, setEditingJob] = useState<Job | null>(null);
+    const [selectedUnitForModal, setSelectedUnitForModal] = useState<EquipmentAsset | null>(null);
+    const [selectedEquipmentForWarrantyModal, setSelectedEquipmentForWarrantyModal] = useState<EquipmentAsset | null>(null);
+    const [isCustomerWarrantyModalOpen, setIsCustomerWarrantyModalOpen] = useState(false);
 
-    const [requestData, setRequestData] = useState({ type: 'Repair', date: '', window: 'Anytime', notes: '' });
+    const [workOrderInitialLocationId, setWorkOrderInitialLocationId] = useState<string | null>(null);
+    const [workOrderInitialUnitId, setWorkOrderInitialUnitId] = useState<string | null>(null);
+    const [workOrderInitialVisitType, setWorkOrderInitialVisitType] = useState<string | null>(null);
+    const [workOrderInitialReason, setWorkOrderInitialReason] = useState<string | null>(null);
+
+    const handleOpenNewWorkOrder = (locationId?: string | null, unitId?: string | null, visitType?: string | null, reason?: string | null) => {
+        setWorkOrderInitialLocationId(locationId || (selectedLocationId !== 'all' ? selectedLocationId : 'default'));
+        setWorkOrderInitialUnitId(unitId || null);
+        setWorkOrderInitialVisitType(visitType || 'Diagnostic & Troubleshooting');
+        setWorkOrderInitialReason(reason || '');
+        setIsRequestModalOpen(true);
+    };
+
+    const [requestData, setRequestData] = useState({ type: 'Repair / Diagnostic', date: '', window: 'Morning (8:00 AM - 12:00 PM)', locationId: '', notes: '' });
     const [profileData, setProfileData] = useState<Partial<Customer>>({});
     const [helpData, setHelpData] = useState({ subject: '', description: '', isPlatformIssue: false });
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -365,7 +417,26 @@ const CustomerDashboard: React.FC = () => {
     const upcomingJobs = useMemo<Job[]>(() => myJobs.filter((j: Job) => j.jobStatus !== 'Completed'), [myJobs]);
     const activeJob = useMemo<Job | null>(() => myJobs.find(j => j.jobStatus === 'In Progress') || upcomingJobs[0] || null, [myJobs, upcomingJobs]);
     const assignedTech = useMemo<AppUser | null>(() => activeJob?.assignedTechnicianId ? state.users.find(u => u.id === activeJob.assignedTechnicianId) || null : null, [activeJob, state.users]);
-    const unpaidInvoices = useMemo<Job[]>(() => myJobs.filter((j: Job) => (j.invoice?.status === 'Unpaid' || j.invoice?.status === 'Pending') && j.invoice?.sentAt), [myJobs]);
+    const unpaidInvoices = useMemo<Job[]>(() => {
+        return myJobs.filter((j: Job) => {
+            if (!j.invoice) return false;
+            const inv = j.invoice;
+            const canonical = computeCanonicalFinancials({
+                items: inv.items || [],
+                subtotal: inv.subtotal,
+                taxRate: inv.taxRate,
+                taxAmount: inv.taxAmount,
+                totalAmount: inv.totalAmount ?? inv.amount,
+                amountPaid: inv.amountPaid,
+                depositPaid: inv.depositPaid,
+                depositPaidAmount: inv.depositPaidAmount,
+                status: inv.status
+            });
+            const isPaid = String(inv.status).toLowerCase() === 'paid' || canonical.financialStatus === 'PAID' || canonical.balanceDue <= 0;
+            const hasBillableAmount = canonical.grandTotal > 0 || (Array.isArray(inv.items) && inv.items.length > 0);
+            return !isPaid && hasBillableAmount && canonical.balanceDue > 0;
+        });
+    }, [myJobs]);
 
     const estimatedSavings = useMemo(() => {
         if (!membership) return 0;
@@ -373,6 +444,11 @@ const CustomerDashboard: React.FC = () => {
         const discountVal = myJobs.reduce((sum, j) => sum + ((j.invoice?.totalAmount || j.invoice?.amount || 0) * 0.15), 0);
         return Math.round(visitsVal + discountVal);
     }, [membership, myJobs]);
+
+    const customerContactsCount = useMemo(() => {
+        const raw = (activeCustomerRecord?.contacts || []) as any[];
+        return raw.length > 0 ? raw.length : 3;
+    }, [activeCustomerRecord?.contacts]);
 
     const handleOpenProfile = () => {
         if (activeCustomerRecord) {
@@ -403,24 +479,84 @@ const CustomerDashboard: React.FC = () => {
         e.preventDefault();
         if (!activeCustomerRecord || !activeOrg) return;
         setIsSubmitting(true);
+        
+        const orgPlan = (activeOrg.plan || 'starter').toLowerCase();
+        let slaHours = 72;
+        let slaLabel = '3-Day Guarantee';
+
+        if (orgPlan === 'enterprise') {
+            slaHours = 2;
+            slaLabel = '1-2 Hour Support SLA';
+        } else if (orgPlan === 'growth') {
+            slaHours = 24;
+            slaLabel = '24-Hour Support SLA';
+        } else if (orgPlan === 'starter') {
+            slaHours = 72;
+            slaLabel = '3-Day Guarantee';
+        } else {
+            slaHours = 72;
+            slaLabel = 'Standard Support';
+        }
+
+        const now = new Date();
+        const targetDueDate = new Date(now.getTime() + slaHours * 3600 * 1000).toISOString();
         const toEmail = helpData.isPlatformIssue ? 'platform@tektrakker.com' : activeOrg.email || 'platform@tektrakker.com';
-        const subjectPrefix = helpData.isPlatformIssue ? '[Platform Support]' : `[Service Request: ${activeOrg.name}]`;
+        const alertPrefix = `🚨 [${slaLabel.toUpperCase()} - ${(activeOrg.name || 'CUSTOMER').toUpperCase()}]`;
+
         try {
+            // 1. Store Support Ticket record for live SLA Countdown tracking
+            await db.collection('supportTickets').add(cleanUndefinedFields({
+                organizationId: activeOrg.id,
+                organizationName: activeOrg.name || 'Unknown Organization',
+                customerName: activeCustomerRecord.name,
+                customerEmail: activeCustomerRecord.email,
+                subject: helpData.subject,
+                description: helpData.description,
+                plan: orgPlan,
+                slaLabel,
+                slaHours,
+                createdAt: now.toISOString(),
+                targetDueDate,
+                status: 'Open',
+                isPlatformIssue: helpData.isPlatformIssue
+            }));
+
+            // 2. Queue Email Alert with SLA Label & Target Deadline
             await db.collection('mail_queue').add(cleanUndefinedFields({
                 to: [toEmail],
                 replyTo: activeCustomerRecord.email || 'noreply@tektrakker.com',
                 message: {
-                    subject: `${subjectPrefix} ${helpData.subject}`,
-                    text: `Customer Help Request\nFrom: ${activeCustomerRecord.name} (${activeCustomerRecord.email})\n\n${helpData.description}`,
+                    subject: `${alertPrefix} ${helpData.subject}`,
+                    text: `SUPPORT REQUEST RECEIVED (${slaLabel})\n` +
+                          `SLA Guideline Response Window: ${slaHours} Hours\n` +
+                          `Target SLA Resolution Deadline: ${new Date(targetDueDate).toLocaleString()}\n\n` +
+                          `Organization: ${activeOrg.name} (Plan: ${orgPlan.toUpperCase()})\n` +
+                          `From: ${activeCustomerRecord.name} (${activeCustomerRecord.email})\n\n` +
+                          `Issue / Description:\n${helpData.description}`,
                     replyTo: activeCustomerRecord.email || 'noreply@tektrakker.com'
                 },
                 organizationId: activeOrg.id || 'platform',
-                type: 'CustomerHelpRequest',
-                createdAt: new Date().toISOString()
+                type: 'CustomerHelpRequestSlaAlert',
+                createdAt: now.toISOString()
             }));
+
+            // 3. Dispatch In-App Notification to Master Admin
+            await db.collection('notifications').add(cleanUndefinedFields({
+                userId: 'rodzelem@gmail.com',
+                organizationId: activeOrg.id || 'platform',
+                title: `${alertPrefix} New Support Request`,
+                body: `${activeCustomerRecord.name} (${activeOrg.name}): ${helpData.subject} (Deadline: ${new Date(targetDueDate).toLocaleTimeString()})`,
+                status: 'pending',
+                type: 'support_sla_alert',
+                createdAt: now.toISOString()
+            }));
+
+            showToast.success(`Support request submitted under your ${slaLabel}! Our team has been notified.`);
             setIsHelpModalOpen(false);
+            setHelpData({ subject: '', description: '', isPlatformIssue: false });
         } catch (error) {
-            console.error(error);
+            console.error("Failed to submit support request:", error);
+            showToast.error("Failed to submit support request. Please try again.");
         } finally {
             setIsSubmitting(false);
         }
@@ -448,6 +584,30 @@ const CustomerDashboard: React.FC = () => {
         }
     };
 
+    const handleResetActionItems = async () => {
+        setIsSubmitting(true);
+        try {
+            // Restore exact initial 4-item demo state:
+            // 1. Jobs: Exactly 1 job waiver on apex-job-2, 1 pending warranty on apex-job-2, 1 unpaid invoice (INV-2002)
+            const freshJobs = JSON.parse(JSON.stringify(APEX_MOCK_JOBS)) as Job[];
+            // 2. Proposals: Exactly 1 pending proposal (APEX-PROP-001 in 'Sent' status)
+            const freshProposals = JSON.parse(JSON.stringify(APEX_MOCK_PROPOSALS)) as Proposal[];
+            // 3. Documents: Exactly 1 pending waiver document (doc-waiver-1 in 'Pending Signature' status)
+            const freshDocs = JSON.parse(JSON.stringify(APEX_MOCK_DOCUMENTS)) as BusinessDocument[];
+
+            dispatch({ type: 'SET_JOBS', payload: freshJobs });
+            dispatch({ type: 'SET_PROPOSALS', payload: freshProposals });
+            dispatch({ type: 'SET_DOCUMENTS', payload: freshDocs });
+
+            showToast.success("Reset back to initial 4 action items and 1 unpaid invoice!");
+        } catch (e: any) {
+            console.error("Error resetting action items:", e);
+            showToast.error("Failed to reset action items: " + e.message);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handleSubscriptionApprove = async (data: any, plan: MembershipPlan, count: number) => {
         if (!activeCustomerRecord || !activeOrg) return;
         try {
@@ -468,7 +628,7 @@ const CustomerDashboard: React.FC = () => {
                 visitsTotal: plan.visitsPerYear,
                 visitsRemaining: plan.visitsPerYear,
                 autoBillingId: data.subscriptionID,
-                autoBillingProcessor: 'stripe'
+                autoBillingProcessor: 'kort'
             };
             await db.collection('serviceAgreements').doc(newAgreement.id).set(cleanUndefinedFields(newAgreement));
             setIsPlanSelectionModalOpen(false);
@@ -631,9 +791,53 @@ const CustomerDashboard: React.FC = () => {
         } catch (e: any) {
             console.error(e);
             showToast.error("Failed to cancel membership. Please contact support.");
-        } finally {
-            setIsSubmitting(false);
+        } finally { 
+            setIsSubmitting(false); 
         }
+    };
+
+    const handleSaveContacts = async (updatedContacts: any[], updatedJobs?: Job[], updatedLocations?: ServiceLocation[]) => {
+        if (!activeCustomerRecord) return;
+        const updatedCustomer: Customer = {
+            ...activeCustomerRecord,
+            contacts: updatedContacts,
+            ...(updatedLocations ? { serviceLocations: updatedLocations } : {})
+        };
+        
+        // Update local state and context
+        dispatch({ type: 'UPDATE_CUSTOMER', payload: updatedCustomer });
+        setActiveCustomerRecord(updatedCustomer);
+
+        // Update Firestore if not in pure demo mode
+        if (!isDemoMode && activeCustomerRecord.id) {
+            try {
+                await db.collection('customers').doc(activeCustomerRecord.id).update(cleanUndefinedFields({
+                    contacts: updatedContacts,
+                    ...(updatedLocations ? { serviceLocations: updatedLocations } : {})
+                }));
+            } catch (err) {
+                console.warn('Firestore customer contacts update:', err);
+            }
+        }
+
+        // Update jobs if any assigned
+        if (updatedJobs && updatedJobs.length > 0) {
+            updatedJobs.forEach(async (j) => {
+                dispatch({ type: 'UPDATE_JOB', payload: j });
+                if (!isDemoMode && j.id) {
+                    try {
+                        await db.collection('jobs').doc(j.id).update(cleanUndefinedFields({
+                            accountManagerContact: j.accountManagerContact || null,
+                            pocContact: j.pocContact || null
+                        }));
+                    } catch (err) {
+                        console.warn('Firestore job contacts update:', err);
+                    }
+                }
+            });
+        }
+
+        showToast.success('Authorized contacts & designated POCs updated successfully');
     };
 
     if (!currentUser || !activeCustomerRecord) {
@@ -816,8 +1020,8 @@ const CustomerDashboard: React.FC = () => {
                                 onSelectTier={viewingProposal?.status !== 'Accepted' ? setSelectedProposalTier : undefined}
                             />
                             {(viewingProposal.status === 'Sent' || viewingProposal.status === 'Opened') && (
-                                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110]">
-                                    <Button onClick={() => setIsSigningProposal(true)} className="bg-emerald-600 h-16 px-12 text-xl font-black">Accept & Authorize Proposal</Button>
+                                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10010]">
+                                    <Button onClick={() => setIsSigningProposal(true)} className="bg-emerald-600 hover:bg-emerald-700 h-14 px-8 text-base font-black shadow-2xl rounded-2xl cursor-pointer">Accept &amp; Authorize Proposal</Button>
                                 </div>
                             )}
                         </div>
@@ -825,52 +1029,202 @@ const CustomerDashboard: React.FC = () => {
                 </div>
             )}
             
+            {/* DOCUMENT SIGNING MODAL: SERVICE WAIVERS */}
             {viewingWaiverToSign && (
-                <div className="fixed inset-0 z-[100] bg-slate-100 dark:bg-slate-900 flex flex-col">
-                    <DocumentPreview 
-                        type="Other" 
-                        data={{ 
-                            title: 'Review Waiver', 
-                            htmlContent: atob(viewingWaiverToSign.file.dataUrl.split(',')[1]) 
-                        }} 
-                        onClose={() => setViewingWaiverToSign(null)} 
-                        isInternal={false} 
-                    />
-                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-2xl border border-slate-200 dark:border-slate-700 w-[90%] md:w-[500px]">
-                        <p className="text-sm font-black uppercase text-slate-500 mb-4 text-center">Sign Below to Authorize</p>
-                        <SignaturePad ref={sigPadRef} className="h-44 shadow-inner mb-6 bg-slate-50 border border-slate-200 rounded-2xl" />
-                        <div className="flex gap-3">
-                            <Button variant="secondary" onClick={() => setViewingWaiverToSign(null)} className="flex-1">Cancel</Button>
-                            <Button onClick={handleConfirmWaiverSignature} disabled={isSubmitting} className="flex-1 bg-emerald-600">{isSubmitting ? '...' : 'Accept & Sign'}</Button>
+                <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-fade-in">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[92vh] overflow-hidden">
+                        {/* Header */}
+                        <div className="p-5 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-orange-100 dark:bg-orange-950/50 text-orange-600 rounded-2xl">
+                                    <ShieldCheck size={24} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                                            {viewingWaiverToSign.file.fileName?.replace('.html', '').replace(/_/g, ' ') || 'Service Waiver & Authorization'}
+                                        </h3>
+                                        <span className="text-[10px] font-black uppercase bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                            <AlertCircle size={11} /> Pending Signature
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 font-bold mt-0.5">
+                                        Job: {(viewingWaiverToSign.job.tasks || []).join(', ') || 'Service Visit'} · WO #{viewingWaiverToSign.job.workOrderNumber || viewingWaiverToSign.job.id.slice(-6).toUpperCase()}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setViewingWaiverToSign(null)}
+                                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Document Content Body */}
+                        <div className="flex-1 overflow-y-auto p-5 sm:p-6 bg-slate-100/50 dark:bg-slate-950/40 space-y-6">
+                            <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm text-slate-800 dark:text-slate-200 text-sm leading-relaxed max-w-none">
+                                <div dangerouslySetInnerHTML={{ 
+                                    __html: (() => {
+                                        const du = viewingWaiverToSign.file.dataUrl;
+                                        try {
+                                            if (du.includes('base64,')) {
+                                                return decodeURIComponent(escape(atob(du.split('base64,')[1])));
+                                            }
+                                            return atob(du.split(',')[1]);
+                                        } catch {
+                                            return '<p>Please review and sign this service authorization waiver.</p>';
+                                        }
+                                    })()
+                                }} />
+                            </div>
+
+                            {/* Electronic Signature Box */}
+                            <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-2xl border-2 border-orange-200 dark:border-orange-900/50 shadow-md space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase text-orange-600 block">Digital Signature Authorization</span>
+                                        <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                                            Sign Below to Accept &amp; Authorize
+                                        </h4>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => sigPadRef.current?.clear()}
+                                        className="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <RotateCcw size={12} /> Clear
+                                    </button>
+                                </div>
+
+                                <SignaturePad 
+                                    ref={sigPadRef} 
+                                    className="h-36 w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl shadow-inner" 
+                                />
+
+                                <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
+                                    <p className="text-[11px] text-slate-500">
+                                        By signing, you agree to electronic records and the authorization terms outlined above.
+                                    </p>
+                                    <div className="flex gap-2 w-full sm:w-auto">
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() => setViewingWaiverToSign(null)}
+                                            className="text-xs font-bold py-2.5 px-4 rounded-xl flex-1 sm:flex-none cursor-pointer"
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            onClick={handleConfirmWaiverSignature}
+                                            disabled={isSubmitting}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-6 rounded-xl flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20 flex-1 sm:flex-none cursor-pointer"
+                                        >
+                                            <CheckCircle2 size={14} />
+                                            <span>{isSubmitting ? 'Signing...' : 'Accept & Sign Waiver'}</span>
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
             
+            {/* DOCUMENT SIGNING MODAL: BUSINESS & LEGAL DOCUMENTS */}
             {viewingDocumentToSign && (
-                <div className="fixed inset-0 z-[100] bg-slate-100 dark:bg-slate-900 flex flex-col">
-                    <DocumentPreview 
-                        type="Other" 
-                        data={{ 
-                            title: viewingDocumentToSign.title, 
-                            htmlContent: viewingDocumentToSign.content 
-                        }} 
-                        onClose={() => setViewingDocumentToSign(null)} 
-                        isInternal={false} 
-                    />
-                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] bg-white dark:bg-slate-800 p-6 rounded-[2rem] shadow-2xl border border-slate-200 dark:border-slate-700 w-[90%] md:w-[500px]">
-                        <p className="text-sm font-black uppercase text-slate-500 mb-4 text-center">Sign Below to Authorize</p>
-                        <SignaturePad ref={sigPadRef} className="h-44 shadow-inner mb-6 bg-slate-50 border border-slate-200 rounded-2xl" />
-                        <div className="flex gap-3">
-                            <Button variant="secondary" onClick={() => setViewingDocumentToSign(null)} className="flex-1">Cancel</Button>
-                            <Button onClick={handleConfirmDocumentSignature} disabled={isSubmitting} className="flex-1 bg-emerald-600">{isSubmitting ? '...' : 'Accept & Sign'}</Button>
+                <div className="fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-fade-in">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-[2.5rem] shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[92vh] overflow-hidden">
+                        {/* Header */}
+                        <div className="p-5 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-orange-100 dark:bg-orange-950/50 text-orange-600 rounded-2xl">
+                                    <ShieldCheck size={24} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                                            {viewingDocumentToSign.title || (viewingDocumentToSign as any).name || 'Legal Authorization Document'}
+                                        </h3>
+                                        <span className="text-[10px] font-black uppercase bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                            <AlertCircle size={11} /> Pending Signature
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 font-bold mt-0.5">
+                                        Doc ID: #{viewingDocumentToSign.id || 'DOC-AUTH'} {viewingDocumentToSign.jobId ? `· Work Order #${viewingDocumentToSign.jobId.slice(-6).toUpperCase()}` : ''}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setViewingDocumentToSign(null)}
+                                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Document Content Body */}
+                        <div className="flex-1 overflow-y-auto p-5 sm:p-6 bg-slate-100/50 dark:bg-slate-950/40 space-y-6">
+                            <div className="bg-white dark:bg-slate-900 p-6 sm:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm text-slate-800 dark:text-slate-200 text-sm leading-relaxed max-w-none">
+                                <div dangerouslySetInnerHTML={{ 
+                                    __html: viewingDocumentToSign.content || '<p>Please review and sign this authorization document.</p>'
+                                }} />
+                            </div>
+
+                            {/* Electronic Signature Box */}
+                            <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-2xl border-2 border-orange-200 dark:border-orange-900/50 shadow-md space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase text-orange-600 block">Digital Signature Authorization</span>
+                                        <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                                            Sign Below to Accept &amp; Authorize
+                                        </h4>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => sigPadRef.current?.clear()}
+                                        className="text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <RotateCcw size={12} /> Clear
+                                    </button>
+                                </div>
+
+                                <SignaturePad 
+                                    ref={sigPadRef} 
+                                    className="h-36 w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl shadow-inner" 
+                                />
+
+                                <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2">
+                                    <p className="text-[11px] text-slate-500">
+                                        By signing, you agree to electronic records and the authorization terms outlined above.
+                                    </p>
+                                    <div className="flex gap-2 w-full sm:w-auto">
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() => setViewingDocumentToSign(null)}
+                                            className="text-xs font-bold py-2.5 px-4 rounded-xl flex-1 sm:flex-none cursor-pointer"
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            onClick={handleConfirmDocumentSignature}
+                                            disabled={isSubmitting}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-6 rounded-xl flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/20 flex-1 sm:flex-none cursor-pointer"
+                                        >
+                                            <CheckCircle2 size={14} />
+                                            <span>{isSubmitting ? 'Signing...' : 'Accept & Sign Document'}</span>
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
             
             {isSigningProposal && (
-                <Modal isOpen={true} onClose={() => setIsSigningProposal(false)} title="Sign Proposal Acceptance">
+                <Modal isOpen={true} onClose={() => setIsSigningProposal(false)} title="Sign Proposal Acceptance" zIndex="z-[10050]">
                     <div className="space-y-6">
                         <p className="text-sm text-slate-500">Authorize work at quoted price.</p>
                         <SignaturePad ref={sigPadRef} className="h-44 shadow-inner" />
@@ -880,11 +1234,6 @@ const CustomerDashboard: React.FC = () => {
                                 if (!sigPadRef.current || sigPadRef.current.isEmpty() || !viewingProposal) return;
                                 setIsSubmitting(true);
                                 try {
-                                    const getAvailableTiersForProp = (prop: any) => {
-                                        const tiers = ['Basic', 'Premium', 'Platinum'];
-                                        return tiers.filter(t => (prop.items || []).some((i: any) => matchTier(i.tier, t)));
-                                    };
-
                                     const calculateProposalTierTotal = (prop: any, tier: string) => {
                                         const tierItems = (prop.items || []).filter((i: any) => matchTier(i.tier, tier));
                                         const subtotal = tierItems.reduce((sum: number, item: any) => sum + (Number(item.price || 0) * Number(item.quantity || 1)), 0);
@@ -894,7 +1243,7 @@ const CustomerDashboard: React.FC = () => {
                                         return { subtotal, taxAmount, total: subtotal + taxAmount, items: tierItems };
                                     };
 
-                                    const availableTiers = getAvailableTiersForProp(viewingProposal);
+                                    const availableTiers = getAvailableProposalTiers(viewingProposal);
                                     const finalTier = selectedProposalTier || (availableTiers[0] || 'Basic');
                                     const { subtotal, taxAmount, total, items: tierItems } = calculateProposalTierTotal(viewingProposal, finalTier);
                                     const signatureDataUrl = sigPadRef.current.toDataURL();
@@ -908,33 +1257,66 @@ const CustomerDashboard: React.FC = () => {
                                             if (jobDoc.exists) {
                                                 const jobData = jobDoc.data();
                                                 const existingInvoice = jobData?.invoice || {};
-                                                invoiceId = existingInvoice.id || null;
-                                                
-                                                const invoiceItems = tierItems.map((pItem: any) => ({
-                                                    id: pItem.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                                                    description: pItem.name || pItem.description || 'Proposal Item',
-                                                    quantity: pItem.quantity || 1,
-                                                    unitPrice: pItem.price || 0,
-                                                    total: pItem.total || ((pItem.price || 0) * (pItem.quantity || 1)),
-                                                    type: (pItem.type as any) || 'Part'
-                                                }));
+                                                const isJobCompletedOrPaid = jobData?.jobStatus === 'Completed' || jobData?.jobStatus === 'Archived' || existingInvoice?.status === 'Paid';
 
-                                                const updatedInvoice = {
-                                                    ...existingInvoice,
-                                                    proposalId: viewingProposal.id,
-                                                    items: invoiceItems,
-                                                    subtotal,
-                                                    taxAmount,
-                                                    totalAmount: total,
-                                                    amount: total,
-                                                    status: existingInvoice.status || 'Unpaid'
-                                                };
+                                                if (isJobCompletedOrPaid) {
+                                                    // Do not overwrite completed/paid diagnostic visit invoice; link proposal to job
+                                                    const existingLinked = Array.isArray(jobData?.linkedProposalIds) ? jobData.linkedProposalIds : [];
+                                                    if (!existingLinked.includes(viewingProposal.id)) {
+                                                        await db.collection('jobs').doc(viewingProposal.jobId).update(cleanUndefinedFields({
+                                                            linkedProposalIds: [...existingLinked, viewingProposal.id],
+                                                            updatedAt: new Date().toISOString()
+                                                        }));
+                                                    }
+                                                } else {
+                                                    const targetJobId = viewingProposal.jobId || jobDoc.id || 'JOB';
+                                                    const cleanJobSuffix = targetJobId.replace(/^JOB-?/i, '');
+                                                    invoiceId = existingInvoice.id || `INV-${cleanJobSuffix}`;
+                                                    const invoiceNumber = existingInvoice.invoiceNumber || existingInvoice.number || cleanJobSuffix;
+                                                    
+                                                    const invoiceItems = tierItems.map((pItem: any) => ({
+                                                        id: pItem.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                                                        name: pItem.name || pItem.description || 'Proposal Item',
+                                                        description: pItem.description || pItem.name || 'Proposal Item',
+                                                        details: pItem.details || pItem.description || '',
+                                                        notes: pItem.notes || '',
+                                                        scopeOfWork: pItem.scopeOfWork || '',
+                                                        subItems: Array.isArray(pItem.subItems) ? pItem.subItems : [],
+                                                        quantity: Number(pItem.quantity || 1),
+                                                        unitPrice: Number(pItem.price || pItem.unitPrice || 0),
+                                                        price: Number(pItem.price || pItem.unitPrice || 0),
+                                                        total: Number(pItem.total || ((pItem.price || pItem.unitPrice || 0) * (pItem.quantity || 1))),
+                                                        type: (pItem.type as any) || 'Part',
+                                                        partCost: pItem.partCost,
+                                                        laborHours: pItem.laborHours,
+                                                        hourlyRate: pItem.hourlyRate,
+                                                        margin: pItem.margin,
+                                                        taxable: pItem.taxable !== false
+                                                    }));
 
-                                                await db.collection('jobs').doc(viewingProposal.jobId).update(cleanUndefinedFields({
-                                                    proposalId: viewingProposal.id,
-                                                    invoice: updatedInvoice,
-                                                    updatedAt: new Date().toISOString()
-                                                }));
+                                                    const updatedInvoice = {
+                                                        ...existingInvoice,
+                                                        id: invoiceId,
+                                                        invoiceNumber: invoiceNumber,
+                                                        number: invoiceNumber,
+                                                        proposalId: viewingProposal.id,
+                                                        proposalNumber: viewingProposal.proposalNumber || viewingProposal.id,
+                                                        poNumber: viewingProposal.poNumber || existingInvoice.poNumber || jobData?.poNumber || jobData?.workOrderNumber || '',
+                                                        recommendations: viewingProposal.recommendations || existingInvoice.recommendations || '',
+                                                        items: invoiceItems,
+                                                        subtotal,
+                                                        taxAmount,
+                                                        totalAmount: total,
+                                                        amount: total,
+                                                        status: existingInvoice.status || 'Unpaid'
+                                                    };
+
+                                                    await db.collection('jobs').doc(viewingProposal.jobId).update(cleanUndefinedFields({
+                                                        proposalId: viewingProposal.id,
+                                                        invoice: updatedInvoice,
+                                                        updatedAt: new Date().toISOString()
+                                                    }));
+                                                }
                                             }
                                         } catch (jobErr) {
                                             console.error("Error updating associated job's invoice:", jobErr);
@@ -992,28 +1374,28 @@ const CustomerDashboard: React.FC = () => {
                 jobToEdit={editingJob}
             />
 
-            <div className="bg-white dark:bg-slate-900 border-b px-6 py-4 md:py-8">
-              <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-                  <div className="flex items-center gap-3">
-                      <div className="relative">
+            <div className="bg-white dark:bg-slate-900 border-b px-4 sm:px-6 py-4 md:py-8">
+              <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center md:items-start gap-6">
+                  <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 w-full md:w-auto">
+                      <div className="relative shrink-0">
                           {activeCustomerRecord.profilePhotoUrl ? <img src={activeCustomerRecord.profilePhotoUrl} className="w-16 h-16 rounded-full object-cover" alt="Profile avatar" title="Profile avatar" /> : <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center" aria-label="Default avatar"><UserIcon size={32}/></div>}
-                          <button onClick={handleOpenProfile} className="absolute bottom-0 right-0 p-1.5 bg-primary-600 text-white rounded-full" title="Settings" aria-label="Settings"><SettingsIcon size={12} /></button>
+                          <button onClick={handleOpenProfile} className="absolute bottom-0 right-0 p-1.5 bg-primary-600 text-white rounded-full cursor-pointer hover:bg-primary-700 transition-colors" title="Settings" aria-label="Settings"><SettingsIcon size={12} /></button>
                       </div>
-                      <div>
-                          <h1 className="text-3xl font-black text-slate-900 dark:text-white">Welcome, {activeCustomerRecord.firstName || activeCustomerRecord.name.split(' ')[0]}</h1>
-                          <p className="text-slate-500 flex items-center gap-2"><MapPinIcon size={14}/> {formatAddress(activeCustomerRecord.address)}</p>
-                          {(activeCustomerRecord.customerType as string) === 'Property Management' && hasMultipleLocations && (
-                              <div className="mt-2 flex items-center gap-2">
-                                  <span className="text-sm font-bold text-slate-600 dark:text-slate-400">View Location:</span>
+                      <div className="flex-1 min-w-0">
+                          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white truncate">Welcome, {activeCustomerRecord.firstName || activeCustomerRecord.name.split(' ')[0]}</h1>
+                          <p className="text-slate-500 flex items-center justify-center sm:justify-start gap-2 text-xs sm:text-sm mt-0.5"><MapPinIcon size={14} className="shrink-0"/> <span className="truncate">{formatAddress(activeCustomerRecord.address)}</span></p>
+                          {hasMultipleLocations && (
+                              <div className="mt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                                  <span className="text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-400">View Location:</span>
                                   <select 
                                       title="Select Location View"
                                       aria-label="Select Location View"
                                       value={selectedLocationId} 
                                       onChange={(e) => setSelectedLocationId(e.target.value)}
-                                      className="text-sm bg-slate-100 dark:bg-slate-800 border-none rounded-md px-3 py-1 font-medium text-slate-900 dark:text-white"
+                                      className="text-xs sm:text-sm bg-slate-100 dark:bg-slate-800 border-none rounded-md px-3 py-1 font-medium text-slate-900 dark:text-white cursor-pointer max-w-[240px] truncate"
                                   >
                                       <option value="all">All Locations</option>
-                                      {showDefaultLocationOption && <option value="default">Main Office / Unassigned</option>}
+                                      {showDefaultLocationOption && <option value="default">Main Site / Primary Address</option>}
                                       {visibleLocations.map(loc => (
                                           <option key={loc.id} value={loc.id}>{loc.propertyName || loc.name}</option>
                                       ))}
@@ -1022,22 +1404,68 @@ const CustomerDashboard: React.FC = () => {
                           )}
                       </div>
                   </div>
-                  <div className="flex flex-col items-end gap-3">
-                       <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-                           <select value={activeOrg?.id} onChange={(e) => handleSwitchProvider(e.target.value)} className="bg-white dark:bg-slate-700 rounded text-sm font-bold py-1 px-3" title="Switch organization">
+                  <div className="flex flex-col items-center sm:items-end gap-3 w-full md:w-auto">
+                       <div className="flex items-center justify-between sm:justify-end gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-full sm:w-auto">
+                           <select value={activeOrg?.id} onChange={(e) => handleSwitchProvider(e.target.value)} className="bg-white dark:bg-slate-700 rounded text-xs sm:text-sm font-bold py-1 px-3 flex-1 sm:flex-initial" title="Switch organization">
                                {linkedProfiles.map(p => <option key={p.org.id} value={p.org.id}>{p.org.name}</option>)}
                            </select>
-                           <button onClick={() => navigate('/marketplace')} className="text-[10px] font-black uppercase text-primary-600 px-2">Link New</button>
+                           <button onClick={() => navigate('/marketplace')} className="text-[10px] font-black uppercase text-primary-600 px-2 cursor-pointer shrink-0 hover:underline">Link New</button>
                        </div>
-                       <div className="flex gap-3">
-                           {!activeCustomerRecord.isBlacklisted && <Button onClick={() => setIsRequestModalOpen(true)}>Book Service</Button>}
-                           <Button onClick={() => setIsHelpModalOpen(true)} variant="secondary">Help</Button>
+                       <div className="flex gap-2 items-center flex-wrap justify-center sm:justify-end w-full">
+                            <button 
+                                onClick={() => {
+                                    setContactsModalLocationId(null);
+                                    setContactsModalJobId(null);
+                                    setIsContactsModalOpen(true);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-black transition-all shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer"
+                                title="Designate Point of Contact (POC) & Account Managers to Locations & Work Orders"
+                            >
+                                <Users size={14} className="text-primary-500 shrink-0" />
+                                <span>Designate POCs &amp; Managers</span>
+                                <span className="bg-primary-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                                    {customerContactsCount}
+                                </span>
+                            </button>
+
+                            <button 
+                                onClick={() => setIsReferralTrackerOpen(true)}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-500/10 via-indigo-500/10 to-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-black hover:bg-emerald-500/20 transition-all shadow-sm cursor-pointer"
+                                title="Partner & Referral Program - Earn 20% Recurring Commission"
+                            >
+                                <Sparkles size={14} className="text-emerald-500 animate-pulse shrink-0" />
+                                <span>Partner &amp; Earn 20%</span>
+                                {referrals.length > 0 && (
+                                    <span className="bg-emerald-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                                        {referrals.length}
+                                    </span>
+                                )}
+                            </button>
+                            {isDemoMode && (
+                                <button 
+                                    onClick={handleResetActionItems}
+                                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs font-black transition-all cursor-pointer shadow-sm"
+                                    title="Reset all 4 action items (Waiver, Document, Proposal, Warranty) for demonstration"
+                                >
+                                    <RotateCcw size={13} className="shrink-0" />
+                                    <span>Reset Demo</span>
+                                </button>
+                            )}
+                            <Button 
+                                onClick={() => setIsPaymentModalOpen(true)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
+                            >
+                                <CreditCard size={14} className="shrink-0" />
+                                <span>Submit Payment</span>
+                            </Button>
+                           {!activeCustomerRecord.isBlacklisted && <Button onClick={() => handleOpenNewWorkOrder()} className="text-xs py-2 px-4">Book Service</Button>}
+                           <Button onClick={() => setIsHelpModalOpen(true)} variant="secondary" className="text-xs py-2 px-3">Help</Button>
                       </div>
                   </div>
               </div>
             </div>
 
-            <div className="max-w-7xl mx-auto w-full px-6 mt-8 space-y-8">
+            <div className="max-w-7xl mx-auto w-full px-3.5 sm:px-6 mt-6 space-y-6 sm:space-y-8">
                 {activeCustomerRecord.isBlacklisted && (
                     <div className="bg-red-50 dark:bg-red-950/20 border-2 border-red-500 rounded-[2rem] p-6 shadow-xl flex items-start gap-4">
                         <AlertTriangle className="text-red-500 mt-1 shrink-0" size={32} />
@@ -1066,85 +1494,378 @@ const CustomerDashboard: React.FC = () => {
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-2 space-y-8">
-                        {/* Upcoming Appointments First */}
-                        <AppointmentsSection
-                            jobs={upcomingJobs}
-                            documents={state.documents}
-                            users={state.users}
-                            onEditJob={setEditingJob}
-                        />
+                {/* Action Required (Waivers, Proposals to Sign, Warranty Activations) - Top Priority Attention */}
+                <ActionRequiredSection 
+                    jobs={myJobs} 
+                    proposals={myProposals} 
+                    documents={state.documents}
+                    onSignWaiver={(job, file) => setViewingWaiverToSign({ job, file })}
+                    onSignProposal={(proposal) => { setViewingProposal(proposal); setIsSigningProposal(true); }}
+                    onSignDocument={(doc) => setViewingDocumentToSign(doc)}
+                    onAcceptWarranty={handleAcceptWarranty}
+                    onResetActionItems={isDemoMode ? handleResetActionItems : undefined}
+                />
 
-                        {/* Action Required Second */}
-                        <ActionRequiredSection 
-                            jobs={myJobs} 
-                            proposals={myProposals} 
-                            documents={state.documents}
-                            onSignWaiver={(job, file) => setViewingWaiverToSign({ job, file })}
-                            onSignProposal={(proposal) => { setViewingProposal(proposal); setIsSigningProposal(true); }}
-                            onSignDocument={(doc) => setViewingDocumentToSign(doc)}
-                            onAcceptWarranty={handleAcceptWarranty}
-                        />
+                {/* Unpaid Invoices & Billing Attention - Top Priority */}
+                {unpaidInvoices.length > 0 && (
+                    <InvoicesSection jobs={unpaidInvoices} />
+                )}
 
-                        {/* Warranty Coverage */}
-                        <WarrantySection jobs={myJobs} onAcceptWarranty={handleAcceptWarranty} />
+                {/* Properties & Locations Interactive Hub */}
+                {hasMultipleLocations && (
+                    <LocationCardsSection
+                        customer={activeCustomerRecord}
+                        locations={visibleLocations}
+                        assets={activeCustomerRecord.equipment || []}
+                        jobs={jobs.filter(j => j.customerId === activeCustomerRecord.id || j.customerEmail === activeCustomerRecord.email)}
+                        onOpenLocationModal={(loc) => setSelectedLocationForModal(loc)}
+                        onRequestService={(loc) => {
+                            handleOpenNewWorkOrder(
+                                loc?.id || 'default',
+                                null,
+                                'Diagnostic & Troubleshooting',
+                                loc ? `Service requested for facility: ${loc.propertyName || loc.name}` : ''
+                            );
+                        }}
+                    />
+                )}
 
-                        {/* Membership */}
-                        <MembershipSection
-                            membership={membership}
-                            estimatedSavings={estimatedSavings}
-                            onViewPlans={() => setIsPlanSelectionModalOpen(true)}
-                            onCancelPlan={() => setIsCancelPlanModalOpen(true)}
-                            completedJobs={myJobs.filter(j => j.jobStatus === 'Completed' || j.jobStatus === 'Needs Follow-up')}
-                            monthlyPrice={membership?.price}
-                        />
+                {/* Work Orders Hub (Open vs Closed Work Orders) */}
+                <WorkOrdersSection
+                    jobs={myJobs}
+                    locations={visibleLocations}
+                    proposals={myProposals}
+                    customer={activeCustomerRecord}
+                    organization={currentOrganization}
+                    onViewJobReport={(job) => setViewingJobReport(job)}
+                    onViewInvoice={(job) => setViewingInvoiceJob(job)}
+                    onPayInvoice={(job) => navigate(`/invoice/${job.id}`)}
+                    onViewProposal={(proposal) => {
+                        setViewingProposal(proposal);
+                        if (proposal.status === 'Sent' || proposal.status === 'Opened' || proposal.status === 'Draft') {
+                            setIsSigningProposal(true);
+                        }
+                    }}
+                    onAcceptWarranty={handleAcceptWarranty}
+                    onRequestService={(locId) => {
+                        handleOpenNewWorkOrder(locId || null);
+                    }}
+                    onOpenDesignateContacts={(locId, jobId) => {
+                        setContactsModalLocationId(locId || null);
+                        setContactsModalJobId(jobId || null);
+                        setIsContactsModalOpen(true);
+                    }}
+                />
 
-                        {/* Documentation Section */}
-                        <PhotosDocumentsSection
-                            jobs={myJobs}
-                            proposals={myProposals}
-                            onViewProposal={setViewingProposal}
-                        />
+                {/* Upcoming Appointments (Collapsible) */}
+                <AppointmentsSection
+                    jobs={upcomingJobs}
+                    documents={state.documents}
+                    users={state.users}
+                    onEditJob={setEditingJob}
+                />
 
-                        {/* Assets */}
-                        <AssetsSection assets={myAssets} />
+                {/* Registered Units & Equipment (Collapsible) */}
+                <AssetsSection 
+                    assets={myAssets} 
+                    locations={visibleLocations}
+                    onSelectUnit={(unit) => setSelectedUnitForModal(unit)}
+                    onRequestServiceForUnit={(unit, loc) => {
+                        handleOpenNewWorkOrder(
+                            loc?.id || unit.locationId || 'default',
+                            unit.id,
+                            'Diagnostic & Troubleshooting',
+                            `Service requested for ${unit.brand} ${unit.model} (${unit.type || 'Unit'}) - S/N: ${unit.serial || 'N/A'}`
+                        );
+                    }}
+                />
 
-                        {/* Service History */}
-                        <ServiceHistorySection 
-                            jobs={myJobs.filter(j => j.jobStatus === 'Completed' || j.jobStatus === 'Needs Follow-up')}
-                            onViewReport={setViewingJobReport}
-                            customerId={activeCustomerRecord.id}
-                            organizationId={activeOrg?.id || null}
-                            organizationName={activeOrg?.name || null}
-                            customerName={activeCustomerRecord.name}
-                        />
-                    </div>
-                    <div className="space-y-8">
-                        <InvoicesSection jobs={unpaidInvoices} />
-                        <SafetySupportSection onReportConcern={() => setIsHelpModalOpen(true)} />
-                    </div>
-                </div>
+                {/* Service History (Collapsible) */}
+                <ServiceHistorySection 
+                    jobs={myJobs.filter(j => j.jobStatus === 'Completed' || j.jobStatus === 'Needs Follow-up')}
+                    onViewReport={setViewingJobReport}
+                    customerId={activeCustomerRecord.id}
+                    organizationId={activeOrg?.id || null}
+                    organizationName={activeOrg?.name || null}
+                    customerName={activeCustomerRecord.name}
+                />
+
+                {/* Warranty Coverage with Location Support (Collapsible) */}
+                <WarrantySection 
+                    jobs={myJobs} 
+                    locations={visibleLocations}
+                    customer={activeCustomerRecord}
+                    organization={activeOrg || currentOrganization}
+                    onAcceptWarranty={handleAcceptWarranty} 
+                    onPurchaseWarranty={(unit) => {
+                        setSelectedEquipmentForWarrantyModal(unit || null);
+                        setIsCustomerWarrantyModalOpen(true);
+                    }}
+                />
+
+                {/* Contracted Rates, Net Terms & Signed Agreements (View-Only) */}
+                <ContractedRatesAndAgreementsSection
+                    customer={activeCustomerRecord}
+                    agreements={(state.serviceAgreements || []).filter(sa => sa.customerId === activeCustomerRecord.id || sa.customerName?.toLowerCase() === activeCustomerRecord.name?.toLowerCase())}
+                    documents={(state.documents || []).filter(d => d.customerId === activeCustomerRecord.id || (d as any).customerName?.toLowerCase() === activeCustomerRecord.name?.toLowerCase())}
+                    organization={currentOrganization}
+                    jobs={myJobs}
+                />
+
+                {/* Custom Maintenance Schedule & Supplies Manifest (Collapsible) */}
+                <CustomMaintenanceScheduleSection
+                    customer={activeCustomerRecord}
+                    organization={currentOrganization}
+                    completedJobs={myJobs}
+                    onViewReport={setViewingJobReport}
+                    onRequestService={(unitId, locId) => {
+                        handleOpenNewWorkOrder(
+                            locId || 'default',
+                            unitId || null,
+                            'Preventative Maintenance',
+                            'Scheduled Maintenance / Precision Tune-up requested per active agreement.'
+                        );
+                    }}
+                />
+
+                {/* Documentation Section (Collapsible) */}
+                <PhotosDocumentsSection
+                    jobs={myJobs}
+                    proposals={myProposals}
+                    customer={activeCustomerRecord}
+                    onViewProposal={setViewingProposal}
+                />
+
+                {/* Membership & Savings */}
+                <MembershipSection
+                    membership={membership}
+                    estimatedSavings={estimatedSavings}
+                    onViewPlans={() => setIsPlanSelectionModalOpen(true)}
+                    onCancelPlan={() => setIsCancelPlanModalOpen(true)}
+                    completedJobs={myJobs.filter(j => j.jobStatus === 'Completed' || j.jobStatus === 'Needs Follow-up')}
+                    monthlyPrice={membership?.price}
+                />
+
+                {/* Safety, Quality Assurance & Support Banner */}
+                <SafetySupportSection onReportConcern={() => setIsHelpModalOpen(true)} />
+
+                {/* Partner Referral & Affiliate Program Section */}
+                <CustomerReferralSection
+                    referrals={referrals}
+                    currentUser={currentUser}
+                    onOpenTracker={() => setIsReferralTrackerOpen(true)}
+                    onOpenInvite={() => setIsReferralTrackerOpen(true)}
+                />
             </div>
+
+            <ReferralTrackerModal
+                isOpen={isReferralTrackerOpen}
+                onClose={() => setIsReferralTrackerOpen(false)}
+                referrals={referrals}
+                currentUser={currentUser}
+                onReferralCreated={(newRef) => {
+                    setReferrals(prev => [newRef, ...prev.filter(r => r.id !== newRef.id)]);
+                }}
+            />
+
+            <LocationDetailModal
+                isOpen={!!selectedLocationForModal}
+                onClose={() => setSelectedLocationForModal(null)}
+                location={selectedLocationForModal}
+                customer={activeCustomerRecord}
+                organization={currentOrganization}
+                membership={membership}
+                allAssets={activeCustomerRecord.equipment || []}
+                allJobs={jobs.filter(j => j.customerId === activeCustomerRecord.id || j.customerEmail === activeCustomerRecord.email)}
+                allProposals={myProposals}
+                onSelectUnit={(unit) => {
+                    setSelectedUnitForModal(unit);
+                }}
+                onViewJobReport={(job) => setViewingJobReport(job)}
+                onViewInvoice={(job) => setViewingInvoiceJob(job)}
+                onPayInvoice={(job) => navigate(`/invoice/${job.id}`)}
+                onViewProposal={(proposal) => {
+                    setViewingProposal(proposal);
+                    if (proposal.status === 'Sent' || proposal.status === 'Opened' || proposal.status === 'Draft') {
+                        setIsSigningProposal(true);
+                    }
+                }}
+                onAcceptWarranty={handleAcceptWarranty}
+                onRequestService={(loc, unit) => {
+                    handleOpenNewWorkOrder(
+                        loc.id,
+                        unit?.id || null,
+                        'Diagnostic & Troubleshooting',
+                        unit ? `Service requested for ${unit.brand} ${unit.model} (${unit.type || 'Unit'}) - S/N: ${unit.serial || 'N/A'}` : `Service requested at ${loc.propertyName || loc.name}`
+                    );
+                }}
+                onOpenDesignateContacts={(locId) => {
+                    setContactsModalLocationId(locId || null);
+                    setContactsModalJobId(null);
+                    setIsContactsModalOpen(true);
+                }}
+            />
+
+            {viewingInvoiceJob && (
+                <div className="fixed inset-0 z-[100] bg-slate-100 dark:bg-slate-900 flex flex-col">
+                    <DocumentPreview 
+                        type="Invoice" 
+                        data={viewingInvoiceJob} 
+                        organization={activeOrg || state.currentOrganization}
+                        onClose={() => setViewingInvoiceJob(null)} 
+                        isInternal={false} 
+                    />
+                </div>
+            )}
+
+            <UnitDetailModal
+                isOpen={!!selectedUnitForModal}
+                onClose={() => setSelectedUnitForModal(null)}
+                unit={selectedUnitForModal}
+                location={selectedUnitForModal ? (visibleLocations.find(l => l.id === selectedUnitForModal.locationId || l.id === (selectedUnitForModal as any).propertyId) || null) : null}
+                jobs={myJobs}
+                onBookServiceForUnit={(unit, loc) => {
+                    handleOpenNewWorkOrder(
+                        loc?.id || unit.locationId || 'default',
+                        unit.id,
+                        'Diagnostic & Troubleshooting',
+                        `Service requested for ${unit.brand} ${unit.model} (${unit.type || 'Unit'}) - S/N: ${unit.serial || 'N/A'}`
+                    );
+                }}
+                onViewJobReport={(job) => setViewingJobReport(job)}
+                onViewProtectionPlans={(unit) => {
+                    setSelectedEquipmentForWarrantyModal(unit);
+                    setIsCustomerWarrantyModalOpen(true);
+                }}
+            />
+
+            {isCustomerWarrantyModalOpen && (
+                <CustomerWarrantyPurchaseModal
+                    isOpen={isCustomerWarrantyModalOpen}
+                    onClose={() => {
+                        setIsCustomerWarrantyModalOpen(false);
+                        setSelectedEquipmentForWarrantyModal(null);
+                    }}
+                    customer={activeCustomerRecord}
+                    organization={activeOrg || state.currentOrganization}
+                    initialEquipment={selectedEquipmentForWarrantyModal}
+                    onProceedToCheckout={(jobId) => {
+                        navigate(`/invoice/${jobId}`);
+                    }}
+                />
+            )}
+
+            <SubmitPaymentModal
+                isOpen={isPaymentModalOpen}
+                onClose={() => setIsPaymentModalOpen(false)}
+                customer={activeCustomerRecord}
+                organization={activeOrg || state.currentOrganization}
+                jobs={myJobs}
+                proposals={myProposals}
+                onProceedToPayment={(jobId, amount, isDeposit) => {
+                    if (isDeposit && amount) {
+                        navigate(`/deposit/${jobId}?amount=${amount}`);
+                    } else {
+                        navigate(`/invoice/${jobId}`);
+                    }
+                }}
+            />
+
+            {activeCustomerRecord && (
+                <DesignateContactsModal
+                    isOpen={isContactsModalOpen}
+                    onClose={() => {
+                        setIsContactsModalOpen(false);
+                        setContactsModalLocationId(null);
+                        setContactsModalJobId(null);
+                    }}
+                    customer={activeCustomerRecord}
+                    locations={visibleLocations}
+                    jobs={myJobs}
+                    initialSelectedLocationId={contactsModalLocationId}
+                    initialSelectedJobId={contactsModalJobId}
+                    onSaveContacts={handleSaveContacts}
+                />
+            )}
 
             <PlansModal isOpen={isPlanSelectionModalOpen} onClose={() => setIsPlanSelectionModalOpen(false)} plans={orgPlans} organization={activeOrg} onApprove={handleSubscriptionApprove} />
 
-            <Modal isOpen={isRequestModalOpen} onClose={() => setIsRequestModalOpen(false)} title="New Request">
-                <form onSubmit={async (e) => {
-                    e.preventDefault(); setIsSubmitting(true);
-                    await db.collection('appointments').add(cleanUndefinedFields({
-                        organizationId: activeOrg!.id, customerId: activeCustomerRecord.id, customerName: activeCustomerRecord.name,
-                        customerPhone: activeCustomerRecord.phone, customerEmail: activeCustomerRecord.email, address: activeCustomerRecord.address,
-                        tasks: [requestData.type], appointmentTime: new Date(requestData.date || Date.now()).toISOString(),
-                        status: 'Pending', source: 'CustomerPortal', createdAt: new Date().toISOString()
-                    }));
-                    setIsRequestModalOpen(false); setIsSubmitting(false);
-                }} className="space-y-4">
-                    <Select label="Type" value={requestData.type} onChange={e => setRequestData({...requestData, type: e.target.value})}><option value="Repair">Repair</option></Select>
-                    <Input label="Date" type="date" value={requestData.date} onChange={e => setRequestData({...requestData, date: e.target.value})} />
-                    <Button type="submit">Submit Request</Button>
-                </form>
-            </Modal>
+            {/* Comprehensive Commercial Work Order & Service Dispatch Modal */}
+            {activeCustomerRecord && (
+                <CreateWorkOrderModal
+                    isOpen={isRequestModalOpen}
+                    onClose={() => setIsRequestModalOpen(false)}
+                    customer={activeCustomerRecord}
+                    locations={visibleLocations}
+                    assets={myAssets}
+                    organization={activeOrg}
+                    initialLocationId={workOrderInitialLocationId}
+                    initialUnitId={workOrderInitialUnitId}
+                    initialVisitType={workOrderInitialVisitType}
+                    initialReason={workOrderInitialReason}
+                    onSubmitWorkOrder={async ({ job, appointmentPayload }) => {
+                        if (!activeOrg || !activeCustomerRecord) return;
+                        setIsSubmitting(true);
+                        try {
+                            const orgId = activeOrg.id;
+                            const fullJob: Job = {
+                                id: job.id || `job-wo-${Date.now()}`,
+                                organizationId: orgId,
+                                customerId: activeCustomerRecord.id,
+                                customerName: activeCustomerRecord.name,
+                                customerPhone: activeCustomerRecord.phone,
+                                customerEmail: activeCustomerRecord.email,
+                                address: job.address || (typeof activeCustomerRecord.address === 'string' ? activeCustomerRecord.address : formatAddress(activeCustomerRecord.address)),
+                                locationId: job.locationId || null,
+                                locationName: job.locationName || 'Main Facility',
+                                workOrderNumber: job.workOrderNumber || `WO-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`,
+                                poNumber: job.poNumber || null,
+                                nteLimit: job.nteLimit || 1000,
+                                tasks: job.tasks || ['Service Call'],
+                                visitType: (job.visitType as any) || 'Diagnostic & Repair',
+                                serviceType: job.serviceType || 'Diagnostic & Troubleshooting',
+                                includedUnitIds: job.includedUnitIds || [],
+                                specialInstructions: job.specialInstructions || '',
+                                notes: job.notes || { diagnosis: (job.tasks || [])[0] || 'Service Visit' },
+                                pocContact: job.pocContact || {
+                                    name: activeCustomerRecord.name,
+                                    phone: activeCustomerRecord.phone,
+                                    email: activeCustomerRecord.email,
+                                    role: 'On-Site Point of Contact'
+                                },
+                                appointmentTime: job.appointmentTime || new Date().toISOString(),
+                                jobStatus: 'Scheduled',
+                                source: 'CustomerPortal',
+                                jobEvents: [],
+                                createdAt: new Date().toISOString(),
+                                updatedAt: new Date().toISOString(),
+                            };
+
+                            // Save to state
+                            dispatch({ type: 'ADD_JOB', payload: fullJob });
+
+                            if (!isDemoMode) {
+                                await Promise.all([
+                                    db.collection('jobs').doc(fullJob.id).set(cleanUndefinedFields(fullJob)),
+                                    db.collection('appointments').add(cleanUndefinedFields({
+                                        ...appointmentPayload,
+                                        jobId: fullJob.id,
+                                        workOrderNumber: fullJob.workOrderNumber
+                                    }))
+                                ]);
+                            }
+
+                            showToast.success(`Work Order ${fullJob.workOrderNumber} created and dispatched successfully!`);
+                            setIsRequestModalOpen(false);
+                        } catch (err: any) {
+                            console.error("Work order creation error:", err);
+                            showToast.error("Failed to create work order: " + (err.message || String(err)));
+                        } finally {
+                            setIsSubmitting(false);
+                        }
+                    }}
+                />
+            )}
 
             <Modal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} title="Get Help">
                 <form onSubmit={handleHelpSubmit} className="space-y-4">
@@ -1158,109 +1879,21 @@ const CustomerDashboard: React.FC = () => {
                 </form>
             </Modal>
 
-             <Modal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} title="Profile & Preferences" size="lg">
-                <form onSubmit={handleSaveProfile} className="space-y-6">
-                    <div className="flex items-center gap-6 mb-6">
-                        <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-200 bg-slate-100 flex items-center justify-center relative group">
-                            {uploadProfilePic ? (
-                                <img src={URL.createObjectURL(uploadProfilePic)} className="w-full h-full object-cover" alt="Profile Upload Preview" title="Profile Upload Preview" />
-                            ) : activeCustomerRecord.profilePhotoUrl ? (
-                                <img src={activeCustomerRecord.profilePhotoUrl} className="w-full h-full object-cover" alt="Profile" title="Profile View" />
-                            ) : <UserIcon size={40} className="text-slate-400"/>}
-                            <label className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity text-white text-xs font-bold">
-                                Change <input type="file" className="hidden" accept="image/*" onChange={e => setUploadProfilePic(e.target.files?.[0] || null)} />
-                            </label>
-                        </div>
-                        <div>
-                            <h3 className="text-xl font-bold">{activeCustomerRecord.name}</h3>
-                            <p className="text-sm text-slate-500">{activeCustomerRecord.email}</p>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                             <h4 className="font-bold text-sm border-b pb-2">Contact Info</h4>
-                             <Input label="Name" value={profileData.name || ''} onChange={e => setProfileData({...profileData, name: e.target.value})} />
-                             <Input label="Phone" value={profileData.phone || ''} onChange={e => setProfileData({...profileData, phone: e.target.value})} />
-                        </div>
-                        <div className="space-y-4">
-                             <h4 className="font-bold text-sm border-b pb-2">Property Details</h4>
-                             <Input label="Address" value={profileData.address || ''} onChange={e => setProfileData({...profileData, address: e.target.value as any})} />
-                        </div>
-                    </div>
-                    {(activeCustomerRecord.customerType as string) === 'Property Management' && (
-                        <div className="space-y-4 pt-4 border-t">
-                            <div className="flex justify-between items-center">
-                                <h4 className="font-bold text-sm">Managed Locations</h4>
-                                <Button type="button" variant="secondary" onClick={() => {
-                                    const newLoc = { id: `loc-${Date.now()}`, name: '', address: '', propertyName: '' };
-                                    setProfileData({ ...profileData, serviceLocations: [...(profileData.serviceLocations || []), newLoc] });
-                                }} className="text-xs py-1 px-2">Add Location</Button>
-                            </div>
-                            <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-                                {(profileData.serviceLocations || []).map((loc, idx) => (
-                                    <div key={loc.id} className="bg-slate-50 dark:bg-slate-800 p-3 rounded border border-slate-200 dark:border-slate-700 space-y-3">
-                                        <div className="flex justify-between">
-                                            <Input label="Property Name" value={loc.propertyName || loc.name || ''} onChange={e => {
-                                                const newLocs = [...(profileData.serviceLocations || [])];
-                                                newLocs[idx].propertyName = e.target.value;
-                                                newLocs[idx].name = e.target.value;
-                                                setProfileData({ ...profileData, serviceLocations: newLocs });
-                                            }} />
-                                            <button type="button" aria-label="Delete Location" title="Delete Location" onClick={() => {
-                                                const newLocs = profileData.serviceLocations?.filter(l => l.id !== loc.id);
-                                                setProfileData({ ...profileData, serviceLocations: newLocs });
-                                            }} className="text-red-500 hover:text-red-700 ml-2 mt-6"><TrashIcon size={16}/></button>
-                                        </div>
-                                        <Input label="Address" value={loc.address || ''} onChange={e => {
-                                            const newLocs = [...(profileData.serviceLocations || [])];
-                                            newLocs[idx].address = e.target.value;
-                                            setProfileData({ ...profileData, serviceLocations: newLocs });
-                                        }} />
-                                        <div>
-                                            <h5 className="text-xs font-bold text-slate-500 mb-2">Location Contacts</h5>
-                                            {(loc.contacts || []).map((contact, cIdx) => (
-                                                <div key={cIdx} className="flex gap-2 mb-2">
-                                                    <Input placeholder="Name" value={contact.name} onChange={e => {
-                                                        const newLocs = [...(profileData.serviceLocations || [])];
-                                                        newLocs[idx].contacts![cIdx].name = e.target.value;
-                                                        setProfileData({ ...profileData, serviceLocations: newLocs });
-                                                    }} />
-                                                    <Input placeholder="Phone" value={contact.phone} onChange={e => {
-                                                        const newLocs = [...(profileData.serviceLocations || [])];
-                                                        newLocs[idx].contacts![cIdx].phone = e.target.value;
-                                                        setProfileData({ ...profileData, serviceLocations: newLocs });
-                                                    }} />
-                                                    <button type="button" aria-label="Delete Contact" title="Delete Contact" onClick={() => {
-                                                        const newLocs = [...(profileData.serviceLocations || [])];
-                                                        newLocs[idx].contacts = newLocs[idx].contacts?.filter((_, i) => i !== cIdx);
-                                                        setProfileData({ ...profileData, serviceLocations: newLocs });
-                                                    }} className="text-red-500 hover:text-red-700 p-2"><TrashIcon size={14}/></button>
-                                                </div>
-                                            ))}
-                                            <button type="button" onClick={() => {
-                                                const newLocs = [...(profileData.serviceLocations || [])];
-                                                if (!newLocs[idx].contacts) newLocs[idx].contacts = [];
-                                                newLocs[idx].contacts!.push({ name: '', phone: '', email: '', role: 'Site Contact' });
-                                                setProfileData({ ...profileData, serviceLocations: newLocs });
-                                            }} className="text-[10px] uppercase font-bold text-primary-600">+ Add Contact</button>
-                                        </div>
-                                    </div>
-                                ))}
-                                {(profileData.serviceLocations?.length === 0 || !profileData.serviceLocations) && (
-                                    <p className="text-sm text-slate-500 italic">No locations added yet.</p>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                     <div className="flex justify-between items-center pt-4 border-t">
-                        <button type="button" onClick={() => { setIsProfileModalOpen(false); setIsDeleteModalOpen(true); }} className="text-red-500 text-xs font-bold hover:underline py-2 flex items-center gap-1"><LogOut size={12}/> Delete Account</button>
-                        <div className="flex gap-2">
-                             <Button variant="secondary" onClick={() => setIsProfileModalOpen(false)}>Cancel</Button>
-                             <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Profile'}</Button>
-                        </div>
-                    </div>
-                </form>
-            </Modal>
+            <CustomerProfileModal
+                isOpen={isProfileModalOpen}
+                onClose={() => setIsProfileModalOpen(false)}
+                customer={activeCustomerRecord}
+                organization={activeOrg}
+                onSaveProfile={async (updatedData) => {
+                    if (!activeCustomerRecord) return;
+                    await db.collection('customers').doc(activeCustomerRecord.id).update(cleanUndefinedFields(updatedData));
+                    setActiveCustomerRecord({ ...activeCustomerRecord, ...updatedData } as Customer);
+                }}
+                onDeleteAccount={() => {
+                    setIsProfileModalOpen(false);
+                    setIsDeleteModalOpen(true);
+                }}
+            />
 
             <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Delete Account Data">
                 <div className="space-y-6">

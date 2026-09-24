@@ -1,24 +1,49 @@
-import { cleanUndefinedFields } from '../../lib/utils';
+import { cleanUndefinedFields, formatPhoneNumber, parseAddressComponents } from '../../lib/utils';
 import React, { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FinancialIcon, UsersIcon, TimeLogIcon, AlertTriangle } from '../../constants/constants';
 import { useAppContext } from '../../context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
-import type { Job, User, Appointment, ShiftLog } from '../../types/types';
+import type { Job, User, Appointment, ShiftLog, Customer } from '../../types/types';
 import { db } from '../../lib/firebase';
 
 import MetricCard from './dashboard/components/MetricCard';
 import PendingAppointments from './dashboard/components/PendingAppointments';
 import LiveOperations from './dashboard/components/LiveOperations';
-import { ShoppingCart, Bot, ArrowRight, Wrench, ShieldCheck, CreditCard, Presentation, Sparkles, Calendar, Clock } from 'lucide-react';
+import { ShoppingCart, Bot, ArrowRight, Wrench, ShieldCheck, CreditCard, Presentation, Sparkles, Calendar, Clock, Printer, FileText, Upload, Building2, HardDrive } from 'lucide-react';
+import { calculateSubcontractorPayables } from '../../lib/payablesHelper';
+import { countMaintenanceDue } from '../../lib/maintenanceHelper';
+import { UploadPaperFormModal } from '../../components/modals/UploadPaperFormModal';
+import { PrintableFormPreviewModal } from '../../components/modals/PrintableFormPreviewModal';
 import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
 import OnboardingTour, { useOnboardingTour } from '../../components/ui/OnboardingTour';
+import { isNotificationRead } from '../../lib/notificationNavigator';
+import { calculateAgreementMRR, isRecurringMembership } from '../../lib/membershipHelper';
 
 const AdminDashboard: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { t } = useLanguage();
+    const navigate = useNavigate();
     const currentUser = state.currentUser;
     const isPaymentsOnly = state.currentOrganization?.plan === 'payments_only';
+    
+    const [isPaperModalOpen, setIsPaperModalOpen] = React.useState(false);
+    const [isPrintingBlankStack, setIsPrintingBlankStack] = React.useState(false);
+    const [dbPayables, setDbPayables] = React.useState<any[]>([]);
+
+    React.useEffect(() => {
+        if (!state.currentOrganization?.id) return;
+        const unsub = db.collection('payables')
+            .where('organizationId', '==', state.currentOrganization.id)
+            .onSnapshot(snap => {
+                const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setDbPayables(list);
+            }, err => {
+                console.error("Failed to load payables for dashboard:", err);
+            });
+        return () => unsub();
+    }, [state.currentOrganization?.id]);
     
     // Shift tracking states and logic
     const userShiftLogs = useMemo(() => {
@@ -221,7 +246,13 @@ const AdminDashboard: React.FC = () => {
     }, [filteredJobs]);
     
     const unpaidInvoices = useMemo(() => {
-        return filteredJobs.filter((j: Job) => j.invoice?.status === 'Unpaid' || j.invoice?.status === 'Pending').length;
+        return filteredJobs.filter((j: Job) => {
+            const statusStr = (j.invoice?.status as string);
+            if (!j.invoice || statusStr === 'Paid' || statusStr === 'Cancelled' || statusStr === 'Void') return false;
+            const total = Number(j.invoice.totalAmount) ?? Number(j.invoice.amount) ?? 0;
+            const paid = Number(j.invoice.amountPaid) || 0;
+            return (total - paid) > 0 || j.invoice.status === 'Unpaid' || j.invoice.status === 'Pending';
+        }).length;
     }, [filteredJobs]);
 
     // Calculate Active Technicians based on online status
@@ -241,17 +272,48 @@ const AdminDashboard: React.FC = () => {
         }).length;
     }, [employees]);
 
+    // Active agreements scoped to organization and status === 'Active'
+    const activeAgreements = useMemo(() => {
+        return (state.serviceAgreements || []).filter(a => {
+            const matchesOrg = !state.currentOrganization?.id || a.organizationId === state.currentOrganization.id;
+            return matchesOrg && a.status === 'Active';
+        });
+    }, [state.serviceAgreements, state.currentOrganization?.id]);
+
+    const activeMemberships = useMemo(() => {
+        return activeAgreements.filter(isRecurringMembership);
+    }, [activeAgreements]);
+
     const mrr = useMemo(() => {
-        return state.serviceAgreements?.reduce((sum, a) => {
-            return sum + (a.billingCycle === 'Monthly' ? a.price : a.price / 12);
-        }, 0) || 0;
-    }, [state.serviceAgreements]);
+        return calculateAgreementMRR(activeAgreements);
+    }, [activeAgreements]);
 
     const totalReceivables = useMemo(() => {
         return filteredJobs
-            .filter(j => j.invoice?.status !== 'Paid')
-            .reduce((sum, j) => sum + (j.invoice?.totalAmount || j.invoice?.amount || 0), 0);
+            .filter(j => {
+                const statusStr = (j.invoice?.status as string);
+                if (!j.invoice || statusStr === 'Paid' || statusStr === 'Cancelled' || statusStr === 'Void') return false;
+                const total = Number(j.invoice.totalAmount) ?? Number(j.invoice.amount) ?? 0;
+                const paid = Number(j.invoice.amountPaid) || 0;
+                return (total - paid) > 0;
+            })
+            .reduce((sum, j) => {
+                const total = Number(j.invoice?.totalAmount) ?? Number(j.invoice?.amount) ?? 0;
+                const paid = Number(j.invoice?.amountPaid) || 0;
+                return sum + Math.max(0, total - paid);
+            }, 0);
     }, [filteredJobs]);
+
+    const totalUnpaidPayables = useMemo(() => {
+        const payables = calculateSubcontractorPayables(
+            state.jobs || [],
+            state.subcontractors || [],
+            state.users || [],
+            dbPayables,
+            state.currentOrganization?.id || ''
+        );
+        return payables.filter(p => p.status === 'Unpaid').reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    }, [state.jobs, state.subcontractors, state.users, dbPayables, state.currentOrganization]);
     
     // Pending Orders Calculation
     const pendingOrders = useMemo(() => {
@@ -260,7 +322,7 @@ const AdminDashboard: React.FC = () => {
         return internalPending + externalPending;
     }, [state.partOrders, state.shopOrders]);
 
-    // Active Warranties Calculation
+    // Active Warranties Calculation (Aggregates both customer equipment warranties and invoice warranties matching ActiveWarrantiesView)
     const activeWarrantiesCount = useMemo(() => {
         let count = 0;
         const now = new Date();
@@ -269,6 +331,22 @@ const AdminDashboard: React.FC = () => {
             r.setMonth(r.getMonth() + m);
             return r;
         };
+
+        const customersList: Customer[] = (Array.isArray(state.customers) ? state.customers : Object.values(state.customers || {})) as Customer[];
+        customersList.forEach(customer => {
+            (customer.equipment || []).forEach(asset => {
+                const w = asset.warranty;
+                if (!w) return;
+                const mfgStart = w.manufacturerStartDate ? new Date(w.manufacturerStartDate) : null;
+                const mfgExpiry = mfgStart && w.manufacturerDurationMonths ? addMonths(mfgStart, w.manufacturerDurationMonths) : null;
+                const labStart = w.laborStartDate ? new Date(w.laborStartDate) : null;
+                const labExpiry = labStart && w.laborDurationMonths ? addMonths(labStart, w.laborDurationMonths) : null;
+                const latestExpiry = [mfgExpiry, labExpiry].filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0];
+                if (latestExpiry && latestExpiry > now) {
+                    count++;
+                }
+            });
+        });
 
         filteredJobs.forEach(job => {
             const inv = job.invoice as { warrantyDisclaimerAgreed?: boolean, workmanshipWarrantyMonths?: number, partsWarrantyMonths?: number } | undefined;
@@ -286,33 +364,11 @@ const AdminDashboard: React.FC = () => {
             }
         });
         return count;
-    }, [filteredJobs]);
+    }, [filteredJobs, state.customers]);
 
     // Maintenance Due Calculation
     const maintenanceDueCount = useMemo(() => {
-        let count = 0;
-        const now = new Date();
-        Object.values(state.customers).forEach(customer => {
-            if(customer.equipment) {
-                customer.equipment.forEach(asset => {
-                    if(asset.warranty?.requiresMaintenance && asset.warranty.maintenanceIntervalMonths) {
-                        let nextDate: Date;
-                        if(asset.warranty.lastMaintenanceDate) {
-                            nextDate = new Date(asset.warranty.lastMaintenanceDate);
-                        } else if(asset.warranty.manufacturerStartDate) {
-                            nextDate = new Date(asset.warranty.manufacturerStartDate);
-                        } else {
-                            return;
-                        }
-                        nextDate.setMonth(nextDate.getMonth() + asset.warranty.maintenanceIntervalMonths);
-                        const diffTime = nextDate.getTime() - now.getTime();
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        if(diffDays <= 45) count++;
-                    }
-                });
-            }
-        });
-        return count;
+        return countMaintenanceDue(state.customers || [], new Date(), 45);
     }, [state.customers]);
 
     const orgName = state.currentOrganization?.name || 'My Business';
@@ -341,15 +397,86 @@ const AdminDashboard: React.FC = () => {
         let customerId = appt.customerId || '';
         
         if (!customerId) {
-            const existingCust = state.customers.find(c => 
-                (appt.customerEmail && c.email === appt.customerEmail) || 
-                c.phone === appt.customerPhone
-            );
+            const cleanApptEmail = (appt.customerEmail || '').toLowerCase().trim();
+            const cleanApptPhone = (appt.customerPhone || '').replace(/\D/g, '');
+            const cleanApptName = (appt.customerName || '').toLowerCase().trim();
+
+            const existingCust = state.customers.find(c => {
+                const cEmail = (c.email || '').toLowerCase().trim();
+                const cPhone = (c.phone || '').replace(/\D/g, '');
+                const cName = (c.name || '').toLowerCase().trim();
+
+                const emailMatch = cleanApptEmail.length > 3 && cEmail === cleanApptEmail;
+                const isPlaceholderPhone = ['5555555555', '0000000000', '1234567890'].includes(cPhone);
+                const phoneMatch = !isPlaceholderPhone && cleanApptPhone.length >= 7 && cPhone === cleanApptPhone;
+
+                const nameMatch = cName.length > 1 && (
+                    cName === cleanApptName || 
+                    cName.includes(cleanApptName) || 
+                    cleanApptName.includes(cName)
+                );
+
+                // Strictly require Name Match AND (Email Match or Phone Match)
+                // OR Email Match when existing customer has no name recorded
+                if (nameMatch && (emailMatch || phoneMatch)) return true;
+                if (emailMatch && !cName) return true;
+                return false;
+            });
+
             if (existingCust) {
                 customerId = existingCust.id;
-                if (appt.marketingConsent && !existingCust.marketingConsent) {
+                
+                // If appointment address is new, add it to customer's site locations!
+                const addressStr = typeof appt.address === 'string' ? appt.address : (appt.address as any)?.street || '';
+                if (addressStr && addressStr.trim() !== '') {
+                    const existingLocs = existingCust.serviceLocations || [];
+                    const hasLoc = existingLocs.some((loc: any) => {
+                        const locAddr = typeof loc === 'string' ? loc : (loc?.address || loc?.street || '');
+                        return locAddr.toLowerCase().includes(addressStr.toLowerCase());
+                    });
+
+                    if (!hasLoc) {
+                        const parsedLoc = parseAddressComponents(addressStr);
+                        const updatedLocs = [...existingLocs, {
+                            id: `loc-${Date.now()}`,
+                            address: parsedLoc.street || addressStr,
+                            city: appt.city || parsedLoc.city || undefined,
+                            state: appt.state || parsedLoc.state || undefined,
+                            zip: appt.zip || parsedLoc.zip || undefined,
+                            name: `Site Location - ${addressStr.split(',')[0]}`,
+                            createdAt: new Date().toISOString()
+                        }];
+                        await db.collection('customers').doc(customerId).update(cleanUndefinedFields({
+                            serviceLocations: updatedLocs
+                        })).catch(e => console.error("Failed to update site location:", e));
+                    }
+                }
+
+                const parsedAddr = parseAddressComponents(appt.address);
+                const cityVal = appt.city || parsedAddr.city;
+                const stateVal = appt.state || parsedAddr.state;
+                const zipVal = appt.zip || parsedAddr.zip;
+                const custUpdate: any = {};
+                if (!existingCust.city && cityVal) custUpdate.city = cityVal;
+                if (!existingCust.state && stateVal) custUpdate.state = stateVal;
+                if (!existingCust.zip && zipVal) custUpdate.zip = zipVal;
+                if (appt.customerPhone && (!existingCust.phone || !existingCust.phone.includes('-'))) {
+                    custUpdate.phone = formatPhoneNumber(appt.customerPhone);
+                }
+                if (Object.keys(custUpdate).length > 0) {
+                    await db.collection('customers').doc(customerId).update(cleanUndefinedFields(custUpdate)).catch(e => console.error("Failed to update customer info:", e));
+                }
+
+                const effectiveConsent = appt.marketingConsent || ((appt as any).consent === true || (appt as any).consent === 'true' || (appt as any).consent === 'on' ? {
+                    sms: true,
+                    email: true,
+                    agreedAt: (appt as any).createdAt || new Date().toISOString(),
+                    source: appt.source || 'WebWidget'
+                } : undefined);
+
+                if (effectiveConsent && !existingCust.marketingConsent) {
                     await db.collection('customers').doc(customerId).update(cleanUndefinedFields({
-                        marketingConsent: appt.marketingConsent
+                        marketingConsent: effectiveConsent
                     })).catch(e => console.error("Failed to update consent:", e));
                 }
             }
@@ -357,31 +484,69 @@ const AdminDashboard: React.FC = () => {
 
         if (!customerId) {
             customerId = `cust-${Date.now()}`;
-            const names = appt.customerName.split(' ');
-            await db.collection('customers').doc(customerId).set(cleanUndefinedFields({
+            const rawAddress = typeof appt.address === 'string' ? appt.address : (appt.address as any)?.street || '';
+            let customerCity = appt.city || '';
+            let customerState = appt.state || '';
+            let customerZip = appt.zip || '';
+            let addressStr = rawAddress;
+
+            if ((!customerCity || !customerState || !customerZip) && rawAddress) {
+                const parsed = parseAddressComponents(rawAddress);
+                if (!customerCity && parsed.city) customerCity = parsed.city;
+                if (!customerState && parsed.state) customerState = parsed.state;
+                if (!customerZip && parsed.zip) customerZip = parsed.zip;
+                if (parsed.street && parsed.city) addressStr = parsed.street;
+            }
+
+            const formattedPhone = formatPhoneNumber(appt.customerPhone);
+            const names = (appt.customerName || 'Customer').split(' ');
+
+            const effectiveConsent = appt.marketingConsent || ((appt as any).consent === true || (appt as any).consent === 'true' || (appt as any).consent === 'on' ? {
+                sms: true,
+                email: true,
+                agreedAt: (appt as any).createdAt || new Date().toISOString(),
+                source: appt.source || 'WebWidget'
+            } : undefined);
+            
+            const newCustomerObj = {
                 id: customerId,
-                organizationId: appt.organizationId,
-                name: appt.customerName,
-                firstName: names[0],
-                lastName: names.slice(1).join(' '),
-                phone: appt.customerPhone,
+                organizationId: appt.organizationId || state.currentOrganization?.id || 'unaffiliated',
+                name: appt.customerName || 'New Customer',
+                firstName: names[0] || '',
+                lastName: names.slice(1).join(' ') || '',
+                phone: formattedPhone || appt.customerPhone || '',
                 email: appt.customerEmail || '',
-                address: appt.address,
+                address: addressStr,
+                city: customerCity || null,
+                state: customerState || null,
+                zip: customerZip || null,
+                serviceLocations: addressStr ? [{
+                    id: `loc-${Date.now()}`,
+                    address: addressStr,
+                    city: customerCity || undefined,
+                    state: customerState || undefined,
+                    zip: customerZip || undefined,
+                    name: `Main Site - ${addressStr.split(',')[0]}`,
+                    createdAt: new Date().toISOString()
+                }] : [],
                 customerType: (() => {
                     const rawType = (appt as any).customerType;
                     if (rawType === 'Business / Commercial' || rawType === 'General Contractor' || rawType === 'Commercial') {
-                        return 'Commercial';
+                        return 'Commercial' as const;
                     }
                     if (rawType === 'Property Manager' || rawType === 'Property Management') {
-                        return 'Property Management';
+                        return 'Property Management' as const;
                     }
-                    return 'Residential';
+                    return 'Residential' as const;
                 })(),
                 hvacSystem: { brand: 'Unknown', type: 'Unknown' },
                 serviceHistory: [],
                 createdAt: new Date().toISOString(),
-                ...(appt.marketingConsent ? { marketingConsent: appt.marketingConsent } : {})
-            }));
+                ...(effectiveConsent ? { marketingConsent: effectiveConsent } : {})
+            };
+
+            await db.collection('customers').doc(customerId).set(cleanUndefinedFields(newCustomerObj));
+            dispatch({ type: 'ADD_CUSTOMER', payload: newCustomerObj });
         }
 
         let finalAppointmentTime = appt.appointmentTime;
@@ -403,13 +568,14 @@ const AdminDashboard: React.FC = () => {
             }
         }
 
+        const formattedJobPhone = formatPhoneNumber(appt.customerPhone);
         const newJob: Job = {
             id: `job-${Date.now()}`,
             organizationId: appt.organizationId,
             customerName: appt.customerName,
             customerId: customerId,
             customerEmail: appt.customerEmail,
-            customerPhone: appt.customerPhone,
+            customerPhone: formattedJobPhone || appt.customerPhone,
             address: appt.address,
             tasks: appt.tasks,
             jobStatus: 'Scheduled',
@@ -445,8 +611,8 @@ const AdminDashboard: React.FC = () => {
     };
 
     const alertsCount = useMemo(() => {
-        return state.notifications.filter((n: { type?: string; userId?: string; read?: boolean }) => {
-            if (n.type !== 'system_alert' || n.read) return false;
+        return state.notifications.filter((n: any) => {
+            if (n.type !== 'system_alert' || isNotificationRead(n, currentUser)) return false;
             return n.userId === currentUser?.id || 
                    n.userId === currentUser?.email ||
                    n.userId === 'all' ||
@@ -464,7 +630,36 @@ const AdminDashboard: React.FC = () => {
                     </h2>
                     <p className="text-slate-500 dark:text-slate-400 font-medium mt-0.5">{t('Operations hub for')} {orgName}</p>
                 </div>
-                <div className="flex gap-3 items-center">
+                <div className="flex gap-3 items-center flex-wrap">
+                    {!isPaymentsOnly && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => navigate('/admin/drive')}
+                                className="bg-[#123A63] hover:bg-[#0A2540] text-white font-bold px-4 py-2 rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-sky-950/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+                            >
+                                <HardDrive size={16} />
+                                <span>Organization Drive</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsPaperModalOpen(true)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+                            >
+                                <Upload size={16} />
+                                <span>Upload Paper Form</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsPrintingBlankStack(true)}
+                                className="bg-slate-700 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-slate-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
+                            >
+                                <Printer size={16} />
+                                <span>Print Blank Forms Stack</span>
+                            </button>
+                        </>
+                    )}
+
                     {/* Clock In / Clock Out Button */}
                     {!isPaymentsOnly && (
                         <div className="flex items-center gap-2">
@@ -502,7 +697,7 @@ const AdminDashboard: React.FC = () => {
                 <div data-tour="payment-setup-banner" className="order-1 mt-2">
                     <button
                         type="button"
-                        onClick={() => window.location.href = '#/admin/settings?tab=integrations'}
+                        onClick={() => navigate('/admin/settings?tab=integrations')}
                         className="w-full text-left relative overflow-hidden bg-gradient-to-r from-emerald-900 via-emerald-800 to-cyan-900 rounded-2xl p-6 cursor-pointer shadow-xl hover:shadow-emerald-500/20 hover:-translate-y-0.5 transition-all duration-300 group border border-emerald-700/50"
                     >
                         <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-500 pointer-events-none">
@@ -540,9 +735,10 @@ const AdminDashboard: React.FC = () => {
                         <MetricCard title="Maintenance Due" value={maintenanceDueCount} path={isPaymentsOnly ? undefined : "/admin/dashboard/maintenance"} icon={Wrench} color="bg-indigo-500" />
                         <MetricCard title="Pending Orders" value={pendingOrders} path={isPaymentsOnly ? undefined : "/admin/dashboard/orders"} icon={ShoppingCart} color="bg-cyan-500" />
                         <MetricCard title="Active Warranties" value={activeWarrantiesCount} path={isPaymentsOnly ? undefined : "/admin/dashboard/active-warranties"} icon={ShieldCheck} color="bg-emerald-600" />
-                        <MetricCard title="Unpaid Inv" value={unpaidInvoices} path="/admin/financials" icon={FinancialIcon} color="bg-orange-500" />
-                        <MetricCard title="Monthly Rev" value={`$${Math.round(mrr).toLocaleString()}`} path={isPaymentsOnly ? undefined : "/admin/customers?tab=memberships"} icon={FinancialIcon} color="bg-emerald-500" />
+                        <MetricCard title="Unpaid Inv" value={unpaidInvoices} path={isPaymentsOnly ? undefined : "/admin/dashboard/unpaid-invoices"} icon={FinancialIcon} color="bg-orange-500" />
+                        <MetricCard title="Monthly Rev" value={`$${Math.round(mrr).toLocaleString()}`} subtitle={activeMemberships.length > 0 ? `${activeMemberships.length} active` : undefined} path={isPaymentsOnly ? undefined : "/admin/customers?tab=memberships"} icon={FinancialIcon} color="bg-emerald-500" />
                         <MetricCard title="Receivables" value={`$${Math.round(totalReceivables).toLocaleString()}`} path="/admin/financials" icon={FinancialIcon} color="bg-yellow-500" />
+                        <MetricCard title="Sub Payables" value={`$${Math.round(totalUnpaidPayables).toLocaleString()}`} path="/admin/financials?tab=payables" icon={Building2} color="bg-amber-600" />
                     </>
                 )}
                 
@@ -563,7 +759,7 @@ const AdminDashboard: React.FC = () => {
                 <div className="order-5 lg:order-4">
                     <button 
                         type="button"
-                        onClick={() => window.location.href = '#/admin/ai-worker-upgrade'}
+                        onClick={() => navigate('/admin/ai-worker-upgrade')}
                         className="w-full text-left relative overflow-hidden bg-gradient-to-r from-slate-900 to-indigo-900 rounded-2xl p-6 cursor-pointer shadow-xl hover:shadow-indigo-500/20 hover:-translate-y-0.5 transition-all duration-300 group mt-2 mb-4"
                     >
                         <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-500 pointer-events-none">
@@ -590,7 +786,7 @@ const AdminDashboard: React.FC = () => {
                 <div className="order-6 mt-2">
                     <button
                         type="button"
-                        onClick={() => window.location.href = '#/admin/whiteboard'}
+                        onClick={() => navigate('/admin/whiteboard')}
                         className="w-full text-left relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-800 to-violet-950 rounded-2xl p-6 cursor-pointer shadow-xl hover:shadow-violet-500/20 hover:-translate-y-0.5 transition-all duration-300 group border border-slate-700/50"
                     >
                         <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 group-hover:scale-110 transition-all duration-500 pointer-events-none">
@@ -630,6 +826,21 @@ const AdminDashboard: React.FC = () => {
                     </button>
                 </div>
             )}
+
+            <UploadPaperFormModal
+                isOpen={isPaperModalOpen}
+                onClose={() => setIsPaperModalOpen(false)}
+                existingJobs={state.jobs || []}
+                customers={state.customers || []}
+                organizationId={state.currentOrganization?.id || ''}
+            />
+
+            <PrintableFormPreviewModal
+                isOpen={isPrintingBlankStack}
+                onClose={() => setIsPrintingBlankStack(false)}
+                organization={state.currentOrganization}
+                defaultCopies={5}
+            />
 
         </div>
     );

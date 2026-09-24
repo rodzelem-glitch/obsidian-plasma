@@ -139,10 +139,10 @@ const LiveAssistModal: React.FC<LiveAssistModalProps> = ({ isOpen, onClose, jobC
             const functions = getFunctions();
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             
-            // Using gemini-3.6-flash for master-level tech advice
+            // Using gemini-3.7-flash for master-level tech advice
             const result = await callGeminiAI({ 
                 prompt: userMsg,
-                modelName: "gemini-3.6-flash",
+                modelName: "gemini-3.7-flash",
                 config: {
                     systemInstruction: `You are TekTrakker AI Assist, a master field technician coach. Context: ${context}. Address the technician completely naturally by their name (${technicianName}). Your advice will be read aloud over a two-way radio to answers questions. You MUST act like a senior tech advisor. Be highly technical, but keep your responses EXTREMELY short and punchy (1-2 sentences maximum). Give direct instructions or troubleshooting steps without any fluff. E.g. "Check the secondary voltage. If it's zero, trace back to the transformer."`
                 }

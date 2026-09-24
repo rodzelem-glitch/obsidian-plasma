@@ -1,21 +1,28 @@
 import { cleanUndefinedFields } from '../lib/utils';
 import React, { createContext, useReducer, useContext, useEffect, ReactNode, useRef, useMemo, useCallback, useState } from 'react';
-import { auth, db } from 'lib/firebase';
+import { auth, db, firebase } from 'lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import type { 
-    User, Organization, PlatformSettings, Job, Customer, MembershipPlan, Project, Proposal, ServiceAgreement, Expense, EquipmentRental, Subcontractor, Applicant, BusinessDocument, Vehicle, Review, Message, Notification
+    User, Organization, PlatformSettings, Job, Customer, MembershipPlan, Project, Proposal, ServiceAgreement, Expense, EquipmentRental, Subcontractor, Applicant, BusinessDocument, Vehicle, Review, Message, Notification,
+    InventoryItem, RefrigerantCylinder, RefrigerantTransaction, MarketingCampaign, IncidentReport, PartOrder, Appointment
 } from 'types';
 import { appReducer, Action } from './reducer';
 import { AppState, initialState } from './state';
 import {
     MOCK_DEMO_EXPENSES, MOCK_DEMO_RENTALS, MOCK_DEMO_SUBCONTRACTORS, 
-    MOCK_DEMO_APPLICANTS, MOCK_DEMO_DOCUMENTS, MOCK_DEMO_VEHICLES, MOCK_DEMO_REVIEWS
+    MOCK_DEMO_DOCUMENTS, MOCK_DEMO_VEHICLES, MOCK_DEMO_REVIEWS
 } from 'lib/mockDemoData';
 import {
     APEX_MOCK_ORG, APEX_MOCK_USERS, APEX_MOCK_CUSTOMERS, APEX_MOCK_JOBS,
-    APEX_MOCK_PROJECTS, APEX_MOCK_PROPOSALS, APEX_MOCK_PLANS, APEX_MOCK_AGREEMENTS
+    APEX_MOCK_PROJECTS, APEX_MOCK_PROPOSALS, APEX_MOCK_PLANS, APEX_MOCK_AGREEMENTS,
+    APEX_MOCK_INVENTORY, APEX_MOCK_CYLINDERS, APEX_MOCK_REF_TRANSACTIONS,
+    APEX_MOCK_CAMPAIGNS, APEX_MOCK_INCIDENTS, APEX_MOCK_PART_ORDERS,
+    APEX_MOCK_BIDS, APEX_MOCK_APPLICANTS, APEX_MOCK_APPOINTMENTS,
+    getDynamicApexDemoData, normalizeDemoCollectionDates
 } from 'lib/mock-data/apex-demo';
+
+import { resolveUserRedirectPath } from 'lib/viewState';
 
 interface AppContextInterface {
   state: AppState;
@@ -39,7 +46,6 @@ const PLATFORM_ORGANIZATION: Organization = {
     createdAt: new Date().toISOString(),
     ownerId: '',
     subscriptionStatus: 'active',
-    stripeCustomerId: '',
     industries: [],
     profileImageUrl: '',
     coverImageUrl: '',
@@ -73,22 +79,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }, []);
 
     const getRedirectPath = useCallback((user: User | null, isMasterAdmin: boolean): string => {
-        if (!user) return '/login';
-        if ((user.role as string) === 'kort_tester') return '/admin/kort-playground';
-
-        if (isMasterAdmin || user.role === 'franchise_admin') return '/master/dashboard';
-        if (user.role === 'platform_sales') return '/sales/dashboard';
-        if (user.role === 'admin' || user.role === 'both' || user.role === 'supervisor') return '/admin/dashboard';
-        if (user.role === 'customer') {
-            if (!user.organizationId || user.organizationId === 'unaffiliated') {
-                return '/marketplace';
-            }
-            return '/portal';
-        }
-        if (user.role === 'employee') return '/briefing';
-        
-        const path = (!user.organizationId || user.organizationId === 'unaffiliated' || !user.role) ? '/marketplace' : '/login';
-        return path;
+        return resolveUserRedirectPath(user, isMasterAdmin);
     }, []);
 
 
@@ -111,22 +102,24 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         
         unsubscribeData();
         
+        const dynamicDemoData = getDynamicApexDemoData('apex-org-456', Date.now());
+
         let mockUser: User | undefined;
         if (role === 'employee') {
-            mockUser = APEX_MOCK_USERS.find(u => u.id === 'apex-lead-tech-id');
+            mockUser = dynamicDemoData.users.find(u => u.id === 'apex-lead-tech-id');
         } else {
-            mockUser = APEX_MOCK_USERS.find(u => u.role === role);
+            mockUser = dynamicDemoData.users.find(u => u.role === role);
         }
 
         if (!mockUser) {
             console.error(`No mock user found for role: ${role}`);
-            mockUser = APEX_MOCK_USERS[0];
+            mockUser = dynamicDemoData.users[0];
         }
 
         // Deep clone mock user to prevent modifications
         const clonedCurrentUser = JSON.parse(JSON.stringify(mockUser));
 
-        const jobs = JSON.parse(JSON.stringify(APEX_MOCK_JOBS));
+        const jobs = JSON.parse(JSON.stringify(dynamicDemoData.jobs));
         const jobIndex = jobs.findIndex((j: Job) => j.id === 'apex-job-2');
         if (jobIndex !== -1 && mockUser) {
             jobs[jobIndex].appointmentTime = new Date().toISOString();
@@ -134,41 +127,35 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             jobs[jobIndex].assignedTechnicianName = `${mockUser.firstName} ${mockUser.lastName}`;
         }
 
-        // Deep clone other interactive mock data to avoid mutating in-memory static arrays
-        const clonedOrg = JSON.parse(JSON.stringify(APEX_MOCK_ORG));
-        const clonedUsers = JSON.parse(JSON.stringify(APEX_MOCK_USERS));
-        const clonedCustomers = JSON.parse(JSON.stringify(APEX_MOCK_CUSTOMERS));
-        const clonedProposals = JSON.parse(JSON.stringify(APEX_MOCK_PROPOSALS));
-        const clonedProjects = JSON.parse(JSON.stringify(APEX_MOCK_PROJECTS));
-        const clonedAgreements = JSON.parse(JSON.stringify(APEX_MOCK_AGREEMENTS));
-        const clonedPlans = JSON.parse(JSON.stringify(APEX_MOCK_PLANS));
-        const clonedApplicants = JSON.parse(JSON.stringify(MOCK_DEMO_APPLICANTS));
-        const clonedDocuments = JSON.parse(JSON.stringify(MOCK_DEMO_DOCUMENTS));
-        const clonedVehicles = JSON.parse(JSON.stringify(MOCK_DEMO_VEHICLES));
-        const clonedReviews = JSON.parse(JSON.stringify(MOCK_DEMO_REVIEWS));
-        const clonedSubcontractors = JSON.parse(JSON.stringify(MOCK_DEMO_SUBCONTRACTORS));
-        const clonedExpenses = JSON.parse(JSON.stringify(MOCK_DEMO_EXPENSES));
-        const clonedRentals = JSON.parse(JSON.stringify(MOCK_DEMO_RENTALS));
-
         dispatch({
             type: 'START_DEMO',
             payload: {
                 currentUser: clonedCurrentUser,
-                currentOrganization: clonedOrg,
-                users: clonedUsers as User[],
+                currentOrganization: dynamicDemoData.org,
+                users: dynamicDemoData.users as User[],
                 jobs: jobs as Job[],
-                customers: clonedCustomers as Customer[],
-                membershipPlans: clonedPlans as MembershipPlan[],
-                projects: clonedProjects as Project[],
-                proposals: clonedProposals as Proposal[],
-                serviceAgreements: clonedAgreements as ServiceAgreement[],
-                applicants: clonedApplicants as Applicant[],
-                documents: clonedDocuments as BusinessDocument[],
-                vehicles: clonedVehicles as Vehicle[],
-                reviews: clonedReviews as Review[],
-                subcontractors: clonedSubcontractors as Subcontractor[],
-                expenses: clonedExpenses as Expense[],
-                rentals: clonedRentals as EquipmentRental[],
+                customers: dynamicDemoData.customers as Customer[],
+                membershipPlans: dynamicDemoData.membershipPlans as MembershipPlan[],
+                projects: dynamicDemoData.projects as Project[],
+                proposals: dynamicDemoData.proposals as Proposal[],
+                serviceAgreements: dynamicDemoData.serviceAgreements as ServiceAgreement[],
+                applicants: dynamicDemoData.applicants as Applicant[],
+                documents: dynamicDemoData.documents as BusinessDocument[],
+                vehicles: dynamicDemoData.vehicles as Vehicle[],
+                reviews: dynamicDemoData.reviews as Review[],
+                subcontractors: dynamicDemoData.subcontractors as Subcontractor[],
+                expenses: dynamicDemoData.expenses as Expense[],
+                rentals: dynamicDemoData.rentals as EquipmentRental[],
+                inventory: dynamicDemoData.inventory as InventoryItem[],
+                refrigerantCylinders: dynamicDemoData.refrigerantCylinders as RefrigerantCylinder[],
+                refrigerantTransactions: dynamicDemoData.refrigerantTransactions as RefrigerantTransaction[],
+                campaigns: dynamicDemoData.campaigns as MarketingCampaign[],
+                marketingCampaigns: dynamicDemoData.campaigns as MarketingCampaign[],
+                incidents: dynamicDemoData.incidents as IncidentReport[],
+                incidentReports: dynamicDemoData.incidents as IncidentReport[],
+                partOrders: dynamicDemoData.partOrders as PartOrder[],
+                bids: dynamicDemoData.bids,
+                appointments: dynamicDemoData.appointments as Appointment[],
             }
         });
     }, [unsubscribeData]);
@@ -214,7 +201,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
                     if (userDoc.exists) {
                         const userData = { id: firebaseUser.uid, ...userDoc.data() } as User;
-                        const isMasterAdmin = userData.role === 'master_admin' || userData.role === 'both';
+                        const isMasterAdmin = userData.role === 'master_admin';
                         const isSales = userData.role === 'platform_sales';
 
                         let orgData: any = undefined;
@@ -330,9 +317,29 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                                 }));
                                 userDoc = await db.collection('users').doc(user.uid).get();
                             } else {
-                                // Wait 2 seconds to allow Login.tsx's batch.commit() to propagate across Firestore CDNs
-                                await new Promise(resolve => setTimeout(resolve, 2000));
-                                userDoc = await db.collection('users').doc(user.uid).get();
+                                // Check if there is an existing user profile matching this email (e.g. pre-seeded demo user)
+                                if (user.email) {
+                                    try {
+                                        const emailSnap = await db.collection('users').where('email', '==', user.email.toLowerCase()).get();
+                                        if (!emailSnap.empty) {
+                                            const matchedData = emailSnap.docs[0].data();
+                                            await db.collection('users').doc(user.uid).set(cleanUndefinedFields({
+                                                ...matchedData,
+                                                id: user.uid,
+                                                uid: user.uid,
+                                                email: user.email.toLowerCase()
+                                            }), { merge: true });
+                                            userDoc = await db.collection('users').doc(user.uid).get();
+                                        }
+                                    } catch (e) {
+                                        console.warn("Auto-adopt email profile failed in AppContext:", e);
+                                    }
+                                }
+                                if (!userDoc.exists) {
+                                    // Wait 2 seconds to allow Login.tsx's batch.commit() to propagate across Firestore CDNs
+                                    await new Promise(resolve => setTimeout(resolve, 2000));
+                                    userDoc = await db.collection('users').doc(user.uid).get();
+                                }
                             }
                         }
 
@@ -479,7 +486,18 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         const newSubscriptions: (() => void)[] = [];
 
         newSubscriptions.push(db.collection('platformSettings').doc('global').onSnapshot(s => {
-            if (s.exists) dispatch({ type: 'SET_PLATFORM_SETTINGS', payload: {id: s.id, ...s.data()} as PlatformSettings });
+            if (s.exists) {
+                const data = s.data() as any;
+                if (data?.plans?.enterprise) {
+                    if (data.plans.enterprise.unlimitedUsers === undefined) {
+                        data.plans.enterprise.unlimitedUsers = true;
+                    }
+                    if (data.plans.enterprise.unlimitedUsers && (data.plans.enterprise.maxUsers === undefined || data.plans.enterprise.maxUsers < 999999)) {
+                        data.plans.enterprise.maxUsers = 999999;
+                    }
+                }
+                dispatch({ type: 'SET_PLATFORM_SETTINGS', payload: { id: s.id, ...data } as PlatformSettings });
+            }
         }, e => console.warn(e)));
 
         if (isMasterAdmin) {
@@ -491,7 +509,46 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
         // Fetch all organizations for any admin-type user to see linked partner details.
         if (isMasterAdmin) {
-            newSubscriptions.push(db.collection('organizations').onSnapshot(s => dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: s.docs.map(d => ({ id: d.id, ...d.data() } as Organization)) }), e => {
+            newSubscriptions.push(db.collection('organizations').onSnapshot(s => {
+                const now = Date.now();
+                const orgs = s.docs.map(d => {
+                    const data = d.data() as any;
+                    const isFree = !!data.isFreeAccess || !!data.isComplimentary || !!data.isPartnerAccount || d.id === 'apex-org-456' || d.id.startsWith('demo-') || !!(data.name && (data.name.toLowerCase().includes('demo') || data.name.toLowerCase().includes('test')));
+                    const hasPayment = !!(data.platformVaultedPaymentMethodId || data.paymentMethodAttached);
+                    const expiryTime = data.subscriptionExpiryDate ? new Date(data.subscriptionExpiryDate).getTime() : 0;
+                    const createdTime = data.createdAt ? new Date(data.createdAt).getTime() : 0;
+                    const is14DaysPast = createdTime > 0 && (now - createdTime) > (14 * 24 * 60 * 60 * 1000);
+                    const isExpiryPast = expiryTime > 0 && expiryTime < now;
+                    
+                    let status = data.subscriptionStatus || 'trial';
+                    if (!isFree && (status === 'trial' || !status) && (isExpiryPast || is14DaysPast || !hasPayment)) {
+                        status = 'past_due';
+                        // Auto-sync back to Firestore silently if expired
+                        db.collection('organizations').doc(d.id).update({
+                            subscriptionStatus: 'past_due',
+                            pastDueSince: data.subscriptionExpiryDate || new Date().toISOString(),
+                            updatedAt: new Date().toISOString()
+                        }).catch(() => {});
+                    } else if (isFree && (status === 'past_due' || status === 'trial' || !status)) {
+                        status = 'active';
+                        // Auto-heal back to active in Firestore if exempt
+                        if (data.subscriptionStatus !== 'active' || data.pastDueSince) {
+                            db.collection('organizations').doc(d.id).update({
+                                subscriptionStatus: 'active',
+                                pastDueSince: firebase.firestore.FieldValue.delete(),
+                                updatedAt: new Date().toISOString()
+                            }).catch(() => {});
+                        }
+                    }
+
+                    return {
+                        id: d.id,
+                        ...data,
+                        subscriptionStatus: status
+                    } as Organization;
+                });
+                dispatch({ type: 'SET_ALL_ORGANIZATIONS', payload: orgs });
+            }, e => {
                 console.error("Organizations subscription failed:", e);
                 toast.error("Access Denied: You do not have permission to view all organizations.");
             }));
@@ -510,6 +567,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         const orgIdForCollections = (currentOrganization?.id && currentOrganization.id !== 'unaffiliated')
             ? currentOrganization.id
             : (currentUser.organizationId && currentUser.organizationId !== 'unaffiliated' ? currentUser.organizationId : undefined);
+
+        // DEMO ACCOUNTS SHARED DATASTORE:
+        // To conserve Firestore storage, all demo organizations share the underlying 'org-sandbox-demo' collections.
+        // NON-DEMO accounts are strictly isolated and NEVER share or query demo data.
+        const DEMO_ORG_IDS = ['org-sandbox-demo', 'sales-demo-environment', 'demo-org-1766848718439', 'apex-org-456'];
+        const isDemoOrg = DEMO_ORG_IDS.includes(orgIdForCollections || '');
+        const targetQueryOrgId = isDemoOrg ? 'org-sandbox-demo' : orgIdForCollections;
 
         const handleMessageSnapshot = (s: any) => {
             s.docChanges().forEach((change: any) => {
@@ -577,20 +641,20 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                 if (isCustomer && internalOnly.includes(collection)) return;
                 if (isSubcontractor && !subcontractorAllowed.includes(collection)) return;
 
-                console.log("[AppContext-Debug] Subscribing to:", collection, "for org:", orgIdForCollections);
+                console.log("[AppContext-Debug] Subscribing to:", collection, "for org:", targetQueryOrgId);
 
-                if (orgIdForCollections && collection === 'messages') {
+                if (targetQueryOrgId && collection === 'messages') {
                     if (isSubcontractor) {
                         const myIds = Array.from(new Set([currentUser.id, currentUser.email].filter(Boolean)));
                         newSubscriptions.push(
                             db.collection('messages')
-                                .where('organizationId', '==', orgIdForCollections)
+                                .where('organizationId', '==', targetQueryOrgId)
                                 .where('receiverId', 'in', myIds)
                                 .onSnapshot(handleMessageSnapshot, e => console.warn("Subcontractor received messages failed:", e))
                         );
                         newSubscriptions.push(
                             db.collection('messages')
-                                .where('organizationId', '==', orgIdForCollections)
+                                .where('organizationId', '==', targetQueryOrgId)
                                 .where('senderId', 'in', myIds)
                                 .onSnapshot(handleMessageSnapshot, e => console.warn("Subcontractor sent messages failed:", e))
                         );
@@ -601,7 +665,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     // 1. Customer messages (shared)
                     newSubscriptions.push(
                         db.collection('messages')
-                            .where('organizationId', '==', orgIdForCollections)
+                            .where('organizationId', '==', targetQueryOrgId)
                             .where('type', 'in', ['sms', 'email', 'customer-log', 'call'])
                             .onSnapshot(handleMessageSnapshot, e => console.warn("Customer messages subscription failed:", e))
                     );
@@ -610,7 +674,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     const receiverIds = Array.from(new Set([currentUser.id, currentUser.email, 'all', 'all_sales', 'all_admins'].filter(Boolean)));
                     newSubscriptions.push(
                         db.collection('messages')
-                            .where('organizationId', '==', orgIdForCollections)
+                            .where('organizationId', '==', targetQueryOrgId)
                             .where('receiverId', 'in', receiverIds)
                             .onSnapshot(handleMessageSnapshot, e => console.warn("Received team messages subscription failed:", e))
                     );
@@ -619,7 +683,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     const senderIds = Array.from(new Set([currentUser.id, currentUser.email].filter(Boolean)));
                     newSubscriptions.push(
                         db.collection('messages')
-                            .where('organizationId', '==', orgIdForCollections)
+                            .where('organizationId', '==', targetQueryOrgId)
                             .where('senderId', 'in', senderIds)
                             .onSnapshot(handleMessageSnapshot, e => console.warn("Sent team messages subscription failed:", e))
                     );
@@ -635,10 +699,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                     if (collection === 'customers') {
                         query = db.collection(collection).where('email', '==', currentUser.email);
                     }
-                } else if (orgIdForCollections) {
+                } else if (targetQueryOrgId) {
                     if (collection === 'jobs' && isSubcontractor) {
                         query = db.collection('jobs')
-                                  .where('organizationId', '==', orgIdForCollections)
+                                  .where('organizationId', '==', targetQueryOrgId)
                                   .where('assignedTechnicianId', '==', currentUser.id);
                     } else if (collection === 'documents' && isSubcontractor) {
                         const subcontractorDocs = new Map<string, any>();
@@ -651,19 +715,24 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                                     subcontractorDocs.delete(change.doc.id);
                                 }
                             });
-                            dispatch({ type: 'SET_DOCUMENTS', payload: Array.from(subcontractorDocs.values()) });
+                            let payload = Array.from(subcontractorDocs.values());
+                            if (isDemoOrg) {
+                                payload = payload.map((item: any) => ({ ...item, organizationId: orgIdForCollections }));
+                                payload = normalizeDemoCollectionDates('documents', payload, orgIdForCollections);
+                            }
+                            dispatch({ type: 'SET_DOCUMENTS', payload });
                         };
 
                         newSubscriptions.push(
                             db.collection('documents')
-                              .where('organizationId', '==', orgIdForCollections)
+                              .where('organizationId', '==', targetQueryOrgId)
                               .where('subcontractorId', '==', currentUser.id)
                               .onSnapshot(handleSubcontractorDocSnapshot, e => console.warn("Subcontractor documents sync failed:", e))
                         );
 
                         newSubscriptions.push(
                             db.collection('documents')
-                              .where('organizationId', '==', orgIdForCollections)
+                              .where('organizationId', '==', targetQueryOrgId)
                               .where('type', '==', 'Waiver Template')
                               .onSnapshot(handleSubcontractorDocSnapshot, e => console.warn("Subcontractor waiver templates sync failed:", e))
                         );
@@ -679,23 +748,28 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                                     subDocs.delete(change.doc.id);
                                 }
                             });
-                            dispatch({ type: 'SET_SUBCONTRACTORS', payload: Array.from(subDocs.values()) });
+                            let payload = Array.from(subDocs.values());
+                            if (isDemoOrg) {
+                                payload = payload.map((item: any) => ({ ...item, organizationId: orgIdForCollections }));
+                                payload = normalizeDemoCollectionDates('subcontractors', payload, orgIdForCollections);
+                            }
+                            dispatch({ type: 'SET_SUBCONTRACTORS', payload });
                         };
 
                         newSubscriptions.push(
                             db.collection('subcontractors')
-                              .where('organizationId', '==', orgIdForCollections)
+                              .where('organizationId', '==', targetQueryOrgId)
                               .onSnapshot(handleSubSnapshot, e => console.warn("Outgoing subcontractors subscription failed:", e))
                         );
 
                         newSubscriptions.push(
                             db.collection('subcontractors')
-                              .where('linkedOrgId', '==', orgIdForCollections)
+                              .where('linkedOrgId', '==', targetQueryOrgId)
                               .onSnapshot(handleSubSnapshot, e => console.warn("Incoming subcontractors subscription failed:", e))
                         );
                         return;
                     } else {
-                        query = db.collection(collection).where('organizationId', '==', orgIdForCollections);
+                        query = db.collection(collection).where('organizationId', '==', targetQueryOrgId);
                     }
                     
                     if (['messages', 'notifications'].includes(collection)) {
@@ -725,6 +799,16 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                             payload = payload.filter((item: any) => !item.divisionId || assignedDivs.includes(item.divisionId));
                         }
                     }
+
+                    // Dynamic rolling date normalization and active demo org remapping
+                    if (isDemoOrg) {
+                        payload = payload.map((item: any) => ({
+                            ...item,
+                            organizationId: orgIdForCollections
+                        }));
+                        payload = normalizeDemoCollectionDates(collection, payload, orgIdForCollections);
+                    }
+
                     dispatch({ type: actionType, payload } as unknown as Action);
                 }, (error) => {
                     console.error(`Subscription failed for ${collection}:`, error);
@@ -752,12 +836,15 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
             }
 
             // NEW: Fetch warranty claims as a subcollection
-            if (orgIdForCollections && !isCustomer) {
+            if (targetQueryOrgId && !isCustomer) {
                 newSubscriptions.push(db.collection('organizations')
-                    .doc(orgIdForCollections)
+                    .doc(targetQueryOrgId)
                     .collection('warrantyClaims')
                     .onSnapshot(s => {
-                        const payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
+                        let payload = s.docs.map(d => ({ ...d.data(), id: d.id }));
+                        if (isDemoOrg) {
+                            payload = payload.map((item: any) => ({ ...item, organizationId: orgIdForCollections, archived: false }));
+                        }
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         dispatch({ type: 'SET_WARRANTY_CLAIMS', payload: payload as unknown as any[] } as unknown as Action);
                     }, error => console.error("Warranty claims subscription failed:", error))
@@ -785,12 +872,22 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
                             acc[log.userId].push(log);
                             return acc;
                         }, {});
-                        Object.entries(groupedByUser).forEach(([userId, logs]) => {
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            dispatch({ type: 'SET_SHIFT_LOGS', payload: { userId, logs: logs as any[] } });
-                        });
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        dispatch({ type: 'SET_ALL_SHIFT_LOGS', payload: groupedByUser as any });
                     }, error => console.error("Shift logs subscription failed:", error))
                 );
+
+                if (currentUser?.id) {
+                    newSubscriptions.push(db.collection('shiftLogs')
+                        .where('organizationId', '==', orgIdForCollections)
+                        .where('userId', '==', currentUser.id)
+                        .onSnapshot(s => {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const logs = s.docs.map(d => ({ ...d.data(), id: d.id } as any));
+                            dispatch({ type: 'SET_SHIFT_LOGS', payload: { userId: currentUser.id, logs } });
+                        }, error => console.error("Personal shift logs subscription failed:", error))
+                    );
+                }
             }
         }
         

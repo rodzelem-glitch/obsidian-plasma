@@ -13,6 +13,7 @@ import { ForgotPasswordForm } from 'components/auth/ForgotPasswordForm';
 import { UserRegistrationForm } from 'components/auth/UserRegistrationForm';
 import { BusinessRegistrationForm } from 'components/auth/BusinessRegistrationForm';
 import { verifyTOTP } from 'lib/totp';
+import { resolveUserRedirectPath } from 'lib/viewState';
 
 const LoginPage: React.FC = () => {
   const { state, dispatch } = useAppContext();
@@ -165,7 +166,7 @@ const LoginPage: React.FC = () => {
   const [inviteLoaded, setInviteLoaded] = useState(false);
 
   // Org Signup Plan State
-  const [selectedPlan, setSelectedPlan] = useState<'starter' | 'growth' | 'enterprise' | 'payments_only'>('starter');
+  const [selectedPlan, setSelectedPlan] = useState<'starter' | 'growth' | 'business' | 'enterprise' | 'payments_only'>('starter');
   
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -197,6 +198,9 @@ const LoginPage: React.FC = () => {
   const [brandColor, setBrandColor] = useState('#2563eb'); 
   const [isBranded, setIsBranded] = useState(false);
   const [referredOrgId, setReferredOrgId] = useState<string | null>(null);
+  const [salesRepId, setSalesRepId] = useState<string | null>(() => {
+      return searchParams.get('rep') || searchParams.get('salesRepId') || searchParams.get('ref') || localStorage.getItem('tt_sales_rep_id');
+  });
 
   // Near Me Orgs
   const [selectedNearbyOrg] = useState<string>('');
@@ -281,8 +285,8 @@ const LoginPage: React.FC = () => {
 
       // Check for pre-selected plan param (from marketing landing pages)
       const planParam = searchParams.get('plan');
-      if (planParam && ['starter', 'growth', 'enterprise', 'payments_only'].includes(planParam)) {
-          setSelectedPlan(planParam as 'starter' | 'growth' | 'enterprise' | 'payments_only');
+      if (planParam && ['starter', 'growth', 'business', 'enterprise', 'payments_only'].includes(planParam)) {
+          setSelectedPlan(planParam as 'starter' | 'growth' | 'business' | 'enterprise' | 'payments_only');
           // Auto-open business registration if plan is specified
           if (!viewParam) setView('register_business');
       }
@@ -317,6 +321,17 @@ const LoginPage: React.FC = () => {
               }
           };
           fetchOrg();
+      }
+
+      // 4. Check for sales rep referral parameter ('rep', 'salesRepId', or 'ref')
+      const repParam = searchParams.get('rep') || searchParams.get('salesRepId') || searchParams.get('ref');
+      if (repParam) {
+          setSalesRepId(repParam);
+          try {
+              localStorage.setItem('tt_sales_rep_id', repParam);
+          } catch (e) {
+              // Ignore storage access errors
+          }
       }
   }, [searchParams, dispatch, state.platformSettings]);
 
@@ -368,6 +383,9 @@ const LoginPage: React.FC = () => {
       try {
           const nowIso = new Date().toISOString();
           await db.collection('users').doc(uid).update(cleanUndefinedFields({ lastLoginAt: nowIso }));
+          if (userData.organizationId) {
+              await db.collection('organizations').doc(userData.organizationId).update(cleanUndefinedFields({ lastLoginAt: nowIso })).catch(() => {});
+          }
 
           if (userData.role === 'customer' || (userData as any).customerId) {
               const custId = (userData as any).customerId || (await (async () => {
@@ -493,28 +511,42 @@ const LoginPage: React.FC = () => {
           }
       }
 
-      // Force imperative routing because the global AppContext lifecycle intersection is randomly stalling
-      if (userData.role === 'admin' || userData.role === 'both' || userData.role === 'supervisor') {
-          navigate('/admin/dashboard', { replace: true });
-      } else if (userData.role === 'master_admin' || userData.role === 'franchise_admin') {
-          navigate('/master/dashboard', { replace: true });
-      } else if ((userData.role as string) === 'kort_tester') {
-          navigate('/admin/kort-playground', { replace: true });
-      } else if (userData.role === 'customer') {
-            if (!userData.organizationId || userData.organizationId === 'unaffiliated') {
-                navigate('/marketplace', { replace: true });
-            } else {
-                navigate('/portal', { replace: true });
-            }
-      } else if (userData.role === 'employee' || userData.role === 'Subcontractor' || userData.role === 'Technician') {
-            if (!userData.organizationId || userData.organizationId === 'unaffiliated') {
-                navigate('/marketplace', { replace: true });
-            } else {
-                navigate('/briefing', { replace: true });
-            }
-      } else {
-          navigate('/marketplace', { replace: true });
+      // Route using the sticky view resolver so tech view / admin view preference is maintained upon login
+      const isMasterAdmin = userData.role === 'master_admin';
+      const redirectPath = resolveUserRedirectPath(userData, isMasterAdmin);
+      navigate(redirectPath, { replace: true });
+  };
+
+  const resolveTargetEmail = async (inputStr: string): Promise<string> => {
+      const cleanInput = inputStr.trim().toLowerCase();
+      if (!cleanInput) return cleanInput;
+
+      try {
+          // 1. Check secondaryEmails array in Firestore
+          const secSnap = await db.collection('users').where('secondaryEmails', 'array-contains', cleanInput).get();
+          if (!secSnap.empty) {
+              const matchedEmail = secSnap.docs[0].data()?.email;
+              if (matchedEmail) return matchedEmail.toLowerCase();
+          }
+
+          // 2. Check username in Firestore
+          const userSnap = await db.collection('users').where('username', '==', cleanInput).get();
+          if (!userSnap.empty) {
+              const matchedEmail = userSnap.docs[0].data()?.email;
+              if (matchedEmail) return matchedEmail.toLowerCase();
+          }
+
+          // 3. Check alternateEmail in Firestore
+          const altSnap = await db.collection('users').where('alternateEmail', '==', cleanInput).get();
+          if (!altSnap.empty) {
+              const matchedEmail = altSnap.docs[0].data()?.email;
+              if (matchedEmail) return matchedEmail.toLowerCase();
+          }
+      } catch (err) {
+          console.warn("Secondary email lookup skipped:", err);
       }
+
+      return cleanInput;
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -524,8 +556,19 @@ const LoginPage: React.FC = () => {
     setIsLoading(true);
     
     try {
-        const trimmedEmail = email.trim().toLowerCase();
-        const creds = await auth.signInWithEmailAndPassword(trimmedEmail, password);
+        const inputIdentifier = email.trim().toLowerCase();
+        const trimmedEmail = await resolveTargetEmail(inputIdentifier);
+        let creds;
+        try {
+            creds = await auth.signInWithEmailAndPassword(trimmedEmail, password);
+        } catch (firstErr) {
+            // If primary resolution failed and inputIdentifier was different, retry with raw input
+            if (inputIdentifier !== trimmedEmail) {
+                creds = await auth.signInWithEmailAndPassword(inputIdentifier, password);
+            } else {
+                throw firstErr;
+            }
+        }
         const uid = creds.user?.uid;
 
         if (uid) {
@@ -570,7 +613,30 @@ const LoginPage: React.FC = () => {
                       }
                       await processLoggedInUser(uid, trimmedEmail, userData);
                   } else {
-                      setError("User profile not properly initialized. Please contact support.");
+                      // Auto-adopt profile by email if available in Firestore (e.g. pre-seeded demo user)
+                      let linkedUser: User | null = null;
+                      if (trimmedEmail) {
+                          try {
+                              const emailSnap = await db.collection('users').where('email', '==', trimmedEmail).get();
+                              if (!emailSnap.empty) {
+                                  const matchedData = emailSnap.docs[0].data() as User;
+                                  linkedUser = {
+                                      ...matchedData,
+                                      id: uid,
+                                      uid: uid,
+                                      email: trimmedEmail
+                                  };
+                                  await db.collection('users').doc(uid).set(cleanUndefinedFields(linkedUser), { merge: true });
+                              }
+                          } catch (linkErr) {
+                              console.warn("Auto-link by email failed:", linkErr);
+                          }
+                      }
+                      if (linkedUser) {
+                          await processLoggedInUser(uid, trimmedEmail, linkedUser);
+                      } else {
+                          setError("User profile not properly initialized. Please contact support.");
+                      }
                   }
              } catch (fetchErr) {
                  console.error("Profile Fetch Error:", fetchErr);
@@ -578,9 +644,9 @@ const LoginPage: React.FC = () => {
              }
         }
         setIsLoading(false);
-    } catch (authError: unknown) {
-        console.error("Login Error:", authError);
-        setError((authError as Error).message || "Invalid credentials. Please try again.");
+    } catch (err: unknown) {
+        console.error("Login Error:", err);
+        setError((err as Error).message || "Login failed. Please check your credentials.");
         setIsLoading(false);
     }
   };
@@ -738,8 +804,14 @@ const LoginPage: React.FC = () => {
       setSuccessMsg('');
       setIsLoading(true);
       try {
-          await auth.sendPasswordResetEmail(email.trim().toLowerCase());
-          setSuccessMsg("Reset link sent! Please check your email inbox.");
+          const inputIdentifier = email.trim().toLowerCase();
+          const targetEmail = await resolveTargetEmail(inputIdentifier);
+          await auth.sendPasswordResetEmail(targetEmail);
+          setSuccessMsg(
+              inputIdentifier !== targetEmail 
+                  ? `Reset link sent to ${targetEmail} (account for ${inputIdentifier})! Please check your email inbox.`
+                  : "Reset link sent! Please check your email inbox."
+          );
       } catch (err: unknown) {
           setError((err as Error).message || "Failed to send reset email.");
       } finally {
@@ -1098,6 +1170,8 @@ const LoginPage: React.FC = () => {
               const orgRef = db.collection('organizations').doc();
               const orgId = orgRef.id;
 
+              const effectiveSalesRepId = salesRepId || localStorage.getItem('tt_sales_rep_id') || undefined;
+
               const newOrgData: Organization = {
                   id: orgId,
                   name: businessName.trim() || 'New Organization',
@@ -1111,6 +1185,7 @@ const LoginPage: React.FC = () => {
                   isFreeAccess: isValidPromo,
                   promoCode: isValidPromo ? promoCode.toUpperCase() : null,
                   unlockAllFeatures: selectedPlan === 'enterprise',
+                  salesRepId: effectiveSalesRepId,
                   enabledPanels: {
                       inventory: true,
                       marketing: true,
@@ -1153,13 +1228,34 @@ const LoginPage: React.FC = () => {
               batch.set(cleanUndefinedFields(orgRef), newOrgData);
               batch.set(cleanUndefinedFields(db.collection('users')).doc(user.uid), newUserProfile); 
               await batch.commit();
+
+              // Auto-sync sales lead status if referred by sales rep
+              if (effectiveSalesRepId) {
+                  try {
+                      const matchedLeads = await db.collection('platformLeads')
+                          .where('repId', '==', effectiveSalesRepId)
+                          .where('email', '==', normalizedEmail)
+                          .get();
+                      if (!matchedLeads.empty) {
+                          matchedLeads.docs.forEach(d => {
+                              d.ref.update(cleanUndefinedFields({ 
+                                  status: 'Closed Won', 
+                                  organizationId: orgId, 
+                                  updatedAt: new Date().toISOString() 
+                              }));
+                          });
+                      }
+                  } catch (leadErr) {
+                      console.warn("Failed to auto-update sales lead status:", leadErr);
+                  }
+              }
               
               // EMAIL NOTIFICATION TO PLATFORM
               await db.collection('mail').add(cleanUndefinedFields({
                   to: ['platform@tektrakker.com', 'ryanvavrecan@gmail.com'],
                   message: {
                       subject: `[New Organization] ${newOrgData.name} ${isValidPromo ? '(Promo Bypass)' : '(Paid)'}`,
-                      text: `A new organization has signed up.\n\nOrg Name: ${newOrgData.name}\nAdmin: ${newUserProfile.firstName} ${newUserProfile.lastName}\nEmail: ${normalizedEmail}\nPlan: ${selectedPlan}\nPayment Info Collected: ${!isValidPromo ? 'YES' : 'NO (Promo Code: ' + promoCode + ', Duration: ' + promoDurationMonths + 'mo)'}\nSource: Public Site Registration`
+                      text: `A new organization has signed up.\n\nOrg Name: ${newOrgData.name}\nAdmin: ${newUserProfile.firstName} ${newUserProfile.lastName}\nEmail: ${normalizedEmail}\nPlan: ${selectedPlan}\nSales Rep ID: ${effectiveSalesRepId || 'None (Direct/Organic)'}\nPayment Info Collected: ${!isValidPromo ? 'YES' : 'NO (Promo Code: ' + promoCode + ', Duration: ' + promoDurationMonths + 'mo)'}\nSource: Public Site Registration`
                   },
                   organizationId: 'platform',
                   type: 'SystemAlert',

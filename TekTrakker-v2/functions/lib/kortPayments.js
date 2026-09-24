@@ -72,6 +72,26 @@ const normalizeCountryCode = (country) => {
     }
     return 'US';
 };
+const cleanUndefinedFields = (obj, seen = new WeakSet()) => {
+    if (!obj || typeof obj !== 'object')
+        return obj;
+    if (seen.has(obj))
+        return obj;
+    seen.add(obj);
+    if (Array.isArray(obj)) {
+        return obj.map(v => cleanUndefinedFields(v, seen));
+    }
+    const cleaned = {};
+    for (const key of Object.keys(obj)) {
+        const value = obj[key];
+        if (value !== undefined) {
+            cleaned[key] = typeof value === 'object' && value !== null && !(value instanceof Date)
+                ? cleanUndefinedFields(value, seen)
+                : value;
+        }
+    }
+    return cleaned;
+};
 exports.createKortPaymentIntent = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).https.onCall(async (data, _context) => {
     const { amount, currency, organizationId, metadata } = data;
     if (!amount) {
@@ -504,7 +524,10 @@ async function resolveJobIdFromFallback(db, eventData, allowedInvoiceStatuses = 
             const job = doc.data();
             if (job.invoice && allowedInvoiceStatuses.includes(job.invoice.status)) {
                 const jobAmount = job.invoice.totalAmount || job.invoice.amount || 0;
-                if (Math.abs(jobAmount - amount) < 0.02) {
+                const depositAmount = job.depositAmount || job.depositRequired || job.invoice.depositAmount || job.invoice.depositRequired || 0;
+                const matchesTotal = Math.abs(jobAmount - amount) < 0.05;
+                const matchesDeposit = depositAmount > 0 && Math.abs(depositAmount - amount) < 0.05;
+                if (matchesTotal || matchesDeposit) {
                     const jobCustomerName = (job.customerName || '').trim().toLowerCase();
                     const nameWords = billingName.split(/\s+/).filter((w) => w.length > 2);
                     const jobWords = jobCustomerName.split(/\s+/).filter((w) => w.length > 2);
@@ -582,16 +605,181 @@ exports.tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhook
             }
             if (jobId && jobId !== 'unknown') {
                 const amountDollars = eventData.amount ? eventData.amount / 100 : 0;
-                const updatePayload = {
-                    'invoice.status': 'Paid',
-                    'invoice.paidDate': new Date().toISOString(),
-                    'invoice.paymentIntentId': eventData.id
-                };
-                if (amountDollars > 0) {
-                    updatePayload['invoice.amountPaid'] = amountDollars;
+                const processingFee = Number(metadata.processingFee) || 0;
+                const tipAmount = Number(metadata.tipAmount) || 0;
+                const paymentMethodType = eventData.payment_method?.type || metadata.paymentMethodType || 'card';
+                const feeName = paymentMethodType === 'ach_debit' ? 'ACH Bank Transfer Fee' : 'Credit Card Processing Fee';
+                const jobDocRef = db.collection('jobs').doc(jobId);
+                const jobDocSnap = await jobDocRef.get();
+                const jobData = jobDocSnap.data() || {};
+                // Idempotency Gate: verify if this payment intent has already been applied
+                const processedIntents = Array.isArray(jobData.invoice?.processedPaymentIntentIds)
+                    ? [...jobData.invoice.processedPaymentIntentIds]
+                    : (Array.isArray(jobData.processedPaymentIntentIds) ? [...jobData.processedPaymentIntentIds] : []);
+                if (processedIntents.includes(eventData.id) || (jobData.invoice?.paymentIntentId === eventData.id && jobData.invoice?.status === 'Paid')) {
+                    functions.logger.info(`[Idempotency] Payment intent ${eventData.id} already processed for job ${jobId}. Skipping duplicate crediting.`);
+                    res.status(200).send('Payment already processed (idempotent)');
+                    return;
                 }
-                await db.collection('jobs').doc(jobId).update(updatePayload);
-                functions.logger.info(`Job ${jobId} marked as Paid via webhook with intent ${eventData.id}.`);
+                // Current items & check for duplicate fee/tip item to prevent duplicate line items
+                const currentItems = Array.isArray(jobData.invoice?.items) ? [...jobData.invoice.items] : [];
+                let updatedItems = [...currentItems];
+                let feeAdded = false;
+                let tipAdded = false;
+                if (tipAmount > 0) {
+                    const existingTipItem = updatedItems.find((it) => (it.paymentIntentId === eventData.id && it.type === 'Tip') ||
+                        it.id === `tip-${eventData.id}`);
+                    if (!existingTipItem) {
+                        const tipItem = {
+                            id: `tip-${eventData.id}`,
+                            paymentIntentId: eventData.id,
+                            description: 'Technician Tip',
+                            name: 'Technician Tip',
+                            quantity: 1,
+                            unitPrice: tipAmount,
+                            total: tipAmount,
+                            type: 'Tip',
+                            taxable: false
+                        };
+                        updatedItems.push(tipItem);
+                        tipAdded = true;
+                    }
+                }
+                if (processingFee > 0) {
+                    const existingFeeItem = updatedItems.find((it) => it.paymentIntentId === eventData.id ||
+                        it.id === `fee-${eventData.id}` ||
+                        (it.type === 'Fee' && Number(it.total) === processingFee && (it.paymentIntentId === eventData.id || it.paymentIntentId === metadata.paymentIntentId)));
+                    if (!existingFeeItem) {
+                        const feeItem = {
+                            id: `fee-${eventData.id}`,
+                            paymentIntentId: eventData.id,
+                            description: feeName,
+                            name: feeName,
+                            quantity: 1,
+                            unitPrice: processingFee,
+                            total: processingFee,
+                            type: 'Fee',
+                            taxable: false
+                        };
+                        updatedItems.push(feeItem);
+                        feeAdded = true;
+                    }
+                }
+                let currentTotal = Number(jobData.invoice?.totalAmount || jobData.invoice?.amount || jobData.total || 0);
+                const additionalTotal = (feeAdded ? processingFee : 0) + (tipAdded ? tipAmount : 0);
+                let updatedTotal = additionalTotal > 0 ? Math.round((currentTotal + additionalTotal + Number.EPSILON) * 100) / 100 : currentTotal;
+                if (updatedTotal === 0 && jobData.invoice?.grandTotal) {
+                    updatedTotal = additionalTotal > 0 ? Math.round((Number(jobData.invoice.grandTotal) + additionalTotal + Number.EPSILON) * 100) / 100 : Number(jobData.invoice.grandTotal);
+                }
+                const prevPaid = Number(jobData.invoice?.amountPaid || jobData.paidAmount || 0);
+                const newPaid = Math.round((prevPaid + amountDollars + Number.EPSILON) * 100) / 100;
+                const isFullyPaid = updatedTotal > 0 ? (newPaid >= updatedTotal - 0.05) : true;
+                const reqDeposit = Number(jobData.depositRequired || jobData.depositAmount || jobData.invoice?.depositRequired || jobData.invoice?.depositAmount || 0);
+                const isDepositPayment = reqDeposit > 0 && !jobData.depositPaid;
+                // Update processed payment intent IDs and itemized transaction ledger
+                const updatedProcessedIntents = Array.from(new Set([...processedIntents, eventData.id]));
+                const newPaymentRecord = {
+                    id: eventData.id,
+                    paymentIntentId: eventData.id,
+                    amount: amountDollars,
+                    baseAmount: Math.max(0, Math.round((amountDollars - processingFee - tipAmount) * 100) / 100),
+                    fee: processingFee,
+                    tip: tipAmount,
+                    method: paymentMethodType === 'ach_debit' ? 'ACH' : 'Credit Card',
+                    date: new Date().toISOString(),
+                    status: 'succeeded',
+                    createdAt: new Date().toISOString()
+                };
+                const currentPayments = Array.isArray(jobData.invoice?.payments)
+                    ? [...jobData.invoice.payments]
+                    : (Array.isArray(jobData.payments) ? [...jobData.payments] : []);
+                const updatedPayments = [...currentPayments.filter((p) => p.id !== eventData.id && p.paymentIntentId !== eventData.id), newPaymentRecord];
+                const updatePayload = {
+                    'invoice.status': isFullyPaid ? 'Paid' : 'Partially Paid',
+                    'invoice.financialStatus': isFullyPaid ? 'PAID' : (isDepositPayment ? 'DEPOSIT_PAID' : 'PARTIALLY_PAID'),
+                    'invoice.paidDate': new Date().toISOString(),
+                    'invoice.paymentIntentId': eventData.id,
+                    paidAmount: newPaid,
+                    'invoice.amountPaid': newPaid,
+                    'invoice.balanceDue': Math.max(0, Math.round((updatedTotal - newPaid + Number.EPSILON) * 100) / 100),
+                    'invoice.balanceRemaining': Math.max(0, Math.round((updatedTotal - newPaid + Number.EPSILON) * 100) / 100),
+                    processedPaymentIntentIds: updatedProcessedIntents,
+                    'invoice.processedPaymentIntentIds': updatedProcessedIntents,
+                    payments: updatedPayments,
+                    'invoice.payments': updatedPayments
+                };
+                if (tipAmount > 0) {
+                    const prevJobTip = Number(jobData.tipAmount || jobData.invoice?.tipAmount || 0);
+                    updatePayload.tipAmount = Math.round((prevJobTip + tipAmount + Number.EPSILON) * 100) / 100;
+                    updatePayload['invoice.tipAmount'] = updatePayload.tipAmount;
+                }
+                if (feeAdded || tipAdded) {
+                    updatePayload['invoice.items'] = updatedItems;
+                    updatePayload['invoice.totalAmount'] = updatedTotal;
+                    updatePayload['invoice.amount'] = updatedTotal;
+                    if (jobData.invoice?.grandTotal !== undefined) {
+                        updatePayload['invoice.grandTotal'] = updatedTotal;
+                    }
+                }
+                if (isDepositPayment) {
+                    updatePayload.depositPaid = true;
+                    updatePayload.depositPaidAmount = amountDollars;
+                    updatePayload.depositPaidDate = new Date().toISOString();
+                    updatePayload.depositPaymentIntentId = eventData.id;
+                    updatePayload['invoice.depositPaid'] = true;
+                    updatePayload['invoice.depositPaidAmount'] = amountDollars;
+                    updatePayload['invoice.depositPaidDate'] = new Date().toISOString();
+                }
+                await jobDocRef.update(cleanUndefinedFields(updatePayload));
+                functions.logger.info(`Job ${jobId} updated via webhook with intent ${eventData.id}. Status: ${updatePayload['invoice.status']}, FinancialStatus: ${updatePayload['invoice.financialStatus']}`);
+                // Also update top-level invoice document if exists
+                const invId = jobData.invoice?.id || jobData.invoiceNumber;
+                if (invId) {
+                    const invUpdate = {
+                        status: updatePayload['invoice.status'],
+                        financialStatus: updatePayload['invoice.financialStatus'],
+                        amountPaid: newPaid,
+                        balanceDue: Math.max(0, Math.round((updatedTotal - newPaid + Number.EPSILON) * 100) / 100),
+                        balanceRemaining: Math.max(0, Math.round((updatedTotal - newPaid + Number.EPSILON) * 100) / 100),
+                        paidDate: new Date().toISOString(),
+                        paymentIntentId: eventData.id,
+                        processedPaymentIntentIds: updatedProcessedIntents,
+                        payments: updatedPayments
+                    };
+                    if (tipAmount > 0) {
+                        invUpdate.tipAmount = updatePayload.tipAmount;
+                    }
+                    if (feeAdded || tipAdded) {
+                        invUpdate.items = updatedItems;
+                        invUpdate.totalAmount = updatedTotal;
+                        invUpdate.amount = updatedTotal;
+                        if (jobData.invoice?.grandTotal !== undefined) {
+                            invUpdate.grandTotal = updatedTotal;
+                        }
+                    }
+                    if (isDepositPayment) {
+                        invUpdate.depositPaid = true;
+                        invUpdate.depositPaidAmount = amountDollars;
+                        invUpdate.depositPaidDate = new Date().toISOString();
+                    }
+                    else if (jobData.depositPaid || jobData.invoice?.depositPaid) {
+                        invUpdate.depositPaid = true;
+                        invUpdate.depositPaidAmount = jobData.invoice?.depositPaidAmount || jobData.depositPaidAmount || undefined;
+                        invUpdate.depositPaidDate = jobData.invoice?.depositPaidDate || jobData.depositPaidDate || undefined;
+                    }
+                    await db.collection('invoices').doc(invId).update(cleanUndefinedFields(invUpdate)).catch((e) => {
+                        functions.logger.warn(`Failed to update top-level invoice ${invId}:`, e);
+                    });
+                }
+                // Also update proposal if deposit paid
+                if (isDepositPayment && jobData.proposalId) {
+                    await db.collection('proposals').doc(jobData.proposalId).update({
+                        depositPaid: true,
+                        depositReceived: true,
+                        depositPaidAmount: amountDollars,
+                        depositPaidDate: new Date().toISOString()
+                    }).catch(() => { });
+                }
                 // Queue receipt email automatically
                 try {
                     const jobDoc = await db.collection('jobs').doc(jobId).get();
@@ -671,30 +859,24 @@ exports.tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhook
                 try {
                     const jobDoc = await db.collection('jobs').doc(jobId).get();
                     const jobData = jobDoc.exists ? (jobDoc.data() || {}) : {};
-                    const rawItems = jobData.invoice?.items || [];
-                    const isPaymentFee = (item) => {
-                        if (!item)
-                            return false;
-                        const nameStr = (item.name || item.description || '').toLowerCase().trim();
-                        return nameStr.includes('processing fee') || nameStr.includes('bank transfer fee');
-                    };
-                    const cleanItems = rawItems.filter((item) => !isPaymentFee(item));
-                    const cleanTotal = Math.round(cleanItems.reduce((sum, item) => sum + (Number(item.total) || 0), 0) * 100) / 100;
-                    const resetTotal = cleanTotal > 0 ? cleanTotal : (jobData.invoice?.totalAmount || 0);
+                    const prevPaid = Number(jobData.invoice?.amountPaid || jobData.paidAmount || 0);
+                    const failedStatus = prevPaid > 0 ? 'Partially Paid' : 'Failed';
                     await db.collection('jobs').doc(jobId).update({
-                        'invoice.status': 'Failed',
-                        'invoice.amountPaid': 0,
-                        'invoice.items': cleanItems,
-                        'invoice.totalAmount': resetTotal,
-                        'invoice.amount': resetTotal,
+                        'invoice.status': failedStatus,
                         'invoice.failedDate': new Date().toISOString(),
                         'invoice.lastFailureReason': failureReason
                     });
+                    const invId = jobData.invoice?.id || jobData.invoiceNumber;
+                    if (invId) {
+                        await db.collection('invoices').doc(invId).update({
+                            status: failedStatus,
+                            failedDate: new Date().toISOString(),
+                            lastFailureReason: failureReason
+                        }).catch(() => { });
+                    }
                 }
                 catch (updateErr) {
                     await db.collection('jobs').doc(jobId).update({
-                        'invoice.status': 'Failed',
-                        'invoice.amountPaid': 0,
                         'invoice.failedDate': new Date().toISOString(),
                         'invoice.lastFailureReason': failureReason
                     });
@@ -717,7 +899,9 @@ exports.tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhook
                             const orgName = orgDoc.exists ? orgDoc.data()?.name : 'Service Provider';
                             const orgEmail = orgDoc.exists ? (orgDoc.data()?.email || 'noreply@tektrakker.com') : 'noreply@tektrakker.com';
                             const invoiceId = jobData.invoice?.id || jobId;
-                            const totalAmount = jobData.invoice?.totalAmount || jobData.invoice?.amount || (eventData.amount ? eventData.amount / 100 : 0);
+                            const custPrevPaid = Number(jobData.invoice?.amountPaid || jobData.paidAmount || 0);
+                            const remainingBalance = Math.max(0, Math.round(((jobData.invoice?.totalAmount || jobData.invoice?.amount || 0) - custPrevPaid + Number.EPSILON) * 100) / 100);
+                            const totalAmount = remainingBalance > 0 ? remainingBalance : (jobData.invoice?.totalAmount || jobData.invoice?.amount || (eventData.amount ? eventData.amount / 100 : 0));
                             const paymentLink = `https://tektrakker.web.app/#/invoice/${jobId}`;
                             await db.collection('mail_queue').add({
                                 to: customerEmail,
@@ -777,11 +961,100 @@ exports.tilledWebhook = functions.runWith({ secrets: [kortSecretKey, kortWebhook
                 jobId = await resolveJobIdFromFallback(db, eventData, ['Paid', 'Unpaid', 'Partially Paid']) || undefined;
             }
             if (jobId && jobId !== 'unknown') {
-                await db.collection('jobs').doc(jobId).update({
-                    'invoice.status': 'Refunded',
-                    'invoice.refundedDate': new Date().toISOString()
-                });
-                functions.logger.info(`Job ${jobId} marked as Refunded via webhook.`);
+                const jobRef = db.collection('jobs').doc(jobId);
+                const jobSnap = await jobRef.get();
+                const jobData = jobSnap.data() || {};
+                const invData = jobData.invoice || {};
+                const existingRefunds = Array.isArray(invData.refunds)
+                    ? [...invData.refunds]
+                    : (Array.isArray(jobData.refunds) ? [...jobData.refunds] : []);
+                const webhookRefunds = Array.isArray(eventData.refunds?.data) ? eventData.refunds.data : [];
+                let updatedRefunds = [...existingRefunds];
+                if (webhookRefunds.length > 0) {
+                    for (const r of webhookRefunds) {
+                        const rId = r.id;
+                        const rAmount = r.amount ? r.amount / 100 : 0;
+                        if (!updatedRefunds.some(ex => ex.id === rId || ex.refundId === rId)) {
+                            updatedRefunds.push({
+                                id: rId,
+                                refundId: rId,
+                                chargeId: eventData.id,
+                                paymentIntentId: eventData.payment_intent_id,
+                                amount: rAmount,
+                                date: r.created_at ? new Date(r.created_at * 1000).toISOString() : new Date().toISOString(),
+                                reason: r.reason || 'Requested By Customer',
+                                method: 'Credit Card Refund',
+                                reference: rId,
+                                status: r.status || 'succeeded'
+                            });
+                        }
+                    }
+                }
+                else if (eventData.amount_refunded) {
+                    const refundAmt = eventData.amount_refunded / 100;
+                    const alreadyTracked = updatedRefunds.some(ex => ex.chargeId === eventData.id ||
+                        (ex.paymentIntentId === eventData.payment_intent_id && Math.abs(Number(ex.amount) - refundAmt) < 0.01));
+                    if (!alreadyTracked) {
+                        const rId = `ref-${eventData.id}-${Date.now()}`;
+                        updatedRefunds.push({
+                            id: rId,
+                            refundId: rId,
+                            chargeId: eventData.id,
+                            paymentIntentId: eventData.payment_intent_id,
+                            amount: refundAmt,
+                            date: new Date().toISOString(),
+                            reason: 'Requested By Customer',
+                            method: 'Credit Card Refund',
+                            reference: eventData.id,
+                            status: 'succeeded'
+                        });
+                    }
+                }
+                const totalRefunded = updatedRefunds.reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+                const grandTotal = Number(invData.grandTotal || invData.totalAmount || jobData.total || 0);
+                const grossPaid = Number(invData.amountPaid || jobData.paidAmount || 0);
+                const netPaid = Math.max(0, Math.round((grossPaid - totalRefunded + Number.EPSILON) * 100) / 100);
+                const balanceDue = Math.max(0, Math.round((grandTotal - netPaid + Number.EPSILON) * 100) / 100);
+                let newStatus = 'Refunded';
+                let newFinancialStatus = 'REFUNDED';
+                if (grandTotal > 0 && netPaid >= grandTotal - 0.05) {
+                    newStatus = 'Paid';
+                    newFinancialStatus = 'PAID';
+                }
+                else if (netPaid > 0) {
+                    newStatus = 'Partially Paid';
+                    newFinancialStatus = 'PARTIALLY_PAID';
+                }
+                const jobUpdatePayload = {
+                    'invoice.status': newStatus,
+                    'invoice.financialStatus': newFinancialStatus,
+                    'invoice.refundedDate': new Date().toISOString(),
+                    'invoice.amountRefunded': totalRefunded,
+                    'invoice.netPaid': netPaid,
+                    'invoice.balanceDue': balanceDue,
+                    'invoice.balanceRemaining': balanceDue,
+                    'invoice.refunds': updatedRefunds,
+                    refunds: updatedRefunds,
+                    amountRefunded: totalRefunded,
+                    netPaid: netPaid
+                };
+                await jobRef.update(cleanUndefinedFields(jobUpdatePayload));
+                functions.logger.info(`Job ${jobId} updated via charge.refunded webhook. Status: ${newStatus}, FinancialStatus: ${newFinancialStatus}, NetPaid: ${netPaid}`);
+                const invId = invData.id || jobData.invoiceNumber;
+                if (invId) {
+                    await db.collection('invoices').doc(invId).update(cleanUndefinedFields({
+                        status: newStatus,
+                        financialStatus: newFinancialStatus,
+                        refundedDate: new Date().toISOString(),
+                        amountRefunded: totalRefunded,
+                        netPaid: netPaid,
+                        balanceDue: balanceDue,
+                        balanceRemaining: balanceDue,
+                        refunds: updatedRefunds
+                    })).catch((e) => {
+                        functions.logger.warn(`Failed to update top-level invoice ${invId} on refund:`, e);
+                    });
+                }
             }
             else {
                 functions.logger.warn(`Could not determine jobId for refunded charge ${eventData.id}`);
@@ -992,6 +1265,108 @@ exports.submitDisputeEvidence = functions.runWith({ secrets: [kortSecretKey, kor
         throw new functions.https.HttpsError('internal', error.message || 'Evidence submission failed.');
     }
 });
+/**
+ * Evaluates whether a sales rep is entitled to residual commissions on recurring billing,
+ * applying the 25% (Y1) / 5% (Y2) / 3% (Y3+ Lifetime) model, along with:
+ * 1. Exclusion of variable metered usage (0% on storage, AI tokens, SMS, voice).
+ * 2. Active status & quarterly minimum quota requirement for Year 3+ (3% pauses if below quota).
+ * 3. 180-day underperformance cliff and 60-day platform abandonment (permanent forfeiture to House).
+ * 4. Automatic prospective reactivation if an underperforming rep returns to quota.
+ */
+async function evaluateRecurringCommission(db, salesRepId, orgId, orgData, fixedSubscriptionTotal, today) {
+    if (!salesRepId || fixedSubscriptionTotal <= 0)
+        return null;
+    try {
+        const repDoc = await db.collection('users').doc(salesRepId).get();
+        if (!repDoc.exists)
+            return null;
+        const repData = repDoc.data() || {};
+        // Check if permanently forfeited / inactive
+        if (repData.salesRepStatus === 'Forfeited' || repData.salesRepStatus === 'Inactive') {
+            functions.logger.info(`Sales rep ${salesRepId} is marked ${repData.salesRepStatus}. Residual forfeited to House.`);
+            return null;
+        }
+        const rulesDoc = await db.collection('settings').doc('commission_rules').get();
+        const globalRules = rulesDoc.exists ? rulesDoc.data() : {};
+        const effectiveRules = repData.customCommissionSettings || globalRules;
+        const baseRate = effectiveRules.baseRate ?? 0.25;
+        const year2Rate = (effectiveRules.year2Rate !== undefined ? effectiveRules.year2Rate : effectiveRules.renewalRate) ?? 0.05;
+        const lifetimeRate = effectiveRules.lifetimeRate ?? 0.03;
+        const minDeals = effectiveRules.quarterlyMinDeals ?? 3;
+        const cliffDays = effectiveRules.inactivityCliffDays ?? 180;
+        const abandonDays = effectiveRules.abandonmentDays ?? 60;
+        // Calculate account tenure in months
+        const orgCreatedAt = orgData.createdAt ? new Date(orgData.createdAt) : today;
+        const ageInMonths = Math.max(0, (today.getFullYear() - orgCreatedAt.getFullYear()) * 12 + (today.getMonth() - orgCreatedAt.getMonth()));
+        let rateUsed = baseRate;
+        let tier = 'Year 1 Acquisition';
+        if (ageInMonths < 12) {
+            rateUsed = baseRate;
+            tier = 'Year 1 Acquisition';
+        }
+        else if (ageInMonths < 24) {
+            rateUsed = year2Rate;
+            tier = 'Year 2 Renewal';
+        }
+        else {
+            rateUsed = lifetimeRate;
+            tier = 'Year 3+ Lifetime';
+        }
+        // Evaluate Quota & Activity Standards
+        const ninetyDaysAgo = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
+        const oneEightyDaysAgo = new Date(today.getTime() - cliffDays * 24 * 60 * 60 * 1000).toISOString();
+        const abandonThreshold = new Date(today.getTime() - abandonDays * 24 * 60 * 60 * 1000).toISOString();
+        // Check trailing quarter production
+        const trailingQuarterSnap = await db.collection('platformLeads')
+            .where('repId', '==', salesRepId)
+            .where('status', '==', 'Closed Won')
+            .where('updatedAt', '>=', ninetyDaysAgo)
+            .get();
+        const quarterlyWins = trailingQuarterSnap.size;
+        // Check 180-day production & 60-day platform activity for abandonment
+        const semiAnnualSnap = await db.collection('platformLeads')
+            .where('repId', '==', salesRepId)
+            .where('status', '==', 'Closed Won')
+            .where('updatedAt', '>=', oneEightyDaysAgo)
+            .get();
+        const lastActivity = repData.lastSalesActivityAt || repData.lastSalesLoginAt || repData.hireDate || orgCreatedAt.toISOString();
+        if (semiAnnualSnap.empty && lastActivity < abandonThreshold) {
+            // Abandonment or 180-day cliff reached: Permanently forfeit!
+            await repDoc.ref.update({ salesRepStatus: 'Forfeited' });
+            functions.logger.warn(`Sales rep ${salesRepId} automatically marked Forfeited (zero sales in ${cliffDays} days and zero activity for ${abandonDays} days).`);
+            return null;
+        }
+        // If Year 3+ (lifetime residual), enforce the minimum quarterly quota gate
+        if (tier === 'Year 3+ Lifetime') {
+            if (quarterlyWins < minDeals || repData.salesRepStatus === 'Suspended') {
+                if (repData.salesRepStatus !== 'Suspended') {
+                    await repDoc.ref.update({ salesRepStatus: 'Suspended' });
+                }
+                functions.logger.info(`Sales rep ${salesRepId} is Suspended (achieved ${quarterlyWins}/${minDeals} deals in trailing quarter). Year 3+ residual paused.`);
+                return null;
+            }
+            // If previously suspended but now meeting quota, restore to Active prospectively!
+            if (repData.salesRepStatus === 'Suspended' && quarterlyWins >= minDeals) {
+                await repDoc.ref.update({ salesRepStatus: 'Active' });
+                functions.logger.info(`Sales rep ${salesRepId} returned to quota (${quarterlyWins} deals). Reactivated to Active.`);
+            }
+        }
+        const commAmount = Number((fixedSubscriptionTotal * rateUsed).toFixed(2));
+        if (commAmount <= 0)
+            return null;
+        return {
+            shouldPay: true,
+            commAmount,
+            rateUsed,
+            tier,
+            notes: `Recurring monthly ${tier} commission at ${(rateUsed * 100).toFixed(1)}% (metered usage strictly excluded)`
+        };
+    }
+    catch (err) {
+        functions.logger.error(`Error evaluating recurring commission for rep ${salesRepId}:`, err);
+        return null;
+    }
+}
 exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, kortAccountId] }).pubsub.schedule('0 0 * * *').timeZone('America/New_York').onRun(async (context) => {
     const secretKey = kortSecretKey.value();
     const partnerAccountId = kortAccountId.value();
@@ -1005,7 +1380,6 @@ exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, k
         // Fetch platform settings to determine prices
         const settingsDoc = await db.collection('platformSettings').doc('global').get();
         const platformSettings = settingsDoc.exists ? settingsDoc.data() : undefined;
-        const monthlyFee = platformSettings?.subscriptionFee || 7.00; // default 7$
         const aiWorkerFee = platformSettings?.virtualWorkerFee || 49.99; // default 49.99$
         // Find orgs that are due for billing and have a vaulted payment method
         const orgsSnap = await db.collection('organizations')
@@ -1024,16 +1398,122 @@ exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, k
         functions.logger.info(`Found ${dueOrgs.length} organizations due for billing today.`);
         for (const doc of dueOrgs) {
             const orgData = doc.data();
-            // Calculate amount
-            let totalAmount = monthlyFee;
-            if (orgData.plan && ['starter', 'growth', 'enterprise'].includes(orgData.plan) && orgData.subscriptionStatus === 'active') {
-                totalAmount = 0;
-            }
+            // Check organization-specific custom pricing overrides
+            const cp = orgData.customPricing;
+            // Calculate base amount dynamically from organization custom override or platformSettings.plans
+            const planKey = (orgData.plan || 'starter').toLowerCase();
+            const planConfig = platformSettings?.plans?.[planKey];
+            const defaultBasePlanCost = planConfig?.monthly !== undefined
+                ? Number(planConfig.monthly)
+                : (planKey === 'enterprise' ? 749 : planKey === 'business' ? 399 : planKey === 'growth' ? 249 : planKey === 'payments_only' ? 10 : 49);
+            const basePlanCost = (cp?.customMonthlyPlanFee !== undefined && cp?.customMonthlyPlanFee !== null && Number(cp.customMonthlyPlanFee) > 0)
+                ? Number(cp.customMonthlyPlanFee)
+                : defaultBasePlanCost;
+            const effectiveAiWorkerFee = (cp?.customVirtualWorkerFee !== undefined && cp?.customVirtualWorkerFee !== null)
+                ? Number(cp.customVirtualWorkerFee)
+                : aiWorkerFee;
+            const defaultAiVoiceFee = platformSettings?.aiVoiceAssistantMonthlyFee !== undefined
+                ? Number(platformSettings.aiVoiceAssistantMonthlyFee)
+                : 5.00;
+            const effectiveAiVoiceFee = (cp?.customAiVoiceAssistantMonthlyFee !== undefined && cp?.customAiVoiceAssistantMonthlyFee !== null)
+                ? Number(cp.customAiVoiceAssistantMonthlyFee)
+                : defaultAiVoiceFee;
+            const userFee = (cp?.customExcessUserFee !== undefined && cp?.customExcessUserFee !== null)
+                ? Number(cp.customExcessUserFee)
+                : (platformSettings?.excessUserFee !== undefined ? platformSettings.excessUserFee : 25);
+            const divFee = (cp?.customDivisionFee !== undefined && cp?.customDivisionFee !== null)
+                ? Number(cp.customDivisionFee)
+                : (platformSettings?.divisionFee !== undefined ? platformSettings.divisionFee : 19.99);
+            let fixedSubscriptionTotal = basePlanCost;
             if (orgData.virtualWorkerEnabled && orgData.virtualWorkerBillingType !== 'lifetime') {
-                totalAmount += aiWorkerFee;
+                fixedSubscriptionTotal += effectiveAiWorkerFee;
             }
-            const userFee = platformSettings?.excessUserFee !== undefined ? platformSettings.excessUserFee : 25;
-            const divFee = platformSettings?.divisionFee !== undefined ? platformSettings.divisionFee : 79;
+            if (orgData.aiVoiceAssistantEnabled && orgData.aiVoiceAssistantBillingType !== 'lifetime') {
+                fixedSubscriptionTotal += effectiveAiVoiceFee;
+            }
+            fixedSubscriptionTotal += (orgData.additionalUserSlots || 0) * userFee;
+            fixedSubscriptionTotal += (orgData.additionalDivisionsSlots || 0) * divFee;
+            if (orgData.customDiscountPct && orgData.customDiscountPct > 0) {
+                fixedSubscriptionTotal = Math.max(0, fixedSubscriptionTotal * (1 - (orgData.customDiscountPct / 100)));
+            }
+            fixedSubscriptionTotal = Number(fixedSubscriptionTotal.toFixed(2));
+            // Calculate metered pay-as-you-go usage (Storage, AI tokens, SMS, Voice calls)
+            const isExemptAll = orgData.isComplimentary || orgData.isFreeAccess;
+            const isTwilioExempt = isExemptAll || orgData.billingExemptions?.twilio;
+            const isAiExempt = isExemptAll || orgData.billingExemptions?.ai;
+            const isStorageExempt = isExemptAll || orgData.billingExemptions?.storage;
+            // 1. Storage Overage
+            let storageOverageCost = 0;
+            let billableStorageGB = 0;
+            try {
+                const storageDoc = await db.collection('storageUsage').doc(doc.id).get();
+                const storageBytes = storageDoc.exists ? (storageDoc.data()?.totalBytesUsed || 0) : 0;
+                const storageGB = storageBytes / (1024 * 1024 * 1024);
+                const includedStorageGB = cp?.customIncludedStorageGB ?? planConfig?.includedStorageGB ?? (planKey === 'enterprise' ? 60 : planKey === 'business' ? 20 : planKey === 'growth' ? 10 : 1);
+                const storageOverageRate = cp?.customStorageOverageRate ?? planConfig?.storageOverageRatePerGB ?? 0.10;
+                billableStorageGB = Math.max(0, storageGB - includedStorageGB);
+                storageOverageCost = isStorageExempt ? 0 : Number((billableStorageGB * storageOverageRate).toFixed(2));
+            }
+            catch (err) {
+                functions.logger.warn(`Failed to fetch storage usage for ${doc.id}:`, err);
+            }
+            // 2. AI Tokens Overage
+            let aiOverageCost = 0;
+            let billableAiTokens = 0;
+            const currentYearMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            try {
+                const aiDoc = await db.collection('aiUsage').doc(doc.id).get();
+                const aiData = aiDoc.exists ? aiDoc.data() : undefined;
+                const monthlyTokens = aiData?.monthlyUsage?.[currentYearMonth]?.totalTokensUsed || 0;
+                const includedTokens = cp?.customIncludedAiTokens ?? planConfig?.aiTokensPerMonth ?? (planKey === 'enterprise' ? 15000000 : planKey === 'business' ? 5000000 : planKey === 'growth' ? 3000000 : 1000000);
+                billableAiTokens = includedTokens > 0 ? Math.max(0, monthlyTokens - includedTokens) : 0;
+                const aiOverageRatePer1k = cp?.customAiTokenOverageRate ?? platformSettings?.aiTokenOverageRatePer1k ?? 0.002;
+                aiOverageCost = isAiExempt ? 0 : Number(((billableAiTokens / 1000) * aiOverageRatePer1k).toFixed(2));
+            }
+            catch (err) {
+                functions.logger.warn(`Failed to fetch AI usage for ${doc.id}:`, err);
+            }
+            // 3. SMS & Voice Call Usage
+            let smsCost = 0;
+            let smsCount = 0;
+            let standardVoiceMins = 0;
+            let aiVoiceMins = 0;
+            let voiceCost = 0;
+            try {
+                const cycleStart = orgData.lastBillingDate ? new Date(orgData.lastBillingDate) : new Date(today.getFullYear(), today.getMonth(), 1);
+                const messagesSnap = await db.collection('messages')
+                    .where('organizationId', '==', doc.id)
+                    .where('createdAt', '>=', cycleStart.toISOString())
+                    .get();
+                smsCount = messagesSnap.size;
+                const smsRate = cp?.customSmsRate ?? platformSettings?.smsRate ?? 0.02;
+                smsCost = isTwilioExempt ? 0 : Number((smsCount * smsRate).toFixed(2));
+                const callLogsSnap = await db.collection('organizations').doc(doc.id).collection('call_logs')
+                    .where('createdAt', '>=', cycleStart.toISOString())
+                    .get();
+                let stdSecs = 0;
+                let aiSecs = 0;
+                callLogsSnap.forEach(c => {
+                    const cd = c.data();
+                    const dur = parseInt(cd.duration || cd.CallDuration || cd.callDuration || 0, 10) || 0;
+                    if (cd.isAiVoice || cd.assistantHandled || cd.type === 'ai_receptionist') {
+                        aiSecs += dur;
+                    }
+                    else {
+                        stdSecs += dur;
+                    }
+                });
+                standardVoiceMins = Math.ceil(stdSecs / 60);
+                aiVoiceMins = Math.ceil(aiSecs / 60);
+                const voiceRate = cp?.customVoiceRate ?? platformSettings?.voiceRate ?? 0.035;
+                const aiVoiceRate = cp?.customAiVoiceAssistantRate ?? platformSettings?.aiVoiceAssistantRatePerMinute ?? 0.07;
+                voiceCost = isTwilioExempt ? 0 : Number(((standardVoiceMins * voiceRate) + (aiVoiceMins * aiVoiceRate)).toFixed(2));
+            }
+            catch (err) {
+                functions.logger.warn(`Failed to fetch telephony usage for ${doc.id}:`, err);
+            }
+            const meteredTotal = Number((storageOverageCost + aiOverageCost + smsCost + voiceCost).toFixed(2));
+            const totalAmount = Number((fixedSubscriptionTotal + meteredTotal).toFixed(2));
             if (orgData.isFreeAccess) {
                 const nextMonth = new Date(today);
                 nextMonth.setMonth(nextMonth.getMonth() + 1);
@@ -1045,7 +1525,10 @@ exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, k
                 });
                 await db.collection('platformInvoices').add({
                     organizationId: doc.id,
+                    organizationName: orgData.name || 'Organization',
                     amount: 0,
+                    subscriptionAmount: 0,
+                    meteredAmount: 0,
                     date: today.toISOString(),
                     status: 'paid',
                     paymentIntentId: 'free_access_bypass',
@@ -1054,8 +1537,6 @@ exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, k
                 functions.logger.info(`Processed free access renewal for ${doc.id}`);
                 continue;
             }
-            totalAmount += (orgData.additionalUserSlots || 0) * userFee;
-            totalAmount += (orgData.additionalDivisionsSlots || 0) * divFee;
             const totalAmountCents = Math.round(totalAmount * 100);
             const payload = {
                 amount: totalAmountCents,
@@ -1090,19 +1571,61 @@ exports.processAutomatedBilling = functions.runWith({ secrets: [kortSecretKey, k
                         nextMonth.setMonth(nextMonth.getMonth() + 1);
                         await db.collection('organizations').doc(doc.id).update({
                             nextBillingDate: nextMonth.toISOString(),
+                            lastBillingDate: today.toISOString(),
                             subscriptionStatus: 'active',
                             failedPaymentAttempts: 0,
                             lastBillingError: admin.firestore.FieldValue.delete()
                         });
+                        const lineItems = [
+                            { description: `${planKey.toUpperCase()} Plan Subscription`, amount: basePlanCost },
+                            ...(orgData.virtualWorkerEnabled && orgData.virtualWorkerBillingType !== 'lifetime' ? [{ description: 'Virtual AI Worker Automation Suite', amount: effectiveAiWorkerFee }] : []),
+                            ...(orgData.aiVoiceAssistantEnabled && orgData.aiVoiceAssistantBillingType !== 'lifetime' ? [{ description: '24/7 AI Voice Receptionist Subscription', amount: effectiveAiVoiceFee }] : []),
+                            ...((orgData.additionalUserSlots || 0) > 0 ? [{ description: `Additional User Slots (${orgData.additionalUserSlots})`, amount: orgData.additionalUserSlots * userFee }] : []),
+                            ...((orgData.additionalDivisionsSlots || 0) > 0 ? [{ description: `Additional Division Slots (${orgData.additionalDivisionsSlots})`, amount: orgData.additionalDivisionsSlots * divFee }] : []),
+                            ...(storageOverageCost > 0 ? [{ description: `Cloud Storage Overage (${billableStorageGB.toFixed(2)} GB)`, amount: storageOverageCost }] : []),
+                            ...(aiOverageCost > 0 ? [{ description: `AI Token Overage (${Math.round(billableAiTokens / 1000).toLocaleString()}k tokens)`, amount: aiOverageCost }] : []),
+                            ...(smsCost > 0 ? [{ description: `Twilio SMS Usage (${smsCount} msgs)`, amount: smsCost }] : []),
+                            ...(voiceCost > 0 ? [{ description: `Twilio Voice Usage (${standardVoiceMins + aiVoiceMins} mins)`, amount: voiceCost }] : [])
+                        ];
                         await db.collection('platformInvoices').add({
                             organizationId: doc.id,
+                            organizationName: orgData.name || 'Organization',
                             amount: totalAmount,
+                            subscriptionAmount: fixedSubscriptionTotal,
+                            meteredAmount: meteredTotal,
                             date: today.toISOString(),
                             status: 'paid',
                             paymentIntentId: piData.id,
-                            description: 'TekTrakker Monthly Subscription'
+                            description: 'TekTrakker Monthly Subscription & Metered Usage',
+                            lineItems
                         });
-                        functions.logger.info(`Successfully billed ${doc.id} for $${totalAmount}`);
+                        // Attribute residual/renewal commission to Sales Rep (strictly on subscriptions & add-ons, EXCLUDING metered usage!)
+                        if (orgData.salesRepId && fixedSubscriptionTotal > 0) {
+                            try {
+                                const evalResult = await evaluateRecurringCommission(db, orgData.salesRepId, doc.id, orgData, fixedSubscriptionTotal, today);
+                                if (evalResult && evalResult.shouldPay && evalResult.commAmount > 0) {
+                                    await db.collection('platformCommissions').add({
+                                        repId: orgData.salesRepId,
+                                        organizationId: doc.id,
+                                        organizationName: orgData.name || 'Organization',
+                                        invoiceId: piData.id,
+                                        amount: evalResult.commAmount,
+                                        baseAmount: fixedSubscriptionTotal,
+                                        rateUsed: evalResult.rateUsed,
+                                        status: 'Pending',
+                                        customerPaymentStatus: 'Paid',
+                                        dateEarned: today.toISOString(),
+                                        type: 'renewal',
+                                        notes: evalResult.notes
+                                    });
+                                    functions.logger.info(`Recorded ${evalResult.tier} commission of $${evalResult.commAmount} for sales rep ${orgData.salesRepId} on org ${doc.id}`);
+                                }
+                            }
+                            catch (commErr) {
+                                functions.logger.error(`Error recording renewal commission for org ${doc.id}:`, commErr);
+                            }
+                        }
+                        functions.logger.info(`Successfully billed ${doc.id} for $${totalAmount} (Sub: $${fixedSubscriptionTotal}, Metered: $${meteredTotal})`);
                     }
                     else {
                         throw new Error(`Intent status: ${piData.status}`);
@@ -1242,25 +1765,53 @@ exports.testKortSubscriptionPayment = functions.runWith({ secrets: [kortSecretKe
             throw new Error('Organization not found.');
         }
         const orgData = orgDoc.data() || {};
-        const { platformCustomerId, platformVaultedPaymentMethodId, platformVaultedPaymentType, virtualWorkerEnabled } = orgData;
+        const { platformCustomerId, platformVaultedPaymentMethodId, platformVaultedPaymentType, virtualWorkerEnabled, aiVoiceAssistantEnabled, aiVoiceAssistantBillingType } = orgData;
         if (!platformCustomerId || !platformVaultedPaymentMethodId) {
             throw new Error('No vaulted payment method found for this organization.');
         }
         // Fetch platform settings to determine prices
         const settingsDoc = await db.collection('platformSettings').doc('global').get();
         const platformSettings = settingsDoc.exists ? settingsDoc.data() : undefined;
-        const monthlyFee = platformSettings?.subscriptionFee !== undefined ? platformSettings.subscriptionFee : 7.00;
         const aiWorkerFee = platformSettings?.virtualWorkerFee !== undefined ? platformSettings.virtualWorkerFee : 49.99;
-        // Calculate amount
-        let totalAmount = monthlyFee;
-        if (orgData.plan && ['starter', 'growth', 'enterprise'].includes(orgData.plan) && orgData.subscriptionStatus === 'active') {
-            totalAmount = 0;
-        }
+        // Check organization-specific custom pricing overrides
+        const cp = orgData.customPricing;
+        // Calculate base amount dynamically from organization custom override or platformSettings.plans
+        const planKey = (orgData.plan || 'starter').toLowerCase();
+        const planConfig = platformSettings?.plans?.[planKey];
+        const defaultBasePlanCost = planConfig?.monthly !== undefined
+            ? Number(planConfig.monthly)
+            : (planKey === 'enterprise' ? 749 : planKey === 'business' ? 399 : planKey === 'growth' ? 249 : planKey === 'payments_only' ? 10 : 49);
+        const basePlanCost = (cp?.customMonthlyPlanFee !== undefined && cp?.customMonthlyPlanFee !== null && Number(cp.customMonthlyPlanFee) > 0)
+            ? Number(cp.customMonthlyPlanFee)
+            : defaultBasePlanCost;
+        const effectiveAiWorkerFee = (cp?.customVirtualWorkerFee !== undefined && cp?.customVirtualWorkerFee !== null)
+            ? Number(cp.customVirtualWorkerFee)
+            : aiWorkerFee;
+        const defaultAiVoiceFee = platformSettings?.aiVoiceAssistantMonthlyFee !== undefined
+            ? Number(platformSettings.aiVoiceAssistantMonthlyFee)
+            : 5.00;
+        const effectiveAiVoiceFee = (cp?.customAiVoiceAssistantMonthlyFee !== undefined && cp?.customAiVoiceAssistantMonthlyFee !== null)
+            ? Number(cp.customAiVoiceAssistantMonthlyFee)
+            : defaultAiVoiceFee;
+        const userFee = (cp?.customExcessUserFee !== undefined && cp?.customExcessUserFee !== null)
+            ? Number(cp.customExcessUserFee)
+            : (platformSettings?.excessUserFee !== undefined ? platformSettings.excessUserFee : 25);
+        const divFee = (cp?.customDivisionFee !== undefined && cp?.customDivisionFee !== null)
+            ? Number(cp.customDivisionFee)
+            : (platformSettings?.divisionFee !== undefined ? platformSettings.divisionFee : 19.99);
+        let fixedSubscriptionTotal = basePlanCost;
         if (virtualWorkerEnabled && orgData.virtualWorkerBillingType !== 'lifetime') {
-            totalAmount += aiWorkerFee;
+            fixedSubscriptionTotal += effectiveAiWorkerFee;
         }
-        const userFee = platformSettings?.excessUserFee !== undefined ? platformSettings.excessUserFee : 25;
-        const divFee = platformSettings?.divisionFee !== undefined ? platformSettings.divisionFee : 79;
+        if (aiVoiceAssistantEnabled && aiVoiceAssistantBillingType !== 'lifetime') {
+            fixedSubscriptionTotal += effectiveAiVoiceFee;
+        }
+        fixedSubscriptionTotal += (orgData.additionalUserSlots || 0) * userFee;
+        fixedSubscriptionTotal += (orgData.additionalDivisionsSlots || 0) * divFee;
+        if (orgData.customDiscountPct && orgData.customDiscountPct > 0) {
+            fixedSubscriptionTotal = Math.max(0, fixedSubscriptionTotal * (1 - (orgData.customDiscountPct / 100)));
+        }
+        fixedSubscriptionTotal = Number(fixedSubscriptionTotal.toFixed(2));
         if (orgData.isFreeAccess) {
             const today = new Date();
             const nextMonth = new Date(today);
@@ -1273,7 +1824,10 @@ exports.testKortSubscriptionPayment = functions.runWith({ secrets: [kortSecretKe
             });
             await db.collection('platformInvoices').add({
                 organizationId: organizationId,
+                organizationName: orgData.name || 'Organization',
                 amount: 0,
+                subscriptionAmount: 0,
+                meteredAmount: 0,
                 date: today.toISOString(),
                 status: 'paid',
                 paymentIntentId: 'free_access_bypass',
@@ -1284,8 +1838,52 @@ exports.testKortSubscriptionPayment = functions.runWith({ secrets: [kortSecretKe
                 message: `Processed free access subscription simulation successfully`
             };
         }
-        totalAmount += (orgData.additionalUserSlots || 0) * userFee;
-        totalAmount += (orgData.additionalDivisionsSlots || 0) * divFee;
+        // Calculate metered usage for test simulator
+        const isExemptAll = orgData.isComplimentary || orgData.isFreeAccess;
+        const isTwilioExempt = isExemptAll || orgData.billingExemptions?.twilio;
+        const isAiExempt = isExemptAll || orgData.billingExemptions?.ai;
+        const isStorageExempt = isExemptAll || orgData.billingExemptions?.storage;
+        let storageOverageCost = 0;
+        let billableStorageGB = 0;
+        try {
+            const storageDoc = await db.collection('storageUsage').doc(organizationId).get();
+            const storageBytes = storageDoc.exists ? (storageDoc.data()?.totalBytesUsed || 0) : 0;
+            const storageGB = storageBytes / (1024 * 1024 * 1024);
+            const includedStorageGB = cp?.customIncludedStorageGB ?? planConfig?.includedStorageGB ?? (planKey === 'enterprise' ? 60 : planKey === 'business' ? 20 : planKey === 'growth' ? 10 : 1);
+            const storageOverageRate = cp?.customStorageOverageRate ?? planConfig?.storageOverageRatePerGB ?? 0.10;
+            billableStorageGB = Math.max(0, storageGB - includedStorageGB);
+            storageOverageCost = isStorageExempt ? 0 : Number((billableStorageGB * storageOverageRate).toFixed(2));
+        }
+        catch (e) { /* ignore */ }
+        let aiOverageCost = 0;
+        let billableAiTokens = 0;
+        const currentYearMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        try {
+            const aiDoc = await db.collection('aiUsage').doc(organizationId).get();
+            const aiData = aiDoc.exists ? aiDoc.data() : undefined;
+            const monthlyTokens = aiData?.monthlyUsage?.[currentYearMonth]?.totalTokensUsed || 0;
+            const includedTokens = cp?.customIncludedAiTokens ?? planConfig?.aiTokensPerMonth ?? (planKey === 'enterprise' ? 15000000 : planKey === 'business' ? 5000000 : planKey === 'growth' ? 3000000 : 1000000);
+            billableAiTokens = includedTokens > 0 ? Math.max(0, monthlyTokens - includedTokens) : 0;
+            const aiOverageRatePer1k = cp?.customAiTokenOverageRate ?? platformSettings?.aiTokenOverageRatePer1k ?? 0.002;
+            aiOverageCost = isAiExempt ? 0 : Number(((billableAiTokens / 1000) * aiOverageRatePer1k).toFixed(2));
+        }
+        catch (e) { /* ignore */ }
+        let smsCost = 0;
+        let voiceCost = 0;
+        let smsCount = 0;
+        try {
+            const cycleStart = orgData.lastBillingDate ? new Date(orgData.lastBillingDate) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+            const messagesSnap = await db.collection('messages')
+                .where('organizationId', '==', organizationId)
+                .where('createdAt', '>=', cycleStart.toISOString())
+                .get();
+            smsCount = messagesSnap.size;
+            const smsRate = cp?.customSmsRate ?? platformSettings?.smsRate ?? 0.02;
+            smsCost = isTwilioExempt ? 0 : Number((smsCount * smsRate).toFixed(2));
+        }
+        catch (e) { /* ignore */ }
+        const meteredTotal = Number((storageOverageCost + aiOverageCost + smsCost + voiceCost).toFixed(2));
+        const totalAmount = Number((fixedSubscriptionTotal + meteredTotal).toFixed(2));
         const totalAmountCents = Math.round(totalAmount * 100);
         const payload = {
             amount: totalAmountCents,
@@ -1321,21 +1919,59 @@ exports.testKortSubscriptionPayment = functions.runWith({ secrets: [kortSecretKe
             nextMonth.setMonth(nextMonth.getMonth() + 1);
             await orgRef.update({
                 nextBillingDate: nextMonth.toISOString(),
+                lastBillingDate: today.toISOString(),
                 subscriptionStatus: 'active',
                 failedPaymentAttempts: 0,
                 lastBillingError: admin.firestore.FieldValue.delete()
             });
+            const lineItems = [
+                { description: `${planKey.toUpperCase()} Plan Subscription`, amount: basePlanCost },
+                ...(orgData.virtualWorkerEnabled && orgData.virtualWorkerBillingType !== 'lifetime' ? [{ description: 'Virtual AI Worker Automation Suite', amount: effectiveAiWorkerFee }] : []),
+                ...(orgData.aiVoiceAssistantEnabled && orgData.aiVoiceAssistantBillingType !== 'lifetime' ? [{ description: '24/7 AI Voice Receptionist Subscription', amount: effectiveAiVoiceFee }] : []),
+                ...((orgData.additionalUserSlots || 0) > 0 ? [{ description: `Additional User Slots (${orgData.additionalUserSlots})`, amount: orgData.additionalUserSlots * userFee }] : []),
+                ...((orgData.additionalDivisionsSlots || 0) > 0 ? [{ description: `Additional Division Slots (${orgData.additionalDivisionsSlots})`, amount: orgData.additionalDivisionsSlots * divFee }] : []),
+                ...(storageOverageCost > 0 ? [{ description: `Cloud Storage Overage (${billableStorageGB.toFixed(2)} GB)`, amount: storageOverageCost }] : []),
+                ...(aiOverageCost > 0 ? [{ description: `AI Token Overage (${Math.round(billableAiTokens / 1000).toLocaleString()}k tokens)`, amount: aiOverageCost }] : []),
+                ...(smsCost > 0 ? [{ description: `Twilio SMS Usage (${smsCount} msgs)`, amount: smsCost }] : [])
+            ];
             await db.collection('platformInvoices').add({
                 organizationId: organizationId,
+                organizationName: orgData.name || 'Organization',
                 amount: totalAmount,
+                subscriptionAmount: fixedSubscriptionTotal,
+                meteredAmount: meteredTotal,
                 date: today.toISOString(),
                 status: 'paid',
                 paymentIntentId: piData.id,
-                description: 'TekTrakker Monthly Subscription (Simulator)'
+                description: 'TekTrakker Monthly Subscription (Simulator)',
+                lineItems
             });
+            // Commission for sales rep (strictly on subscriptions & add-ons, EXCLUDING metered usage!)
+            if (orgData.salesRepId && fixedSubscriptionTotal > 0) {
+                try {
+                    const evalResult = await evaluateRecurringCommission(db, orgData.salesRepId, organizationId, orgData, fixedSubscriptionTotal, today);
+                    if (evalResult && evalResult.shouldPay && evalResult.commAmount > 0) {
+                        await db.collection('platformCommissions').add({
+                            repId: orgData.salesRepId,
+                            organizationId: organizationId,
+                            organizationName: orgData.name || 'Organization',
+                            invoiceId: piData.id,
+                            amount: evalResult.commAmount,
+                            baseAmount: fixedSubscriptionTotal,
+                            rateUsed: evalResult.rateUsed,
+                            status: 'Pending',
+                            customerPaymentStatus: 'Paid',
+                            dateEarned: today.toISOString(),
+                            type: 'renewal',
+                            notes: `Simulation: ${evalResult.notes}`
+                        });
+                    }
+                }
+                catch (e) { /* ignore */ }
+            }
             return {
                 success: true,
-                message: `Successfully charged off-session $${totalAmount.toFixed(2)}`
+                message: `Successfully charged off-session $${totalAmount.toFixed(2)} (Sub: $${fixedSubscriptionTotal}, Metered: $${meteredTotal})`
             };
         }
         else {

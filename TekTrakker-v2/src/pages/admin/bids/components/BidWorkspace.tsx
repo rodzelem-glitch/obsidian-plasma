@@ -479,7 +479,7 @@ const BidWorkspace: React.FC<BidWorkspaceProps> = ({ bid, onClose, onUpdate }) =
                     onUpdate={handleLineItemUpdate}
                     onDelete={handleLineItemDelete}
                     onAdd={handleLineItemAdd}
-                    pricebook={state.proposalPresets || []}
+                    pricebook={(state.proposalPresets || []).filter(p => !((p as any).customerId) || ((p as any).customerId === (bid as any).customerId))}
                     onAddFromPricebook={handleAddFromPricebook}
                     onGenerateAIPricing={handleGenerateAIPricing}
                     isGeneratingAIPricing={isGeneratingAIPricing}

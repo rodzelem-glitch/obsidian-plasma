@@ -10,6 +10,7 @@ import { TwitterAuthProvider, GoogleAuthProvider, linkWithPopup, signInWithPopup
 import { useNavigate } from 'react-router-dom';
 import BlogManager from './BlogManager';
 import OmniPreviewBoard from 'components/common/OmniPreviewBoard';
+import { globalConfirm } from 'lib/globalConfirm';
 
 const SocialMediaHub: React.FC = () => {
     const { state } = useAppContext();
@@ -823,7 +824,7 @@ const SocialMediaHub: React.FC = () => {
                                         onClick={async (e) => {
                                             e.stopPropagation();
                                             if (!state.currentOrganization?.id) return;
-                                            if (!window.confirm('Delete this draft?')) return;
+                                            if (!(await globalConfirm('Delete this draft?', 'Delete Draft', 'Delete', 'Cancel'))) return;
                                             try {
                                                 await db.collection('organizations').doc(state.currentOrganization.id).collection('socialMediaTemplates').doc(t.id).delete();
                                                 setTemplates(prev => prev.filter(tmpl => tmpl.id !== t.id));

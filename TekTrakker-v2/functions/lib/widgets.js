@@ -185,17 +185,69 @@ exports.submitWidgetForm = functions.https.onRequest((req, res) => {
                 if (rawData.systemAge || rawData.systemBrand) {
                     specialInstructionsParts.push(`System Age: ${rawData.systemAge || 'N/A'}, Brand: ${rawData.systemBrand || 'N/A'}`);
                 }
+                const formatWidgetPhone = (phoneStr) => {
+                    if (!phoneStr)
+                        return '';
+                    const cleaned = ('' + phoneStr).replace(/\D/g, '');
+                    if (cleaned.length === 10)
+                        return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+                    if (cleaned.length === 11 && cleaned.startsWith('1'))
+                        return `(${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
+                    return phoneStr;
+                };
+                const parseWidgetAddress = (fullAddr) => {
+                    if (!fullAddr)
+                        return { street: '', city: '', state: '', zip: '' };
+                    const parts = fullAddr.split(',').map(p => p.trim());
+                    if (parts.length >= 3) {
+                        const street = parts[0];
+                        const city = parts[1];
+                        const stateZipPart = parts.slice(2).join(' ');
+                        const stateZipMatch = stateZipPart.match(/([A-Za-z]{2})\s*(\d{5}(?:-\d{4})?)?/);
+                        const state = stateZipMatch ? stateZipMatch[1].toUpperCase() : stateZipPart;
+                        const zip = stateZipMatch && stateZipMatch[2] ? stateZipMatch[2] : '';
+                        return { street, city, state, zip };
+                    }
+                    return { street: fullAddr, city: '', state: '', zip: '' };
+                };
+                let streetAddress = rawData.address || '';
+                let city = rawData.city || '';
+                let state = rawData.state || '';
+                let zip = rawData.zip || '';
+                if ((!city || !state || !zip) && streetAddress.includes(',')) {
+                    const parsed = parseWidgetAddress(streetAddress);
+                    if (!city && parsed.city)
+                        city = parsed.city;
+                    if (!state && parsed.state)
+                        state = parsed.state;
+                    if (!zip && parsed.zip)
+                        zip = parsed.zip;
+                    if (parsed.street && parsed.city)
+                        streetAddress = parsed.street;
+                }
+                const isConsentGiven = rawData.consent === true || rawData.consent === 'true' || rawData.consent === 'on' || !!rawData.marketingConsent?.sms;
+                const marketingConsent = isConsentGiven ? {
+                    sms: true,
+                    email: true,
+                    agreedAt: rawData.marketingConsent?.agreedAt || timestamp,
+                    source: rawData.marketingConsent?.source || 'WebWidget'
+                } : (rawData.marketingConsent || null);
                 finalData = {
                     ...finalData,
                     customerName,
-                    customerPhone,
+                    customerPhone: formatWidgetPhone(customerPhone),
                     customerEmail,
-                    address: rawData.address,
+                    address: streetAddress,
+                    city: city || null,
+                    state: state || null,
+                    zip: zip || null,
+                    customerType: rawData.customerType || 'Residential',
                     tasks: [rawData.serviceCategory || rawData.serviceType, rawData.jobType].filter(Boolean),
                     appointmentTime: rawData.date ? `${rawData.date} ${rawData.arrivalWindow || ''}`.trim() : (rawData.preferredDate ? `${rawData.preferredDate} ${rawData.arrivalWindow || ''}`.trim() : 'TBD'),
                     status: 'Pending',
                     specialInstructions: specialInstructionsParts.join(' | '),
-                    source: 'Widget'
+                    source: 'Widget',
+                    ...(marketingConsent ? { marketingConsent } : {})
                 };
                 notificationTitle = 'New Booking Request (Widget)';
                 notificationText = `You have a new service request from ${finalData.customerName} for ${finalData.address}. Log in to your dashboard to view and approve it.`;
@@ -203,6 +255,13 @@ exports.submitWidgetForm = functions.https.onRequest((req, res) => {
             else if (formType === 'applicant') {
                 collectionPath = 'applicants';
                 const nameParts = (rawData.name || '').trim().split(' ');
+                const isApplicantConsentGiven = rawData.smsOptIn === true || rawData.smsOptIn === 'true' || rawData.smsOptIn === 'on' || !!rawData.marketingConsent?.sms;
+                const applicantConsent = isApplicantConsentGiven ? {
+                    sms: true,
+                    email: true,
+                    agreedAt: rawData.marketingConsent?.agreedAt || timestamp,
+                    source: rawData.marketingConsent?.source || 'HiringWidget'
+                } : (rawData.marketingConsent || null);
                 finalData = {
                     ...finalData,
                     firstName: nameParts[0] || '',
@@ -211,13 +270,22 @@ exports.submitWidgetForm = functions.https.onRequest((req, res) => {
                     experienceYears: rawData.experienceLevel || 0,
                     status: 'New',
                     appliedDate: timestamp,
-                    source: 'Widget'
+                    source: 'Widget',
+                    smsOptIn: isApplicantConsentGiven,
+                    ...(applicantConsent ? { marketingConsent: applicantConsent } : {})
                 };
                 notificationTitle = 'New Job Applicant (Widget)';
                 notificationText = `${finalData.firstName} ${finalData.lastName} has applied for the ${finalData.position} position. Log in to your dashboard to review.`;
             }
             else if (formType === 'booking_request') {
                 collectionPath = 'appointments';
+                const isReqConsentGiven = rawData.consent === true || rawData.consent === 'true' || rawData.consent === 'on' || !!rawData.marketingConsent?.sms;
+                const reqConsent = isReqConsentGiven ? {
+                    sms: true,
+                    email: true,
+                    agreedAt: rawData.marketingConsent?.agreedAt || timestamp,
+                    source: rawData.marketingConsent?.source || 'Marketplace'
+                } : (rawData.marketingConsent || null);
                 finalData = {
                     ...finalData,
                     customerName: rawData.name,
@@ -228,7 +296,8 @@ exports.submitWidgetForm = functions.https.onRequest((req, res) => {
                     appointmentTime: rawData.preferredDate ? `${rawData.preferredDate} ${rawData.preferredTime || ''}`.trim() : 'TBD',
                     status: 'Pending',
                     specialInstructions: rawData.message,
-                    source: 'Marketplace'
+                    source: 'Marketplace',
+                    ...(reqConsent ? { marketingConsent: reqConsent } : {})
                 };
                 notificationTitle = 'New Booking Request (Marketplace)';
                 notificationText = `You have a new service request from ${finalData.customerName}. Log in to your dashboard to view and approve it.`;

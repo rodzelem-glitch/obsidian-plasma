@@ -341,7 +341,7 @@ const CampaignManager: React.FC = () => {
               { "name": "Phase 2 - Pain Point", "subject": "Email Subject", "content": "Body content here.", "delayDays": 3 }
             ]`;
 
-            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.6-flash' });
+            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.7-flash' });
 
             let text = result.data.text.replace(/```json/g, '').replace(/```/g, '').trim();
             const generatedPhases = JSON.parse(text);

@@ -167,7 +167,7 @@ const LogCallModal: React.FC<LogCallModalProps> = ({
 
     const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
-    // AI Call Summary Generator using Gemini 3.6 Flash
+    // AI Call Summary Generator using Gemini 3.7 Flash
     const handleGenerateAiSummary = async (baseContent?: string, rcData?: any) => {
         setIsGeneratingAi(true);
         try {
@@ -196,7 +196,7 @@ Format response with clean markdown headings and bullet points:
 
             const result: any = await callGeminiAI({
                 prompt,
-                modelName: "gemini-3.6-flash"
+                modelName: "gemini-3.7-flash"
             });
 
             const aiText = result.data?.text || result.data?.result || result.data;
@@ -251,10 +251,13 @@ Format response with clean markdown headings and bullet points:
                 organizationId: state.currentOrganization?.id || null,
                 type: 'call'
             };
-            await db.collection('messages').doc(msgObj.id).set(cleanUndefinedFields(msgObj));
+            // 1. Write to global messages collection if not demo mode
+            if (!state.isDemoMode) {
+                await db.collection('messages').doc(msgObj.id).set(cleanUndefinedFields(msgObj));
+            }
 
             // 2. Write to customer communications subcollection
-            if (targetCustomerId) {
+            if (targetCustomerId && !state.isDemoMode) {
                 const commEntry: any = {
                     id: `comm-call-${Date.now()}`,
                     type: isOutbound ? 'call_out' : 'call_in',
@@ -325,10 +328,12 @@ Format response with clean markdown headings and bullet points:
                 organizationId: state.currentOrganization?.id || null,
                 type: 'call'
             };
-            await db.collection('messages').doc(msgObj.id).set(cleanUndefinedFields(msgObj)).catch((e) => console.error("Error saving call message:", e));
+            if (!state.isDemoMode) {
+                await db.collection('messages').doc(msgObj.id).set(cleanUndefinedFields(msgObj)).catch((e) => console.error("Error saving call message:", e));
+            }
 
             // 2. Write to customer's communications subcollection
-            if (targetCustomerId) {
+            if (targetCustomerId && !state.isDemoMode) {
                 const commEntry = {
                     id: `comm-${Date.now()}`,
                     type: callType,
@@ -347,7 +352,11 @@ Format response with clean markdown headings and bullet points:
 
             showToast.success(t("Call recording logged successfully!"));
             if (onSuccess) onSuccess();
-            onClose();
+            try {
+                onClose();
+            } catch (closeErr) {
+                console.warn("onClose execution warning:", closeErr);
+            }
         } catch (e: any) {
             console.error("Error saving call log:", e);
             showToast.warn(t("Failed to save call log. Please try again."));

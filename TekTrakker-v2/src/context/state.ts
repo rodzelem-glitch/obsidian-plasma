@@ -77,7 +77,7 @@ export interface AppState {
     messages: Message[];
     partOrders: PartOrder[];
     vehicles: Vehicle[];
-    shiftLogs: ShiftLog[];
+    shiftLogs: Record<string, ShiftLog[]> | ShiftLog[] | any;
     vehicleLogs: VehicleLog[];
     toolMaintenanceLogs: ToolMaintenanceLog[];
     bids: any[];

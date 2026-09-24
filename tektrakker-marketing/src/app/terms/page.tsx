@@ -38,6 +38,7 @@ export default function TermsOfService() {
             <h3 className="text-xl font-bold mt-6 mb-4 px-4 py-2 bg-slate-50 border-l-4 border-slate-900">6. Refund and Cancellation Policy</h3>
             <p className="font-medium">Strict No-Refund Policy: TekTrakker does not offer refunds or credits for any partial subscription periods, plan downgrades, or unused months.</p>
             <p className="mt-2">Cancellation Access: If you choose to cancel your subscription, your account will remain active and accessible until the end of your current paid billing cycle. At the conclusion of that period, your access will be terminated, and no further charges will be applied.</p>
+            <p className="mt-4 font-medium bg-slate-100 p-3 rounded-lg text-slate-800">Annual Agreements & Contract Acceleration: For organizations on annual or multi-month agreements, you commit to the full contract period. In the event of non-payment or account default, TekTrakker reserves the right to declare the entire remaining balance of the annual agreement immediately due and payable, along with any collection agency or legal recovery costs.</p>
 
             <h3 className="text-xl font-bold mt-6 mb-2">7. User Obligations</h3>
             <p>You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. You agree to provide accurate and complete information when registering for our service.</p>

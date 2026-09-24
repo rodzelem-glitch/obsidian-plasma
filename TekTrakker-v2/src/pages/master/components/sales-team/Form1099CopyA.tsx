@@ -8,9 +8,10 @@ interface Form1099CopyAProps {
     amount: number;
     year: number;
     payerName?: string;
+    payerEin?: string;
 }
 
-const Form1099CopyA: React.FC<Form1099CopyAProps> = ({ recipient, amount, year, payerName = 'TekTrakker Platform' }) => (
+const Form1099CopyA: React.FC<Form1099CopyAProps> = ({ recipient, amount, year, payerName = 'TekTrakker Platform', payerEin }) => (
     <div className="border-2 border-red-800 text-red-900 font-serif max-w-3xl mx-auto my-4 relative p-4 md:p-8 bg-white print:block">
         <div className="absolute top-2 left-2 text-[10px]">DO NOT CUT OR SEPARATE FORMS ON THIS PAGE</div>
         <div className="text-center border-b-2 border-red-800 pb-4 mb-4">
@@ -23,7 +24,7 @@ const Form1099CopyA: React.FC<Form1099CopyAProps> = ({ recipient, amount, year, 
                 <div className="border border-red-300 p-2">
                     <p className="text-[10px] uppercase">Payer's Info</p>
                     <p className="font-bold">{payerName}</p>
-                    <p>EIN: 12-3456789</p>
+                    <p>EIN: {payerEin || '12-3456789'}</p>
                 </div>
                 <div className="border border-red-300 p-2">
                     <p className="text-[10px] uppercase">Recipient's TIN</p>

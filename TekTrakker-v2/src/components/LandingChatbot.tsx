@@ -68,11 +68,12 @@ const LandingChatbot: React.FC = () => {
             const functions = getFunctions();
             const chatbotFunction = httpsCallable(functions, 'callLandingChatbot');
             
-            const plans = (state.platformSettings?.plans || {}) as Record<string, { monthly?: number; maxUsers?: number }>;
+            const plans = (state.platformSettings?.plans || {}) as Record<string, { monthly?: number; maxUsers?: number; unlimitedUsers?: boolean }>;
             const pricingContext = `
-                TekTrakker Pro: $${plans.starter?.monthly || 99}/mo. Includes ${plans.starter?.maxUsers || 3} users.
-                TekTrakker Premium: $${plans.growth?.monthly || 249}/mo. Includes ${plans.growth?.maxUsers || 10} users.
-                TekTrakker Unlimited: $${plans.enterprise?.monthly || 499}/mo. Includes ${plans.enterprise?.maxUsers || 20} users.
+                Starter Plan: $${plans.starter?.monthly || 49}/mo. Includes ${plans.starter?.maxUsers || 1} User Seat.
+                Growth Plan: $${plans.growth?.monthly || 149}/mo. Includes ${plans.growth?.maxUsers || 5} User Seats.
+                Enterprise Plan: $${plans.enterprise?.monthly || 350}/mo. Includes Unlimited User Seats.
+                Note: Individual seat add-ons are disabled to enforce tier limits. To add more user licenses for dispatchers, technicians, or office managers, upgrade to the next subscription tier.
             `;
 
             const systemPrompt = `
@@ -127,7 +128,7 @@ const LandingChatbot: React.FC = () => {
             )}
 
             {isOpen && (
-                <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 w-[calc(100vw-32px)] sm:w-96 h-[500px] max-h-[calc(100vh-80px)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border flex flex-col z-50">
+                <div className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:bottom-6 sm:right-6 w-[calc(100vw-32px)] max-w-sm sm:w-96 mx-auto sm:mx-0 h-[500px] max-h-[calc(100dvh-80px)] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border flex flex-col z-50">
                     <div className="bg-indigo-600 p-4 rounded-t-2xl flex justify-between items-center text-white">
                         <div className="flex items-center gap-2"><Bot size={20} /><span className="font-bold">TekTrakker Assistant</span></div>
                         <button onClick={() => setIsOpen(false)} aria-label="Close message window" title="Close"><X size={18}/></button>

@@ -1,8 +1,13 @@
 
 import React, { useState } from 'react';
 import Modal from 'components/ui/Modal';
-import { Tag, CheckCircle, Minus, Plus, AlertCircle } from 'lucide-react';
+import Button from 'components/ui/Button';
+import { Tag, CheckCircle, Minus, Plus, AlertCircle, Send, ShieldCheck } from 'lucide-react';
 import type { MembershipPlan, Organization } from 'types';
+import { db } from 'lib/firebase';
+import { useAppContext } from 'context/AppContext';
+import { cleanUndefinedFields } from 'lib/utils';
+import showToast from 'lib/toast';
 
 interface PlansModalProps {
     isOpen: boolean;
@@ -13,8 +18,11 @@ interface PlansModalProps {
 }
 
 const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organization, onApprove: _onApprove }) => {
+    const { state } = useAppContext();
+    const { currentUser } = state;
     const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
     const [systemCount, setSystemCount] = useState(1);
+    const [isRequesting, setIsRequesting] = useState(false);
 
     const sortedPlans = [...plans].sort((a, b) => a.monthlyPrice - b.monthlyPrice);
 
@@ -141,8 +149,71 @@ const PlansModal: React.FC<PlansModalProps> = ({ isOpen, onClose, plans, organiz
                                             </div>
                                         )}
 
-                                        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-xs font-bold text-center rounded-xl border border-amber-100 dark:border-amber-800">
-                                            Online enrollment is temporarily disabled as we migrate to our new payment processor. Please contact the office to enroll.
+                                        <div className="pt-2">
+                                            <Button 
+                                                type="button"
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    if (!organization || !currentUser) return;
+                                                    setIsRequesting(true);
+                                                    try {
+                                                        const finalizedPrice = plan.monthlyPrice + ((systemCount - 1) * (plan.pricePerAdditionalSystem || 0));
+                                                        const planFee = (plan.addonFeeAmount || 0) + (finalizedPrice * (plan.addonFeePercent || 0) / 100);
+                                                        const totalMonthly = finalizedPrice + planFee;
+                                                        const custName = currentUser.firstName ? `${currentUser.firstName} ${currentUser.lastName || ''}`.trim() : (currentUser.email || 'Customer');
+
+                                                        // Create a priority VIP enrollment request ticket
+                                                        await db.collection('supportTickets').add(cleanUndefinedFields({
+                                                            organizationId: organization.id,
+                                                            organizationName: organization.name || 'Service Provider',
+                                                            customerName: custName,
+                                                            customerEmail: currentUser.email,
+                                                            subject: `⭐ VIP Membership Request: ${plan.name} (${systemCount} System${systemCount > 1 ? 's' : ''})`,
+                                                            description: `Customer ${custName} (${currentUser.email}) has requested enrollment into the ${plan.name} membership plan ($${totalMonthly.toFixed(2)}/mo for ${systemCount} system(s)). Please contact the client to activate recurring billing.`,
+                                                            status: 'Open',
+                                                            plan: plan.name,
+                                                            systemCount,
+                                                            totalMonthly,
+                                                            createdAt: new Date().toISOString()
+                                                        }));
+
+                                                        // Queue notification to provider coordinator
+                                                        await db.collection('mail_queue').add(cleanUndefinedFields({
+                                                            to: [organization.email || 'platform@tektrakker.com'],
+                                                            replyTo: currentUser.email || 'noreply@tektrakker.com',
+                                                            message: {
+                                                                subject: `⭐ [VIP MEMBERSHIP REQUEST] ${custName} - ${plan.name}`,
+                                                                text: `A customer has requested to enroll in the ${plan.name} Membership Plan!\n\n` +
+                                                                      `Customer: ${custName} (${currentUser.email})\n` +
+                                                                      `Plan: ${plan.name}\n` +
+                                                                      `Systems Covered: ${systemCount}\n` +
+                                                                      `Estimated Monthly: $${totalMonthly.toFixed(2)}\n\n` +
+                                                                      `Please contact the customer to confirm payment details and activate agreement.`,
+                                                                replyTo: currentUser.email || 'noreply@tektrakker.com'
+                                                            },
+                                                            organizationId: organization.id || 'platform',
+                                                            type: 'MembershipEnrollmentRequest',
+                                                            createdAt: new Date().toISOString()
+                                                        }));
+
+                                                        showToast.success(`Membership request for ${plan.name} submitted! Our coordinator will contact you shortly to activate your agreement.`);
+                                                        onClose();
+                                                    } catch (err: any) {
+                                                        console.error("Plan enrollment request error:", err);
+                                                        showToast.error("Failed to submit request: " + (err.message || String(err)));
+                                                    } finally {
+                                                        setIsRequesting(false);
+                                                    }
+                                                }}
+                                                disabled={isRequesting}
+                                                className="w-full h-12 bg-primary-600 hover:bg-primary-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-primary-500/20"
+                                            >
+                                                <ShieldCheck size={18} />
+                                                {isRequesting ? 'Submitting Request...' : `Request ${plan.name} Activation`}
+                                            </Button>
+                                            <p className="text-[11px] text-center text-slate-400 dark:text-slate-500 mt-2">
+                                                Our coordinator will confirm equipment details and set up your member discounts immediately.
+                                            </p>
                                         </div>
                                     </div>
                                 )}

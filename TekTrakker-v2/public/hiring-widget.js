@@ -215,8 +215,22 @@
             
             const skills = Array.from(formData.getAll("skills"));
             const availability = Array.from(formData.getAll("availability"));
+            const isSmsOptIn = data.smsOptIn === 'true' || data.smsOptIn === true || data.smsOptIn === 'on';
 
-            const payload = { ...data, skills, availability, type: "applicant", organizationId: orgId };
+            const payload = { 
+                ...data, 
+                skills, 
+                availability, 
+                type: "applicant", 
+                organizationId: orgId,
+                smsOptIn: isSmsOptIn,
+                marketingConsent: isSmsOptIn ? {
+                    sms: true,
+                    email: true,
+                    agreedAt: new Date().toISOString(),
+                    source: 'HiringWidget'
+                } : undefined
+            };
             delete payload.resume; // remove file from payload object
             
             try {

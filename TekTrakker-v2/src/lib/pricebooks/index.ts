@@ -1,50 +1,33 @@
 
-import { HVAC_MASTER_BOOK } from './hvac';
-import { PLUMBING_MASTER_BOOK } from './plumbing';
-import { ELECTRICAL_MASTER_BOOK } from './electrical';
-import { LANDSCAPING_MASTER_BOOK } from './landscaping';
-import { ROOFING_MASTER_BOOK } from './roofing';
-import { PAINTING_MASTER_BOOK } from './painting';
-import { CONTRACTING_MASTER_BOOK } from './contracting';
-import { CLEANING_MASTER_BOOK } from './cleaning';
-import { GENERAL_MASTER_BOOK } from './general';
-import { MASONRY_MASTER_BOOK } from './masonry';
-import { TELECOMMUNICATIONS_MASTER_BOOK } from './telecommunications';
-import { SOLAR_MASTER_BOOK } from './solar';
-import { SECURITY_MASTER_BOOK } from './security';
-import { PET_GROOMING_MASTER_BOOK } from './pet_grooming';
+export const AVAILABLE_VERTICALS = [
+    'HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'Roofing', 'Painting',
+    'Contracting', 'Cleaning', 'General', 'Masonry', 'Telecommunications',
+    'Solar', 'Security', 'Pet Grooming'
+] as const;
 
-export const PRICE_BOOKS = {
-    HVAC: HVAC_MASTER_BOOK,
-    Plumbing: PLUMBING_MASTER_BOOK,
-    Electrical: ELECTRICAL_MASTER_BOOK,
-    Landscaping: LANDSCAPING_MASTER_BOOK,
-    Roofing: ROOFING_MASTER_BOOK,
-    Painting: PAINTING_MASTER_BOOK,
-    Contracting: CONTRACTING_MASTER_BOOK,
-    Cleaning: CLEANING_MASTER_BOOK,
-    General: GENERAL_MASTER_BOOK,
-    Masonry: MASONRY_MASTER_BOOK,
-    Telecommunications: TELECOMMUNICATIONS_MASTER_BOOK,
-    Solar: SOLAR_MASTER_BOOK,
-    Security: SECURITY_MASTER_BOOK,
-    'Pet Grooming': PET_GROOMING_MASTER_BOOK,
-    Other: []
-};
+export type VerticalType = typeof AVAILABLE_VERTICALS[number];
 
-export { 
-    HVAC_MASTER_BOOK, 
-    PLUMBING_MASTER_BOOK, 
-    ELECTRICAL_MASTER_BOOK, 
-    LANDSCAPING_MASTER_BOOK,
-    ROOFING_MASTER_BOOK,
-    PAINTING_MASTER_BOOK,
-    CONTRACTING_MASTER_BOOK,
-    CLEANING_MASTER_BOOK,
-    GENERAL_MASTER_BOOK,
-    MASONRY_MASTER_BOOK,
-    TELECOMMUNICATIONS_MASTER_BOOK,
-    SOLAR_MASTER_BOOK,
-    SECURITY_MASTER_BOOK,
-    PET_GROOMING_MASTER_BOOK
-};
+/**
+ * Asynchronously loads a specific trade's master pricebook on-demand,
+ * preventing multi-megabyte bundle bloat.
+ */
+export async function loadPriceBook(vertical: string): Promise<any[]> {
+    switch (vertical) {
+        case 'HVAC': return (await import('./hvac')).HVAC_MASTER_BOOK;
+        case 'Plumbing': return (await import('./plumbing')).PLUMBING_MASTER_BOOK;
+        case 'Electrical': return (await import('./electrical')).ELECTRICAL_MASTER_BOOK;
+        case 'Landscaping': return (await import('./landscaping')).LANDSCAPING_MASTER_BOOK;
+        case 'Roofing': return (await import('./roofing')).ROOFING_MASTER_BOOK;
+        case 'Painting': return (await import('./painting')).PAINTING_MASTER_BOOK;
+        case 'Contracting': return (await import('./contracting')).CONTRACTING_MASTER_BOOK;
+        case 'Cleaning': return (await import('./cleaning')).CLEANING_MASTER_BOOK;
+        case 'General': return (await import('./general')).GENERAL_MASTER_BOOK;
+        case 'Masonry': return (await import('./masonry')).MASONRY_MASTER_BOOK;
+        case 'Telecommunications': return (await import('./telecommunications')).TELECOMMUNICATIONS_MASTER_BOOK;
+        case 'Solar': return (await import('./solar')).SOLAR_MASTER_BOOK;
+        case 'Security': return (await import('./security')).SECURITY_MASTER_BOOK;
+        case 'Pet Grooming': return (await import('./pet_grooming')).PET_GROOMING_MASTER_BOOK;
+        default: return [];
+    }
+}
+

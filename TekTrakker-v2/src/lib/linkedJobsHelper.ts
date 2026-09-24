@@ -28,6 +28,14 @@ export interface AggregatedLinkedCluster {
     combinedItems: any[];
 }
 
+export function isValidPoNumber(po: string | null | undefined): boolean {
+    if (!po) return false;
+    const clean = po.trim().toLowerCase();
+    if (clean.length < 2) return false;
+    const generic = ['n/a', 'na', 'none', 'tbd', 'pending', 'null', 'undefined', '-', '--', 'po', 'wo', '0', '0000'];
+    return !generic.includes(clean);
+}
+
 /**
  * Fetches and resolves all linked jobs, visits, proposals, and invoices for a given job.
  * Only links jobs that share:
@@ -43,6 +51,7 @@ export async function fetchLinkedClusterForJob(job: Job): Promise<AggregatedLink
 
     const customerId = job.customerId;
     const poNumber = job.poNumber || job.workOrderNumber || job.invoice?.poNumber;
+    const hasValidPo = isValidPoNumber(poNumber);
     const linkedIds = new Set<string>([job.id, ...(job.linkedJobIds || [])]);
     if (job.parentJobId) linkedIds.add(job.parentJobId);
 
@@ -60,8 +69,8 @@ export async function fetchLinkedClusterForJob(job: Job): Promise<AggregatedLink
         }
     }
 
-    // 2. Fetch by Work Order / PO number if present (and same customerId)
-    if (poNumber && customerId) {
+    // 2. Fetch by Work Order / PO number if present and valid (and same customerId)
+    if (hasValidPo && poNumber && customerId) {
         fetchPromises.push(
             db.collection('jobs')
                 .where('customerId', '==', customerId)
@@ -100,15 +109,6 @@ export async function fetchLinkedClusterForJob(job: Job): Promise<AggregatedLink
 
     // The newest job is the last one in chronological order
     const newestJob = allJobs[allJobs.length - 1] || job;
-
-    // Synchronize linkedJobIds on the newest job if needed
-    const allJobIds = allJobs.map(j => j.id);
-    const missingIds = allJobIds.filter(id => !(newestJob.linkedJobIds || []).includes(id));
-    if (missingIds.length > 0 && newestJob.id) {
-        const updatedLinked = Array.from(new Set([...(newestJob.linkedJobIds || []), ...allJobIds]));
-        newestJob.linkedJobIds = updatedLinked;
-        db.collection('jobs').doc(newestJob.id).update(cleanUndefinedFields({ linkedJobIds: updatedLinked })).catch(() => {});
-    }
 
     // 3. Fetch all linked proposals
     const propMap = new Map<string, Proposal>();

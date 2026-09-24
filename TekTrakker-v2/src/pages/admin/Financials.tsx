@@ -6,17 +6,19 @@ import { useLanguage } from '../../context/LanguageContext';
 import Button from '../../components/ui/Button';
 import InvoiceEditorModal from '../../components/modals/InvoiceEditorModal';
 import SelectExistingJobModal from '../../components/modals/SelectExistingJobModal';
+import { LogReceivedPaymentModal } from '../../components/modals/LogReceivedPaymentModal';
+import { BarcodeScannerButton } from '../../components/ui/BarcodeScanner';
 import Modal from '../../components/ui/Modal';
 import Input from '../../components/ui/Input';
 import {
     Download, Calendar, Filter, FileText, TrendingUp, TrendingDown,
     MoreHorizontal, DollarSign, Wallet, ArrowUpRight, ArrowDownRight,
     PieChart, Briefcase, Calculator, Plus, User, Search, Paperclip, Users, Shield,
-    Loader2, Trash2, Receipt, Camera as CameraIcon, Scale
+    Loader2, Trash2, Receipt, Camera as CameraIcon, Scale, Building2
 } from 'lucide-react';
 import { db, functions, firebase } from '../../lib/firebase';
 import { getNextInvoiceNumber } from 'lib/numbering';
-import { cleanUndefinedFields } from 'lib/utils';
+import { cleanUndefinedFields, formatAddress } from 'lib/utils';
 import { uploadFileToStorage } from '../../lib/storageService';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import type { Expense, Job, Customer } from '../../types';
@@ -28,12 +30,16 @@ import ExpensesTab from './financials/components/ExpensesTab';
 import PnLTab from './financials/components/PnLTab';
 import SalesPipeline from './SalesPipeline';
 import Payables from '../Payables';
+import { calculateSubcontractorPayables } from '../../lib/payablesHelper';
 import DocumentPreview from '../../components/ui/DocumentPreview';
 import WarrantyClaimsDashboard from './WarrantyClaimsDashboard';
 import PayoutsTab from './financials/components/PayoutsTab';
 import DisputesTab from './financials/components/DisputesTab';
 import AgingReportTab from './financials/components/AgingReportTab';
 import SalesTaxPrepTab from './financials/components/SalesTaxPrepTab';
+import { detectFileType } from '../../lib/fileViewerHelper';
+import TradePartnersHubModal from '../../components/modals/TradePartnersHubModal';
+import type { TradePartner, ExternalQuoteProposal } from '../../types/tradePartner';
 
 const Financials: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -46,7 +52,7 @@ const Financials: React.FC = () => {
     const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [editingExpense, setEditingExpense] = useState<any>(null);
-    const [newExpense, setNewExpense] = useState<Partial<Expense>>({ date: new Date().toISOString().split('T')[0], category: 'Materials', description: '', amount: 0, subtotal: 0, taxAmount: 0, vendor: '', paidBy: state.currentUser?.firstName || 'Admin', projectId: '', expenseType: 'business' });
+    const [newExpense, setNewExpense] = useState<Partial<Expense>>({ date: new Date().toISOString().split('T')[0], category: 'Materials', description: '', amount: 0, subtotal: 0, taxAmount: 0, vendor: '', paidBy: state.currentUser?.firstName || 'Admin', projectId: '', expenseType: 'business', receiptNumber: '', isPossibleDuplicate: false, duplicateReason: '', duplicateDismissed: false });
     const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
     const [receiptFile, setReceiptFile] = useState<File | null>(null);
     const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
@@ -55,6 +61,7 @@ const Financials: React.FC = () => {
     const [viewingReceipt, setViewingReceipt] = useState<string[] | null>(null);
     const [currentReceiptIndex, setCurrentReceiptIndex] = useState(0);
     const [isCustomerSelectOpen, setIsCustomerSelectOpen] = useState(false);
+    const [invoiceModalMode, setInvoiceModalMode] = useState<'job' | 'standalone'>('job');
     const [custSearch, setCustSearch] = useState('');
     const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
     
@@ -82,9 +89,13 @@ const Financials: React.FC = () => {
     const [isDisputesOpen, setIsDisputesOpen] = useState(false);
     const [isAgingOpen, setIsAgingOpen] = useState(false);
     const [isSalesTaxOpen, setIsSalesTaxOpen] = useState(false);
+    const [isTradePartnersOpen, setIsTradePartnersOpen] = useState(false);
+    const [isLogPaymentModalOpen, setIsLogPaymentModalOpen] = useState(false);
     const [payouts, setPayouts] = useState<any[]>([]);
     const [disputes, setDisputes] = useState<any[]>([]);
     const [payables, setPayables] = useState<any[]>([]);
+    const [tradePartners, setTradePartners] = useState<TradePartner[]>([]);
+    const [externalQuotes, setExternalQuotes] = useState<ExternalQuoteProposal[]>([]);
 
     const fmt = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0);
 
@@ -113,10 +124,26 @@ const Financials: React.FC = () => {
                 setPayables(results);
             }, err => console.error("Failed to load payables", err));
 
+        const unsubPartners = db.collection('trade_partners')
+            .where('organizationId', '==', state.currentOrganization.id)
+            .onSnapshot(snap => {
+                const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as TradePartner));
+                setTradePartners(list);
+            }, err => console.error("Failed to load trade partners", err));
+
+        const unsubQuotes = db.collection('external_quotes')
+            .where('organizationId', '==', state.currentOrganization.id)
+            .onSnapshot(snap => {
+                const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as ExternalQuoteProposal));
+                setExternalQuotes(list);
+            }, err => console.error("Failed to load external quotes", err));
+
         return () => {
             unsub();
             unsubDisputes();
             unsubPayables();
+            unsubPartners();
+            unsubQuotes();
         };
     }, [state.currentOrganization?.id]);
 
@@ -125,22 +152,60 @@ const Financials: React.FC = () => {
         const tab = searchParams.get('tab');
         const invId = searchParams.get('invoiceId');
         const expId = searchParams.get('expId');
+        const newExp = searchParams.get('newExpense');
+        const newPayable = searchParams.get('newPayable');
+
         if (tab === 'salestax' || tab === 'tax') {
             setIsSalesTaxOpen(true);
-        } else if (tab === 'invoices' && invId) {
-            setIsInvoicesOpen(true);
-            const targetJob = state.jobs.find((j: any) => j.id === invId);
-            if (targetJob) {
-                setEditingInvoiceId(targetJob.id);
-            }
-        } else if (tab === 'expenses' && expId) {
+        } else if (tab === 'trade-partners' || tab === 'tradepartners' || tab === 'vendors') {
+            setIsTradePartnersOpen(true);
+        } else if (tab === 'payables' || newPayable === 'true') {
+            setIsPayablesOpen(true);
+        } else if (tab === 'expenses' || newExp === 'true') {
             setIsExpensesOpen(true);
-            const expensesList = state.expenses.map(e => ({...e, type: 'expense', sourceId: e.id}));
-            const targetExp = expensesList.find((e: any) => e.sourceId === expId);
-            if (targetExp) {
-                setEditingExpense(targetExp);
-                setNewExpensePhotos(targetExp.receiptUrls || []);
+            if (newExp === 'true') {
+                const vendor = searchParams.get('vendor') ? decodeURIComponent(searchParams.get('vendor')!) : '';
+                const amountStr = searchParams.get('amount');
+                const parsedAmount = amountStr ? parseFloat(amountStr) : 0;
+                const notes = searchParams.get('notes') ? decodeURIComponent(searchParams.get('notes')!) : '';
+                const receiptUrl = searchParams.get('receiptUrl') ? decodeURIComponent(searchParams.get('receiptUrl')!) : null;
+
+                setNewExpense({
+                    date: new Date().toISOString().split('T')[0],
+                    category: 'Materials',
+                    description: notes,
+                    amount: isNaN(parsedAmount) ? 0 : parsedAmount,
+                    subtotal: isNaN(parsedAmount) ? 0 : parsedAmount,
+                    taxAmount: 0,
+                    vendor: vendor,
+                    paidBy: state.currentUser?.firstName || 'Admin',
+                    projectId: '',
+                    expenseType: 'business',
+                    receiptNumber: '',
+                    isPossibleDuplicate: false,
+                    duplicateReason: '',
+                    duplicateDismissed: false
+                });
+                if (receiptUrl) {
+                    setNewExpensePhotos([receiptUrl]);
+                }
                 setIsExpenseModalOpen(true);
+            } else if (expId) {
+                const expensesList = state.expenses.map(e => ({...e, type: 'expense', sourceId: e.id}));
+                const targetExp = expensesList.find((e: any) => e.sourceId === expId);
+                if (targetExp) {
+                    setEditingExpense(targetExp);
+                    setNewExpensePhotos(targetExp.receiptUrls || []);
+                    setIsExpenseModalOpen(true);
+                }
+            }
+        } else if (tab === 'invoices') {
+            setIsInvoicesOpen(true);
+            if (invId) {
+                const targetJob = state.jobs.find((j: any) => j.id === invId);
+                if (targetJob) {
+                    setEditingInvoiceId(targetJob.id);
+                }
             }
         }
     }, [searchParams, state.jobs, state.expenses]);
@@ -263,7 +328,45 @@ const Financials: React.FC = () => {
 
     const allExpenses = useMemo(() => {
         const expenses = state.expenses.map(e => ({...e, type: 'expense', sourceId: e.id}));
-        const vLogs = state.vehicleLogs.filter(v => v.cost > 0).map(v => ({ ...v, id: v.id, organizationId: v.organizationId, date: v.date, category: v.type === 'Fuel' ? 'Vehicle Fuel' : 'Vehicle Maint', description: v.notes, amount: v.cost, vendor: 'Fleet Expense', paidBy: v.userId, type: 'vehicleLog', sourceId: v.id }));
+        const vLogs = state.vehicleLogs.filter(v => (v.cost || 0) > 0).map(v => {
+            const vendorName = v.vendor || v.vendorName || (v.notes ? v.notes.split('\n')[0] : '') || 'Fleet Expense';
+            const cat = v.category || (v.type === 'Fuel' ? 'Vehicle Fuel' : v.type === 'Maintenance' ? 'Vehicle Maint' : (v.type || 'Vehicle Expense'));
+
+            let paidByName = v.userName || v.paidBy;
+            if (!paidByName && v.userId) {
+                const foundUser = state.users.find(u => u.id === v.userId);
+                if (foundUser) paidByName = `${foundUser.firstName || ''} ${foundUser.lastName || ''}`.trim();
+            }
+            if (!paidByName) paidByName = v.userId || 'Technician';
+
+            const primaryReceipt = v.receiptUrl || v.receiptData || v.receipt;
+            const receiptUrlsList = Array.isArray(v.receiptUrls) && v.receiptUrls.length > 0
+                ? v.receiptUrls
+                : (primaryReceipt ? [primaryReceipt] : []);
+
+            const totalAmt = Number(v.cost || v.amount) || 0;
+            const taxAmt = Number(v.tax || v.taxAmount) || 0;
+            const subAmt = Number(v.subtotal) || (totalAmt ? Math.max(0, totalAmt - taxAmt) : 0);
+
+            return {
+                ...v,
+                id: v.id,
+                organizationId: v.organizationId,
+                date: v.date ? v.date.split('T')[0] : new Date().toISOString().split('T')[0],
+                category: cat,
+                description: v.notes || v.description || '',
+                amount: totalAmt,
+                subtotal: subAmt,
+                taxAmount: taxAmt,
+                vendor: vendorName,
+                paidBy: paidByName,
+                receiptUrl: primaryReceipt,
+                receiptUrls: receiptUrlsList,
+                receiptData: v.receiptData || null,
+                type: 'vehicleLog',
+                sourceId: v.id
+            };
+        });
         const payableExp = payables
             .filter(p => p.status === 'Paid')
             .map(p => ({
@@ -279,7 +382,7 @@ const Financials: React.FC = () => {
                 sourceId: p.id
             }));
         return [...expenses, ...vLogs, ...payableExp].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [state.expenses, state.vehicleLogs, payables]);
+    }, [state.expenses, state.vehicleLogs, state.users, payables]);
 
     const financialData = useMemo(() => {
         const isDateInRange = (dateStr: string | undefined) => {
@@ -365,15 +468,64 @@ const Financials: React.FC = () => {
                 updatedByName: `${state.currentUser.firstName} ${state.currentUser.lastName}`
             };
 
+            const receiptNum = (newExpense.receiptNumber || '').trim() || (editingExpense?.receiptNumber ? editingExpense.receiptNumber : `REC-${Date.now().toString().slice(-6)}`);
+            
+            // Check for duplicates unless already dismissed by user
+            let isPossibleDuplicate = newExpense.isPossibleDuplicate || false;
+            let duplicateReason = newExpense.duplicateReason || '';
+            const isDismissed = newExpense.duplicateDismissed || false;
+
+            if (!isDismissed) {
+                const expVendor = (newExpense.vendor || '').trim().toLowerCase();
+                const expAmount = Number(newExpense.amount) || 0;
+                const expDateStr = newExpense.date || new Date().toISOString().split('T')[0];
+                const expDateObj = new Date(expDateStr).getTime();
+
+                const existingMatch = (state.expenses || []).find((existing: any) => {
+                    if (editingExpense && existing.id === editingExpense.id) return false;
+
+                    // Match by explicit receiptNumber
+                    if (receiptNum && existing.receiptNumber && existing.receiptNumber.trim().toLowerCase() === receiptNum.toLowerCase()) {
+                        duplicateReason = `Matches Receipt #${existing.receiptNumber} (${existing.vendor || 'Vendor'}, $${Number(existing.amount).toFixed(2)})`;
+                        return true;
+                    }
+                    // Match by Vendor + Amount + Date within 7 days
+                    const existingVendor = (existing.vendor || '').trim().toLowerCase();
+                    const existingAmount = Number(existing.amount) || 0;
+                    if (expVendor && existingVendor && expVendor === existingVendor && Math.abs(expAmount - existingAmount) < 0.01) {
+                        const existingDateObj = new Date(existing.date).getTime();
+                        if (!isNaN(existingDateObj) && Math.abs(expDateObj - existingDateObj) <= 7 * 24 * 60 * 60 * 1000) {
+                            duplicateReason = `Matches Vendor '${existing.vendor}', Amount $${existingAmount.toFixed(2)} on ${existing.date} (${existing.receiptNumber ? 'Receipt #' + existing.receiptNumber : 'No Receipt #'})`;
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+
+                if (existingMatch) {
+                    isPossibleDuplicate = true;
+                }
+            }
+
             if (editingExpense) {
                 if (editingExpense.type === 'vehicleLog') { 
                     await db.collection('vehicleLogs').doc(editingExpense.id).update(cleanUndefinedFields({ 
                         date: newExpense.date, 
                         cost: Number(newExpense.amount), 
+                        amount: Number(newExpense.amount), 
+                        tax: Number(newExpense.taxAmount || 0) || undefined,
+                        taxAmount: Number(newExpense.taxAmount || 0) || undefined,
+                        subtotal: Number(newExpense.subtotal || 0) || undefined,
+                        category: newExpense.category,
+                        vendor: newExpense.vendor,
                         notes: newExpense.description, 
                         receiptData: null,
                         receiptUrl: finalReceiptData,
                         receiptUrls: finalReceiptUrls,
+                        receiptNumber: receiptNum,
+                        isPossibleDuplicate,
+                        duplicateReason,
+                        duplicateDismissed: isDismissed,
                         ...auditData
                     })); 
                 } else { 
@@ -389,6 +541,10 @@ const Financials: React.FC = () => {
                         projectId: newExpense.projectId || null, 
                         inventoryItemId: newExpense.inventoryItemId || null,
                         expenseType: newExpense.expenseType || 'business',
+                        receiptNumber: receiptNum,
+                        isPossibleDuplicate,
+                        duplicateReason,
+                        duplicateDismissed: isDismissed,
                         receiptData: null,
                         receiptUrl: finalReceiptData,
                         receiptUrls: finalReceiptUrls,
@@ -411,6 +567,10 @@ const Financials: React.FC = () => {
                     projectId: newExpense.projectId,
                     inventoryItemId: newExpense.inventoryItemId || null,
                     expenseType: newExpense.expenseType || 'business',
+                    receiptNumber: receiptNum,
+                    isPossibleDuplicate,
+                    duplicateReason,
+                    duplicateDismissed: isDismissed,
                     receiptData: null,
                     receiptUrl: finalReceiptData,
                     receiptUrls: finalReceiptUrls,
@@ -430,7 +590,30 @@ const Financials: React.FC = () => {
         } catch (error) { showToast.warn("Error saving expense."); } finally { setIsSubmittingExpense(false); }
     };
 
-    const proceedCreateInvoice = async (customer?: Customer) => {
+    const handleScanInventoryBarcode = (scannedText: string) => {
+        const cleanText = (scannedText || '').trim().toLowerCase();
+        const matchedItem = (state.inventory || []).find((inv: any) => {
+            const barcodeMatch = (inv.barcode || '').trim().toLowerCase() === cleanText;
+            const skuMatch = (inv.sku || '').trim().toLowerCase() === cleanText;
+            const nameMatch = (inv.name || '').trim().toLowerCase() === cleanText;
+            const partMatch = (inv.partNumber || '').trim().toLowerCase() === cleanText;
+            return barcodeMatch || skuMatch || nameMatch || partMatch;
+        });
+
+        if (matchedItem) {
+            setNewExpense(prev => ({
+                ...prev,
+                inventoryItemId: matchedItem.id,
+                description: prev.description || `Purchase of ${matchedItem.name} (${matchedItem.sku || 'Part'})`,
+                category: prev.category || 'Materials (COGS)'
+            }));
+            showToast.success(`Matched inventory item: ${matchedItem.name} (SKU: ${matchedItem.sku || 'N/A'})`);
+        } else {
+            showToast.warn(`No inventory item found matching barcode/SKU "${scannedText}".`);
+        }
+    };
+
+    const proceedCreateInvoice = async (customer?: Customer, parentJob?: Job) => {
         if (!state.currentUser) return;
         setIsCreatingInvoice(true); 
         setIsCustomerSelectOpen(false);
@@ -441,11 +624,15 @@ const Financials: React.FC = () => {
         const newJob: Job = { 
             id, 
             organizationId: state.currentOrganization?.id || '', 
-            customerName: customer ? customer.name : 'New Customer', 
-            customerId: customer ? customer.id : null, 
-            tasks: ['Service'], 
+            customerName: parentJob?.customerName || (customer ? customer.name : 'New Customer'), 
+            customerId: parentJob?.customerId || (customer ? customer.id : null), 
+            poNumber: parentJob?.poNumber || '',
+            parentJobId: parentJob?.id || undefined,
+            locationId: parentJob?.locationId || null,
+            locationName: parentJob?.locationName || '',
+            tasks: parentJob?.tasks || ['Service'], 
             jobStatus: 'Completed', 
-            appointmentTime: new Date().toISOString(), 
+            appointmentTime: parentJob?.appointmentTime || new Date().toISOString(), 
             invoice: { 
                 id: nextInvId,
                 status: 'Unpaid', 
@@ -462,12 +649,19 @@ const Financials: React.FC = () => {
             updatedAt: new Date().toISOString(),
             updatedById: state.currentUser?.id || state.currentUser?.uid || null,
             updatedByName: state.currentUser ? `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || 'Admin' : 'System Admin',
-            address: customer?.address || { street: 'N/A', city: 'N/A', state: 'N/A', zip: 'N/A' }, 
-            specialInstructions: 'N/A' 
+            address: parentJob?.address || formatAddress(customer?.address) || '', 
+            specialInstructions: parentJob?.specialInstructions || 'N/A' 
         };
         try {
             await db.collection('jobs').doc(id).set(cleanUndefinedFields(newJob));
+            if (parentJob?.id) {
+                const updatedLinked = Array.from(new Set([...(parentJob.linkedInvoiceIds || []), nextInvId]));
+                await db.collection('jobs').doc(parentJob.id).update(cleanUndefinedFields({ linkedInvoiceIds: updatedLinked }));
+                dispatch({ type: 'UPDATE_JOB', payload: { id: parentJob.id, linkedInvoiceIds: updatedLinked } });
+            }
+            dispatch({ type: 'ADD_JOB', payload: newJob });
             setEditingInvoiceId(id);
+            showToast.success(`Created new Invoice #${nextInvId} for ${newJob.customerName}!`);
         } catch (e) {
             console.error(e);
             showToast.warn("Failed to create invoice.");
@@ -506,13 +700,36 @@ const Financials: React.FC = () => {
 
     const confirmDeleteInvoice = async () => {
         if (invoiceToDelete) {
-            await db.collection('jobs').doc(invoiceToDelete).update(cleanUndefinedFields({
-                deleted: true,
-                deletedAt: new Date().toISOString(),
-                expireAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000))
-            }));
-            dispatch({ type: 'DELETE_JOB', payload: invoiceToDelete });
-            setInvoiceToDelete(null);
+            try {
+                const targetJob = state.jobs.find(j => j.id === invoiceToDelete);
+                if (!state.isDemoMode) {
+                    await db.collection('jobs').doc(invoiceToDelete).update({
+                        invoice: firebase.firestore.FieldValue.delete(),
+                        invoiceId: firebase.firestore.FieldValue.delete(),
+                        invoiceDate: firebase.firestore.FieldValue.delete(),
+                        invoiceSignature: firebase.firestore.FieldValue.delete(),
+                        updatedAt: new Date().toISOString()
+                    });
+                    if (targetJob?.invoice?.id) {
+                        db.collection('invoices').doc(targetJob.invoice.id).delete().catch(() => {});
+                    }
+                }
+                if (targetJob) {
+                    const updatedJob = { ...targetJob };
+                    delete (updatedJob as any).invoice;
+                    delete (updatedJob as any).invoiceId;
+                    delete (updatedJob as any).invoiceDate;
+                    delete (updatedJob as any).invoiceSignature;
+                    updatedJob.updatedAt = new Date().toISOString();
+                    dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
+                }
+                showToast.success(t("Invoice deleted successfully. The job and related documents remain active."));
+            } catch (err: any) {
+                console.error("Error deleting invoice:", err);
+                showToast.error(t("Failed to delete invoice: ") + err.message);
+            } finally {
+                setInvoiceToDelete(null);
+            }
         }
     };
 
@@ -553,23 +770,43 @@ const Financials: React.FC = () => {
     // Data summaries for previews
     const allTimeReceivables = useMemo(() => {
         return state.jobs
-            .filter((j: any) => j.invoice && j.invoice.status !== 'Paid')
+            .filter((j: any) => {
+                if (!j.invoice || j.invoice.status === 'Paid' || j.invoice.status === 'Cancelled' || j.invoice.status === 'Void') return false;
+                const total = Number(j.invoice.totalAmount) ?? Number(j.invoice.amount) ?? 0;
+                const paid = Number(j.invoice.amountPaid) || 0;
+                return (total - paid) > 0;
+            })
             .reduce((sum: number, j: any) => {
-                const total = Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0;
+                const total = Number(j.invoice.totalAmount) ?? Number(j.invoice.amount) ?? 0;
                 const paid = Number(j.invoice.amountPaid) || 0;
                 return sum + Math.max(0, total - paid);
             }, 0);
     }, [state.jobs]);
 
     const pendingInvoices = useMemo(() => {
-        return state.jobs.filter((j: any) => j.invoice && j.invoice.status !== 'Paid').length;
+        return state.jobs.filter((j: any) => {
+            if (!j.invoice || j.invoice.status === 'Paid' || j.invoice.status === 'Cancelled' || j.invoice.status === 'Void') return false;
+            const total = Number(j.invoice.totalAmount) ?? Number(j.invoice.amount) ?? 0;
+            const paid = Number(j.invoice.amountPaid) || 0;
+            return (total - paid) > 0;
+        }).length;
     }, [state.jobs]);
 
+    const allPayables = useMemo(() => {
+        return calculateSubcontractorPayables(
+            state.jobs || [],
+            state.subcontractors || [],
+            state.users || [],
+            payables || [],
+            state.currentOrganization?.id || ''
+        );
+    }, [state.jobs, state.subcontractors, state.users, payables, state.currentOrganization]);
+
     const outstandingPayables = useMemo(() => {
-        return payables
+        return allPayables
             .filter(p => p.status === 'Unpaid')
             .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-    }, [payables]);
+    }, [allPayables]);
 
     const salesMetrics = useMemo(() => {
         const proposals = state.proposals || [];
@@ -598,13 +835,20 @@ const Financials: React.FC = () => {
         return { total: claims.length, pending: pending.length, approved: approved.length, totalCredits };
     }, [state.warrantyClaims]);
 
+    const tradePartnerCreditMetrics = useMemo(() => {
+        const totalLimit = tradePartners.reduce((s, p) => s + (Number(p.creditLimit) || 0), 0);
+        const totalBal = tradePartners.reduce((s, p) => s + (Number(p.currentBalance) || 0), 0);
+        return { totalLimit, totalBal, avail: Math.max(0, totalLimit - totalBal) };
+    }, [tradePartners]);
+
     return (
         <div className="space-y-6 pb-24 p-4 md:p-8 animate-fade-in">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 
-                <div className="flex gap-2 relative z-10">
+                <div className="flex flex-wrap gap-2 relative z-10">
                     <Button onClick={() => navigate('/admin/proposal')} className="bg-purple-600 shadow-lg text-xs font-black uppercase">+ {t("Proposal")}</Button>
-                    <Button onClick={() => setIsCustomerSelectOpen(true)} className="bg-emerald-600 shadow-lg text-xs font-black uppercase">+ {t("Invoice")}</Button>
+                    <Button onClick={() => { setInvoiceModalMode('job'); setCustSearch(''); setIsCustomerSelectOpen(true); }} className="bg-emerald-600 shadow-lg text-xs font-black uppercase">+ {t("Invoice")}</Button>
+                    <Button onClick={() => setIsLogPaymentModalOpen(true)} className="bg-teal-600 hover:bg-teal-700 shadow-lg text-xs font-black uppercase flex items-center gap-1.5">+ {t("Receive Payment")}</Button>
                     <Button onClick={() => { setEditingExpense(null); setIsExpenseModalOpen(true); }} className="bg-blue-600 shadow-lg text-xs font-black uppercase">+ {t("Expense")}</Button>
                 </div>
             </header>
@@ -816,6 +1060,42 @@ const Financials: React.FC = () => {
                     </div>
                 )}
 
+                {/* Trade Partners & Commercial Open Accounts */}
+                {isAdmin && (
+                    <div 
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setIsTradePartnersOpen(true); e.preventDefault(); } }}
+                        onClick={() => setIsTradePartnersOpen(true)}
+                        className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all cursor-pointer p-6 flex flex-col group overflow-hidden text-left"
+                    >
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg group-hover:scale-110 transition-transform">
+                                <Building2 size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">{t("Trade Partners & Credit")}</h3>
+                                <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400">Parts, Rentals & Open Accounts</span>
+                            </div>
+                        </div>
+                        <div className="flex-1 flex flex-col justify-center items-center py-4 relative bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-900/30 text-center px-4">
+                             <span className="text-2xl font-black text-blue-600 dark:text-blue-400 mb-1 relative z-10 drop-shadow-sm">
+                                 {tradePartners.length} Partners
+                             </span>
+                             <span className="text-[10px] text-gray-500 dark:text-gray-400 uppercase font-bold tracking-widest relative z-10 border-b border-blue-200 dark:border-blue-800 pb-2 w-full mb-2">
+                                 ${tradePartnerCreditMetrics.avail.toLocaleString('en-US', { minimumFractionDigits: 0 })} Avail Credit
+                             </span>
+                             <div className="text-xs font-bold text-blue-800 dark:text-blue-300 w-full flex justify-between">
+                                 <span>{t("Vendor Quotes")}</span>
+                                 <span>{externalQuotes.length} on file</span>
+                             </div>
+                        </div>
+                        <div className="mt-4 text-sm font-semibold text-primary-600 hover:text-primary-700 flex w-full justify-center border-t border-gray-100 dark:border-gray-700 pt-3 relative z-10">
+                            {t("Manage Trade Partners")}
+                        </div>
+                    </div>
+                )}
+
                 {/* Warranty Claims */}
                 <div 
                     role="button"
@@ -957,7 +1237,7 @@ const Financials: React.FC = () => {
                 <InvoicesTab jobs={state.jobs} setEditingInvoiceId={setEditingInvoiceId} handleDeleteInvoice={setInvoiceToDelete} isAdmin={isAdmin} />
             </Modal>
             <Modal isOpen={isExpensesOpen} onClose={() => setIsExpensesOpen(false)} title={t("Expense Management")} size="full">
-                <ExpensesTab allExpenses={allExpenses} handleEditExpense={(exp) => { setEditingExpense(exp); setNewExpensePhotos(exp.receiptUrls || []); setNewExpense({ date: exp.date || new Date().toISOString().split('T')[0], category: exp.category || 'Materials', description: exp.description || exp.notes || '', amount: exp.amount || exp.cost || 0, subtotal: exp.subtotal || 0, taxAmount: exp.taxAmount || 0, vendor: exp.vendor || '', paidBy: exp.paidBy || state.currentUser?.firstName || 'Admin', projectId: exp.projectId || '', expenseType: exp.expenseType || 'business' }); setIsExpenseModalOpen(true); }} handleDeleteExpense={async (id, type) => { await db.collection(type === 'vehicleLog' ? 'vehicleLogs' : 'expenses').doc(id).delete(); }} handleDeleteReceipt={async (id, type) => { await db.collection(type === 'vehicleLog' ? 'vehicleLogs' : 'expenses').doc(id).update(cleanUndefinedFields({ receiptData: null, receiptUrl: null, receiptUrls: [] })); }} setViewingReceipt={setViewingReceipt} setIsExpenseModalOpen={setIsExpenseModalOpen} setNewExpense={setNewExpense} currentUser={state.currentUser} isAdmin={isAdmin} />
+                <ExpensesTab allExpenses={allExpenses} handleEditExpense={(exp) => { setEditingExpense(exp); const photos = (exp.receiptUrls && exp.receiptUrls.length > 0) ? exp.receiptUrls : (exp.receiptUrl || exp.receiptData ? [exp.receiptUrl || exp.receiptData] : []); setNewExpensePhotos(photos); setNewExpense({ date: exp.date ? exp.date.split('T')[0] : new Date().toISOString().split('T')[0], category: exp.category || 'Materials', description: exp.description || exp.notes || '', amount: exp.amount || exp.cost || 0, subtotal: exp.subtotal || 0, taxAmount: exp.taxAmount || exp.tax || 0, vendor: exp.vendor || '', paidBy: exp.paidBy || state.currentUser?.firstName || 'Admin', projectId: exp.projectId || '', expenseType: exp.expenseType || 'business' }); setIsExpenseModalOpen(true); }} handleDeleteExpense={async (id, type) => { await db.collection(type === 'vehicleLog' ? 'vehicleLogs' : 'expenses').doc(id).delete(); }} handleDeleteReceipt={async (id, type) => { await db.collection(type === 'vehicleLog' ? 'vehicleLogs' : 'expenses').doc(id).update(cleanUndefinedFields({ receiptData: null, receiptUrl: null, receiptUrls: [] })); }} setViewingReceipt={setViewingReceipt} setIsExpenseModalOpen={setIsExpenseModalOpen} setNewExpense={setNewExpense} currentUser={state.currentUser} isAdmin={isAdmin} />
             </Modal>
             <Modal isOpen={isPayablesOpen} onClose={() => setIsPayablesOpen(false)} title={t("Accounts Payable")} size="full">
                 <Payables />
@@ -1031,7 +1311,7 @@ const Financials: React.FC = () => {
                             />
                         </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label htmlFor="expense-type-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Expense Type</label>
                             <select 
@@ -1047,6 +1327,7 @@ const Financials: React.FC = () => {
                                 <option value="personal">Personal Expense</option>
                             </select>
                         </div>
+                        <Input label="Receipt # / Inv #" placeholder="e.g. REC-10492" value={newExpense.receiptNumber || ''} onChange={e => setNewExpense({...newExpense, receiptNumber: e.target.value})} />
                         <Input label="Vendor" value={newExpense.vendor} onChange={e => setNewExpense({...newExpense, vendor: e.target.value})} required />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1083,7 +1364,12 @@ const Financials: React.FC = () => {
                     </div>
                     
                     <div>
-                        <label htmlFor="inventory-item-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Attach to Inventory Item (Optional)</label>
+                        <div className="flex items-center justify-between mb-1">
+                            <label htmlFor="inventory-item-select" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                                Attach to Inventory Item (Optional)
+                            </label>
+                            <BarcodeScannerButton onScan={handleScanInventoryBarcode} />
+                        </div>
                         <select 
                             id="inventory-item-select"
                             title="Attach to Inventory Item (Optional)"
@@ -1094,7 +1380,7 @@ const Financials: React.FC = () => {
                         >
                             <option value="">-- No Inventory Attached --</option>
                             {state.inventory?.map(inv => (
-                                <option key={inv.id} value={inv.id}>{inv.name} (SKU: {inv.sku}) - {inv.quantity} in stock</option>
+                                <option key={inv.id} value={inv.id}>{inv.name} (SKU: {inv.sku || 'N/A'}{inv.barcode ? ` | Barcode: ${inv.barcode}` : ''}) - {inv.quantity} in stock</option>
                             ))}
                         </select>
                         <p className="text-[10px] text-slate-500 mt-1">If selected, this expense will automatically move to the job this inventory piece is consumed on.</p>
@@ -1183,44 +1469,194 @@ const Financials: React.FC = () => {
                 </form>
             </Modal>
 
-            <Modal isOpen={isCustomerSelectOpen} onClose={() => setIsCustomerSelectOpen(false)} title="Select Customer">
-                <Input placeholder="Search customers..." value={custSearch} onChange={e => setCustSearch(e.target.value)} />
-                <div className="mt-4 space-y-2 max-h-[300px] overflow-y-auto">
-                    <Button onClick={() => handleCreateInvoice()} variant="secondary" className="w-full text-xs font-bold mb-2">Create Blank Invoice</Button>
-                    {state.customers.filter(c => {
-                        const searchLower = custSearch.toLowerCase();
-                        const matchesName = c.name.toLowerCase().includes(searchLower);
-                        const matchesLocation = c.serviceLocations?.some(loc => 
-                            (loc.propertyName || '').toLowerCase().includes(searchLower) ||
-                            (loc.address || '').toLowerCase().includes(searchLower)
-                        );
-                        return matchesName || matchesLocation;
-                    }).slice(0,10).map(c => {
-                        const searchLower = custSearch.toLowerCase();
-                        const matchingLoc = custSearch ? c.serviceLocations?.find(loc => 
-                            (loc.propertyName || '').toLowerCase().includes(searchLower) ||
-                            (loc.address || '').toLowerCase().includes(searchLower)
-                        ) : null;
-                        const locName = matchingLoc ? (matchingLoc.propertyName || matchingLoc.address) : null;
+            <Modal isOpen={isCustomerSelectOpen} onClose={() => setIsCustomerSelectOpen(false)} title="Create / Select Invoice">
+                <div className="space-y-4">
+                    {/* Mode Selector */}
+                    <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                        <button
+                            type="button"
+                            onClick={() => { setInvoiceModalMode('job'); setCustSearch(''); }}
+                            className={`flex-1 py-2 text-xs font-black rounded-lg transition-all ${
+                                invoiceModalMode === 'job'
+                                    ? 'bg-white dark:bg-slate-700 text-[#123A63] dark:text-sky-300 shadow-sm'
+                                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                            }`}
+                        >
+                            📋 Select Open Job (Recommended)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setInvoiceModalMode('standalone'); setCustSearch(''); }}
+                            className={`flex-1 py-2 text-xs font-black rounded-lg transition-all ${
+                                invoiceModalMode === 'standalone'
+                                    ? 'bg-white dark:bg-slate-700 text-[#123A63] dark:text-sky-300 shadow-sm'
+                                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                            }`}
+                        >
+                            📄 Create Standalone Invoice
+                        </button>
+                    </div>
 
-                        return (
-                            <div 
-                                key={c.id} 
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { handleCreateInvoice(c); e.preventDefault(); } }}
-                                onClick={() => handleCreateInvoice(c)} 
-                                className="p-3 border rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-white"
-                            >
-                                <div>{c.name}</div>
-                                {locName && (
-                                    <div className="text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5">
-                                        Matches location: {locName}
-                                    </div>
-                                )}
+                    {invoiceModalMode === 'job' ? (
+                        <div className="space-y-3">
+                            <Input 
+                                placeholder="Search open jobs by WO #, customer, address..." 
+                                value={custSearch} 
+                                onChange={e => setCustSearch(e.target.value)} 
+                                autoFocus
+                            />
+                            <div className="max-h-[340px] overflow-y-auto space-y-2 pr-1">
+                                {(() => {
+                                    const searchLower = custSearch.toLowerCase();
+                                    const openJobs = (state.jobs || []).filter((j: any) => {
+                                        if (j.archived || j.deleted || j.jobStatus === 'Archived') return false;
+                                        if (j.invoice && j.invoice.status === 'Paid') return false;
+                                        if (!searchLower) return true;
+                                        return (
+                                            (j.customerName && j.customerName.toLowerCase().includes(searchLower)) ||
+                                            (j.poNumber && j.poNumber.toLowerCase().includes(searchLower)) ||
+                                            (j.id && j.id.toLowerCase().includes(searchLower)) ||
+                                            (j.locationName && j.locationName.toLowerCase().includes(searchLower)) ||
+                                            (j.address && j.address.toLowerCase().includes(searchLower)) ||
+                                            (j.tasks && j.tasks.some((t: string) => t.toLowerCase().includes(searchLower)))
+                                        );
+                                    }).sort((a: any, b: any) => new Date(b.createdAt || b.appointmentTime || 0).getTime() - new Date(a.createdAt || a.appointmentTime || 0).getTime());
+
+                                    if (openJobs.length === 0) {
+                                        return (
+                                            <div className="p-6 text-center text-slate-400 text-xs italic bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                                                No matching open jobs found. You can switch to "Create Standalone Invoice" above.
+                                            </div>
+                                        );
+                                    }
+
+                                    return openJobs.map((j: any) => {
+                                        const hasInvoice = Boolean(j.invoice && (j.invoice.id || (j.invoice.items && j.invoice.items.length > 0) || Number(j.invoice.totalAmount || j.invoice.amount || 0) > 0));
+
+                                        return (
+                                            <div
+                                                key={j.id}
+                                                className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900/60 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 group"
+                                            >
+                                                <div className="min-w-0 pr-2">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-extrabold text-sm text-[#123A63] dark:text-sky-300">
+                                                            {j.customerName || 'Customer'}
+                                                        </span>
+                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                                            WO #{j.poNumber || j.id.slice(-6)}
+                                                        </span>
+                                                        {hasInvoice && (
+                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                                                INV #{j.invoice.id || 'Current'} &bull; ${(Number(j.invoice.totalAmount || j.invoice.amount || 0)).toFixed(2)} ({j.invoice.status || 'Draft'})
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                                        {j.locationName ? `${j.locationName} • ` : ''}{j.address || 'No address specified'}
+                                                    </p>
+                                                </div>
+
+                                                <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                                                    {hasInvoice ? (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setIsCustomerSelectOpen(false);
+                                                                    setEditingInvoiceId(j.id);
+                                                                }}
+                                                                className="px-3 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-1"
+                                                                title="Modify current invoice on this job"
+                                                            >
+                                                                ✏️ Modify Current INV #{j.invoice.id || ''}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => proceedCreateInvoice(undefined, j)}
+                                                                className="px-2.5 py-1.5 text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 rounded-lg shadow-sm transition-all flex items-center gap-1"
+                                                                title="Create a new additional invoice for this job"
+                                                            >
+                                                                + New Invoice
+                                                            </button>
+                                                        </>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setIsCustomerSelectOpen(false);
+                                                                setEditingInvoiceId(j.id);
+                                                            }}
+                                                            className="px-3.5 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm transition-all flex items-center gap-1"
+                                                        >
+                                                            + Create Invoice &rarr;
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    });
+                                })()}
                             </div>
-                        );
-                    })}
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <Input 
+                                placeholder="Search customers..." 
+                                value={custSearch} 
+                                onChange={e => setCustSearch(e.target.value)} 
+                                autoFocus
+                            />
+                            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                                <Button 
+                                    onClick={() => proceedCreateInvoice()} 
+                                    variant="secondary" 
+                                    className="w-full text-xs font-bold py-2.5 mb-2 border-dashed border-2 hover:border-emerald-500"
+                                >
+                                    + Create Blank Standalone Invoice
+                                </Button>
+                                {state.customers.filter(c => {
+                                    const searchLower = custSearch.toLowerCase();
+                                    const matchesName = c.name && typeof c.name === 'string' && c.name.toLowerCase().includes(searchLower);
+                                    const matchesLocation = c.serviceLocations?.some(loc => 
+                                        (loc.propertyName || '').toLowerCase().includes(searchLower) ||
+                                        formatAddress(loc.address).toLowerCase().includes(searchLower)
+                                    );
+                                    return !searchLower || matchesName || matchesLocation;
+                                }).slice(0, 15).map(c => {
+                                    const searchLower = custSearch.toLowerCase();
+                                    const matchingLoc = custSearch ? c.serviceLocations?.find(loc => 
+                                        (loc.propertyName || '').toLowerCase().includes(searchLower) ||
+                                        formatAddress(loc.address).toLowerCase().includes(searchLower)
+                                    ) : null;
+                                    const locName = matchingLoc ? (matchingLoc.propertyName || formatAddress(matchingLoc.address)) : null;
+
+                                    return (
+                                        <div 
+                                            key={c.id} 
+                                            role="button"
+                                            tabIndex={0}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { proceedCreateInvoice(c); e.preventDefault(); } }}
+                                            onClick={() => proceedCreateInvoice(c)} 
+                                            className="p-3 border border-slate-200 dark:border-slate-800 rounded-xl cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-white flex items-center justify-between"
+                                        >
+                                            <div>
+                                                <div>{c.name}</div>
+                                                {locName && (
+                                                    <div className="text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5">
+                                                        Matches location: {locName}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <span className="text-xs text-primary-600 dark:text-sky-400 font-semibold">
+                                                Create &rarr;
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </Modal>
 
@@ -1250,8 +1686,12 @@ const Financials: React.FC = () => {
                             <div className="flex justify-center bg-slate-900 p-2 md:p-4 rounded-2xl overflow-hidden max-h-[70vh] w-full min-h-[400px]">
                                 {(() => {
                                     const url = viewingReceipt[currentReceiptIndex];
-                                    const isHtml = url?.startsWith('data:text/html') || url?.includes('.html');
-                                    if (isHtml) {
+                                    if (!url) {
+                                        return <div className="text-slate-400 p-8">No receipt file available.</div>;
+                                    }
+                                    const fileInfo = detectFileType(url);
+
+                                    if (fileInfo.isHtml) {
                                         let srcDoc = url;
                                         if (url.startsWith('data:text/html;base64,')) {
                                             try {
@@ -1262,12 +1702,34 @@ const Financials: React.FC = () => {
                                         }
                                         return (
                                             <iframe 
-                                                srcDoc={srcDoc} 
+                                                srcDoc={url.startsWith('data:') ? srcDoc : undefined} 
+                                                src={!url.startsWith('data:') ? url : undefined}
                                                 className="w-full h-[60vh] bg-white rounded-xl border-none"
                                                 title="Receipt Document"
                                             />
                                         );
                                     }
+
+                                    if (fileInfo.isPdf) {
+                                        return (
+                                            <iframe 
+                                                src={url} 
+                                                className="w-full h-[60vh] bg-white rounded-xl border-none"
+                                                title="Receipt Document"
+                                            />
+                                        );
+                                    }
+
+                                    if (fileInfo.googleDocsViewerUrl) {
+                                        return (
+                                            <iframe 
+                                                src={fileInfo.googleDocsViewerUrl} 
+                                                className="w-full h-[60vh] bg-white rounded-xl border-none"
+                                                title="Receipt Document"
+                                            />
+                                        );
+                                    }
+
                                     return (
                                         <img 
                                             src={url === 'embedded' ? 'https://placehold.co/400x400?text=Receipt+Not+Found' : url} 
@@ -1289,11 +1751,13 @@ const Financials: React.FC = () => {
                 </div>
             </Modal>
 
-            <Modal isOpen={!!invoiceToDelete} onClose={() => setInvoiceToDelete(null)} title="Confirm Deletion">
-                <p>Are you sure you want to delete this invoice? This action cannot be undone.</p>
+            <Modal isOpen={!!invoiceToDelete} onClose={() => setInvoiceToDelete(null)} title={t("Confirm Invoice Deletion")}>
+                <p className="text-gray-700 dark:text-gray-300">
+                    {t("Are you sure you want to delete this invoice? The underlying job, work order, site photos, notes, and records will remain active and intact.")}
+                </p>
                 <div className="flex justify-end gap-4 mt-4">
-                    <Button onClick={() => setInvoiceToDelete(null)} variant="secondary">Cancel</Button>
-                    <Button onClick={confirmDeleteInvoice} variant="danger">Delete</Button>
+                    <Button onClick={() => setInvoiceToDelete(null)} variant="secondary">{t("Cancel")}</Button>
+                    <Button onClick={confirmDeleteInvoice} variant="danger">{t("Delete Invoice")}</Button>
                 </div>
             </Modal>
 
@@ -1406,6 +1870,21 @@ const Financials: React.FC = () => {
                     jobs={existingJobsForCustomer}
                     onSelectJob={handleSelectExistingJob}
                     onCreateNew={() => proceedCreateInvoice(selectedCustomerForExisting)}
+                />
+            )}
+
+            {isLogPaymentModalOpen && (
+                <LogReceivedPaymentModal
+                    isOpen={isLogPaymentModalOpen}
+                    onClose={() => setIsLogPaymentModalOpen(false)}
+                    jobs={state.jobs}
+                />
+            )}
+
+            {isTradePartnersOpen && (
+                <TradePartnersHubModal
+                    isOpen={isTradePartnersOpen}
+                    onClose={() => setIsTradePartnersOpen(false)}
                 />
             )}
         </div>

@@ -32,9 +32,11 @@ const LandingChatbot: React.FC = () => {
     - **Vendor & 1099 Management**: Generate specific tax forms for your subcontractors directly within the Document Creator.
     
     # PRICING
-    - TekTrakker Pro: $99/mo. Includes 3 users.
-    - TekTrakker Premium: $249/mo. Includes 10 users.
-    - TekTrakker Unlimited: $499/mo. Includes 20 users.
+    - Starter: $49/mo (or $550/yr annual). Includes 1 User Seat.
+    - Growth: $249/mo (or $2,499/yr annual). Includes 5 User Seats.
+    - Business: $399/mo (or $3,999/yr annual). Includes 15 User Seats.
+    - Enterprise: $749/mo (or $7,499/yr annual). Includes Unlimited User Seats.
+    - Individual seat add-ons are disabled to enforce tier limits. To add more user licenses for your dispatchers, technicians, or office managers, please upgrade to the next subscription tier.
     `;
 
     useEffect(() => {

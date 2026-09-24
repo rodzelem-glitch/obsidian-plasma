@@ -11,7 +11,6 @@ const navItems = [
   { path: '/briefing/', label: 'Briefing', icon: BriefingIcon, tourKey: 'briefing' },
   { path: '/briefing/scheduling', label: 'Schedule', icon: CalendarDays, tourKey: 'scheduling' },
   { path: '/briefing/timelog', label: 'Time', icon: TimeLogIcon, tourKey: 'timelog' },
-  { path: '/briefing/tools', label: 'Tools', icon: CalculatorIcon, tourKey: 'tools' },
   { path: '/briefing/messages', label: 'Chat', icon: ChatBubbleLeftRightIcon, tourKey: 'messages' },
 ];
 
@@ -23,7 +22,7 @@ const BottomNav: React.FC = () => {
   return (
     <nav className={`fixed bottom-0 left-0 right-0 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-50 pb-[env(safe-area-inset-bottom,0px)] ${isIOS ? 'bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-slate-200/50 dark:border-slate-700/50' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
       <div className="mx-auto max-w-7xl px-0.5">
-        <div className="grid grid-cols-5 h-[68px]">
+        <div className="grid grid-cols-4 h-[68px]">
           {navItems.map((item) => {
             const isBriefingTab = item.path === '/briefing/';
             const isActive = isBriefingTab 

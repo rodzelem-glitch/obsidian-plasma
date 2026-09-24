@@ -18,12 +18,41 @@ const BillingGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const isKortTester = state.currentUser?.email === 'integrations@kortpayments.com' || (state.currentUser?.role as string) === 'kort_tester';
 
     // Rigid Access Control Logic
-    const isExpired = org?.subscriptionExpiryDate && new Date(org.subscriptionExpiryDate) < new Date();
-    const isCancelled = org?.subscriptionStatus === 'cancelled';
-    const isPastDue = org?.subscriptionStatus === 'past_due';
+    const isFreeOrPartner = !!org?.isFreeAccess || !!org?.isComplimentary || !!(org as any)?.isPartnerAccount || !!state.isDemoMode || org?.id === 'apex-org-456' || !!org?.id?.startsWith('demo-') || !!(org?.name && (org.name.toLowerCase().includes('demo') || org.name.toLowerCase().includes('test')));
+    const hasPaymentMethod = !!(org?.platformVaultedPaymentMethodId || org?.paymentMethodAttached);
+
+    const isEnterprise = org?.plan === 'enterprise';
+    const hasPaymentHistory = hasPaymentMethod || !!(org as any)?.hasPaymentHistory || !!(org as any)?.lastPaymentDate;
+
+    // Grace Period: Enterprise with established payment history gets 3 days. Trials & non-enterprise get 0 days.
+    const gracePeriodMs = (isEnterprise && hasPaymentHistory) ? 3 * 24 * 60 * 60 * 1000 : 0;
+
+    const expiryTime = org?.subscriptionExpiryDate ? new Date(org.subscriptionExpiryDate).getTime() : 0;
+    const isDateExpired = expiryTime > 0 ? (expiryTime + gracePeriodMs) < Date.now() : false;
+
+    // Trial accounts get ZERO grace period. Immediate lock when 14 days pass or expiry date passes.
+    const isTrial14DaysOver = org?.subscriptionStatus === 'trial' && org?.createdAt
+        ? (Date.now() - new Date(org.createdAt).getTime()) > 14 * 24 * 60 * 60 * 1000
+        : false;
+
+    const isTrialExpired = !isFreeOrPartner && (org?.subscriptionStatus === 'trial' || !org?.subscriptionStatus) && (isDateExpired || isTrial14DaysOver || !hasPaymentMethod);
+    const isUnpaidActive = !isFreeOrPartner && !hasPaymentMethod && (org?.subscriptionStatus === 'active' || !org?.subscriptionStatus);
+
+    const isExpired = !isFreeOrPartner && (isDateExpired || isTrialExpired);
+    const isCancelled = org?.subscriptionStatus === 'cancelled' || (org?.subscriptionStatus as any) === 'canceled';
+
+    let isPastDue = (org?.subscriptionStatus as any) === 'past_due' || (org?.subscriptionStatus as any) === 'expired' || isUnpaidActive || isTrialExpired;
     
+    // Enterprise grace period check on past_due status
+    if (isEnterprise && hasPaymentHistory && (org?.subscriptionStatus as any) === 'past_due') {
+        const pastDueTime = (org as any)?.pastDueSince ? new Date((org as any).pastDueSince).getTime() : expiryTime;
+        if (pastDueTime > 0 && (pastDueTime + gracePeriodMs) >= Date.now()) {
+            isPastDue = false; // Within 3-day grace period
+        }
+    }
+
     // Master Admin can bypass billing locks to manage the platform
-    const isBlocked = !isMasterAdmin && (isExpired || isCancelled || isPastDue);
+    const isBlocked = !isMasterAdmin && !isFreeOrPartner && (isExpired || isCancelled || isPastDue);
 
     useEffect(() => {
         let mounted = true;
@@ -94,9 +123,15 @@ const BillingGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                         <Ban size={40} />
                     </div>
                     
-                    <h2 className="text-3xl font-black text-white mb-4 tracking-tight">Access Suspended</h2>
+                    <h2 className="text-3xl font-black text-white mb-4 tracking-tight">
+                        {isTrialExpired ? 'Free Trial Expired' : 'Access Suspended'}
+                    </h2>
                     <p className="text-slate-400 mb-8 text-sm leading-relaxed">
-                        The subscription for <strong>{org?.name}</strong> has {isExpired ? 'expired' : 'been cancelled or is past due'}. 
+                        {isTrialExpired ? (
+                            <>The 14-day free trial for <strong>{org?.name}</strong> has ended. Please add a payment method and select a plan to activate full access.</>
+                        ) : (
+                            <>The subscription for <strong>{org?.name}</strong> has {isExpired ? 'expired' : 'been cancelled or is past due'}.</>
+                        )}
                         <br/><br/>
                         {isOrgAdmin || isKortTester ? (
                             "All platform tools, dispatching, and field services are currently locked. Please update your billing preferences to restore access."

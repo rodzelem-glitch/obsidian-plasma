@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Eye, CheckSquare, DollarSign, Building, Truck, Wrench } from 'lucide-react';
+import { Eye, CheckSquare, DollarSign, Building, Truck, Wrench, FileText, FolderArchive, HardHat } from 'lucide-react';
 
 interface ProjectTabsProps {
     activeTab: string;
@@ -10,9 +10,12 @@ interface ProjectTabsProps {
 const tabs = [
     { id: 'overview', name: 'Overview', icon: Eye },
     { id: 'tasks', name: 'Tasks', icon: CheckSquare },
+    { id: 'jobs', name: 'Jobs', icon: Wrench },
     { id: 'financials', name: 'Financials', icon: DollarSign },
+    { id: 'proposals', name: 'Proposals', icon: FileText },
+    { id: 'documents', name: 'Documents', icon: FolderArchive },
     { id: 'permits', name: 'Permits', icon: Building },
-    { id: 'subcontractors', name: 'Subcontractors', icon: Wrench },
+    { id: 'subcontractors', name: 'Subcontractors', icon: HardHat },
     { id: 'rentals', name: 'Rentals', icon: Truck }
 ];
 

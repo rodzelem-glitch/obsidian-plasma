@@ -122,9 +122,19 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                 />
 
                 <div className="mt-8 flex justify-end items-center gap-8">
-                    <div className="text-right">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Grand Total Due</p>
-                        <p className="text-3xl font-black text-primary-600">${totals.total.toFixed(2)}</p>
+                    <div className="text-right space-y-1">
+                        <div className="flex justify-between gap-6 text-xs font-bold text-gray-500 uppercase tracking-widest">
+                            <span>Subtotal:</span>
+                            <span className="font-black text-slate-800 dark:text-slate-200">${totals.subtotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between gap-6 text-xs font-bold text-gray-500 uppercase tracking-widest">
+                            <span>Sales Tax ({taxRate}%):</span>
+                            <span className="font-black text-slate-800 dark:text-slate-200">${totals.tax.toFixed(2)}</span>
+                        </div>
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Grand Total Due</p>
+                            <p className="text-3xl font-black text-primary-600">${totals.total.toFixed(2)}</p>
+                        </div>
                     </div>
                 </div>
 

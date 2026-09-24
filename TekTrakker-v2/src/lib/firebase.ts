@@ -20,6 +20,8 @@ if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
 
+firebase.firestore.setLogLevel('error');
+
 const db = firebase.firestore();
 
 interface CapacitorWindow extends Window {

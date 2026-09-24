@@ -4,6 +4,8 @@ import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import { Briefcase, Mail, CheckSquare, ShieldCheck, FileText, Upload, Trash2, Download, Landmark, Calendar, File } from 'lucide-react';
 import { IndustryVertical } from 'types';
+import { useAppContext } from 'context/AppContext';
+import showToast from 'lib/toast';
 
 interface ProfileTabProps {
     orgName: string;
@@ -58,6 +60,7 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
     handleDocumentUpload,
     handleDeleteDocument
 }) => {
+    const { state } = useAppContext();
     return (
         <div className="space-y-6">
             {/* Card 1: Core Contact Details */}
@@ -79,6 +82,31 @@ const ProfileTab: React.FC<ProfileTabProps> = ({
                         />
                         <p className="text-[10px] text-gray-400 mt-1 uppercase font-bold flex items-center gap-1">
                             <Mail size={10} /> Receive alerts for new bookings and leads at these addresses (comma separated).
+                        </p>
+                    </div>
+
+                    {/* Dedicated Inbound Email Forwarding Box */}
+                    <div className="md:col-span-2 bg-blue-50 dark:bg-blue-950/40 p-4 rounded-xl border border-blue-200 dark:border-blue-800/60 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Mail size={18} className="text-blue-600 dark:text-blue-400" />
+                                <h4 className="font-extrabold text-xs uppercase tracking-wider text-blue-900 dark:text-blue-200">TekTrakker Inbound Forwarding Address</h4>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const slug = (state.currentOrganization?.slug || state.currentOrganization?.id || 'your-org-slug').toLowerCase();
+                                    const emailAddr = `${slug}@inbound.mail.tektrakker.com`;
+                                    navigator.clipboard.writeText(emailAddr);
+                                    showToast.success("Inbound email address copied!");
+                                }}
+                                className="px-3 py-1.5 bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-slate-700 text-[11px] font-bold rounded-lg border border-blue-200 dark:border-blue-700 transition-colors flex items-center gap-1"
+                            >
+                                Copy Address
+                            </button>
+                        </div>
+                        <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+                            Auto-forward customer emails from your business domain to <code className="font-mono font-bold bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-bold text-xs">{`${(state.currentOrganization?.slug || state.currentOrganization?.id || 'your-org-slug').toLowerCase()}@inbound.mail.tektrakker.com`}</code> to ingest service requests and files directly into TekTrakker.
                         </p>
                     </div>
 

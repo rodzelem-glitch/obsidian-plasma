@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import showToast from "lib/toast";
-import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
-import React, { useState, useMemo } from 'react';
+import { getBaseUrl, cleanUndefinedFields, matchTier } from "lib/utils";
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
@@ -11,7 +11,8 @@ import { getNextInvoiceNumber } from 'lib/numbering';
 import type { Proposal, Job, Notification } from 'types';
 import { 
     DollarSign, Briefcase, CheckCircle, 
-    FileText, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy, Bell, UserPlus, Search, Clock, XCircle
+    FileText, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy, Bell, UserPlus, Search, Clock, XCircle,
+    Archive, ArchiveRestore
 } from 'lucide-react';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import JobDetailModal from 'components/modals/JobDetailModal';
@@ -24,6 +25,8 @@ import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
 import MultipleProposalsModal, { getPendingCompetingProposals } from 'components/modals/MultipleProposalsModal';
 import SignOffModal from 'pages/briefing/components/SignOffModal';
 import SubcontractorWorkOrderModal from 'components/modals/SubcontractorWorkOrderModal';
+import { generateProposalPdfAttachment } from 'lib/pdfHelper';
+import { computeCanonicalFinancials } from 'lib/financialCalculator';
 
 const SalesPipeline: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -41,6 +44,33 @@ const SalesPipeline: React.FC = () => {
         isOpen: boolean;
         proposal: Proposal | null;
     }>({ isOpen: false, proposal: null });
+
+    useEffect(() => {
+        if (viewProposal?.id) {
+            const latestProp = (state.proposals || []).find((p: any) => p.id === viewProposal.id);
+            if (latestProp && latestProp !== viewProposal) {
+                setViewProposal(latestProp);
+            }
+        }
+    }, [state.proposals, viewProposal?.id]);
+
+    useEffect(() => {
+        if (viewingJob?.id) {
+            const latestJob = (state.jobs || []).find((j: any) => j.id === viewingJob.id);
+            if (latestJob && latestJob !== viewingJob) {
+                setViewingJob(latestJob);
+            }
+        }
+    }, [state.jobs, viewingJob?.id]);
+
+    useEffect(() => {
+        if (viewingInvoiceJob?.id) {
+            const latestJob = (state.jobs || []).find((j: any) => j.id === viewingInvoiceJob.id);
+            if (latestJob && latestJob !== viewingInvoiceJob) {
+                setViewingInvoiceJob(latestJob);
+            }
+        }
+    }, [state.jobs, viewingInvoiceJob?.id]);
 
     // Share Proposal State
     const [shareModalProp, setShareModalProp] = useState<Proposal | null>(null);
@@ -101,34 +131,63 @@ const SalesPipeline: React.FC = () => {
     }, [searchParams, state.proposals]);
 
     // --- METRICS ---
+    const activeProposals = useMemo(() => {
+        return (proposals as Proposal[]).filter(p => !p.archived);
+    }, [proposals]);
+
+    const archivedCount = useMemo(() => {
+        return (proposals as Proposal[]).filter(p => !!p.archived).length;
+    }, [proposals]);
+
     const metrics = useMemo(() => {
-        const totalValue = (proposals as Proposal[]).reduce((sum, p) => sum + p.total, 0);
-        const acceptedValue = (proposals as Proposal[]).filter(p => p.status === 'Accepted').reduce((sum, p) => sum + p.total, 0);
-        const openValue = (proposals as Proposal[]).filter(p => p.status === 'Sent' || p.status === 'Opened' || p.status === 'Draft' || p.status === 'Pending Approval').reduce((sum, p) => sum + p.total, 0);
+        const totalValue = activeProposals.reduce((sum, p) => sum + (p.total || 0), 0);
+        const acceptedValue = activeProposals.filter(p => p.status === 'Accepted').reduce((sum, p) => sum + (p.total || 0), 0);
+        const openValue = activeProposals.filter(p => p.status === 'Sent' || p.status === 'Opened' || p.status === 'Draft' || p.status === 'Pending Approval').reduce((sum, p) => sum + (p.total || 0), 0);
         
-        const count = proposals.length;
-        const acceptedCount = (proposals as Proposal[]).filter(p => p.status === 'Accepted').length;
+        const count = activeProposals.length;
+        const acceptedCount = activeProposals.filter(p => p.status === 'Accepted').length;
         const closeRate = count > 0 ? (acceptedCount / count) * 100 : 0;
 
         return { totalValue, acceptedValue, openValue, closeRate, count };
-    }, [proposals]);
+    }, [activeProposals]);
 
     // --- FILTERING ---
     const [sortBy, setSortBy] = useState('date_desc');
 
-
     const filteredProposals = useMemo(() => {
+        const hasSearch = !!searchTerm.trim();
+        const q = searchTerm.toLowerCase().trim();
+
         return (proposals as Proposal[])
-            .filter(p => filterStatus === 'All' || p.status === filterStatus)
             .filter(p => {
-                if (!searchTerm) return true;
-                const q = searchTerm.toLowerCase();
+                // If filterStatus is 'Archived', ONLY show archived proposals
+                if (filterStatus === 'Archived') {
+                    return !!p.archived;
+                }
+
+                // If user entered a search query:
+                // If on 'All', search across ALL proposals (active and archived)
+                // If on a specific status tab (e.g. 'Sent', 'Accepted'), match that status (whether archived or active)
+                if (hasSearch) {
+                    if (filterStatus === 'All') return true;
+                    return p.status === filterStatus;
+                }
+
+                // If no search query and not on 'Archived' tab, hide archived proposals
+                if (p.archived) return false;
+
+                if (filterStatus === 'All') return true;
+                return p.status === filterStatus;
+            })
+            .filter(p => {
+                if (!hasSearch) return true;
                 return (
                     (p.customerName || '').toLowerCase().includes(q) ||
                     (p.id || '').toLowerCase().includes(q) ||
                     (p.jobId || '').toLowerCase().includes(q) || // Internal WO Number (Job ID)
                     (p.poNumber || '').toLowerCase().includes(q) || // External WO Number (PO #)
                     (p.selectedOption || '').toLowerCase().includes(q) ||
+                    (p.title || '').toLowerCase().includes(q) ||
                     (p.total?.toString() || '').includes(q)
                 );
             })
@@ -217,15 +276,63 @@ const SalesPipeline: React.FC = () => {
         navigate(`${basePath}/proposal?proposalId=${id}`);
     };
 
-    const handleDeleteProposal = async (id: string) => {
-        if (!await globalConfirm("Permanently delete this proposal?")) return;
+    const handleArchiveProposal = async (proposal: Proposal, archive: boolean = true) => {
         try {
-            await db.collection('proposals').doc(id).update(cleanUndefinedFields({
-                deleted: true,
-                deletedAt: new Date().toISOString(),
-                expireAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000))
-            }));
+            const updates = {
+                archived: archive,
+                archivedAt: archive ? new Date().toISOString() : null,
+                archivedBy: archive ? (state.currentUser?.id || null) : null,
+                updatedAt: new Date().toISOString()
+            };
+
+            if (!state.isDemoMode) {
+                await db.collection('proposals').doc(proposal.id).update(cleanUndefinedFields(updates));
+            }
+
+            dispatch({
+                type: 'UPDATE_PROPOSAL',
+                payload: {
+                    id: proposal.id,
+                    ...updates
+                }
+            });
+
+            if (viewProposal?.id === proposal.id) {
+                setViewProposal({
+                    ...viewProposal,
+                    ...updates
+                });
+            }
+
+            showToast.success(archive ? "Proposal archived." : "Proposal restored from archive.");
+        } catch (e) {
+            console.error(e);
+            showToast.warn(archive ? "Failed to archive proposal." : "Failed to restore proposal.");
+        }
+    };
+
+    const handleDeleteProposal = async (id: string) => {
+        if (!await globalConfirm("Permanently delete this proposal? (The job and other documents will remain active)")) return;
+        try {
+            if (!state.isDemoMode) {
+                await db.collection('proposals').doc(id).update(cleanUndefinedFields({
+                    deleted: true,
+                    deletedAt: new Date().toISOString(),
+                    expireAt: firebase.firestore.Timestamp.fromDate(new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000))
+                }));
+                const linkedJobs = state.jobs.filter(j => j.proposalId === id || (j.linkedProposalIds || []).includes(id));
+                for (const j of linkedJobs) {
+                    const newLinked = (j.linkedProposalIds || []).filter(pid => pid !== id);
+                    const updates: any = { linkedProposalIds: newLinked };
+                    if (j.proposalId === id) updates.proposalId = firebase.firestore.FieldValue.delete();
+                    await db.collection('jobs').doc(j.id).update(updates).catch(() => {});
+                    const updatedJob = { ...j, linkedProposalIds: newLinked };
+                    if (j.proposalId === id) delete (updatedJob as any).proposalId;
+                    dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
+                }
+            }
             dispatch({ type: 'DELETE_PROPOSAL', payload: id });
+            showToast.success("Proposal deleted successfully.");
         } catch (e) {
             showToast.warn("Delete failed.");
         }
@@ -242,8 +349,61 @@ const SalesPipeline: React.FC = () => {
         
         let combinedInstructions = `Converted from Proposal ${proposal.id}`;
         if (originalDiagnosticJob) {
-            combinedInstructions = `Converted from Proposal ${proposal.id}.\n\n[Diagnostic Notes from Job #${originalDiagnosticJob.id.slice(-6).toUpperCase()}]:\n${originalDiagnosticJob.notes?.diagnosis || 'No diagnosis recorded'}`;
+            combinedInstructions = `Converted from Proposal ${proposal.id}.\n\n[Diagnostic Notes from Job #${originalDiagnosticJob.jobNumber || originalDiagnosticJob.id}]:\n${originalDiagnosticJob.notes?.diagnosis || 'No diagnosis recorded'}`;
         }
+
+        const filteredItems = (proposal.items || []).filter(i => {
+            if (!proposal.selectedOption || !('tier' in i) || !(i as any).tier) return true;
+            return matchTier((i as any).tier, proposal.selectedOption);
+        });
+
+        const invoiceItems = filteredItems.map(i => {
+            const unitPrice = Number(i.price || 0);
+            const qty = Number(i.quantity || 1);
+            const rawCost = (i as any).vendorCost ?? (i as any).cost ?? (i as any).partCost;
+            const numericCost = rawCost !== undefined ? Number(rawCost) : undefined;
+            const numericMarkup = (i as any).markupPct !== undefined ? Number((i as any).markupPct) : undefined;
+
+            return {
+                id: i.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                name: i.name || i.description || 'Proposal Item',
+                description: i.description || i.name || '',
+                quantity: qty,
+                unitPrice: unitPrice,
+                price: unitPrice,
+                total: Number(i.total !== undefined ? i.total : (unitPrice * qty)),
+                type: i.type || 'Part',
+                taxable: i.taxable !== false,
+                vendorCost: numericCost,
+                cost: numericCost,
+                markupPct: numericMarkup,
+                tier: (i as any).tier,
+                subItems: (i as any).subItems ? (i as any).subItems.map((sub: any) => ({
+                    ...sub,
+                    id: sub.id || `sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+                })) : undefined
+            };
+        });
+
+        const canonical = computeCanonicalFinancials({
+            items: invoiceItems,
+            depositType: (proposal as any).depositType,
+            depositValue: (proposal as any).depositValue,
+            depositAmount: (proposal as any).depositAmount,
+            depositPaid: (proposal as any).depositPaid,
+            depositPaidAmount: (proposal as any).depositPaidAmount,
+            depositNotes: (proposal as any).depositNotes,
+            paymentTerms: (proposal as any).paymentTerms || 'net_30',
+            amountPaid: (proposal as any).amountPaid || 0,
+            taxRate: (proposal.taxRate !== undefined && proposal.taxRate !== null)
+                ? (Number(proposal.taxRate) <= 1 ? Number(proposal.taxRate) : Number(proposal.taxRate) / 100)
+                : ((state.currentOrganization.taxRate || 8.25) / 100),
+            additionalFeePercent: (proposal as any).additionalFeePercent || 0,
+            additionalFeeName: (proposal as any).additionalFeeName || '',
+            additionalFeeAmount: (proposal as any).additionalFeeAmount || 0,
+        });
+
+        const poNum = proposal.poNumber || originalDiagnosticJob?.poNumber || originalDiagnosticJob?.workOrderNumber || null;
 
         const newJob: Job = {
             id: `job-${Date.now()}`,
@@ -251,31 +411,53 @@ const SalesPipeline: React.FC = () => {
             customerName: proposal.customerName,
             customerId: customer?.id,
             address: customer?.address || 'Address Pending',
-            tasks: proposal.items.map(i => i.name),
+            tasks: filteredItems.map(i => i.name),
             jobStatus: 'Scheduled',
             appointmentTime: new Date().toISOString(), 
-            poNumber: proposal.poNumber || originalDiagnosticJob?.poNumber || null,
+            poNumber: poNum,
+            workOrderNumber: poNum,
+            proposalId: proposal.id,
+            linkedProposalIds: [proposal.id],
             invoice: {
                 id: nextInvId,
-                items: proposal.items.map(i => ({
-                    id: i.id,
-                    description: i.name,
-                    quantity: i.quantity || 1,
-                    unitPrice: i.price,
-                    total: i.total || (i.price * (i.quantity || 1)),
-                    type: i.type
-                })),
-                subtotal: proposal.subtotal,
-                taxRate: (state.currentOrganization.taxRate || 8.25) / 100,
-                taxAmount: proposal.taxAmount,
-                totalAmount: proposal.total,
-                amount: proposal.total,
+                invoiceNumber: nextInvId,
+                number: nextInvId,
+                proposalId: proposal.id,
+                proposalNumber: proposal.proposalNumber || proposal.id,
+                poNumber: poNum || '',
+                items: invoiceItems,
+                subtotal: canonical.subtotal,
+                taxRate: canonical.taxRate,
+                taxAmount: canonical.taxAmount,
+                totalAmount: canonical.grandTotal,
+                grandTotal: canonical.grandTotal,
+                amount: canonical.grandTotal,
+                additionalFeeName: canonical.additionalFeeName || (proposal as any).additionalFeeName,
+                additionalFeePercent: canonical.additionalFeePercent ?? (proposal as any).additionalFeePercent,
+                additionalFeeAmount: canonical.additionalFeeAmount ?? (proposal as any).additionalFeeAmount,
+                depositType: canonical.depositType as any,
+                depositValue: canonical.depositValue,
+                depositAmount: canonical.depositRequired,
+                depositRequired: canonical.depositRequired,
+                depositPaid: canonical.depositPaid,
+                depositPaidAmount: canonical.depositPaidAmount,
+                depositNotes: canonical.depositNotes,
+                amountPaid: canonical.amountPaid,
+                balanceDue: canonical.balanceDue,
+                balanceRemaining: canonical.balanceRemaining,
+                amountDueToday: canonical.amountDueToday,
+                amountDueNet: canonical.amountDueNet,
+                paymentTerms: canonical.paymentTerms,
+                paymentTermsLabel: canonical.paymentTermsLabel,
+                financialStatus: canonical.financialStatus,
+                recommendations: proposal.recommendations || '',
+                notes: proposal.recommendations || '',
+                warrantyNotes: proposal.warrantyTerms || '',
                 status: 'Unpaid'
             },
             jobEvents: [],
             specialInstructions: combinedInstructions,
             source: 'SalesPipeline',
-            proposalId: proposal.id,
             createdAt: new Date().toISOString()
         };
 
@@ -284,27 +466,65 @@ const SalesPipeline: React.FC = () => {
                 ...f,
                 id: f.id.startsWith('copied-') ? f.id : `copied-${f.id}-${Date.now()}`
             }));
-            newJob.unitStates = originalDiagnosticJob.unitStates || [];
-            newJob.techRecommendations = originalDiagnosticJob.techRecommendations || '';
             (newJob as any).parentJobId = originalDiagnosticJob.id;
+            (newJob as any).linkedJobIds = Array.from(new Set([...(originalDiagnosticJob.linkedJobIds || []), originalDiagnosticJob.id]));
+
+            try {
+                const parentLinkedJobs = Array.from(new Set([...(originalDiagnosticJob.linkedJobIds || []), newJob.id]));
+                await db.collection('jobs').doc(originalDiagnosticJob.id).update(cleanUndefinedFields({
+                    linkedJobIds: parentLinkedJobs,
+                    updatedAt: new Date().toISOString()
+                }));
+                dispatch({ type: 'UPDATE_JOB', payload: { ...originalDiagnosticJob, linkedJobIds: parentLinkedJobs } });
+            } catch (pErr) {
+                console.error("Error updating parent job linkedJobIds:", pErr);
+            }
         }
 
         try {
             await db.collection('jobs').doc(newJob.id).set(cleanUndefinedFields(newJob));
             dispatch({ type: 'ADD_JOB', payload: newJob });
             
+            const updatedJobIds = Array.from(new Set([...(proposal.linkedJobIds || []), newJob.id]));
             const updatedProposal: Proposal = {
                 ...proposal,
                 jobId: newJob.id,
                 invoiceId: nextInvId,
+                linkedJobIds: updatedJobIds,
                 status: 'Accepted',
-                poNumber: newJob.poNumber || null
+                poNumber: newJob.poNumber || null,
+                subtotal: canonical.subtotal,
+                taxRate: canonical.taxRate,
+                taxAmount: canonical.taxAmount,
+                total: canonical.grandTotal,
+                totalAmount: canonical.grandTotal,
+                grandTotal: canonical.grandTotal,
+                depositRequired: canonical.depositRequired,
+                depositPaid: canonical.depositPaid,
+                depositPaidAmount: canonical.depositPaidAmount,
+                balanceDue: canonical.balanceDue,
+                amountDueToday: canonical.amountDueToday,
+                amountDueNet: canonical.amountDueNet
             };
             await db.collection('proposals').doc(proposal.id).update(cleanUndefinedFields({
                 jobId: newJob.id,
                 invoiceId: nextInvId,
+                linkedJobIds: updatedJobIds,
                 status: 'Accepted',
                 poNumber: newJob.poNumber || null,
+                subtotal: canonical.subtotal,
+                taxRate: canonical.taxRate,
+                taxAmount: canonical.taxAmount,
+                total: canonical.grandTotal,
+                totalAmount: canonical.grandTotal,
+                grandTotal: canonical.grandTotal,
+                amount: canonical.grandTotal,
+                depositRequired: canonical.depositRequired,
+                depositPaid: canonical.depositPaid,
+                depositPaidAmount: canonical.depositPaidAmount,
+                balanceDue: canonical.balanceDue,
+                amountDueToday: canonical.amountDueToday,
+                amountDueNet: canonical.amountDueNet,
                 updatedAt: new Date().toISOString()
             }));
             dispatch({ type: 'UPDATE_PROPOSAL', payload: updatedProposal });
@@ -362,7 +582,7 @@ const SalesPipeline: React.FC = () => {
 
     const canApprove = state.currentUser?.role === 'admin' || state.currentUser?.role === 'supervisor' || state.currentUser?.role === 'both' || state.currentUser?.role === 'master_admin';
 
-    const handleSendProposalReminder = async (proposal: Proposal, selectedEmails?: string[]) => {
+    const handleSendProposalReminder = async (proposal: Proposal, selectedEmails?: string[], attachPdf?: boolean) => {
         let emails = selectedEmails;
         if (!emails) {
             let email = proposal.customerEmail;
@@ -394,12 +614,29 @@ const SalesPipeline: React.FC = () => {
             }
         }
 
-        if (!selectedEmails && !confirm(`Send reminder for proposal #${proposal.id.slice(-6)} to ${emails.join(', ')}?`)) return;
+        if (!selectedEmails && !confirm(`Send reminder for proposal #${proposal.proposalNumber || proposal.id} to ${emails.join(', ')}?`)) return;
 
         try {
             const link = `${getBaseUrl()}/#/proposal-view/${proposal.id}`;
             const orgName = state.currentOrganization?.name || 'Service Provider';
             const totalVal = proposal.total || 0;
+
+            let pdfAttachments: any[] = [];
+            if (attachPdf !== false) {
+                try {
+                    showToast.info("Generating proposal PDF attachment...");
+                    const pdfAtt = await generateProposalPdfAttachment(proposal, state.currentOrganization);
+                    if (pdfAtt) {
+                        const sanitizedAtt = { ...pdfAtt };
+                        if (sanitizedAtt.path && sanitizedAtt.content && sanitizedAtt.content.length > 400000) {
+                            delete sanitizedAtt.content;
+                        }
+                        pdfAttachments.push(sanitizedAtt);
+                    }
+                } catch (pdfErr) {
+                    console.error("Error generating proposal PDF for sales pipeline reminder:", pdfErr);
+                }
+            }
 
             await db.collection('mail_queue').add(cleanUndefinedFields({
                 to: emails,
@@ -408,7 +645,8 @@ const SalesPipeline: React.FC = () => {
                     subject: `Reminder: Proposal from ${orgName}`,
                     html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #e0f2fe;border-radius:8px;"><h2 style="color:#0284c7;">Proposal Reminder</h2><p>Hi ${proposal.customerName},</p><p>This is a friendly reminder to review the proposal we prepared for you (total: <strong>$${totalVal.toLocaleString()}</strong>).</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Sign Proposal</a></div><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
                     text: `Reminder: Please review and sign your proposal for $${totalVal.toLocaleString()}. Link: ${link}`,
-                    replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com'
+                    replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
+                    ...(pdfAttachments.length > 0 ? { attachments: pdfAttachments } : {})
                 },
                 organizationId: state.currentOrganization?.id,
                 type: 'ProposalReminder',
@@ -541,17 +779,27 @@ const SalesPipeline: React.FC = () => {
                     </div>
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div className="flex space-x-2 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg overflow-x-auto custom-scrollbar flex-1 whitespace-nowrap">
-                        {['All', 'Pending Approval', 'Draft', 'Sent', 'Accepted', 'Rejected', 'Denied', 'Expired'].map(status => (
+                        {['All', 'Pending Approval', 'Draft', 'Sent', 'Accepted', 'Rejected', 'Denied', 'Expired', 'Archived'].map(status => (
                             <button
                                 key={status}
                                 onClick={() => setFilterStatus(status)}
-                                className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${
+                                className={`px-3 py-1 text-xs font-bold rounded-md transition-colors flex items-center gap-1.5 ${
                                     filterStatus === status 
                                         ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' 
                                         : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
                                 }`}
                             >
-                                {status}
+                                {status === 'Archived' && <Archive size={12} className="shrink-0" />}
+                                <span>{status}</span>
+                                {status === 'Archived' && archivedCount > 0 && (
+                                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                                        filterStatus === 'Archived'
+                                            ? 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'
+                                            : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                    }`}>
+                                        {archivedCount}
+                                    </span>
+                                )}
                             </button>
                         ))}
                     </div>
@@ -589,11 +837,46 @@ const SalesPipeline: React.FC = () => {
                     'Reminders Sent'
                 ]}>
                     {filteredProposals.map(p => {
-                        const linkedJob = (state.jobs || []).find((j: any) => j.id === p.jobId || j.proposalId === p.id);
+                        const linkedJob = (state.jobs || []).find((j: any) => 
+                            j.id === p.jobId || 
+                            j.proposalId === p.id || 
+                            p.linkedJobIds?.includes(j.id) || 
+                            j.linkedProposalIds?.includes(p.id)
+                        );
+                        const linkedCust = (state.customers || []).find((c: any) => c.id === p.customerId || c.name?.trim().toLowerCase() === p.customerName?.trim().toLowerCase());
                         const invoiceId = p.invoiceId || linkedJob?.invoice?.id;
-                        const signOffFile = (linkedJob?.files || []).find((f: any) => f.fileName === 'SignOff_Sheet.html' || f.metadata?.label === 'Sign-Off Sheet' || f.id?.startsWith('signoff-doc'));
+                        const signOffFile = (linkedJob?.files || []).find((f: any) => 
+                            f.fileName === 'SignOff_Sheet.html' || 
+                            f.fileName?.toLowerCase().includes('signoff') ||
+                            f.fileName?.toLowerCase().includes('sign-off') ||
+                            f.fileName?.toLowerCase().includes('sign_off') ||
+                            f.metadata?.label === 'Sign-Off Sheet' || 
+                            f.metadata?.label?.toLowerCase().includes('sign-off') ||
+                            f.metadata?.label?.toLowerCase().includes('signoff') ||
+                            f.label?.toLowerCase().includes('sign-off') ||
+                            f.label?.toLowerCase().includes('signoff') ||
+                            f.category === 'signoff' ||
+                            f.metadata?.category === 'signoff' ||
+                            f.id?.startsWith('signoff-doc')
+                        );
                         const subBillFile = (linkedJob?.files || []).find((f: any) => f.fileName === 'Subcontractor_Bill.html' || f.metadata?.label === 'Subcontractor Bill' || f.id?.startsWith('subcontractorbill-doc'));
                         const poNumber = p.poNumber || linkedJob?.poNumber;
+
+                        let locName = (p as any).serviceLocationName || p.locationName || linkedJob?.locationName || '';
+                        let locAddr = (p as any).serviceLocationAddress || p.locationAddress || (p as any).siteAddress || (p as any).address || linkedJob?.address || '';
+
+                        if (linkedCust?.serviceLocations?.length) {
+                            const matchedLoc = linkedCust.serviceLocations.find((l: any) =>
+                                (p.locationId && l.id === p.locationId) ||
+                                (locName && (l.name?.trim().toLowerCase() === locName.trim().toLowerCase() || l.propertyName?.trim().toLowerCase() === locName.trim().toLowerCase())) ||
+                                (locAddr && l.address && locAddr.toLowerCase().includes(l.address.toLowerCase()))
+                            ) || (linkedCust.serviceLocations.length === 1 ? linkedCust.serviceLocations[0] : null);
+
+                            if (matchedLoc) {
+                                if (!locName || locName === p.customerName) locName = matchedLoc.propertyName || matchedLoc.name || locName;
+                                if (!locAddr) locAddr = matchedLoc.address || '';
+                            }
+                        }
 
                         return (
                             <tbody key={p.id} className="border-b border-slate-200 dark:border-slate-700 last:border-b-0">
@@ -609,16 +892,16 @@ const SalesPipeline: React.FC = () => {
                                         )}
                                     </td>
                                     <td className="px-6 py-4 text-xs font-mono font-bold text-slate-400">
-                                        #{p.id.slice(-6)}
+                                        #{p.proposalNumber || p.id}
                                     </td>
                                     <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
                                         {p.customerName}
                                     </td>
                                     <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                        <div>{p.locationName || <span className="italic text-slate-400">--</span>}</div>
-                                        {(p.locationAddress || (p as any).address) && (
-                                            <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate max-w-[200px]" title={p.locationAddress || (p as any).address}>
-                                                {p.locationAddress || (p as any).address}
+                                        <div className="font-semibold text-slate-800 dark:text-slate-200">{locName || <span className="italic text-slate-400">--</span>}</div>
+                                        {locAddr && (
+                                            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5 truncate max-w-[200px]" title={locAddr}>
+                                                {locAddr}
                                             </div>
                                         )}
                                     </td>
@@ -633,7 +916,7 @@ const SalesPipeline: React.FC = () => {
                                                 title="View Proposal"
                                             >
                                                 <FileText size={10} />
-                                                {`PROP-${p.id.slice(-6).toUpperCase()}`}
+                                                {p.proposalNumber || (p.id.startsWith('PROP-') ? p.id : `PROP-${p.id.replace(/^prop-/, '')}`)}
                                             </span>
 
                                             {linkedJob && (
@@ -643,7 +926,7 @@ const SalesPipeline: React.FC = () => {
                                                     title="View Job Details"
                                                 >
                                                     <Briefcase size={10} />
-                                                    {`JOB-${linkedJob.id.slice(-6).toUpperCase()}`}
+                                                    {linkedJob.jobNumber || (linkedJob.id.startsWith('Job-') || linkedJob.id.startsWith('JOB-') ? linkedJob.id : `Job-${linkedJob.id.replace(/^job-/, '')}`)}
                                                 </span>
                                             )}
 
@@ -719,17 +1002,29 @@ const SalesPipeline: React.FC = () => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col gap-1 items-start">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold uppercase border ${
-                                                p.status === 'Accepted' ? 'bg-green-100 text-green-800 border-green-200' :
-                                                (p.status === 'Rejected' || p.status === 'Denied') ? 'bg-red-100 text-red-800 border-red-200' :
-                                                p.status === 'Sent' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                                                p.status === 'Opened' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
-                                                p.status === 'Pending Approval' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                                                p.status === 'Expired' ? 'bg-slate-200 text-slate-800 border-slate-300' :
-                                                'bg-gray-100 text-gray-800 border-gray-200'
-                                            }`}>
-                                                {p.status}
-                                            </span>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase border ${
+                                                    p.status === 'Accepted' ? 'bg-green-100 text-green-800 border-green-200' :
+                                                    (p.status === 'Rejected' || p.status === 'Denied') ? 'bg-red-100 text-red-800 border-red-200' :
+                                                    p.status === 'Sent' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                                                    p.status === 'Opened' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
+                                                    p.status === 'Pending Approval' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                                                    p.status === 'Expired' ? 'bg-slate-200 text-slate-800 border-slate-300' :
+                                                    'bg-gray-100 text-gray-800 border-gray-200'
+                                                }`}>
+                                                    {p.status}
+                                                </span>
+                                                {p.archived && (
+                                                    <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 flex items-center gap-1">
+                                                        <Archive size={10} /> Archived
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {linkedJob?.jobStatus === 'Completed' && !p.archived && (
+                                                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                                    ✓ Job Completed
+                                                </span>
+                                            )}
                                             {(() => {
                                                 const hasBeenOpened = p.status === 'Opened' || p.trackingHistory?.some((entry: any) => entry.status === 'Opened');
                                                 return hasBeenOpened && p.status !== 'Accepted' && (
@@ -826,6 +1121,18 @@ const SalesPipeline: React.FC = () => {
                                                 </>
                                             )}
                                             <button 
+                                                title={p.archived ? "Restore Proposal to Active Pipeline" : "Archive Proposal"} 
+                                                onClick={() => handleArchiveProposal(p, !p.archived)} 
+                                                className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-md transition-colors font-bold shadow-sm ${
+                                                    p.archived 
+                                                        ? 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-900/40' 
+                                                        : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                                }`}
+                                            >
+                                                {p.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                                                {p.archived ? "Restore" : "Archive"}
+                                            </button>
+                                            <button 
                                                 title="Reassign Customer" 
                                                 onClick={(e) => { e.stopPropagation(); setReassignProposal(p); setNewCustomerId(p.customerId || ''); }} 
                                                 className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-md text-amber-700 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-900/40 transition-colors font-bold shadow-sm"
@@ -906,11 +1213,14 @@ const SalesPipeline: React.FC = () => {
                 isOpen={recipientModalConfig.isOpen}
                 onClose={() => setRecipientModalConfig({ isOpen: false, proposal: null })}
                 customerId={recipientModalConfig.proposal?.customerId}
-                locationId={recipientModalConfig.proposal?.locationId}
+                locationId={recipientModalConfig.proposal?.locationId || (recipientModalConfig.proposal as any)?.serviceLocationId}
+                locationName={recipientModalConfig.proposal?.locationName || (recipientModalConfig.proposal as any)?.siteLocationName || (recipientModalConfig.proposal as any)?.address}
+                documentType="proposal"
                 title="Select Reminder Recipients"
-                onConfirm={(emails) => {
+                defaultAttachPdf={true}
+                onConfirm={(emails, attachPdf) => {
                     if (recipientModalConfig.proposal) {
-                        handleSendProposalReminder(recipientModalConfig.proposal, emails);
+                        handleSendProposalReminder(recipientModalConfig.proposal, emails, attachPdf);
                     }
                     setRecipientModalConfig({ isOpen: false, proposal: null });
                 }}
@@ -932,11 +1242,30 @@ const SalesPipeline: React.FC = () => {
                     isOpen={!!activeSignOffJob} 
                     onClose={() => setActiveSignOffJob(null)} 
                     job={activeSignOffJob}
-                    onSave={async (file: any) => {
+                    onSave={async (file: any, updatedFields?: any) => {
                         try {
                             const existingFiles = activeSignOffJob.files || [];
-                            const updatedFiles = [...existingFiles, file];
-                            await db.collection('jobs').doc(activeSignOffJob.id).update(cleanUndefinedFields({ files: updatedFiles }));
+                            const updatedFiles = updatedFields?.files || [...existingFiles, file];
+                            const sheetUrl = file.url || file.dataUrl;
+                            const signOffData = updatedFields?.signOff || {
+                                managerName: file.metadata?.managerName || null,
+                                technicianName: file.metadata?.technicianName || activeSignOffJob.assignedTechnicianName || null,
+                                dateOfService: file.metadata?.dateOfService || new Date().toISOString().split('T')[0],
+                                sheetUrl: sheetUrl,
+                                timestamp: new Date().toISOString(),
+                                status: 'COMPLETED'
+                            };
+                            const updates = {
+                                files: updatedFiles,
+                                signOffSheetUrl: sheetUrl,
+                                signoffSheetUrl: sheetUrl,
+                                customWorkOrderFormUrl: sheetUrl,
+                                signOff: signOffData,
+                                signOffSignature: sheetUrl || 'SIGNED_ON_FILE',
+                                ...(updatedFields || {})
+                            };
+                            await db.collection('jobs').doc(activeSignOffJob.id).update(cleanUndefinedFields(updates));
+                            dispatch({ type: 'UPDATE_JOB', payload: { ...activeSignOffJob, ...updates } });
                             activeSignOffJob.files = updatedFiles;
                             showToast.success("Sign-off sheet saved successfully!");
                         } catch (err) {

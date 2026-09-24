@@ -5,6 +5,8 @@ import { useAppContext } from 'context/AppContext';
 import { Logo, LogoIcon } from '../ui/Logo';
 import TopNavActions from '../common/TopNavActions';
 import { Capacitor } from '@capacitor/core';
+import { ShieldCheck } from 'lucide-react';
+import { setActiveView } from 'lib/viewState';
 
 interface HeaderProps {
     user: User;
@@ -27,6 +29,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
     const companyName = state.currentOrganization?.name || 'TekTrakker';
 
     // Helper to check if user has access to Admin layout
+    const isMasterAdmin = state.isMasterAdmin || user.role === 'master_admin';
     const canSeeAdmin = user.role === 'both' || user.role === 'supervisor' || user.role === 'admin' || user.role === 'master_admin';
 
     return (
@@ -43,9 +46,27 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
 
                     <div className="flex items-center space-x-2 sm:space-x-3">
                         <TopNavActions user={user} onLogout={onLogout} />
+                        {isMasterAdmin && (
+                            <button 
+                                onClick={() => {
+                                    setActiveView('master', user.id);
+                                    navigate('/master/dashboard');
+                                }} 
+                                data-tour="switch-master-btn"
+                                className="flex items-center text-xs font-bold text-indigo-600 dark:text-indigo-400 border border-indigo-500/40 px-3 py-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 active:scale-95 transition-all min-h-[38px] touch-manipulation gap-1" 
+                                title="Master Admin Dashboard"
+                            >
+                                <ShieldCheck className="w-4 h-4 text-indigo-500 shrink-0" />
+                                <span className="md:hidden font-extrabold">Master</span>
+                                <span className="hidden md:inline">Master Admin</span>
+                            </button>
+                        )}
                         {canSeeAdmin && (
                             <button 
-                                onClick={() => navigate('/admin/dashboard')} 
+                                onClick={() => {
+                                    setActiveView('admin', user.id);
+                                    navigate('/admin/dashboard');
+                                }} 
                                 data-tour="switch-admin-btn"
                                 className="flex items-center text-xs font-bold text-primary-600 dark:text-primary-400 border border-primary-500/40 px-3 py-1.5 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 active:scale-95 transition-all min-h-[38px] touch-manipulation" 
                                 title="Admin Dashboard"

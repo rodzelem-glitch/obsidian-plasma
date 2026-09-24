@@ -42,8 +42,8 @@ export const KortSetupForm: React.FC<KortSetupFormProps> = ({ onSuccess, onError
 
     const isACHEnabled = true; // Enabled since ACH processing is live again
 
-    const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY;
-    const rawAccountId = state.currentOrganization?.kortAccountId || import.meta.env.VITE_KORT_ACCOUNT_ID;
+    const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY || (state.currentOrganization as any)?.kortPublishableKey || 'pk_rYhq97y3dI980o5n7f';
+    const rawAccountId = state.currentOrganization?.kortAccountId || (state.currentOrganization as any)?.tilledAccountId || import.meta.env.VITE_KORT_ACCOUNT_ID || 'acct_80k1rF6Qk1jB3devSmfv7';
     const isSandbox = !publishableKey || !publishableKey.startsWith('pk_rYhq');
     const fallbackMerchantId = isSandbox ? 'acct_zDruOrRgOZVtafF9TPC2J' : 'acct_k5kvc1P0G1Rf4HNizIH8I';
     // Fallback to active connected merchant account if the account is the partner account (which has Card/ACH disabled)

@@ -8,6 +8,22 @@ export interface Address {
     zip: string;
 }
 
+export interface OrganizationCustomPricing {
+    customMonthlyPlanFee?: number;
+    customSmsRate?: number;
+    customVoiceRate?: number;
+    customPhoneLineFee?: number;
+    customStorageOverageRate?: number;
+    customAiTokenOverageRate?: number;
+    customExcessUserFee?: number;
+    customDivisionFee?: number;
+    customVirtualWorkerFee?: number;
+    customIncludedStorageGB?: number;
+    customIncludedAiTokens?: number;
+    customAiVoiceAssistantRate?: number;
+    customAiVoiceAssistantMonthlyFee?: number;
+}
+
 export interface Organization {
     id: string;
     name: string;
@@ -34,7 +50,8 @@ export interface Organization {
     footerImage?: string | null;
     subscriptionStatus: 'trial' | 'active' | 'past_due' | 'cancelled';
     subscriptionExpiryDate?: string | null;
-    plan?: 'starter' | 'growth' | 'enterprise' | 'payments_only';
+    plan?: 'starter' | 'growth' | 'business' | 'enterprise' | 'payments_only';
+    customPricing?: OrganizationCustomPricing;
     createdAt?: string;
     paymentMethodAttached?: boolean;
     notificationEmails?: string[];
@@ -105,6 +122,8 @@ export interface Organization {
     aiPricebookEnabled?: boolean;
     virtualWorkerEnabled?: boolean;
     virtualWorkerBillingType?: 'monthly' | 'lifetime';
+    aiVoiceAssistantEnabled?: boolean;
+    aiVoiceAssistantBillingType?: 'monthly' | 'lifetime';
     revenuecatId?: string;
     salesRepId?: string;
     settings?: any; 
@@ -135,6 +154,7 @@ export interface PlatformSettings {
     plans: {
         starter: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
         growth: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
+        business: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
         enterprise: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
         payments_only: { monthly: number; annual: number; maxUsers: number; stripeMonthlyId?: string; stripeAnnualId?: string };
     };
@@ -143,15 +163,48 @@ export interface PlatformSettings {
     virtualWorkerFee?: number;
     virtualWorkerLifetimeFee?: number;
     divisionFee?: number;
+    smsRate?: number;
+    voiceRate?: number;
+    phoneLineFee?: number;
+    aiTokenOverageRatePer1k?: number;
+    aiVoiceAssistantMonthlyFee?: number;
+    aiVoiceAssistantRatePerMinute?: number;
     franchiseLifetimeFee?: number;
     updatedAt: string;
+}
+
+export interface SalesIncentiveContest {
+    id?: string;
+    title: string;
+    description: string;
+    rewardType: 'prize' | 'cash' | 'raffle' | 'experience' | 'custom';
+    rewardValue: string; // e.g. "75\" Sony 4K OLED TV" or "$1,000 Cash"
+    startDate: string; // YYYY-MM-DD
+    endDate: string; // YYYY-MM-DD
+    criteriaType: 'top_volume' | 'top_deals' | 'threshold_volume' | 'threshold_deals' | 'raffle';
+    targetThreshold?: number; // e.g. 2500 for $2,500 MRR
+    isActive: boolean;
+    winnerRepId?: string;
+    winnerRepName?: string;
+    updatedAt?: string;
 }
 
 export interface CommissionSettings {
     baseRate: number;
     acceleratorRate: number;
     annualQuota: number;
-    renewalRate: number;
+    renewalRate: number; // Kept for backwards compatibility (aliases year2Rate)
+    year2Rate?: number;
+    lifetimeRate?: number;
+    quarterlyMinDeals?: number;
+    quarterlyMinVolume?: number;
+    inactivityCliffDays?: number;
+    abandonmentDays?: number;
+    annualPrepaidKickerRate?: number; // e.g. 0.05 (+5 percentage points)
+    monthlyMrrAccelerators?: { minMrr: number; maxMrr?: number; rate: number }[];
+    monthlyMrrBonuses?: { mrr: number; bonus: number }[];
+    annualArrBonuses?: { arr: number; bonus: number }[];
+    activeMonthlyIncentive?: SalesIncentiveContest;
     rampUpMonths: {
         phase1: number;
         phase1QuotaPct: number;
@@ -159,3 +212,4 @@ export interface CommissionSettings {
         phase2QuotaPct: number;
     }
 }
+

@@ -42,6 +42,7 @@ interface ArrivalStepProps {
     files?: StoredFile[];
     handlePhotoUpload?: (e: React.ChangeEvent<HTMLInputElement>, label: string) => void;
     takeNativePhoto?: () => void;
+    pickGalleryPhotos?: () => void;
     takeNativeAssetPhoto?: (photoType: 'serialPhotoUrl' | 'unitTagPhotoUrl' | 'conditionPhotoUrl' | 'wideLocationPhotoUrl' | 'accessPointPhotoUrl' | 'qrCodePhotoUrl') => void;
     onDeletePhoto?: (file: StoredFile) => void;
     onViewPhoto?: (file: StoredFile) => void;
@@ -74,6 +75,7 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
     files = [],
     handlePhotoUpload,
     takeNativePhoto,
+    pickGalleryPhotos,
     takeNativeAssetPhoto,
     onDeletePhoto,
     onViewPhoto,
@@ -314,10 +316,9 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
         }, 100);
     };
 
-    if (hidden) return null;
     const arrivalFiles = files.filter(f => {
         const lbl = f.metadata?.label || f.label;
-        return lbl === 'Pre-Work' || lbl === 'Before';
+        return lbl !== 'After' && lbl !== 'Completed Work';
     });
     const handleNavigate = () => {
         const encodedAddress = encodeURIComponent(formatAddress(job.address));
@@ -735,12 +736,22 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                                 <span className="text-xs font-bold text-primary-700">{t("Camera")}</span>
                             </button>
                         )}
-                        {handlePhotoUpload && (
-                            <label htmlFor="arrival-gallery" className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors w-24 h-24 shadow-sm shrink-0">
+                        {(handlePhotoUpload || pickGalleryPhotos) && (
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    if (pickGalleryPhotos) {
+                                        pickGalleryPhotos();
+                                    } else {
+                                        document.getElementById('arrival-gallery')?.click();
+                                    }
+                                }}
+                                className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors w-24 h-24 shadow-sm shrink-0"
+                            >
                                 <ImageIcon size={24} className="text-slate-400 mb-2"/>
                                 <span className="text-xs font-bold text-slate-500">{t("Gallery")}</span>
                                 <input id="arrival-gallery" type="file" multiple accept="image/*" onChange={(e) => handlePhotoUpload && handlePhotoUpload(e, 'Before')} className="hidden" />
-                            </label>
+                            </button>
                         )}
                         {arrivalFiles.map(file => (
                             <div key={file.id} className="relative w-32 rounded-xl flex flex-col border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-md shrink-0 overflow-hidden group">
@@ -763,27 +774,49 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                                 </div>
                                 <div className="p-1.5 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-900/30 flex flex-col gap-1">
                                     <select
-                                        value={file.metadata?.assetId || ''}
+                                        value={file.assetId || file.metadata?.assetId || ''}
                                         onChange={(e) => onAssignPhotoToAsset?.(file.id, e.target.value)}
                                         className="w-full text-[10px] py-1 px-1.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 font-medium cursor-pointer"
                                     >
                                         <option value="">{t("General Photo")}</option>
-                                        {assets && assets.map(asset => (
-                                            <option key={asset.id} value={asset.id}>
-                                                {asset.name || `${asset.brand} ${t(asset.type)}`} {asset.serial ? `(${asset.serial.slice(-4)})` : ''}
-                                            </option>
-                                        ))}
+                                        {assets && assets.map(asset => {
+                                            const serialText = asset.serial || asset.serialNumber ? ` • S/N: ${asset.serial || asset.serialNumber}` : '';
+                                            const modelText = asset.model || asset.modelNumber ? ` • M/N: ${asset.model || asset.modelNumber}` : '';
+                                            const brandText = asset.brand ? ` (${asset.brand})` : '';
+                                            return (
+                                                <option key={asset.id} value={asset.id}>
+                                                    {asset.name || `${asset.brand || ''} ${t(asset.type || 'Unit')}`.trim()}{brandText}{modelText}{serialText}
+                                                </option>
+                                            );
+                                        })}
                                     </select>
-                                    <select
-                                        value={file.metadata?.label || file.label || ''}
-                                        onChange={(e) => onUpdatePhotoLabel?.(file.id, e.target.value)}
-                                        className="w-full text-[10px] py-1 px-1.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 font-medium cursor-pointer"
-                                    >
-                                        <option value="Before">{t("Before")}</option>
-                                        <option value="After">{t("After")}</option>
-                                        <option value="Pre-Work">{t("Pre-Work")}</option>
-                                        <option value="Completed Work">{t("Completed Work")}</option>
-                                    </select>
+                                    <div className="flex flex-col gap-1">
+                                        <input
+                                            type="text"
+                                            list={`arrival-label-options-${file.id}`}
+                                            placeholder="Label (e.g. Heater Coil)"
+                                            value={file.metadata?.label || file.label || ''}
+                                            onChange={(e) => onUpdatePhotoLabel?.(file.id, e.target.value)}
+                                            className="w-full text-[10px] py-1 px-1.5 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-primary-500 font-medium"
+                                        />
+                                        <datalist id={`arrival-label-options-${file.id}`}>
+                                            <option value="Before" />
+                                            <option value="Pre-Work" />
+                                            <option value="Heater Coil" />
+                                            <option value="Compressor" />
+                                            <option value="Evaporator Coil" />
+                                            <option value="Capacitor" />
+                                            <option value="Blower Motor" />
+                                            <option value="Control Board" />
+                                            <option value="Thermostat" />
+                                            <option value="Electrical Panel" />
+                                            <option value="Filter Drier" />
+                                            <option value="Drain Pan" />
+                                            <option value="Data Plate Tag" />
+                                            <option value="After" />
+                                            <option value="Completed Work" />
+                                        </datalist>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -860,10 +893,16 @@ const ArrivalStep: React.FC<ArrivalStepProps> = ({
                                 </p>
                             ) : null}
 
-                            {a.gpsPin && (
-                                <p className="text-[9px] text-slate-400 font-mono flex items-center gap-0.5">
+                            {a.gpsPin && typeof a.gpsPin.lat === 'number' && typeof a.gpsPin.lng === 'number' && !isNaN(a.gpsPin.lat) && !isNaN(a.gpsPin.lng) && (a.gpsPin.lat !== 0 || a.gpsPin.lng !== 0) && (
+                                <a
+                                    href={`https://www.google.com/maps?q=${a.gpsPin.lat},${a.gpsPin.lng}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[9px] text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 font-mono flex items-center gap-0.5 hover:underline"
+                                    title="Open coordinates in Google Maps"
+                                >
                                     <Compass size={9} /> GPS: {a.gpsPin.lat.toFixed(6)}, {a.gpsPin.lng.toFixed(6)}
-                                </p>
+                                </a>
                             )}
                         </div>
                         <div className="flex gap-3 items-center ml-2 shrink-0">

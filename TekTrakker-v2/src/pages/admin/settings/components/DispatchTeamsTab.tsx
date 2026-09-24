@@ -10,6 +10,7 @@ import Textarea from 'components/ui/Textarea';
 import Modal from 'components/ui/Modal';
 import { Users, Wrench, Shield, Search, Plus, Edit2, Trash2, Check, UserCheck, X } from 'lucide-react';
 import showToast from 'lib/toast';
+import { globalConfirm } from 'lib/globalConfirm';
 
 export const DispatchTeamsTab: React.FC = () => {
     const { state } = useAppContext();
@@ -164,7 +165,7 @@ export const DispatchTeamsTab: React.FC = () => {
     };
 
     const handleDeleteTeam = async (teamId: string) => {
-        if (!window.confirm("Are you sure you want to delete this Dispatch Team? This will unlink all members and customers from this team.")) {
+        if (!(await globalConfirm("Are you sure you want to delete this Dispatch Team? This will unlink all members and customers from this team.", "Delete Dispatch Team", "Delete Team", "Cancel"))) {
             return;
         }
 

@@ -33,6 +33,10 @@ service cloud.firestore {
       );
     }
 
+    function isDemoOrgId(orgId) {
+      return orgId != null && orgId in ['org-sandbox-demo', 'sales-demo-environment', 'demo-org-1766848718439', 'apex-org-456'];
+    }
+
     // ROBUST ORG CHECK: Prioritize token claims (fast), fallback to simple UID check
     function isOrgMember(resourceOrgId) {
       let userPath = /databases/$(database)/documents/users/$(request.auth.uid);
@@ -41,7 +45,14 @@ service cloud.firestore {
         (exists(userPath) && get(userPath).data.get('organizationId', '') == resourceOrgId) ||
         (request.auth.token.email != null && 
          exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('organizationId', '') == resourceOrgId)
+         get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('organizationId', '') == resourceOrgId) ||
+        (isDemoOrgId(resourceOrgId) && (
+          (request.auth.token.organizationId != null && isDemoOrgId(request.auth.token.organizationId)) ||
+          (exists(userPath) && isDemoOrgId(get(userPath).data.get('organizationId', ''))) ||
+          (request.auth.token.email != null && 
+           exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
+           isDemoOrgId(get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('organizationId', '')))
+        ))
       );
       return isDirectMember || isMaster() || isPlatformSales() || isOrgFranchiseAdmin(resourceOrgId);
     }
@@ -53,7 +64,14 @@ service cloud.firestore {
         (exists(userPath) && get(userPath).data.get('organizationId', '') == resourceOrgId) ||
         (request.auth.token.email != null && 
          exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('organizationId', '') == resourceOrgId)
+         get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('organizationId', '') == resourceOrgId) ||
+        (isDemoOrgId(resourceOrgId) && (
+          (request.auth.token.organizationId != null && isDemoOrgId(request.auth.token.organizationId)) ||
+          (exists(userPath) && isDemoOrgId(get(userPath).data.get('organizationId', ''))) ||
+          (request.auth.token.email != null && 
+           exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
+           isDemoOrgId(get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('organizationId', '')))
+        ))
       );
     }
 
@@ -95,14 +113,14 @@ service cloud.firestore {
     // Checks if user is an admin (UID or Email keyed)
     function isOrgAdmin() {
       return isSignedIn() && (
-        request.auth.token.get('role', '') in ['admin', 'master_admin', 'both', 'supervisor', 'Admin', 'Master_Admin', 'Both', 'Supervisor'] ||
+        request.auth.token.get('role', '') in ['admin', 'master_admin', 'both', 'superuser', 'supervisor', 'Admin', 'Master_Admin', 'Both', 'Superuser', 'Supervisor'] ||
         (
           request.auth.uid != null && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['admin', 'master_admin', 'both', 'supervisor', 'Admin', 'Master_Admin', 'Both', 'Supervisor']
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['admin', 'master_admin', 'both', 'superuser', 'supervisor', 'Admin', 'Master_Admin', 'Both', 'Superuser', 'Supervisor']
         ) ||
         (
           request.auth.token.email != null && exists(/databases/$(database)/documents/users/$(request.auth.token.email)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('role', '') in ['admin', 'master_admin', 'both', 'supervisor', 'Admin', 'Master_Admin', 'Both', 'Supervisor']
+          get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.get('role', '') in ['admin', 'master_admin', 'both', 'superuser', 'supervisor', 'Admin', 'Master_Admin', 'Both', 'Superuser', 'Supervisor']
         )
       );
     }
@@ -110,8 +128,7 @@ service cloud.firestore {
     function isMaster() {
       return request.auth != null && (
         request.auth.token.get('role', '') == 'master_admin' || 
-        request.auth.token.get('role', '') == 'both' ||
-        (getUserData() != null && (getUserData().get('role', '') == 'master_admin' || getUserData().get('role', '') == 'both'))
+        (getUserData() != null && getUserData().get('role', '') == 'master_admin')
       );
     }
     
@@ -172,24 +189,43 @@ service cloud.firestore {
                  
       allow list: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || (resource != null && isOrgMember(resource.data.organizationId)) || (isSignedIn() && resource != null && resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email); 
       
-      allow write: if isMaster() 
+      allow delete: if isMaster() || (isOrgAdmin() && resource != null && isOrgMember(resource.data.organizationId));
+      allow update: if isMaster() 
                  || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) 
-                 || isUser(userId) 
-                 || (isOrgAdmin() && resource != null && isOrgMember(resource.data.organizationId)) 
-                 || (isSignedIn() && request.auth.token.email != null && request.auth.token.email == userId)
-                 || (isSubcontractor() && resource != null && resource.data.get('subcontractorId', '') == request.auth.uid)
+                 || (isOrgAdmin() && resource != null && isOrgMember(resource.data.organizationId) && 
+                     request.resource.data.get('role', '') != 'master_admin' && 
+                     request.resource.data.get('role', '') != 'both')
+                 || (isUser(userId) && 
+                     !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                       'role', 'organizationId', 'franchiseId', 'isMaster', 'customPermissions', 'claims'
+                     ])) 
+                 || (isSignedIn() && request.auth.token.email != null && request.auth.token.email == userId &&
+                     !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                       'role', 'organizationId', 'franchiseId', 'isMaster', 'customPermissions', 'claims'
+                     ]))
+                 || (isSubcontractor() && resource != null && resource.data.get('subcontractorId', '') == request.auth.uid &&
+                     !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                       'role', 'organizationId', 'franchiseId', 'isMaster', 'customPermissions'
+                     ]))
                  || (isPlatformSales() && (
-                      isUser(userId)
+                      (isUser(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'organizationId', 'franchiseId', 'isMaster', 'customPermissions']))
                        || (resource != null && resource.data.get('organizationId', '') != 'platform' && (
                             resource.data.get('role', '') == 'customer' 
                             || resource.data.get('role', '') == 'both' 
                             || resource.data.get('role', '') == 'admin'
                           ))
                      ));
-      allow create: if isSignedIn();
+      allow create: if isSignedIn() && (
+        isMaster() ||
+        (!request.resource.data.keys().hasAny(['role']) || 
+         request.resource.data.role in ['customer', 'user', 'technician', 'employee', 'Customer', 'User', 'Technician', 'Employee'])
+      );
 
-      match /private/sensitive {
-        allow read, write: if isUser(userId) || isOrgAdmin() || isMaster();
+      match /private/{docId=**} {
+        allow read, write: if isUser(userId) 
+                           || (isSignedIn() && request.auth.token.email != null && request.auth.token.email == userId)
+                           || isOrgAdmin() 
+                           || isMaster();
       }
     }
 
@@ -202,6 +238,18 @@ service cloud.firestore {
       
       match /secrets/{secretId} {
          allow read, write: if isMaster() || isPlatformSales() || (isOrgMember(orgId) && isOrgAdmin());
+      }
+
+      match /porting_requests/{requestId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+      }
+
+      match /inboundEmails/{emailId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+
+         match /replies/{replyId} {
+            allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+         }
       }
 
       match /payouts/{payoutId} {
@@ -272,8 +320,28 @@ service cloud.firestore {
          allow read, write: if isDirectOrgMember(orgId);
       }
 
+      match /call_logs/{logId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+      }
+
+      match /callLogs/{logId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+      }
+
+      match /voicemails/{vmId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+      }
+
       match /synthesizedData/{docId} {
          allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId);
+      }
+
+      match /drive_folders/{folderId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId) || isSignedIn();
+      }
+
+      match /drive_files/{fileId} {
+         allow read, write: if isMaster() || isPlatformSales() || isOrgMember(orgId) || isSignedIn();
       }
     }
 
@@ -282,15 +350,30 @@ service cloud.firestore {
        allow write: if isMaster() || isFranchiseAdmin(franchiseDocId);
     }
 
-    // Customers: Accessible by organization members or the customer themselves.
+    // Customers: Accessible by organization members or the customer themselves. Public get allowed for document links.
     match /customers/{customerId} {
-      allow get: if isSignedIn();
+      allow get: if true;
       allow read: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || (resource != null && isOrgMember(resource.data.organizationId)) || (resource != null && isCustomerOwner(resource.data)) || request.auth.uid == customerId || (isSignedIn() && resource != null && resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email) || (isSignedIn() && resource != null && resource.data.userId == request.auth.uid);
-      allow write: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId)) || (resource != null && isCustomerOwner(resource.data)) || request.auth.uid == customerId;
+      allow update: if isMaster() 
+                    || (resource != null && isOrgMember(resource.data.organizationId)) 
+                    || (
+                         ((resource != null && isCustomerOwner(resource.data)) || request.auth.uid == customerId) && 
+                          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                            'name', 'firstName', 'lastName', 'phone', 'address', 'profilePhotoUrl', 
+                            'serviceLocations', 'agreedToCustomerTerms', 'customerTermsAgreedAt', 
+                            'isDeleted', 'updatedAt', 'notes', 'files', 'documents', 'companyDocuments'
+                          ])
+                       );
+      allow delete: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId));
       allow create: if isMaster() || (isOrgMember(request.resource.data.organizationId)) || (request.resource.data.email != null && request.auth.token.email != null && request.resource.data.email == request.auth.token.email) || request.auth.uid == customerId;
 
       match /communications/{commId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isMaster() || isPlatformSales() 
+                           || (resource != null && isOrgMember(resource.data.get('organizationId', '')))
+                           || (resource != null && isCustomerOwner(resource.data))
+                           || (request.resource != null && isOrgMember(request.resource.data.get('organizationId', '')))
+                           || (request.resource != null && isCustomerOwner(request.resource.data))
+                           || request.auth.uid == customerId;
       }
     }
 
@@ -303,6 +386,7 @@ service cloud.firestore {
 
     match /jobs/{jobId} {
       allow get: if true;
+      allow list: if request.query.limit <= 2;
       allow list: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isAssignedPartner(resource.data) || isCustomerOwner(resource.data);
       allow list: if isOrgMember(resource.data.organizationId) && !isSubcontractor();
       allow list: if isOrgMember(resource.data.organizationId) && isAssignedSubcontractor(resource.data);
@@ -325,28 +409,23 @@ service cloud.firestore {
                        )
                     || (
                           isCustomerOwner(resource.data) &&
+                          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['invoiceSignature', 'invoiceSignedDate', 'customerFeedback', 'invoice']) &&
                           (
-                            !isTerminalJobState(resource.data) 
-                            || (
-                                 request.resource.data.diff(resource.data).affectedKeys().hasOnly(['invoiceSignature', 'invoiceSignedDate', 'customerFeedback', 'invoice']) &&
-                                 (
-                                   !request.resource.data.diff(resource.data).affectedKeys().hasAny(['invoice']) ||
-                                   (
-                                     resource.data.invoice == null ||
-                                     (
-                                       request.resource.data.invoice.diff(resource.data.invoice).affectedKeys().hasOnly(['status', 'opened', 'openedAt']) &&
-                                       (
-                                         !request.resource.data.invoice.diff(resource.data.invoice).affectedKeys().hasAny(['status']) ||
-                                         request.resource.data.invoice.status == 'Opened'
-                                       ) &&
-                                       (
-                                         !request.resource.data.invoice.diff(resource.data.invoice).affectedKeys().hasAny(['opened']) ||
-                                         request.resource.data.invoice.opened == true
-                                       )
-                                     )
-                                   )
-                                 )
-                               )
+                            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['invoice']) ||
+                            (
+                              resource.data.invoice == null ||
+                              (
+                                request.resource.data.invoice.diff(resource.data.invoice).affectedKeys().hasOnly(['status', 'opened', 'openedAt', 'warrantyDisclaimerAgreed']) &&
+                                (
+                                  !request.resource.data.invoice.diff(resource.data.invoice).affectedKeys().hasAny(['status']) ||
+                                  request.resource.data.invoice.status == 'Opened'
+                                ) &&
+                                (
+                                  !request.resource.data.invoice.diff(resource.data.invoice).affectedKeys().hasAny(['opened']) ||
+                                  request.resource.data.invoice.opened == true
+                                )
+                              )
+                            )
                           )
                         )
                     || (
@@ -356,7 +435,29 @@ service cloud.firestore {
                          get(/databases/$(database)/documents/magic_links/$(request.resource.data.tempToken)).data.jobId == jobId &&
                          get(/databases/$(database)/documents/magic_links/$(request.resource.data.tempToken)).data.active == true &&
                          request.time < get(/databases/$(database)/documents/magic_links/$(request.resource.data.tempToken)).data.expiresAt
-                       );
+                       )
+                    || (
+                          isSignedIn() && (
+                            isOrgMember(resource.data.get('organizationId', '')) || 
+                            isAssignedPartner(resource.data) || 
+                            isAssignedSubcontractor(resource.data)
+                          ) &&
+                          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                            'jobStatus', 'notes', 'unitStates', 'readings', 'partsUsed', 
+                            'techRecommendations', 'files', 'photos', 'updatedAt', 'updatedById', 'updatedByName', 'jobEvents', 'hvacBrand', 
+                            'signatures', 'techSignature', 'techSignatureName', 'techSignatureTimestamp',
+                            'customerSignature', 'customerSignatureName', 'siteManagerSignature', 'siteManagerName', 
+                            'siteManagerSignatureTimestamp', 'subcontractorNotes', 
+                            'completedBySubcontractor', 'subcontractorCompletionDate', 'completionPhoto',
+                            'customerName', 'customerPhone', 'customerEmail', 'address', 'visitType', 'workOrderNumber',
+                            'signature', 'signerName', 'managerName', 'signatureTimestamp', 'signedAt',
+                            'signOff', 'signOffSignature', 'signOffSheetUrl', 'signoffSheetUrl', 
+                            'customWorkOrderFormUrl', 'workflowState', 'preWorkChecklist', 'postWorkChecklist', 
+                            'jobRecordSignedOff', 'jobRecordSignedOffAt', 'jobRecordSignedOffBy', 'jobRecordSignedOffNotes',
+                            'workCompletedNotes', 'timeLogs', 'afterPhotos', 'preWorkWaiver', 'preWorkWaiverSignature', 
+                            'preWorkWaiverSignedAt', 'preWorkWaiverTitle', 'waiverSignature', 'customSignature', 'signatureName'
+                          ])
+                        );
       allow delete: if false;
       
       match /ai_messages/{msgId} {
@@ -378,6 +479,34 @@ service cloud.firestore {
       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
       allow create, update: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
       allow delete: if false;
+    }
+
+    match /paymentRequests/{paymentRequestId} {
+      allow get: if true;
+      allow list: if isMaster() || isPlatformSales() || (resource != null && isOrgMember(resource.data.organizationId));
+      allow create: if isMaster() || (isOrgMember(request.resource.data.organizationId));
+      allow update: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId))
+                    || (
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                           'status', 'paidAt', 'updatedAt', 'paymentDetails'
+                         ]) &&
+                         request.resource.data.status in ['paid', 'deposit_paid', 'partially_paid']
+                       );
+      allow delete: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId));
+    }
+
+    match /payment_requests/{paymentRequestId} {
+      allow get: if true;
+      allow list: if isMaster() || isPlatformSales() || (resource != null && isOrgMember(resource.data.organizationId));
+      allow create: if isMaster() || (isOrgMember(request.resource.data.organizationId));
+      allow update: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId))
+                    || (
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                           'status', 'paidAt', 'updatedAt', 'paymentDetails'
+                         ]) &&
+                         request.resource.data.status in ['paid', 'deposit_paid', 'partially_paid']
+                       );
+      allow delete: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId));
     }
     
     // Allow users to generate outbound system emails via batch write extensions
@@ -493,15 +622,63 @@ service cloud.firestore {
                      );
     }
 
+    match /trade_partners/{partnerId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+      allow update, delete: if isMaster() || isOrgMember(resource.data.organizationId);
+    }
+
+    match /external_quotes/{quoteId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId)
+                  || (
+                        resource.data.get('linkedJobId', null) != null &&
+                        exists(/databases/$(database)/documents/jobs/$(resource.data.linkedJobId)) &&
+                        (
+                          isAssignedPartner(get(/databases/$(database)/documents/jobs/$(resource.data.linkedJobId)).data) ||
+                          isAssignedSubcontractor(get(/databases/$(database)/documents/jobs/$(resource.data.linkedJobId)).data)
+                        )
+                     );
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId)
+                  || (
+                        request.resource.data.get('linkedJobId', null) != null &&
+                        exists(/databases/$(database)/documents/jobs/$(request.resource.data.linkedJobId)) &&
+                        (
+                          isAssignedPartner(get(/databases/$(database)/documents/jobs/$(request.resource.data.linkedJobId)).data) ||
+                          isAssignedSubcontractor(get(/databases/$(database)/documents/jobs/$(request.resource.data.linkedJobId)).data)
+                        )
+                     );
+      allow update, delete: if isMaster() || isOrgMember(resource.data.organizationId)
+                  || (
+                        resource.data.get('linkedJobId', null) != null &&
+                        exists(/databases/$(database)/documents/jobs/$(resource.data.linkedJobId)) &&
+                        (
+                          isAssignedPartner(get(/databases/$(database)/documents/jobs/$(resource.data.linkedJobId)).data) ||
+                          isAssignedSubcontractor(get(/databases/$(database)/documents/jobs/$(resource.data.linkedJobId)).data)
+                        )
+                     );
+    }
+
+    match /subcontractor_chargebacks/{chargebackId} {
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+      allow update, delete: if isMaster() || isOrgMember(resource.data.organizationId);
+    }
+
     match /proposals/{proposalId} {
       allow read: if true; 
       allow create: if isMaster() || isPlatformSales() || isOrgMember(request.resource.data.organizationId);
-      allow update: if isMaster() || isPlatformSales() || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) || isOrgMember(resource.data.organizationId)
+      allow update: if isMaster() 
+                    || isPlatformSales() 
+                    || (resource != null && isFranchiseAdmin(resource.data.get('franchiseId', null))) 
+                    || (resource != null && resource.data.get('organizationId', null) != null && isOrgMember(resource.data.organizationId))
+                    || (resource != null && (resource.data.get('createdById', '') == request.auth.uid || resource.data.get('technicianId', '') == request.auth.uid))
+                    || (resource != null && isDemoOrgId(resource.data.get('organizationId', '')))
                     || (
                          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-                           'status', 'signatureDataUrl', 'signatureName', 'signedAt', 'selectedOption', 'subtotal', 'taxAmount', 'total', 'invoiceId',
+                           'status', 'signatureDataUrl', 'signatureName', 'signedAt', 'selectedOption', 'invoiceId',
                            'ndaSigned', 'ndaSignedAt', 'ndaSignerName', 'ndaSignatureDataUrl',
-                           'proposalTermsAgreed', 'proposalTermsAgreedAt', 'trackingHistory'
+                           'proposalTermsAgreed', 'proposalTermsAgreedAt', 'trackingHistory',
+                           'sentAt', 'openedAt', 'viewedAt', 'taxRate', 'taxAmount', 'processingFeeRate', 'processingFeeAmount', 'subtotal', 'total'
                          ])
                        );
       allow delete: if false;
@@ -523,6 +700,13 @@ service cloud.firestore {
       allow read: if true; 
       allow write: if isMaster() || isOrgMember(resource.data.organizationId);
       allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /referrals/{referralId} {
+      allow read: if isMaster() || isPlatformSales() || (isSignedIn() && resource != null && resource.data.referrerUserId == request.auth.uid);
+      allow create: if isMaster() || (isSignedIn() && request.resource.data.referrerUserId == request.auth.uid);
+      allow update: if isMaster() || isPlatformSales() || (isSignedIn() && resource != null && resource.data.referrerUserId == request.auth.uid);
+      allow delete: if isMaster() || (isSignedIn() && resource != null && resource.data.referrerUserId == request.auth.uid);
     }
 
     match /partOrders/{orderId} {
@@ -591,6 +775,12 @@ service cloud.firestore {
       allow create: if isSignedIn();
     }
     
+    match /voiceSessions/{sessionId} {
+      allow read: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId));
+      allow write: if isMaster() || (resource != null && isOrgMember(resource.data.organizationId)) || (request.resource != null && isOrgMember(request.resource.data.organizationId));
+      allow create: if isSignedIn();
+    }
+
     match /platformLeads/{leadId} {
        allow read, write: if isMaster()
                   || (isPlatformSales() && (resource == null || resource.data.repId == request.auth.uid))
@@ -679,15 +869,33 @@ service cloud.firestore {
     }
     
     match /shiftLogs/{shiftId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) ||
+                    (isSignedIn() && (resource.data.get('userId', '') == request.auth.uid || 
+                                     resource.data.get('employeeId', '') == request.auth.uid ||
+                                     (request.auth.token.email != null && resource.data.get('userId', '') == request.auth.token.email)));
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) ||
+                     (isSignedIn() && (resource.data.get('userId', '') == request.auth.uid || 
+                                      resource.data.get('employeeId', '') == request.auth.uid ||
+                                      (request.auth.token.email != null && resource.data.get('userId', '') == request.auth.token.email)));
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) ||
+                      (isSignedIn() && (request.resource.data.get('userId', '') == request.auth.uid || 
+                                       request.resource.data.get('employeeId', '') == request.auth.uid ||
+                                       (request.auth.token.email != null && request.resource.data.get('userId', '') == request.auth.token.email)));
     }
     
     match /shifts/{shiftId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
-      allow write: if isMaster() || isOrgMember(resource.data.organizationId);
-      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) ||
+                    (isSignedIn() && (resource.data.get('userId', '') == request.auth.uid || 
+                                     resource.data.get('employeeId', '') == request.auth.uid ||
+                                     (request.auth.token.email != null && resource.data.get('userId', '') == request.auth.token.email)));
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) ||
+                     (isSignedIn() && (resource.data.get('userId', '') == request.auth.uid || 
+                                      resource.data.get('employeeId', '') == request.auth.uid ||
+                                      (request.auth.token.email != null && resource.data.get('userId', '') == request.auth.token.email)));
+      allow create: if isMaster() || isOrgMember(request.resource.data.organizationId) ||
+                      (isSignedIn() && (request.resource.data.get('userId', '') == request.auth.uid || 
+                                       request.resource.data.get('employeeId', '') == request.auth.uid ||
+                                       (request.auth.token.email != null && request.resource.data.get('userId', '') == request.auth.token.email)));
     }
 
     match /vehicleLogs/{logId} {
@@ -735,8 +943,8 @@ service cloud.firestore {
 
 
     match /notifications/{notificationId} {
-      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data);
-      allow write: if isMaster() || isUser(resource.data.userId) || isCustomerOwner(resource.data);
+      allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId) || isCustomerOwner(resource.data) || isUser(resource.data.userId) || (isSignedIn() && (resource.data.userId == request.auth.token.email || resource.data.userId == 'all' || resource.data.userId == 'all_admins' || resource.data.userId == 'all_sales'));
+      allow write: if isMaster() || isOrgMember(resource.data.organizationId) || isUser(resource.data.userId) || (isSignedIn() && (resource.data.userId == request.auth.token.email || resource.data.userId == 'all' || resource.data.userId == 'all_admins' || resource.data.userId == 'all_sales')) || isCustomerOwner(resource.data);
       allow create: if isSignedIn();
     }
 
@@ -826,6 +1034,21 @@ service cloud.firestore {
       allow write: if false; 
     }
 
+    match /smsUsage/{docId} {
+      allow read, list: if isMaster() || isPlatformSales() || isOrgAdmin() || isOrgMember(docId) || (resource != null && isOrgMember(resource.data.organizationId));
+      allow write: if isMaster();
+    }
+
+    match /emailUsage/{docId} {
+      allow read, list: if isMaster() || isPlatformSales() || isOrgAdmin() || isOrgMember(docId) || (resource != null && isOrgMember(resource.data.organizationId));
+      allow write: if isMaster();
+    }
+
+    match /platformInvoices/{invoiceId} {
+      allow list, read: if isMaster() || isPlatformSales() || (resource != null && isOrgMember(resource.data.organizationId));
+      allow write: if isMaster();
+    }
+
     match /aiActivityLogs/{logId} {
       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
       // Audit logs are immutable from the client-side. They are ONLY written securely by the aiAgentCloud Function.
@@ -897,6 +1120,13 @@ service cloud.firestore {
       allow read: if isMaster() || isPlatformSales() || isOrgMember(resource.data.organizationId);
       allow write: if isMaster() || isOrgMember(resource.data.organizationId);
       allow create: if isMaster() || isOrgMember(request.resource.data.organizationId);
+    }
+
+    match /supportTickets/{ticketId} {
+      allow read: if isMaster() || isPlatformSales() || (resource != null && (isOrgMember(resource.data.get('organizationId', '')) || isCustomerOwner(resource.data)));
+      allow create: if isSignedIn();
+      allow update: if isMaster() || isPlatformSales() || (resource != null && (isOrgMember(resource.data.get('organizationId', '')) || isCustomerOwner(resource.data)));
+      allow delete: if isMaster();
     }
 
     match /whiteboards/{orgId} {

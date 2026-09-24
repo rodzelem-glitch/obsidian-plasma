@@ -13,12 +13,16 @@ interface PricebookModalProps {
     presets: ProposalPreset[];
     onSelect: (preset: ProposalPreset) => void;
     marketMultiplier: number;
+    laborRate?: number;
+    markupPct?: number;
 }
 
 const PricebookModal: React.FC<PricebookModalProps> = ({ 
-    isOpen, onClose, searchQuery, onSearchChange, presets, onSelect, marketMultiplier 
+    isOpen, onClose, searchQuery, onSearchChange, presets, onSelect, marketMultiplier,
+    laborRate = 120, markupPct = 50
 }) => {
     const { t } = useLanguage();
+    const markupFactor = 1 + (markupPct / 100);
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={t("Add from Pricebook")}>
@@ -38,7 +42,7 @@ const PricebookModal: React.FC<PricebookModalProps> = ({
                                 <p className="text-xs text-slate-500 line-clamp-1">{p.description}</p>
                             </div>
                             <span className="font-black text-green-600 bg-green-50 px-2 py-1 rounded text-xs">
-                                ${(((p.baseCost * 2) + (p.avgLabor * 120)) * marketMultiplier).toFixed(0)}
+                                ${(((p.baseCost * markupFactor) + (p.avgLabor * laborRate)) * marketMultiplier).toFixed(0)}
                             </span>
                         </div>
                     ))}

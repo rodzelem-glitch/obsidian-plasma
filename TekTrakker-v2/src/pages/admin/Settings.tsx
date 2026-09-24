@@ -1,15 +1,17 @@
 import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
 import Button from 'components/ui/Button';
+import Card from 'components/ui/Card';
 import { db, functions } from 'lib/firebase';
 import {
-    Building, Globe, Activity, Scale, CreditCard, Palette, Zap, Database, FileText, Wrench, AlertTriangle, Layers, Users, ShieldCheck
+    Building, Globe, Activity, Scale, CreditCard, Palette, Zap, Database, FileText, Wrench, AlertTriangle, Layers, Users, ShieldCheck,
+    ArrowLeft, Search, ArrowRight, X, ChevronRight, Sparkles, Filter, Sliders, CheckCircle2
 } from 'lucide-react';
-import type { Organization, IndustryVertical, Address, Division } from 'types';
+import type { Organization, IndustryVertical, Address, Division, WarrantyPlanTemplate, JbWarrantySettings } from 'types';
 import Modal from 'components/ui/Modal';
 
 import ProfileTab from './settings/components/ProfileTab';
@@ -24,6 +26,7 @@ import CapabilitiesTab from './settings/components/CapabilitiesTab';
 import { DivisionsTab } from './settings/components/DivisionsTab';
 import { DispatchTeamsTab } from './settings/components/DispatchTeamsTab';
 import SubcontractorComplianceTab from './settings/components/SubcontractorComplianceTab';
+import WarrantiesTab from './settings/components/WarrantiesTab';
 import { globalConfirm } from "lib/globalConfirm";
 import showToast from "lib/toast";
 import { syncOrgAIContext } from 'lib/aiContext';
@@ -37,22 +40,237 @@ const ALL_INDUSTRIES: IndustryVertical[] = [
 
 const DEFAULT_GOOGLE_CLIENT_ID = "655867451194-3p9dkm7tjb15a2njggqa2jcc64i4vibh.apps.googleusercontent.com";
 
+export type SettingsTab =
+    | 'overview'
+    | 'profile'
+    | 'divisions'
+    | 'social'
+    | 'operations'
+    | 'capabilities'
+    | 'dispatchTeams'
+    | 'subcontractorCompliance'
+    | 'warranties'
+    | 'legal'
+    | 'integrations'
+    | 'branding'
+    | 'subscription'
+    | 'data';
 
+export type SettingsCategoryKey = 'organization' | 'operations' | 'legal' | 'system';
+
+export interface SettingsCategoryConfig {
+    id: SettingsCategoryKey;
+    label: string;
+    icon: React.ElementType;
+    description: string;
+}
+
+export interface SettingsSectionConfig {
+    id: Exclude<SettingsTab, 'overview'>;
+    category: SettingsCategoryKey;
+    title: string;
+    shortTitle: string;
+    description: string;
+    icon: React.ElementType;
+    colorClass: string;
+    keywords: string[];
+}
+
+export const SETTINGS_CATEGORIES: SettingsCategoryConfig[] = [
+    {
+        id: 'organization',
+        label: 'Organization & Brand',
+        icon: Building,
+        description: 'Identity, corporate branches, social profiles, and visual branding.'
+    },
+    {
+        id: 'operations',
+        label: 'Operations & Field',
+        icon: Activity,
+        description: 'Invoicing rules, tax rates, prefixes, payment fees, trade skills, and field teams.'
+    },
+    {
+        id: 'legal',
+        label: 'Legal & Compliance',
+        icon: Scale,
+        description: 'Terms of service, proposal disclaimers, insurance minimums, and warranty templates.'
+    },
+    {
+        id: 'system',
+        label: 'System & Platform',
+        icon: Zap,
+        description: 'Third-party APIs, payment gateways, subscriptions, seats, and data maintenance.'
+    }
+];
+
+export const SETTINGS_SECTIONS: SettingsSectionConfig[] = [
+    // Organization & Brand
+    {
+        id: 'profile',
+        category: 'organization',
+        title: 'Company Identity',
+        shortTitle: 'Identity',
+        description: 'Legal name, contact info, tax ID/EIN, business vertical, and incorporation documents.',
+        icon: Building,
+        colorClass: 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
+        keywords: ['name', 'identity', 'legal name', 'phone', 'email', 'tax id', 'ein', 'business type', 'state', 'documents', 'incorporation', 'formation date']
+    },
+    {
+        id: 'branding',
+        category: 'organization',
+        title: 'Branding & Theme',
+        shortTitle: 'Branding',
+        description: 'Custom brand accents, public logos, letterhead, invoice footer graphics, and marketplace profile.',
+        icon: Palette,
+        colorClass: 'bg-pink-50 text-pink-600 dark:bg-pink-900/30 dark:text-pink-400',
+        keywords: ['logo', 'branding', 'color', 'theme', 'letterhead', 'invoice banner', 'footer image', 'financing link', 'public profile']
+    },
+    {
+        id: 'divisions',
+        category: 'organization',
+        title: 'Divisions & Branches',
+        shortTitle: 'Divisions',
+        description: 'Manage corporate divisions, local branch offices, trades allocation, and branch licenses.',
+        icon: Layers,
+        colorClass: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400',
+        keywords: ['divisions', 'branch', 'locations', 'offices', 'slots', 'trades allocation', 'branches']
+    },
+    {
+        id: 'social',
+        category: 'organization',
+        title: 'Social & Reviews',
+        shortTitle: 'Social & Reviews',
+        description: 'Public social networks, Google Places API connection, and customer review generation links.',
+        icon: Globe,
+        colorClass: 'bg-sky-50 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400',
+        keywords: ['social', 'facebook', 'instagram', 'twitter', 'linkedin', 'reviews', 'google places', 'google api', 'yelp']
+    },
+
+    // Operations & Field
+    {
+        id: 'operations',
+        category: 'operations',
+        title: 'Operations & Invoicing',
+        shortTitle: 'Operations',
+        description: 'Tax rates, invoice & job prefixes, processing surcharges (credit card/ACH), late fees, and wire details.',
+        icon: Activity,
+        colorClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',
+        keywords: ['operations', 'tax rate', 'sales tax', 'invoicing', 'prefixes', 'job prefix', 'invoice prefix', 'proposal prefix', 'processing fee', 'card fee', 'ach fee', 'late fee', 'wire instructions', 'check instructions', 'ai pricebook', 'virtual worker']
+    },
+    {
+        id: 'capabilities',
+        category: 'operations',
+        title: 'Trade Capabilities',
+        shortTitle: 'Capabilities',
+        description: 'Define vertical services, specialized trade skills, and equipment certifications.',
+        icon: Wrench,
+        colorClass: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+        keywords: ['capabilities', 'services', 'trades', 'specializations', 'certifications', 'skills', 'verticals']
+    },
+    {
+        id: 'dispatchTeams',
+        category: 'operations',
+        title: 'Dispatch Teams',
+        shortTitle: 'Dispatch Teams',
+        description: 'Organize technicians into geographic routing zones, teams, and calendar dispatch groups.',
+        icon: Users,
+        colorClass: 'bg-teal-50 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400',
+        keywords: ['dispatch', 'teams', 'technicians', 'zones', 'territories', 'routing', 'calendar', 'scheduling']
+    },
+
+    // Legal & Compliance
+    {
+        id: 'legal',
+        category: 'legal',
+        title: 'Legal Terms & NDAs',
+        shortTitle: 'Legal/Docs',
+        description: 'Standard terms & conditions, proposal disclaimers, PCI compliance seal, and mutual NDA templates.',
+        icon: Scale,
+        colorClass: 'bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400',
+        keywords: ['legal', 'terms', 'conditions', 'nda', 'disclaimer', 'proposal terms', 'invoice terms', 'pci compliance', 'warranty disclaimer', 'mutual nda']
+    },
+    {
+        id: 'subcontractorCompliance',
+        category: 'legal',
+        title: 'Subcontractor Compliance',
+        shortTitle: 'Subcontractors',
+        description: 'Set mandatory COI insurance minimums, worker agreements, and subcontractor compliance thresholds.',
+        icon: ShieldCheck,
+        colorClass: 'bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400',
+        keywords: ['subcontractor', 'compliance', 'coi', 'insurance', 'minimums', 'general liability', 'workers comp', 'auto liability', 'certifications']
+    },
+    {
+        id: 'warranties',
+        category: 'legal',
+        title: 'Warranties & Plans',
+        shortTitle: 'Warranties',
+        description: 'Configure standard warranty templates, labor guarantees, and parts protection coverage.',
+        icon: ShieldCheck,
+        colorClass: 'bg-orange-50 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400',
+        keywords: ['warranties', 'plans', 'warranty', 'guarantee', 'protection plans', 'parts coverage', 'labor coverage', 'templates']
+    },
+
+    // System & Platform
+    {
+        id: 'integrations',
+        category: 'system',
+        title: 'Integrations & APIs',
+        shortTitle: 'Integrations',
+        description: 'Connect TekTrakker Payments, Twilio SMS/voice, email SMTP, QuickBooks, webhooks, and IoT.',
+        icon: CreditCard,
+        colorClass: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400',
+        keywords: ['integrations', 'api', 'payments', 'kort', 'twilio', 'smtp', 'email', 'quickbooks', 'webhooks', 'ringcentral', 'samsara', 'greensky', 'goodleap', 'seam', 'nest', 'ecobee', 'honeywell', 'measurequick', 'openweather', 'shovels', 'punchout']
+    },
+    {
+        id: 'subscription',
+        category: 'system',
+        title: 'Plan & Billing',
+        shortTitle: 'Subscription',
+        description: 'View current organization tier, manage user seat counts, and access customer billing portal.',
+        icon: Zap,
+        colorClass: 'bg-yellow-50 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400',
+        keywords: ['subscription', 'plan', 'billing', 'upgrade', 'downgrade', 'seats', 'users', 'invoices', 'payment method', 'renewal']
+    },
+    {
+        id: 'data',
+        category: 'system',
+        title: 'Data Management',
+        shortTitle: 'Data Mgmt',
+        description: 'Export platform records to CSV, detect and merge duplicate contacts, and manage system cache.',
+        icon: Database,
+        colorClass: 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
+        keywords: ['data', 'export', 'csv', 'backup', 'duplicates', 'cleanup', 'cache', 'flush', 'import']
+    }
+];
 
 const Settings: React.FC = () => {
     const { state, dispatch } = useAppContext();
     const { t } = useLanguage();
-    const [activeTab, setActiveTab] = useState<'profile' | 'divisions' | 'social' | 'operations' | 'legal' | 'integrations' | 'branding' | 'subscription' | 'data' | 'capabilities' | 'dispatchTeams' | 'subcontractorCompliance'>('profile');
+    const [activeTab, setActiveTab] = useState<SettingsTab>('overview');
+    const [searchQuery, setSearchQuery] = useState('');
     const location = useLocation();
+    const navigate = useNavigate();
 
     // Support deep-linking via ?tab= query parameter
     useEffect(() => {
         const params = new URLSearchParams(location.search);
         const tab = params.get('tab');
-        if (tab && ['profile', 'divisions', 'social', 'operations', 'legal', 'integrations', 'branding', 'subscription', 'data', 'capabilities', 'dispatchTeams', 'subcontractorCompliance'].includes(tab)) {
-            setActiveTab(tab as typeof activeTab);
+        const validTabIds = SETTINGS_SECTIONS.map(s => s.id as string);
+        if (tab && validTabIds.includes(tab)) {
+            setActiveTab(tab as SettingsTab);
+        } else if (!tab || tab === 'overview') {
+            setActiveTab('overview');
         }
     }, [location.search]);
+
+    const handleSelectTab = (tabId: SettingsTab) => {
+        setActiveTab(tabId);
+        if (tabId === 'overview') {
+            navigate('/admin/settings', { replace: false });
+        } else {
+            navigate(`/admin/settings?tab=${tabId}`, { replace: false });
+        }
+    };
 
     // Core Identity
     const [orgName, setOrgName] = useState('');
@@ -68,7 +286,17 @@ const Settings: React.FC = () => {
     const [businessType, setBusinessType] = useState('');
     const [incorporationState, setIncorporationState] = useState('');
     const [formationDate, setFormationDate] = useState('');
-    const [businessDocuments, setBusinessDocuments] = useState<Array<{ id: string; name: string; url: string; uploadedAt: string }>>([]);
+    const [businessDocuments, setBusinessDocuments] = useState<any[]>([]);
+    const [warrantyPlans, setWarrantyPlans] = useState<Record<string, WarrantyPlanTemplate>>({});
+    const [jbWarrantySettings, setJbWarrantySettings] = useState<JbWarrantySettings>({
+        enabled: true,
+        contractorLaborRate: 175,
+        markupPercentage: 40,
+        minimumMarkupDollars: 150,
+        defaultTermYears: 10,
+        allowCustomerPortalPurchases: true,
+        allowInvoiceAddition: true
+    });
 
     // Social & Reviews
     const [socialLinks, setSocialLinks] = useState<any>({});
@@ -90,6 +318,8 @@ const Settings: React.FC = () => {
     const [marketMultiplier, setMarketMultiplier] = useState('1.0');
     const [aiPricebookEnabled, setAiPricebookEnabled] = useState(true);
     const [virtualWorkerEnabled, setVirtualWorkerEnabled] = useState(false);
+    const [jobPrefix, setJobPrefix] = useState('Job-');
+    const [jobStartNumber, setJobStartNumber] = useState('1000');
     const [invoicePrefix, setInvoicePrefix] = useState('INV-');
     const [invoiceStartNumber, setInvoiceStartNumber] = useState('1000');
     const [proposalPrefix, setProposalPrefix] = useState('PROP-');
@@ -101,6 +331,14 @@ const Settings: React.FC = () => {
     const [achProcessingFeeEnabled, setAchProcessingFeeEnabled] = useState(false);
     const [achProcessingFeePercent, setAchProcessingFeePercent] = useState('1.0');
     const [achProcessingFeeFlat, setAchProcessingFeeFlat] = useState('0.00');
+
+    // Payment Instructions (Wire, Check, ACH)
+    const [acceptWire, setAcceptWire] = useState(false);
+    const [wireInstructions, setWireInstructions] = useState('');
+    const [acceptCheck, setAcceptCheck] = useState(true);
+    const [checkInstructions, setCheckInstructions] = useState('');
+    const [acceptAch, setAcceptAch] = useState(false);
+    const [achInstructions, setAchInstructions] = useState('');
 
     // Late Fees
     const [lateFeeEnabled, setLateFeeEnabled] = useState(false);
@@ -120,6 +358,7 @@ const Settings: React.FC = () => {
     const [termsAndConditions, setTermsAndConditions] = useState('');
     const [customerTerms, setCustomerTerms] = useState('');
     const [proposalTerms, setProposalTerms] = useState('');
+    const [pricingDisclaimer, setPricingDisclaimer] = useState('');
     const [proposalDisclaimer, setProposalDisclaimer] = useState('');
     const [invoiceTerms, setInvoiceTerms] = useState('');
     const [membershipTerms, setMembershipTerms] = useState('');
@@ -129,6 +368,7 @@ const Settings: React.FC = () => {
     const [defaultPartsMonths, setDefaultPartsMonths] = useState(12);
     const [proposalProtectionMode, setProposalProtectionMode] = useState<'none' | 'summary' | 'nda'>('none');
     const [proposalNdaContent, setProposalNdaContent] = useState('');
+    const [pciComplianceSealHtml, setPciComplianceSealHtml] = useState('');
 
     // Integrations
     const [stripePublicKey, setStripePublicKey] = useState('');
@@ -265,7 +505,16 @@ const Settings: React.FC = () => {
             setBannerUrl(org.bannerUrl || '');
             setFinancingLink(org.financingLink || '');
             setServiceTypes(org.serviceTypes || []);
-            setSpecializations(org.specializations || []);
+            setWarrantyPlans(org.warrantyPlans || (org.defaultWarrantyPlan ? { [org.industry || 'HVAC']: org.defaultWarrantyPlan } : {}));
+            setJbWarrantySettings(org.jbWarrantySettings || {
+                enabled: true,
+                contractorLaborRate: 175,
+                markupPercentage: 40,
+                minimumMarkupDollars: 150,
+                defaultTermYears: 10,
+                allowCustomerPortalPurchases: true,
+                allowInvoiceAddition: true
+            });
 
             setPublicProfileEnabled(settings.publicProfile || false);
             setPublicDescription(settings.publicDescription || '');
@@ -310,13 +559,25 @@ const Settings: React.FC = () => {
             setLateFeeInterestRate((org as any).lateFeeInterestRate?.toString() ?? '1.5');
             setLateFeeGracePeriod((org as any).lateFeeGracePeriod?.toString() ?? '0');
             setAutoSendMonthlyStatements((org as any).autoSendMonthlyStatements || false);
+            setAcceptWire((org as any).acceptWire || false);
+            setWireInstructions((org as any).wireInstructions || '');
+            setAcceptCheck((org as any).acceptCheck !== false);
+            setCheckInstructions((org as any).checkInstructions || '');
+            setAcceptAch((org as any).acceptAch || false);
+            setAchInstructions((org as any).achInstructions || '');
             setCustomPositions(org.customPositions || []);
             setRequiredCerts(org.requiredCertifications || []);
             setTermsAndConditions(org.termsAndConditions || '');
             setCustomerTerms(org.customerTerms || '');
             setProposalTerms(org.proposalTerms || '');
+            setPricingDisclaimer(org.pricingDisclaimer || org.proposalDisclaimer || '');
             setProposalDisclaimer(org.proposalDisclaimer || '');
-            setInvoiceTerms(org.invoiceTerms || '');
+            setJobPrefix(org.jobPrefix || 'Job-');
+            setJobStartNumber(org.jobStartNumber?.toString() || '1000');
+            setInvoicePrefix(org.invoicePrefix || 'INV-');
+            setInvoiceStartNumber(org.invoiceStartNumber?.toString() || '1000');
+            setProposalPrefix(org.proposalPrefix || 'PROP-');
+            setProposalStartNumber(org.proposalStartNumber?.toString() || '1000');
             setMembershipTerms(org.membershipTerms || '');
             setComplianceFooter(org.complianceFooter || '');
             setWarrantyDisclaimer((org as any).warrantyDisclaimer || '');
@@ -324,6 +585,7 @@ const Settings: React.FC = () => {
             setDefaultPartsMonths((org as any).defaultPartsMonths ?? 12);
             setProposalProtectionMode((org as any).proposalProtectionMode || 'none');
             setProposalNdaContent((org as any).proposalNdaContent || '');
+            setPciComplianceSealHtml(org.pciComplianceSealHtml || '');
             setStripePublicKey(org.stripePublicKey || '');
             setSquareAppId(org.squareApplicationId || '');
             setSquareLocId(org.squareLocationId || '');
@@ -376,7 +638,7 @@ const Settings: React.FC = () => {
                             setSmtpPass(sec.smtpConfig.pass || '');
                         }
                         if (sec.twilioConfig) {
-                            setTwilioSid(sec.twilioConfig.accountSid || '');
+                            setTwilioSid(sec.twilioConfig.subaccountSid || sec.twilioConfig.accountSid || '');
                             setTwilioToken(sec.twilioConfig.authToken || '');
                             setTwilioNumber(sec.twilioConfig.phoneNumber || '');
                         }
@@ -424,8 +686,8 @@ const Settings: React.FC = () => {
         const planConfig = state.platformSettings?.plans?.[currentPlan];
         const activeUsers = state.users.filter(u => u.organizationId === org.id && u.status !== 'archived' && u.hasAppAccess !== false).length;
         
-        // Sync fallbacks with MasterBilling values (99, 249, 499)
-        const baseMonthlyCost = planConfig?.monthly || (currentPlan === 'enterprise' ? 499 : currentPlan === 'growth' ? 249 : currentPlan === 'payments_only' ? 10 : 99);
+        // Sync fallbacks with MasterBilling values (49, 149, 350)
+        const baseMonthlyCost = planConfig?.monthly || (currentPlan === 'enterprise' ? 350 : currentPlan === 'growth' ? 149 : currentPlan === 'payments_only' ? 10 : 49);
         const userFee = state.platformSettings?.excessUserFee ?? 25;
         const additionalSlotsCost = (org.additionalUserSlots || 0) * userFee;
         
@@ -443,7 +705,8 @@ const Settings: React.FC = () => {
             monthlyCost: finalCost,
             maxUsers: maxUsers,
             activeUsers: activeUsers,
-            isExpired: org.subscriptionExpiryDate ? new Date(org.subscriptionExpiryDate) < new Date() : false,
+            isExpired: (org.subscriptionExpiryDate ? new Date(org.subscriptionExpiryDate).getTime() < Date.now() : false) ||
+                       (org.subscriptionStatus === 'trial' && org.createdAt ? (Date.now() - new Date(org.createdAt).getTime()) > 14 * 24 * 60 * 60 * 1000 : false),
             isTrial: org.subscriptionStatus === 'trial',
             isFree: org.isFreeAccess,
             isPaused: org.subscriptionStatus === 'paused',
@@ -454,8 +717,10 @@ const Settings: React.FC = () => {
     const handleSave = async () => {
         if (!state.currentOrganization) return;
         setIsSaving(true);
+        const prevJobStartNumber = (state.currentOrganization as any).jobStartNumber;
         const prevInvoiceStartNumber = (state.currentOrganization as any).invoiceStartNumber;
         const prevProposalStartNumber = (state.currentOrganization as any).proposalStartNumber;
+        const newJobStart = parseInt(jobStartNumber) || 1000;
         const newInvoiceStart = parseInt(invoiceStartNumber) || 1000;
         const newProposalStart = parseInt(proposalStartNumber) || 1000;
         const notifyArray = notificationEmails.split(',').map(e => e.trim()).filter(e => e.length > 0);
@@ -478,15 +743,22 @@ const Settings: React.FC = () => {
             address: newAddress,
             taxRate: parseFloat(taxRate) || 0,
             licenseNumber, ueid, cageCode, primaryNaics, customPositions, requiredCertifications: requiredCerts,
-            termsAndConditions, customerTerms, proposalTerms, proposalDisclaimer, invoiceTerms, membershipTerms, complianceFooter,
+            termsAndConditions, customerTerms, proposalTerms, pricingDisclaimer, proposalDisclaimer, invoiceTerms, membershipTerms, complianceFooter,
             warrantyDisclaimer, defaultWorkmanshipMonths, defaultPartsMonths,
             proposalProtectionMode, proposalNdaContent,
+            pciComplianceSealHtml: pciComplianceSealHtml || null,
             stripePublicKey, squareApplicationId: squareAppId, squareLocationId: squareLocId,
             kortAccountId,
             defaultPaymentGateway,
             marketMultiplier: parseFloat(marketMultiplier) || 1.0,
+            laborRate: state.currentOrganization.laborRate,
+            markupPct: state.currentOrganization.markupPct,
+            hourlyLaborRate: state.currentOrganization.hourlyLaborRate,
+            defaultMarkupPct: state.currentOrganization.defaultMarkupPct,
             aiPricebookEnabled,
             virtualWorkerEnabled,
+            jobPrefix,
+            jobStartNumber: newJobStart,
             invoicePrefix,
             invoiceStartNumber: newInvoiceStart,
             proposalPrefix,
@@ -516,7 +788,16 @@ const Settings: React.FC = () => {
             lateFeeValue: parseFloat(lateFeeValue) || 0,
             lateFeeInterestRate: parseFloat(lateFeeInterestRate) || 0,
             lateFeeGracePeriod: parseInt(lateFeeGracePeriod) || 0,
-            autoSendMonthlyStatements
+            autoSendMonthlyStatements,
+            acceptWire,
+            wireInstructions,
+            acceptCheck,
+            checkInstructions,
+            acceptAch,
+            achInstructions,
+            warrantyPlans,
+            defaultWarrantyPlan: warrantyPlans[industry] || Object.values(warrantyPlans)[0] || null,
+            jbWarrantySettings
         };
 
         const secretsData = {
@@ -553,7 +834,7 @@ const Settings: React.FC = () => {
                 host: smtpHost, port: Number(smtpPort), user: smtpUser, pass: smtpPass,
                 fromEmail: email, fromName: orgName, secure: Number(smtpPort) === 465
             },
-            twilioConfig: { accountSid: twilioSid, authToken: twilioToken, phoneNumber: twilioNumber },
+            twilioConfig: { accountSid: twilioSid, subaccountSid: twilioSid, authToken: twilioToken, phoneNumber: twilioNumber },
             punchoutConfigs: punchoutConfigs
         };
 
@@ -562,6 +843,9 @@ const Settings: React.FC = () => {
             const batch = db.batch();
 
             // If start numbers are modified, adjust the next sequence pointers
+            if (prevJobStartNumber === undefined || prevJobStartNumber !== newJobStart) {
+                (updatedOrgData as any).nextJobNum = newJobStart;
+            }
             if (prevInvoiceStartNumber === undefined || prevInvoiceStartNumber !== newInvoiceStart) {
                 (updatedOrgData as any).nextInvoiceNum = newInvoiceStart;
             }
@@ -975,74 +1259,355 @@ const Settings: React.FC = () => {
             }
         }
     };
+    const getSectionBadge = (sectionId: Exclude<SettingsTab, 'overview'>): string => {
+        switch (sectionId) {
+            case 'profile':
+                return state.currentOrganization?.industry || industry || 'HVAC';
+            case 'branding':
+                return brandingColor ? 'Custom Theme' : 'Brand Identity';
+            case 'divisions':
+                return `${divisions.length} Division${divisions.length === 1 ? '' : 's'}`;
+            case 'social':
+                return googleApiConnected ? 'Google Active' : 'Reviews & Links';
+            case 'operations':
+                return `Tax: ${taxRate}%`;
+            case 'capabilities':
+                return `${serviceTypes?.length || 0} Services`;
+            case 'dispatchTeams':
+                return 'Field Routing';
+            case 'legal':
+                return proposalProtectionMode !== 'none' ? 'Protected' : 'Terms & NDAs';
+            case 'subcontractorCompliance':
+                return 'Insurance & COI';
+            case 'warranties':
+                return `${Object.keys(warrantyPlans || {}).length} Plans`;
+            case 'integrations':
+                return kortAccountId ? 'Kort Active' : 'APIs & Gateways';
+            case 'subscription':
+                return state.currentOrganization?.plan ? state.currentOrganization.plan.toUpperCase() : 'Active Plan';
+            case 'data':
+                return 'Backup & Cache';
+            default:
+                return '';
+        }
+    };
+
+    // Filtered sections for Overview mode
+    const filteredSections = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) return SETTINGS_SECTIONS;
+        return SETTINGS_SECTIONS.filter(section => {
+            return (
+                section.title.toLowerCase().includes(query) ||
+                section.shortTitle.toLowerCase().includes(query) ||
+                section.description.toLowerCase().includes(query) ||
+                section.keywords.some(k => k.toLowerCase().includes(query)) ||
+                getSectionBadge(section.id).toLowerCase().includes(query)
+            );
+        });
+    }, [searchQuery, divisions.length, taxRate, serviceTypes, proposalProtectionMode, warrantyPlans, kortAccountId, state.currentOrganization?.plan, industry, brandingColor, googleApiConnected]);
+
+    const currentSection = useMemo(() => {
+        if (activeTab === 'overview') return null;
+        return SETTINGS_SECTIONS.find(s => s.id === activeTab) || null;
+    }, [activeTab]);
+
+    const currentCategory = useMemo(() => {
+        if (!currentSection) return null;
+        return SETTINGS_CATEGORIES.find(c => c.id === currentSection.category) || null;
+    }, [currentSection]);
+
+    const siblingSections = useMemo(() => {
+        if (!currentSection) return [];
+        return SETTINGS_SECTIONS.filter(s => s.category === currentSection.category);
+    }, [currentSection]);
+
+    const renderSectionCard = (section: SettingsSectionConfig) => {
+        const Icon = section.icon;
+        const badge = getSectionBadge(section.id);
+        return (
+            <Card
+                key={section.id}
+                onClick={() => handleSelectTab(section.id)}
+                className="p-6 cursor-pointer hover:border-primary-500 dark:hover:border-primary-500 transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 group flex flex-col justify-between bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700/60"
+            >
+                <div>
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${section.colorClass} shadow-2xs group-hover:scale-105 transition-transform`}>
+                            <Icon size={22} />
+                        </div>
+                        {badge && (
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300 shrink-0 border border-slate-200/50 dark:border-slate-600/50">
+                                {badge}
+                            </span>
+                        )}
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                        {section.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed line-clamp-2">
+                        {section.description}
+                    </p>
+                </div>
+
+                <div className="pt-5 mt-5 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                        {section.shortTitle}
+                    </span>
+                    <span className="font-bold text-primary-600 dark:text-primary-400 flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                        Configure <ArrowRight size={14} />
+                    </span>
+                </div>
+            </Card>
+        );
+    };
 
     return (
         <div className="space-y-6 pb-24">
-            <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-gradient-to-r from-amber-500/5 to-orange-500/5 dark:from-amber-500/10 dark:to-orange-500/10 border border-amber-500/20 dark:border-amber-500/30 rounded-2xl p-6 shadow-sm">
-                <div className="flex items-start gap-3 max-w-xl">
-                    <div className="p-2 bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 rounded-xl mt-0.5 animate-pulse">
-                        <AlertTriangle size={20} />
+            {activeTab === 'overview' ? (
+                <div className="space-y-6 animate-fade-in">
+                    {/* Settings Hub Hero Header */}
+                    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden border border-slate-700/50">
+                        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-96 h-96 bg-primary-500/10 rounded-full blur-3xl pointer-events-none" />
+                        <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                            <div className="max-w-2xl">
+                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-white/90 text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm border border-white/10">
+                                    <Sliders size={13} className="text-primary-400" />
+                                    <span>{t("Settings Hub")}</span>
+                                </div>
+                                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                                    {t("Settings & Administration")}
+                                </h1>
+                                <p className="text-sm text-slate-300 mt-2 leading-relaxed">
+                                    {t("Configure company identity, regional branch divisions, invoicing rules, trade capabilities, legal compliance, integrations, and subscription billing.")}
+                                </p>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto shrink-0">
+                                <Button
+                                    onClick={handleSave}
+                                    disabled={isSaving || saveStatus !== 'idle'}
+                                    className={`shadow-xl px-8 py-3.5 font-black uppercase text-xs tracking-widest transition-all duration-300 ring-2 ring-amber-400/50 hover:ring-amber-400 hover:scale-105 active:scale-95 shrink-0 ${
+                                        saveStatus === 'success' ? '!bg-green-500 hover:!bg-green-600 !text-white ring-0 shadow-green-500/20' :
+                                        saveStatus === 'error' ? '!bg-red-500 !text-white ring-0 shadow-red-500/20' :
+                                        '!bg-gradient-to-r !from-amber-500 !to-orange-500 hover:!from-amber-600 hover:!to-orange-600 !text-white animate-pulse'
+                                    }`}
+                                >
+                                    {saveStatus === 'success' ? `✓ ${t('SETTINGS SAVED')}` :
+                                        saveStatus === 'error' ? t('ERROR SAVING') :
+                                            isSaving ? t('SAVING...') : t('Commit All Settings')}
+                                </Button>
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                            {t("Unsaved Changes Warning")}
-                        </h1>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                            {t("You must click")} <strong className="text-amber-600 dark:text-amber-400">{t("Commit All Settings")}</strong> {t("to save any changes made across all tabs. Navigating away or changing tabs without committing will result in loss of changes.")}
-                        </p>
+
+                    {/* Staging Notice Alert */}
+                    <div className="flex items-start gap-3 bg-gradient-to-r from-amber-500/5 to-orange-500/5 dark:from-amber-500/10 dark:to-orange-500/10 border border-amber-500/20 dark:border-amber-500/30 rounded-2xl p-4 text-xs text-slate-600 dark:text-slate-300">
+                        <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                        <div>
+                            <span className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide text-[11px] block sm:inline mr-1">
+                                {t("Staged Settings In Memory")}:
+                            </span>
+                            {t("Changes made across all tabs remain staged in memory. Click")} <strong className="text-amber-600 dark:text-amber-400">{t("Commit All Settings")}</strong> {t("to persist updates to your organization profile.")}
+                        </div>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/60 shadow-xs">
+                        <div className="relative">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                placeholder="Search settings (e.g. tax, logo, twilio, fee, card, nda, dispatch, coi)..."
+                                className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:text-white"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                                    title="Clear search"
+                                >
+                                    <X size={15} />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Cards Render: Categorized Groups or Flat Search Results */}
+                    {searchQuery.trim() ? (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between px-1">
+                                <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                                    Found <span className="text-slate-900 dark:text-white font-black">{filteredSections.length}</span> matching section{filteredSections.length === 1 ? '' : 's'} for &ldquo;{searchQuery}&rdquo;
+                                </p>
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="text-xs font-bold text-primary-600 hover:underline cursor-pointer"
+                                >
+                                    Reset search
+                                </button>
+                            </div>
+
+                            {filteredSections.length === 0 ? (
+                                <div className="text-center py-16 bg-white dark:bg-slate-800/50 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-8">
+                                    <Search size={32} className="mx-auto text-slate-400 mb-3" />
+                                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">No settings found</h3>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Try searching for something else like &ldquo;tax&rdquo;, &ldquo;twilio&rdquo;, or &ldquo;logo&rdquo;.</p>
+                                    <Button
+                                        onClick={() => setSearchQuery('')}
+                                        className="mt-4 text-xs"
+                                        variant="outline"
+                                    >
+                                        Clear Search
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                    {filteredSections.map(section => renderSectionCard(section))}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="space-y-10">
+                            {SETTINGS_CATEGORIES.map(cat => {
+                                const catSections = SETTINGS_SECTIONS.filter(s => s.category === cat.id);
+                                const CatIcon = cat.icon;
+                                return (
+                                    <div key={cat.id} className="space-y-4">
+                                        <div className="flex items-center gap-2.5 px-1 border-b border-slate-200 dark:border-slate-700/80 pb-3">
+                                            <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                                                <CatIcon size={18} />
+                                            </div>
+                                            <div>
+                                                <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                                    {cat.label}
+                                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
+                                                        {catSections.length}
+                                                    </span>
+                                                </h2>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                    {cat.description}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                            {catSections.map(section => renderSectionCard(section))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            ) : (
+                <div className="animate-fade-in space-y-6">
+                    {/* Drill-down Subheader */}
+                    <div className="sticky top-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-2xl px-4 sm:px-6 py-3.5 shadow-sm">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => handleSelectTab('overview')}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-primary-600 dark:hover:text-primary-400 transition-all shadow-2xs cursor-pointer"
+                                    title="Back to Settings Hub"
+                                >
+                                    <ArrowLeft size={14} />
+                                    <span>All Settings</span>
+                                </button>
+                                <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
+                                <nav className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                                    <button
+                                        onClick={() => handleSelectTab('overview')}
+                                        className="hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                    >
+                                        Settings
+                                    </button>
+                                    <ChevronRight size={12} />
+                                    <span className="font-medium text-slate-600 dark:text-slate-300">
+                                        {currentCategory?.label}
+                                    </span>
+                                    <ChevronRight size={12} />
+                                    <span className="font-black text-slate-900 dark:text-white">
+                                        {currentSection?.title}
+                                    </span>
+                                </nav>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    onClick={handleSave}
+                                    disabled={isSaving || saveStatus !== 'idle'}
+                                    className={`shadow-md px-6 py-2.5 font-black uppercase text-xs tracking-widest transition-all duration-300 ring-2 ring-amber-500/50 hover:ring-amber-500 hover:scale-[1.02] active:scale-95 ${
+                                        saveStatus === 'success' ? '!bg-green-500 hover:!bg-green-600 !text-white ring-0 shadow-green-500/20' :
+                                        saveStatus === 'error' ? '!bg-red-500 !text-white ring-0 shadow-red-500/20' :
+                                        '!bg-gradient-to-r !from-amber-500 !to-orange-500 hover:!from-amber-600 hover:!to-orange-600 !text-white'
+                                    }`}
+                                >
+                                    {saveStatus === 'success' ? `✓ ${t('SETTINGS SAVED')}` :
+                                        saveStatus === 'error' ? t('ERROR SAVING') :
+                                            isSaving ? t('SAVING...') : t('Commit All Settings')}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Sibling Switcher Tabs */}
+                        {siblingSections.length > 1 && (
+                            <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 overflow-x-auto pb-0.5 scrollbar-none">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 shrink-0">
+                                    {currentCategory?.label}:
+                                </span>
+                                {siblingSections.map(sibling => {
+                                    const SiblingIcon = sibling.icon;
+                                    const isCurrent = sibling.id === activeTab;
+                                    return (
+                                        <button
+                                            key={sibling.id}
+                                            onClick={() => handleSelectTab(sibling.id)}
+                                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                                                isCurrent
+                                                    ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-800 shadow-2xs'
+                                                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                            }`}
+                                        >
+                                            <SiblingIcon size={12} />
+                                            {sibling.shortTitle}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Unsaved Changes Warning Banner */}
+                    <div className="flex items-start gap-3 bg-gradient-to-r from-amber-500/5 to-orange-500/5 dark:from-amber-500/10 dark:to-orange-500/10 border border-amber-500/20 dark:border-amber-500/30 rounded-2xl p-4 text-xs text-slate-600 dark:text-slate-300">
+                        <AlertTriangle size={18} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
+                        <div>
+                            <span className="font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide text-[11px] block sm:inline mr-1">
+                                {t("Unsaved Changes Warning")}:
+                            </span>
+                            {t("You must click")} <strong className="text-amber-600 dark:text-amber-400">{t("Commit All Settings")}</strong> {t("to save changes made across all tabs before leaving.")}
+                        </div>
+                    </div>
+
+                    {/* Active Tab Component */}
+                    <div className="animate-fade-in">
+                        {activeTab === 'profile' && <ProfileTab {...{ orgName, setOrgName, email, setEmail, phone, setPhone, website, setWebsite, notificationEmails, setNotificationEmails, industry, setIndustry, supportedTrades, handleTradeToggle, allIndustries: ALL_INDUSTRIES, taxId, setTaxId, ein, setEin, businessType, setBusinessType, incorporationState, setIncorporationState, formationDate, setFormationDate, businessDocuments, handleDocumentUpload, handleDeleteDocument }} />}
+                        {activeTab === 'divisions' && <DivisionsTab {...{ divisions, setDivisions, supportedTrades, additionalDivisionsSlots: state.currentOrganization?.additionalDivisionsSlots }} />}
+                        {activeTab === 'social' && <SocialTab {...{ socialLinks, setSocialLinks, reviewLinks, setReviewLinks }} />}
+                        {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled, cardProcessingFeeEnabled, setCardProcessingFeeEnabled, cardProcessingFeePercent, setCardProcessingFeePercent, cardProcessingFeeFlat, setCardProcessingFeeFlat, achProcessingFeeEnabled, setAchProcessingFeeEnabled, achProcessingFeePercent, setAchProcessingFeePercent, achProcessingFeeFlat, setAchProcessingFeeFlat, jobPrefix, setJobPrefix, jobStartNumber, setJobStartNumber, invoicePrefix, setInvoicePrefix, invoiceStartNumber, setInvoiceStartNumber, proposalPrefix, setProposalPrefix, proposalStartNumber, setProposalStartNumber, allowPartialPayments, setAllowPartialPayments, lateFeeEnabled, setLateFeeEnabled, lateFeeType, setLateFeeType, lateFeeValue, setLateFeeValue, lateFeeInterestRate, setLateFeeInterestRate, lateFeeGracePeriod, setLateFeeGracePeriod, autoSendMonthlyStatements, setAutoSendMonthlyStatements, acceptWire, setAcceptWire, wireInstructions, setWireInstructions, acceptCheck, setAcceptCheck, checkInstructions, setCheckInstructions, acceptAch, setAcceptAch, achInstructions, setAchInstructions, orgName, orgAddress: { street: addressStreet, city, state: stateName, zip }, orgEmail: email }} />}
+                        {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
+                        {activeTab === 'subcontractorCompliance' && <SubcontractorComplianceTab />}
+                        {activeTab === 'warranties' && <WarrantiesTab organization={state.currentOrganization} warrantyPlans={warrantyPlans} setWarrantyPlans={setWarrantyPlans} jbWarrantySettings={jbWarrantySettings} setJbWarrantySettings={setJbWarrantySettings} />}
+                        {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, customerTerms, setCustomerTerms, proposalTerms, setProposalTerms, pricingDisclaimer, setPricingDisclaimer, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, pciComplianceSealHtml, setPciComplianceSealHtml, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths, proposalProtectionMode, setProposalProtectionMode, proposalNdaContent, setProposalNdaContent }} />}
+                        {activeTab === 'integrations' && <IntegrationsTab {...{ kortAccountId, setKortAccountId, pciComplianceSealHtml, setPciComplianceSealHtml, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, ringCentralLoginFlow, setRingCentralLoginFlow, ringCentralCallMode, setRingCentralCallMode, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
+                        {activeTab === 'branding' && <BrandingTab {...{ brandingColor, setBrandingColor, financingLink, setFinancingLink, logoUrl, setLogoUrl, publicLogoUrl, setPublicLogoUrl, letterheadUrl, setLetterheadUrl, footerImageUrl, setFooterImageUrl, bannerUrl, setBannerUrl, handleFileUpload, publicProfileEnabled, setPublicProfileEnabled, publicDescription, setPublicDescription, publicCredentials, setPublicCredentials, publicServices, setPublicServices, acceptsSubcontracting, setAcceptsSubcontracting }} />}
+                        {activeTab === 'dispatchTeams' && <DispatchTeamsTab />}
+                        {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling, handleReactivate }} />}
+                        {activeTab === 'data' && <DataTab {...{ handleExportData, handleDetectDuplicates, handleCleanupRecords, handleFlushCache, handleResetOverlays, handleImportFile: (e) => { e.target.value = ''; showToast.info('Bulk import is currently disabled. Contact support to migrate data.'); }, handleDownloadTemplate }} />}
                     </div>
                 </div>
-
-                <Button
-                    onClick={handleSave}
-                    disabled={isSaving || saveStatus !== 'idle'}
-                    className={`shadow-xl shadow-amber-500/10 px-10 py-4 font-black uppercase text-xs tracking-widest transition-all duration-300 ring-2 ring-amber-500/50 hover:ring-amber-500 hover:scale-105 active:scale-95 ${
-                        saveStatus === 'success' ? '!bg-green-500 hover:!bg-green-600 !text-white ring-0 shadow-green-500/20' :
-                        saveStatus === 'error' ? '!bg-red-500 !text-white ring-0 shadow-red-500/20' :
-                        '!bg-gradient-to-r !from-amber-500 !to-orange-500 hover:!from-amber-600 hover:!to-orange-600 !text-white animate-pulse'
-                    }`}
-                >
-                    {saveStatus === 'success' ? `✓ ${t('SETTINGS SAVED')}` :
-                        saveStatus === 'error' ? t('ERROR SAVING') :
-                            isSaving ? t('SAVING...') : t('Commit All Settings')}
-                </Button>
-            </header>
-
-            <div className="flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-2 mb-6">
-                {[
-                    { id: 'profile', label: t('Identity'), icon: Building },
-                    { id: 'social', label: t('Social & Reviews'), icon: Globe },
-                    { id: 'divisions', label: t('Divisions'), icon: Layers },
-                    { id: 'operations', label: t('Operations'), icon: Activity },
-                    { id: 'capabilities', label: t('Capabilities'), icon: Wrench },
-                    { id: 'subcontractorCompliance', label: t('Subcontractor Compliance'), icon: ShieldCheck },
-                    { id: 'dispatchTeams', label: t('Dispatch Teams'), icon: Users },
-                    { id: 'legal', label: t('Legal/Docs'), icon: Scale },
-                    { id: 'integrations', label: t('Integrations'), icon: CreditCard },
-                    { id: 'branding', label: t('Branding'), icon: Palette },
-                    { id: 'subscription', label: t('Plan & Billing'), icon: Zap },
-                    { id: 'data', label: t('Data Mgmt'), icon: Database },
-                ].map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 px-5 py-3 text-[10px] font-black uppercase tracking-widest whitespace-nowrap rounded-t-xl transition-all ${activeTab === tab.id ? 'bg-white dark:bg-gray-800 text-primary-600 dark:text-primary-400 border border-b-0 border-gray-200 dark:border-gray-700 translate-y-[1px]' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>
-                        <tab.icon size={14} /> {tab.label}
-                    </button>
-                ))}
-            </div>
-
-            <div className="animate-fade-in">
-                {activeTab === 'profile' && <ProfileTab {...{ orgName, setOrgName, email, setEmail, phone, setPhone, website, setWebsite, notificationEmails, setNotificationEmails, industry, setIndustry, supportedTrades, handleTradeToggle, allIndustries: ALL_INDUSTRIES, taxId, setTaxId, ein, setEin, businessType, setBusinessType, incorporationState, setIncorporationState, formationDate, setFormationDate, businessDocuments, handleDocumentUpload, handleDeleteDocument }} />}
-                {activeTab === 'divisions' && <DivisionsTab {...{ divisions, setDivisions, supportedTrades, additionalDivisionsSlots: state.currentOrganization?.additionalDivisionsSlots }} />}
-                {activeTab === 'social' && <SocialTab {...{ socialLinks, setSocialLinks, reviewLinks, setReviewLinks }} />}
-                {activeTab === 'operations' && <OperationsTab {...{ address: addressStreet, setAddress: setAddressStreet, city, setCity, stateName, setStateName, zip, setZip, taxRate, setTaxRate, licenseNumber, setLicenseNumber, primaryNaics, setPrimaryNaics, ueid, setUeid, cageCode, setCageCode, customPositions, newPosition, setNewPosition, handleAddItem, handleRemoveItem, requiredCerts, newCert, setNewCert, marketMultiplier, setMarketMultiplier, aiPricebookEnabled, setAiPricebookEnabled, virtualWorkerEnabled, setVirtualWorkerEnabled, cardProcessingFeeEnabled, setCardProcessingFeeEnabled, cardProcessingFeePercent, setCardProcessingFeePercent, cardProcessingFeeFlat, setCardProcessingFeeFlat, achProcessingFeeEnabled, setAchProcessingFeeEnabled, achProcessingFeePercent, setAchProcessingFeePercent, achProcessingFeeFlat, setAchProcessingFeeFlat, invoicePrefix, setInvoicePrefix, invoiceStartNumber, setInvoiceStartNumber, proposalPrefix, setProposalPrefix, proposalStartNumber, setProposalStartNumber, allowPartialPayments, setAllowPartialPayments, lateFeeEnabled, setLateFeeEnabled, lateFeeType, setLateFeeType, lateFeeValue, setLateFeeValue, lateFeeInterestRate, setLateFeeInterestRate, lateFeeGracePeriod, setLateFeeGracePeriod, autoSendMonthlyStatements, setAutoSendMonthlyStatements }} />}
-                {activeTab === 'capabilities' && <CapabilitiesTab {...{ serviceTypes, setServiceTypes, specializations, setSpecializations }} />}
-                {activeTab === 'subcontractorCompliance' && <SubcontractorComplianceTab />}
-                {activeTab === 'legal' && <LegalTab {...{ termsAndConditions, setTermsAndConditions, customerTerms, setCustomerTerms, proposalTerms, setProposalTerms, proposalDisclaimer, setProposalDisclaimer, invoiceTerms, setInvoiceTerms, membershipTerms, setMembershipTerms, complianceFooter, setComplianceFooter, warrantyDisclaimer, setWarrantyDisclaimer, defaultWorkmanshipMonths, setDefaultWorkmanshipMonths, defaultPartsMonths, setDefaultPartsMonths, proposalProtectionMode, setProposalProtectionMode, proposalNdaContent, setProposalNdaContent }} />}
-                {activeTab === 'integrations' && <IntegrationsTab {...{ stripePublicKey, setStripePublicKey, squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken, kortAccountId, setKortAccountId, defaultPaymentGateway, setDefaultPaymentGateway, smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest, twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber, bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode, measureQuickApiKey, setMeasureQuickApiKey, seamApiKey, setSeamApiKey, nestProjectId, setNestProjectId, nestClientId, setNestClientId, nestClientSecret, setNestClientSecret, ecobeeApiKey, setEcobeeApiKey, honeywellApiKey, setHoneywellApiKey, honeywellClientSecret, setHoneywellClientSecret, samsaraApiKey, setSamsaraApiKey, greenSkyMerchantId, setGreenSkyMerchantId, greenSkyApiPw, setGreenSkyApiPw, goodLeapApiKey, setGoodLeapApiKey, checkrApiKey, setCheckrApiKey, ringCentralClientId, setRingCentralClientId, rcBackendClientId, setRcBackendClientId, ringCentralClientSecret, setRingCentralClientSecret, ringCentralJwtToken, setRingCentralJwtToken, ringCentralLoginFlow, setRingCentralLoginFlow, ringCentralCallMode, setRingCentralCallMode, rcPrimarySms, setRcPrimarySms, rcEnableVoiceAi, setRcEnableVoiceAi, rcRingsBeforeAi, setRcRingsBeforeAi, rcSmsOnMissed, setRcSmsOnMissed, rcSmsTemplate, setRcSmsTemplate, rcMappings, setRcMappings, openWeatherApiKey, setOpenWeatherApiKey, shovelsApiKey, setShovelsApiKey, shovelsUsageCount, quickbooksConnected, handleConnectQuickBooks, handleDisconnectQuickBooks, isConnectingQuickbooks, handleConnectRingCentral, isConnectingRingCentral, webhookSecretKey, setWebhookSecretKey, punchoutConfigs, setPunchoutConfigs, orgId: state.currentOrganization?.id || '' }} />}
-                {activeTab === 'branding' && <BrandingTab {...{ brandingColor, setBrandingColor, financingLink, setFinancingLink, logoUrl, setLogoUrl, publicLogoUrl, setPublicLogoUrl, letterheadUrl, setLetterheadUrl, footerImageUrl, setFooterImageUrl, bannerUrl, setBannerUrl, handleFileUpload, publicProfileEnabled, setPublicProfileEnabled, publicDescription, setPublicDescription, publicCredentials, setPublicCredentials, publicServices, setPublicServices, acceptsSubcontracting, setAcceptsSubcontracting }} />}
-                {activeTab === 'dispatchTeams' && <DispatchTeamsTab />}
-                {activeTab === 'subscription' && <SubscriptionTab {...{ billingDetails, handleModifyBilling, handleReactivate }} />}
-                {activeTab === 'data' && <DataTab {...{ handleExportData, handleDetectDuplicates, handleCleanupRecords, handleFlushCache, handleResetOverlays, handleImportFile: (e) => { e.target.value = ''; showToast.info('Bulk import is currently disabled. Contact support to migrate data.'); }, handleDownloadTemplate }} />}
-            </div>
+            )}
 
             <Modal isOpen={isBillingHelpOpen} onClose={() => setIsBillingHelpOpen(false)} title="Upgrade Your Plan">
                 {(() => {
@@ -1059,11 +1624,12 @@ const Settings: React.FC = () => {
                         customizations: 'Layout Customizations',
                         technicianTools: 'Custom Technician Tools'
                     };
-                    const planOptions: { key: 'payments_only' | 'starter' | 'growth' | 'enterprise'; label: string; price: number; annual: number; users: number; features: string[]; ribbon: string }[] = [
+                    const planOptions: { key: 'payments_only' | 'starter' | 'growth' | 'business' | 'enterprise'; label: string; price: number; annual: number; users: number; features: string[]; ribbon: string }[] = [
                         { key: 'payments_only', label: 'Payments Only', price: ps?.payments_only?.monthly ?? 10, annual: ps?.payments_only?.annual ?? 199, users: ps?.payments_only?.unlimitedUsers ? 999999 : (ps?.payments_only?.maxUsers ?? 1), features: ps?.payments_only?.features || [], ribbon: ps?.payments_only?.ribbonText || '' },
-                        { key: 'starter', label: 'Starter', price: ps?.starter?.monthly ?? 99, annual: ps?.starter?.annual ?? 999, users: ps?.starter?.maxUsers ?? 3, features: ps?.starter?.features || [], ribbon: ps?.starter?.ribbonText || '' },
-                        { key: 'growth', label: 'Growth', price: ps?.growth?.monthly ?? 249, annual: ps?.growth?.annual ?? 2499, users: ps?.growth?.maxUsers ?? 10, features: ps?.growth?.features || [], ribbon: ps?.growth?.ribbonText || '' },
-                        { key: 'enterprise', label: 'Enterprise', price: ps?.enterprise?.monthly ?? 499, annual: ps?.enterprise?.annual ?? 4999, users: ps?.enterprise?.maxUsers ?? 50, features: ps?.enterprise?.features || [], ribbon: ps?.enterprise?.ribbonText || '' },
+                        { key: 'starter', label: 'Starter', price: ps?.starter?.monthly ?? 49, annual: ps?.starter?.annual ?? 399, users: ps?.starter?.maxUsers ?? 1, features: ps?.starter?.features || [], ribbon: ps?.starter?.ribbonText || '' },
+                        { key: 'growth', label: 'Growth', price: ps?.growth?.monthly ?? 149, annual: ps?.growth?.annual ?? 1199, users: ps?.growth?.maxUsers ?? 5, features: ps?.growth?.features || [], ribbon: ps?.growth?.ribbonText || '' },
+                        { key: 'business', label: 'Business', price: ps?.business?.monthly ?? 349, annual: ps?.business?.annual ?? 3490, users: ps?.business?.maxUsers ?? 20, features: ps?.business?.features || [], ribbon: ps?.business?.ribbonText || '' },
+                        { key: 'enterprise', label: 'Enterprise', price: ps?.enterprise?.monthly ?? 350, annual: ps?.enterprise?.annual ?? 3500, users: (ps?.enterprise?.unlimitedUsers !== false || (ps?.enterprise?.maxUsers ?? 999999) >= 999999) ? 999999 : (ps?.enterprise?.maxUsers ?? 999999), features: ps?.enterprise?.features || [], ribbon: ps?.enterprise?.ribbonText || '' },
                     ];
                     const currentPrice = planOptions.find(p => p.key === currentPlan)?.price || 99;
                     const userFee = state.platformSettings?.excessUserFee ?? 25;
@@ -1103,8 +1669,11 @@ const Settings: React.FC = () => {
                                                     : isDowngrade && proratedCredit > 0
                                                     ? `\n\nProrated credit for remaining ${daysRemaining} days: $${proratedCredit.toFixed(2)} (applied to next cycle)`
                                                     : '';
-                                                const confirmed = window.confirm(
-                                                    `${action === 'upgrade' ? 'Upgrade' : 'Switch'} to ${plan.label} plan at $${plan.price}/mo?${chargeMsg}\n\nYour new rate will apply starting now.`
+                                                const confirmed = await globalConfirm(
+                                                    `${action === 'upgrade' ? 'Upgrade' : 'Switch'} to ${plan.label} plan at $${plan.price}/mo?${chargeMsg}\n\nYour new rate will apply starting now.`,
+                                                    `${action === 'upgrade' ? 'Upgrade' : 'Switch'} Subscription Plan`,
+                                                    `${action === 'upgrade' ? 'Upgrade Plan' : 'Switch Plan'}`,
+                                                    'Cancel'
                                                 );
                                                 if (!confirmed) return;
                                                 try {

@@ -6,19 +6,22 @@ import JobAppointmentModal from '../../../components/modals/JobAppointmentModal'
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
-import { Check, ArrowRight, Sparkles, X, Clock, MapPin, Navigation, Layers, ImageIcon, Camera as CameraIcon, ChevronDown } from 'lucide-react';
+import { Check, ArrowRight, Sparkles, X, Clock, MapPin, Navigation, Layers, ImageIcon, Camera as CameraIcon, ChevronDown, ExternalLink } from 'lucide-react';
 import { EQUIPMENT_OPTIONS } from '@/constants/industryNaming';
 import { db, firebase } from '../../../lib/firebase';
 import { uploadFileToStorage } from '../../../lib/storageService';
-import { cleanUndefinedFields } from '../../../lib/utils';
+import { offlineSyncManager } from '../../../lib/offlineSyncManager';
+import { cleanUndefinedFields, compressFile } from '../../../lib/utils';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useAppContext } from '../../../context/AppContext';
 import Textarea from '../../../components/ui/Textarea';
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from 'context/LanguageContext';
+import { notifyAdminsJobPendingReview } from '../../../lib/notificationService';
 import InvoiceEditorModal from '../../../components/modals/InvoiceEditorModal';
 import IndustryToolsHub from '../../tools/IndustryToolsHub';
 import Tesseract from 'tesseract.js';
+import { scanDataPlatePhoto } from '../../../utils/dataPlateOcr';
 
 // Sub-components
 import ArrivalStep from './workflow/ArrivalStep';
@@ -26,13 +29,23 @@ import DiagnosisStep from './workflow/DiagnosisStep';
 import RepairStep from './workflow/RepairStep';
 import QualityStep from './workflow/QualityStep';
 import BillingStep from './workflow/BillingStep';
+import JobDashboardView from './JobDashboardView';
 import SmartTechAssistant from './SmartTechAssistant';
 import LiveAssistModal from './LiveAssistModal';
 import WaiverModal from './WaiverModal';
 import SignOffModal from './SignOffModal';
+import ReopenJobModal from '../../../components/modals/ReopenJobModal';
+import AuditHistoryModal from '../../../components/modals/AuditHistoryModal';
 import SubcontractorBillModal from './SubcontractorBillModal';
+import JobRecordReviewModal from './JobRecordReviewModal';
+import JobDetailModal from '../../../components/modals/JobDetailModal';
 import DocumentPreview from '../../../components/ui/DocumentPreview';
+import JobChecklistsModal from './modals/JobChecklistsModal';
+import JobProposalsModal from './modals/JobProposalsModal';
+import JobToolsModal from './modals/JobToolsModal';
+import JobBillingModal from './modals/JobBillingModal';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 import { BarcodeScannerButton } from '../../../components/ui/BarcodeScanner';
 import BarcodeScannerModal from './BarcodeScannerModal';
 import WebCameraModal from './WebCameraModal';
@@ -71,6 +84,22 @@ interface WorkflowState {
     }>;
     repairPostponed?: boolean;
     repairPostponedReason?: string;
+    jobRecordSignedOff?: boolean;
+    jobRecordSignedOffAt?: string;
+    jobRecordSignedOffBy?: string;
+    jobRecordSignedOffNotes?: string;
+    customerSignature?: string | null;
+    customerSignatureName?: string | null;
+    siteManagerSignature?: string | null;
+    siteManagerName?: string | null;
+    techSignature?: string | null;
+    techSignatureName?: string | null;
+    signature?: string | null;
+    signerName?: string | null;
+    signatureTimestamp?: string | null;
+    preWorkWaiverSignature?: string | null;
+    preWorkWaiverSignedAt?: string | null;
+    preWorkWaiverTitle?: string | null;
 }
 
 const geocodeAddress = async (address: string | any): Promise<{ lat: number; lng: number } | null> => {
@@ -199,12 +228,25 @@ const JobWorkflowModal: React.FC<{
             phone: job.customerPhone || state.customers?.find(c => c.id === job.customerId)?.phone || '',
             address: getAddressString(job.address) || getAddressString(state.customers?.find(c => c.id === job.customerId)?.address) || ''
         },
-        refrigerantLog: job.refrigerantLog || [],
-        toolReadings: job.toolReadings || [],
-        partsUsed: (job as any).partsUsed || [],
+        refrigerantLog: Array.isArray(job.refrigerantLog) ? job.refrigerantLog : (job.refrigerantLog ? [job.refrigerantLog] : []),
+        toolReadings: Array.isArray(job.toolReadings) ? job.toolReadings : (job.toolReadings && typeof job.toolReadings === 'object' ? [job.toolReadings] : []),
+        partsUsed: Array.isArray((job as any).partsUsed) ? (job as any).partsUsed : ((job as any).partsUsed ? [(job as any).partsUsed] : []),
         techRecommendations: '',
         thankYouNote: job.notes?.thankYouNote || '',
-        unitStates: []
+        unitStates: [],
+        jobRecordSignedOff: job.jobRecordSignedOff || false,
+        jobRecordSignedOffAt: job.jobRecordSignedOffAt || '',
+        jobRecordSignedOffBy: job.jobRecordSignedOffBy || '',
+        jobRecordSignedOffNotes: job.jobRecordSignedOffNotes || '',
+        customerSignature: job.customerSignature || (job as any).workflowState?.customerSignature || null,
+        customerSignatureName: job.customerSignatureName || (job as any).workflowState?.customerSignatureName || null,
+        siteManagerSignature: job.siteManagerSignature || (job as any).workflowState?.siteManagerSignature || null,
+        siteManagerName: job.siteManagerName || (job as any).workflowState?.siteManagerName || null,
+        techSignature: job.techSignature || (job as any).workflowState?.techSignature || null,
+        techSignatureName: job.techSignatureName || (job as any).workflowState?.techSignatureName || null,
+        signature: job.signature || job.customerSignature || job.siteManagerSignature || (job as any).workflowState?.signature || null,
+        signerName: job.signerName || job.customerSignatureName || job.siteManagerName || (job as any).workflowState?.signerName || null,
+        signatureTimestamp: job.signatureTimestamp || (job as any).workflowState?.signatureTimestamp || null
     } as any);
 
     
@@ -212,6 +254,15 @@ const JobWorkflowModal: React.FC<{
         const customer = state.customers.find(c => c.id === job.customerId);
         let customerEquipment = customer?.equipment || [];
         
+        const getAssetId = (e: any) => e.id || e.equipmentId || e._id || e.assetTag || e.name || '';
+        
+        // Find all equipment IDs associated with this job's unitStates, files, or equipmentIds
+        const requiredAssetIds = new Set([
+            ...(job.unitStates?.map(s => s.assetId).filter(Boolean) || []),
+            ...(job.files?.map(f => f.metadata?.assetId || f.assetId).filter(Boolean) || []),
+            ...(job.equipmentIds?.filter(Boolean) || [])
+        ]);
+
         const jobAddressStr = typeof job.address === 'string' ? job.address : '';
         let currentPropertyId = job.locationId;
         
@@ -226,6 +277,7 @@ const JobWorkflowModal: React.FC<{
             return [parentId, ...childIds, ...nestedIds];
         };
         
+        let filteredEquipment = customerEquipment;
         if (currentPropertyId) {
             // Only show assets mapped to this property or its sub-locations.
             // If the customer has multiple locations, prevent unmapped assets from carrying over between them.
@@ -233,17 +285,47 @@ const JobWorkflowModal: React.FC<{
             const validPropertyIds = customer?.serviceLocations
                 ? getSubLocationIds(currentPropertyId, customer.serviceLocations)
                 : [currentPropertyId];
-            customerEquipment = customerEquipment.filter(e => (e.propertyId && validPropertyIds.includes(e.propertyId)) || (!hasMultipleLocations && !e.propertyId));
+            filteredEquipment = customerEquipment.filter(e => (e.propertyId && validPropertyIds.includes(e.propertyId)) || (!hasMultipleLocations && !e.propertyId));
         } else if (customer?.serviceLocations && customer.serviceLocations.length > 1) {
             // If we can't determine the property but there are multiple properties, 
             // only show unmapped equipment to be safe, rather than everything
-            customerEquipment = customerEquipment.filter(e => !e.propertyId);
+            filteredEquipment = customerEquipment.filter(e => !e.propertyId);
         }
+
+        // Ensure all equipment listed in unitStates or associated with photos is included, even if filtered out by locationId
+        const finalEquipment = [...filteredEquipment];
+        customerEquipment.forEach(e => {
+            const eId = getAssetId(e);
+            if (eId && requiredAssetIds.has(eId) && !finalEquipment.some(fe => getAssetId(fe) === eId)) {
+                finalEquipment.push(e);
+            }
+        });
+
+        // Fallback for any requiredAssetId that does not exist in customer equipment at all
+        requiredAssetIds.forEach(assetId => {
+            if (assetId && !finalEquipment.some(fe => getAssetId(fe) === assetId)) {
+                const us = job.unitStates?.find(s => s.assetId === assetId);
+                finalEquipment.push({
+                    id: assetId,
+                    name: us?.assetTag ? `Unit ${us.assetTag}` : `System #${assetId.slice(-4).toUpperCase()}`,
+                    type: 'Equipment Unit',
+                    brand: 'Serviced System',
+                    condition: us?.health || us?.healthBefore || 'Good'
+                } as any);
+            }
+        });
         
-        return customerEquipment;
-    }, [state.customers, job.customerId, job.locationId, job.address]);
+        return finalEquipment.map((e, idx) => ({
+            ...e,
+            id: getAssetId(e) || `unit-${idx + 1}`
+        }));
+    }, [state.customers, job.customerId, job.locationId, job.address, job.unitStates, job.files, job.equipmentIds]);
 
     const [isAddAssetOpen, setIsAddAssetOpen] = useState(false);
+    const [isChecklistsModalOpen, setIsChecklistsModalOpen] = useState(false);
+    const [isProposalsModalOpen, setIsProposalsModalOpen] = useState(false);
+    const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
+    const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
     
     useEffect(() => {
         if (isOpen && initialEditingAssetId) {
@@ -272,6 +354,7 @@ const JobWorkflowModal: React.FC<{
     const [isResearchingAirHandler, setIsResearchingAirHandler] = useState(false);
     const [airHandlerDetails, setAirHandlerDetails] = useState({
         name: 'Air Handler',
+        type: 'Air Handler',
         brand: '',
         model: '',
         serial: '',
@@ -284,8 +367,11 @@ const JobWorkflowModal: React.FC<{
         refrigerantType: '',
         heatType: '',
         electricityType: '',
+        volts: '',
+        amps: '',
         seerRating: '',
-        filterType: ''
+        filterType: '',
+        blowerType: ''
     });
 
     const [newAsset, setNewAsset] = useState<Omit<EquipmentAsset, 'id'> & { id?: string; serialPhotoUrl?: string; unitTagPhotoUrl?: string; conditionPhotoUrl?: string; exactPlacement?: string; servesArea?: string; gpsPin?: { lat: number; lng: number }; installDate?: string; notes?: string; linkedAssetIds?: string[]; name?: string; systemGroupId?: string | null; systemGroupName?: string | null; systemGroupRole?: string | null; assetTag?: string }>({ brand: '', model: '', serial: '', type: 'System' });
@@ -305,6 +391,7 @@ const JobWorkflowModal: React.FC<{
             setAutoCreateAirHandler(false);
             setAirHandlerDetails({
                 name: 'Air Handler',
+                type: 'Air Handler',
                 brand: newAsset?.brand || '',
                 model: '',
                 serial: '',
@@ -317,8 +404,11 @@ const JobWorkflowModal: React.FC<{
                 refrigerantType: '',
                 heatType: '',
                 electricityType: '',
+                volts: '',
+                amps: '',
                 seerRating: '',
-                filterType: ''
+                filterType: '',
+                blowerType: ''
             });
         }
     }, [isAddAssetOpen, newAsset?.brand, newAsset?.servesArea]);
@@ -378,8 +468,13 @@ const JobWorkflowModal: React.FC<{
             sysRole = '';
         }
 
+        const cleanGpsPin = (newAsset.gpsPin && typeof newAsset.gpsPin.lat === 'number' && typeof newAsset.gpsPin.lng === 'number' && !isNaN(newAsset.gpsPin.lat) && !isNaN(newAsset.gpsPin.lng) && (newAsset.gpsPin.lat !== 0 || newAsset.gpsPin.lng !== 0))
+            ? { lat: Number(newAsset.gpsPin.lat), lng: Number(newAsset.gpsPin.lng) }
+            : undefined;
+
         const activeAsset = {
             ...newAsset,
+            gpsPin: cleanGpsPin,
             systemGroupId: sysId || null,
             systemGroupName: sysName || null,
             systemGroupRole: sysRole || null
@@ -394,7 +489,14 @@ const JobWorkflowModal: React.FC<{
 
     const addFilesToJob = (newFiles: StoredFile[]) => {
         setFiles(prev => {
-            const updated = [...prev, ...newFiles];
+            const seen = new Set((prev || []).map(f => f.id || f.dataUrl || f.url));
+            const toAdd = newFiles.filter(f => {
+                const key = f.id || f.dataUrl || f.url;
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            const updated = [...prev, ...toAdd];
             onUpdate({ ...job, files: updated } as any);
             return updated;
         });
@@ -402,7 +504,8 @@ const JobWorkflowModal: React.FC<{
 
     const removeFileFromJob = (fileToDelete: StoredFile) => {
         setFiles(prev => {
-            const updated = prev.filter(f => f.id !== fileToDelete.id);
+            const targetUrl = fileToDelete.url || fileToDelete.dataUrl;
+            const updated = prev.filter(f => f.id !== fileToDelete.id && (!targetUrl || (f.url !== targetUrl && f.dataUrl !== targetUrl)));
             onUpdate({ ...job, files: updated } as any);
             return updated;
         });
@@ -411,12 +514,16 @@ const JobWorkflowModal: React.FC<{
     const [isPayableModalOpen, setIsPayableModalOpen] = useState(false);
     const [isScheduleFollowUpOpen, setIsScheduleFollowUpOpen] = useState(false);
     const [payableAmount, setPayableAmount] = useState<number>(0);
+    const [activeViewMode, setActiveViewMode] = useState<'dashboard' | 'stage'>('dashboard');
     
     // Tool Modals
     const [isLiveAssistOpen, setIsLiveAssistOpen] = useState(false);
     const [isWaiverOpen, setIsWaiverOpen] = useState(false);
     const [isSignOffOpen, setIsSignOffOpen] = useState(false);
+    const [isReopenModalOpen, setIsReopenModalOpen] = useState(false);
+    const [isAuditHistoryOpen, setIsAuditHistoryOpen] = useState(false);
     const [isSubBillOpen, setIsSubBillOpen] = useState(false);
+    const [isJobRecordReviewOpen, setIsJobRecordReviewOpen] = useState(false);
     const [previewDoc, setPreviewDoc] = useState<any | null>(null);
     const [isAssistantOpen, setIsAssistantOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -536,16 +643,16 @@ const JobWorkflowModal: React.FC<{
                 ? newCustAddr : (prevState.customerDetails?.address || '');
 
             const newRefrigerantLog = shouldUpdateObj(prevState.refrigerantLog, prevJob?.refrigerantLog, job.refrigerantLog)
-                ? (job.refrigerantLog || []) : prevState.refrigerantLog;
+                ? (Array.isArray(job.refrigerantLog) ? job.refrigerantLog : (job.refrigerantLog ? [job.refrigerantLog] : [])) : prevState.refrigerantLog;
 
             const newToolReadings = shouldUpdateObj(prevState.toolReadings, prevJob?.toolReadings, job.toolReadings)
-                ? (job.toolReadings || []) : prevState.toolReadings;
+                ? (Array.isArray(job.toolReadings) ? job.toolReadings : (job.toolReadings && typeof job.toolReadings === 'object' ? [job.toolReadings] : [])) : prevState.toolReadings;
 
             const newPartsUsed = shouldUpdateObj((prevState as any).partsUsed, (prevJob as any)?.partsUsed, (job as any).partsUsed)
-                ? ((job as any).partsUsed || []) : (prevState as any).partsUsed;
+                ? (Array.isArray((job as any).partsUsed) ? (job as any).partsUsed : ((job as any).partsUsed ? [(job as any).partsUsed] : [])) : (prevState as any).partsUsed;
 
             const newUnitStates = shouldUpdateObj(prevState.unitStates, prevJob?.unitStates, job.unitStates)
-                ? (job.unitStates || []) : prevState.unitStates;
+                ? (Array.isArray(job.unitStates) ? job.unitStates : (job.unitStates ? [job.unitStates] : [])) : prevState.unitStates;
 
             const initialDiagnosisChecklist = generateItemsFromIds(job.requiredDiagnosisChecklistIds || (job as any).requiredDiagnosticChecklistIds || [], docTemplates);
             const initialQualityChecklist = generateItemsFromIds(job.requiredQualityChecklistIds || [], docTemplates);
@@ -595,11 +702,43 @@ const JobWorkflowModal: React.FC<{
                 diagnosisChecklist: newDiagnosisChecklist,
                 qualityChecklist: newQualityChecklist,
                 repairPostponed: newRepairPostponed,
-                repairPostponedReason: newRepairPostponedReason
+                repairPostponedReason: newRepairPostponedReason,
+                jobRecordSignedOff: shouldUpdate(prevState.jobRecordSignedOff, prevJob?.jobRecordSignedOff, job.jobRecordSignedOff) ? (job.jobRecordSignedOff || false) : prevState.jobRecordSignedOff,
+                jobRecordSignedOffAt: shouldUpdate(prevState.jobRecordSignedOffAt, prevJob?.jobRecordSignedOffAt, job.jobRecordSignedOffAt) ? (job.jobRecordSignedOffAt || '') : prevState.jobRecordSignedOffAt,
+                jobRecordSignedOffBy: shouldUpdate(prevState.jobRecordSignedOffBy, prevJob?.jobRecordSignedOffBy, job.jobRecordSignedOffBy) ? (job.jobRecordSignedOffBy || '') : prevState.jobRecordSignedOffBy,
+                jobRecordSignedOffNotes: shouldUpdate(prevState.jobRecordSignedOffNotes, prevJob?.jobRecordSignedOffNotes, job.jobRecordSignedOffNotes) ? (job.jobRecordSignedOffNotes || '') : prevState.jobRecordSignedOffNotes,
+                customerSignature: shouldUpdate(prevState.customerSignature, prevJob?.customerSignature, job.customerSignature) ? (job.customerSignature || null) : prevState.customerSignature,
+                customerSignatureName: shouldUpdate(prevState.customerSignatureName, prevJob?.customerSignatureName, job.customerSignatureName) ? (job.customerSignatureName || null) : prevState.customerSignatureName,
+                siteManagerSignature: shouldUpdate(prevState.siteManagerSignature, prevJob?.siteManagerSignature, job.siteManagerSignature) ? (job.siteManagerSignature || null) : prevState.siteManagerSignature,
+                siteManagerName: shouldUpdate(prevState.siteManagerName, prevJob?.siteManagerName, job.siteManagerName) ? (job.siteManagerName || null) : prevState.siteManagerName,
+                techSignature: shouldUpdate(prevState.techSignature, prevJob?.techSignature, job.techSignature) ? (job.techSignature || null) : prevState.techSignature,
+                techSignatureName: shouldUpdate(prevState.techSignatureName, prevJob?.techSignatureName, job.techSignatureName) ? (job.techSignatureName || null) : prevState.techSignatureName,
+                signature: shouldUpdate(prevState.signature, prevJob?.signature, job.signature) ? (job.signature || null) : prevState.signature,
+                signerName: shouldUpdate(prevState.signerName, prevJob?.signerName, job.signerName) ? (job.signerName || null) : prevState.signerName,
+                signatureTimestamp: shouldUpdate(prevState.signatureTimestamp, prevJob?.signatureTimestamp, job.signatureTimestamp) ? (job.signatureTimestamp || null) : prevState.signatureTimestamp
             };
         });
-
-        setFiles(job.files || []);
+        // Safely merge incoming job.files without discarding locally captured or queued photos
+        const incomingFiles = Array.isArray(job.files) ? job.files : [];
+        setFiles(prevFiles => {
+            const seen = new Set<string>();
+            const merged: StoredFile[] = [];
+            incomingFiles.forEach((f: any) => {
+                const key = f.id || f.dataUrl || f.url;
+                if (key && !seen.has(key)) {
+                    seen.add(key);
+                    merged.push(f);
+                }
+            });
+            (prevFiles || []).forEach((f: any) => {
+                const key = f.id || f.dataUrl || f.url;
+                if (key && !seen.has(key)) {
+                    seen.add(key);
+                    merged.push(f);
+                }
+            });
+            return merged;
+        });
 
         prevJobRef.current = job;
         prevCustomerRef.current = customer || null;
@@ -766,7 +905,8 @@ const JobWorkflowModal: React.FC<{
 
              const targetLines = [...(targetInvoice.items || []), ...itemsToCopy];
              const subtotal = targetLines.reduce((acc, l) => acc + (l.total || (l.quantity * l.unitPrice) || 0), 0);
-             const taxAmount = subtotal * (targetInvoice.taxRate || 0.0825); 
+             const effectiveTaxRate = typeof targetInvoice.taxRate === 'number' ? targetInvoice.taxRate : 0;
+             const taxAmount = typeof targetInvoice.taxAmount === 'number' ? targetInvoice.taxAmount : subtotal * effectiveTaxRate; 
              const totalAmount = subtotal + taxAmount;
 
              const updatedTargetInvoice = {
@@ -853,6 +993,12 @@ const JobWorkflowModal: React.FC<{
             } else {
                 await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(fullUpdates));
                 onUpdate({ ...job, ...fullUpdates, notes: { ...job.notes, ...fullUpdates.notes } } as any);
+            }
+            if (updates.files) {
+                setFiles(updates.files);
+            }
+            if (updates.unitStates) {
+                updateWorkflowState('unitStates', updates.unitStates);
             }
         } catch (e) {
             console.error("Update failed:", e);
@@ -1000,7 +1146,8 @@ const JobWorkflowModal: React.FC<{
                             <p>We will see you shortly!</p>
                         </div>
                     `,
-                    organizationId: job.organizationId || 'system',
+                    organization: state.currentOrganization,
+                    organizationId: job.organizationId || state.currentOrganization?.id || 'system',
                     bypassOptOut: true
                 });
             } catch (err) {
@@ -1011,6 +1158,33 @@ const JobWorkflowModal: React.FC<{
         showToast.success("Started transit! Customer notified via SMS/Email.");
     };
     
+    const handleJobRecordSignOff = async (signedOffBy: string, notes?: string) => {
+        const nowStr = new Date().toISOString();
+        setWorkflowState(prev => ({
+            ...prev,
+            jobRecordSignedOff: true,
+            jobRecordSignedOffAt: nowStr,
+            jobRecordSignedOffBy: signedOffBy,
+            jobRecordSignedOffNotes: notes || ''
+        }));
+        const updates = {
+            jobRecordSignedOff: true,
+            jobRecordSignedOffAt: nowStr,
+            jobRecordSignedOffBy: signedOffBy,
+            jobRecordSignedOffNotes: notes || '',
+            updatedAt: nowStr
+        };
+        try {
+            if (!state.isDemoMode && job?.id) {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
+            }
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
+        } catch (err) {
+            console.error("Failed to persist job record sign-off:", err);
+        }
+        showToast.success("Job record successfully signed off!");
+    };
+
     const saveCurrentState = async () => {
         const updates = {
             notes: {
@@ -1032,7 +1206,31 @@ const JobWorkflowModal: React.FC<{
             techRecommendations: workflowState.techRecommendations || '',
             unitStates: workflowState.unitStates || [],
             repairPostponed: workflowState.repairPostponed || false,
-            repairPostponedReason: workflowState.repairPostponedReason || ''
+            repairPostponedReason: workflowState.repairPostponedReason || '',
+            jobRecordSignedOff: workflowState.jobRecordSignedOff || false,
+            jobRecordSignedOffAt: workflowState.jobRecordSignedOffAt || '',
+            jobRecordSignedOffBy: workflowState.jobRecordSignedOffBy || '',
+            jobRecordSignedOffNotes: workflowState.jobRecordSignedOffNotes || '',
+            customerSignature: workflowState.customerSignature !== undefined ? workflowState.customerSignature : (job.customerSignature || null),
+            customerSignatureName: workflowState.customerSignatureName !== undefined ? workflowState.customerSignatureName : (job.customerSignatureName || null),
+            siteManagerSignature: workflowState.siteManagerSignature !== undefined ? workflowState.siteManagerSignature : (job.siteManagerSignature || null),
+            siteManagerName: workflowState.siteManagerName !== undefined ? workflowState.siteManagerName : (job.siteManagerName || null),
+            techSignature: workflowState.techSignature !== undefined ? workflowState.techSignature : (job.techSignature || null),
+            techSignatureName: workflowState.techSignatureName !== undefined ? workflowState.techSignatureName : (job.techSignatureName || null),
+            signature: (workflowState.customerSignature || workflowState.siteManagerSignature || workflowState.signature) !== undefined 
+                ? (workflowState.customerSignature || workflowState.siteManagerSignature || workflowState.signature || null) 
+                : (job.signature || null),
+            signerName: (workflowState.customerSignatureName || workflowState.siteManagerName || workflowState.signerName) !== undefined 
+                ? (workflowState.customerSignatureName || workflowState.siteManagerName || workflowState.signerName || null) 
+                : (job.signerName || null),
+            signatureTimestamp: workflowState.signatureTimestamp !== undefined ? workflowState.signatureTimestamp : (job.signatureTimestamp || null),
+            preWorkWaiverSignature: workflowState.preWorkWaiverSignature || job.preWorkWaiverSignature || null,
+            preWorkWaiverSignedAt: workflowState.preWorkWaiverSignedAt || job.preWorkWaiverSignedAt || null,
+            preWorkWaiverTitle: workflowState.preWorkWaiverTitle || job.preWorkWaiverTitle || null,
+            workflowState: {
+                ...(job.workflowState || {}),
+                ...workflowState
+            }
         };
 
         
@@ -1046,16 +1244,38 @@ const JobWorkflowModal: React.FC<{
              const localEquipment = customer.equipment || [];
              let equipmentUpdated = false;
              
+             const getEqId = (e: any) => e.id || e.equipmentId || e._id || e.assetTag;
+             const todayStr = new Date().toISOString().split('T')[0];
              const updatedEquipment = localEquipment.map((eq: EquipmentAsset) => {
-                 const stateForEq = workflowState.unitStates?.find(s => s.assetId === eq.id);
-                 if (stateForEq && stateForEq.health) {
-                     const newCondition = stateForEq.health; // 'Good' | 'Fair' | 'Critical'
+                 const eqId = getEqId(eq);
+                 const stateForEq: any = workflowState.unitStates?.find(s => s.assetId === eqId || (eq.id && s.assetId === eq.id));
+                 let eqToReturn = eq;
+                 if (stateForEq && (stateForEq.healthAfter || stateForEq.health || stateForEq.healthBefore)) {
+                     const newCondition = (stateForEq.healthAfter || stateForEq.health || stateForEq.healthBefore) as EquipmentAsset['condition'];
                      if (eq.condition !== newCondition) {
                          equipmentUpdated = true;
-                         return { ...eq, condition: newCondition };
+                         eqToReturn = { ...eqToReturn, condition: newCondition };
                      }
                  }
-                 return eq;
+                 // When equipment was serviced or inspected in this job workflow, also update its lastMaintenanceDate
+                 const isServiced = Boolean(
+                     stateForEq || 
+                     (job.equipmentIds && (job.equipmentIds.includes(eqId) || (eq.id && job.equipmentIds.includes(eq.id))))
+                 );
+                 if (isServiced) {
+                     const existingWarranty = eqToReturn.warranty || {};
+                     if (existingWarranty.lastMaintenanceDate !== todayStr) {
+                         equipmentUpdated = true;
+                         eqToReturn = {
+                             ...eqToReturn,
+                             warranty: {
+                                 ...existingWarranty,
+                                 lastMaintenanceDate: todayStr
+                             }
+                         };
+                     }
+                 }
+                 return eqToReturn;
              });
 
              if (equipmentUpdated) {
@@ -1079,11 +1299,23 @@ const JobWorkflowModal: React.FC<{
                  doUpdate = true;
              }
              
-             // Also add as a ServiceLocation if it exists
-             if (workflowState.customerDetails.address) {
+             // Also add as a ServiceLocation if it exists and job is not already linked to an existing location
+             if (workflowState.customerDetails.address && !job.locationId) {
                  const currentLocations = customer.serviceLocations ? [...customer.serviceLocations] : [];
-                 if (!currentLocations.some((loc: any) => loc.address === workflowState.customerDetails.address)) {
-                     currentLocations.push({ id: `loc-${Date.now()}`, name: 'New Location', address: workflowState.customerDetails.address });
+                 const cleanNewAddr = workflowState.customerDetails.address.split(',')[0].trim().toLowerCase();
+                 const alreadyExists = currentLocations.some((loc: any) => {
+                     if (!loc.address) return false;
+                     const cleanExisting = loc.address.split(',')[0].trim().toLowerCase();
+                     return cleanExisting === cleanNewAddr || cleanNewAddr.includes(cleanExisting) || cleanExisting.includes(cleanNewAddr);
+                 });
+                 if (!alreadyExists && cleanNewAddr.length > 5) {
+                     currentLocations.push({ 
+                         id: `loc-${Date.now()}`, 
+                         name: (customer.customerType === 'Commercial' || customer.customerType === 'Property Management')
+                             ? `${customer.name} - ${workflowState.customerDetails.address.split(',')[0].trim()}`
+                             : 'Service Location', 
+                         address: workflowState.customerDetails.address 
+                     });
                      customerUpdates.serviceLocations = currentLocations;
                      doUpdate = true;
                  }
@@ -1225,89 +1457,57 @@ const JobWorkflowModal: React.FC<{
             if (photoType === 'serialPhotoUrl' || photoType === 'unitTagPhotoUrl') {
                 setIsOcrScanning(true);
                 try {
-                    const result = await Tesseract.recognize(file, 'eng');
-                    const text = result.data.text.toUpperCase();
-                    console.log("[OCR Raw Scanned Text]:", text);
-                    
-                    // Advanced HVAC Nameplate Keywords
-                    const serialKeywords = [
-                        'SERIAL NO', 'SERIAL N0', 'SERIAL NUM', 'SERIAL', 'SER. NO', 'SER NO', 'SER. N0', 'SER N0', 'SER.', 'SER', 
-                        'S/N', 'S/N:', 'S.N', 'S. N', 'S N', 'SN:', 'SN '
-                    ];
+                    showToast.info("Scanning data plate with AI Vision...");
+                    const ocrData = await scanDataPlatePhoto(file, {
+                        brand: newAsset.brand,
+                        model: newAsset.model,
+                        serial: newAsset.serial,
+                        year: newAsset.year,
+                        tonnage: newAsset.tonnage,
+                        refrigerantType: newAsset.refrigerantType,
+                        electricityType: newAsset.electricityType,
+                        seerRating: newAsset.seerRating
+                    });
 
-                    const modelKeywords = [
-                        'MODEL NO', 'MODEL N0', 'MODEL NUM', 'MODEL', 'MOD. NO', 'MOD NO', 'MOD. N0', 'MOD N0', 'MOD.', 'MOD', 
-                        'M/N', 'M/N:', 'M.N', 'M. N', 'M N', 'MN:', 'MN '
-                    ];
-
-                    const serialRegexPattern = /^\s*[:#=\-\s]*\s*([A-Z0-9]{5,20})/i;
-                    const modelRegexPattern = /^\s*[:#=\-\s]*\s*([A-Z0-9\-\/\.]{5,25})/i;
-
-                    // 1. Contextual Line matching
-                    const findContextualMatch = (textStr: string, keywords: string[], pattern: RegExp): string | null => {
-                        const lines = textStr.split('\n');
-                        for (const line of lines) {
-                            for (const kw of keywords) {
-                                const index = line.indexOf(kw);
-                                if (index !== -1) {
-                                    const sub = line.substring(index + kw.length);
-                                    const match = sub.match(pattern);
-                                    if (match && match[1]) {
-                                        return match[1].trim().toUpperCase();
-                                    }
-                                }
-                            }
-                        }
-                        return null;
-                    };
-
-                    let matchedSerial = findContextualMatch(text, serialKeywords, serialRegexPattern);
-                    let matchedModel = findContextualMatch(text, modelKeywords, modelRegexPattern);
-
-                    // 2. Global Regex fallback if line matching fails
-                    if (!matchedSerial) {
-                        const serialMatch = text.match(/(?:S\/?N|SERIAL|SER\.?\s*N[O0]|SER\.?)\s*[:#=\-\s]*\s*([A-Z0-9]{5,20})/i);
-                        if (serialMatch && serialMatch[1]) {
-                            matchedSerial = serialMatch[1].toUpperCase();
-                        }
-                    }
-                    if (!matchedModel) {
-                        const modelMatch = text.match(/(?:M\/?N|MODEL|MOD\.?\s*N[O0]|MOD\.?)\s*[:#=\-\s]*\s*([A-Z0-9\-\/\.]{5,25})/i);
-                        if (modelMatch && modelMatch[1]) {
-                            matchedModel = modelMatch[1].toUpperCase();
-                        }
-                    }
-
-                    // 3. Last resort fallback: typical HVAC serial number lengths
-                    if (!matchedSerial) {
-                        const words = text.match(/\b[A-Z0-9]{8,15}\b/g) || [];
-                        const commonLabels = ['SERIAL', 'MODEL', 'CARRIER', 'TRANE', 'LENNOX', 'GOODMAN', 'YORK', 'RHEEM', 'RUUD', 'DAIKIN'];
-                        const candidates = words.filter((w: string) => !commonLabels.includes(w));
-                        if (candidates.length > 0) {
-                            matchedSerial = candidates[0].toUpperCase();
-                        }
-                    }
-
-                    if (matchedSerial) extractedSerial = matchedSerial;
-                    if (matchedModel) extractedModel = matchedModel;
-
-                    if (!extractedSerial && !extractedModel) {
-                         console.log("OCR couldn't confidently find a label with SN or MODEL in standard format.");
-                         showToast.warn("Couldn't read serial/model from image. It might be blurry or formatted unusually.");
-                    }
+                    setNewAsset(prev => ({
+                        ...prev,
+                        [photoType]: downloadUrl,
+                        type: prev.type && prev.type !== 'System' && prev.type !== 'Equipment' && prev.type.trim() !== '' ? prev.type : (ocrData.type || prev.type),
+                        brand: prev.brand && prev.brand.trim() !== '' ? prev.brand : (ocrData.brand || prev.brand),
+                        model: prev.model && prev.model.trim() !== '' ? prev.model : (ocrData.model || prev.model),
+                        serial: prev.serial && prev.serial.trim() !== '' ? prev.serial : (ocrData.serial || prev.serial),
+                        year: prev.year && prev.year.trim() !== '' ? prev.year : (ocrData.year || prev.year),
+                        tonnage: prev.tonnage ? prev.tonnage : (ocrData.tonnage ? Number(ocrData.tonnage) : prev.tonnage),
+                        refrigerantType: prev.refrigerantType && prev.refrigerantType.trim() !== '' ? prev.refrigerantType : (ocrData.refrigerantType || prev.refrigerantType),
+                        refrigerantCharge: prev.refrigerantCharge && prev.refrigerantCharge.trim() !== '' ? prev.refrigerantCharge : (ocrData.refrigerantCharge || prev.refrigerantCharge),
+                        btuCapacity: prev.btuCapacity && prev.btuCapacity.trim() !== '' ? prev.btuCapacity : (ocrData.btuCapacity || prev.btuCapacity),
+                        heatType: prev.heatType && prev.heatType.trim() !== '' ? prev.heatType : (ocrData.heatType || prev.heatType),
+                        electricityType: prev.electricityType && prev.electricityType.trim() !== '' ? prev.electricityType : (ocrData.electricityType || prev.electricityType),
+                        volts: prev.volts && prev.volts.trim() !== '' ? prev.volts : (ocrData.volts || prev.volts),
+                        amps: prev.amps && prev.amps.trim() !== '' ? prev.amps : (ocrData.amps || prev.amps),
+                        phase: prev.phase && prev.phase.trim() !== '' ? prev.phase : (ocrData.phase || prev.phase),
+                        seerRating: prev.seerRating && prev.seerRating.trim() !== '' ? prev.seerRating : (ocrData.seerRating || prev.seerRating),
+                        filterType: prev.filterType && prev.filterType.trim() !== '' ? prev.filterType : (ocrData.filterType || prev.filterType),
+                        compressorType: prev.compressorType && prev.compressorType.trim() !== '' ? prev.compressorType : (ocrData.compressorType || prev.compressorType),
+                        blowerType: prev.blowerType && prev.blowerType.trim() !== '' ? prev.blowerType : (ocrData.blowerType || prev.blowerType),
+                        systemGroupRole: prev.systemGroupRole && prev.systemGroupRole.trim() !== '' ? prev.systemGroupRole : (ocrData.systemGroupRole || prev.systemGroupRole)
+                    }));
+                    showToast.success("AI Vision Scan Complete! Form pre-filled (manual entries preserved).");
                 } catch (ocrErr) {
-                    console.error("OCR Failed:", ocrErr);
+                    console.error("AI Vision OCR Failed:", ocrErr);
+                    setNewAsset(prev => ({
+                        ...prev,
+                        [photoType]: downloadUrl
+                    }));
                 } finally {
                     setIsOcrScanning(false);
                 }
+            } else {
+                setNewAsset(prev => ({
+                    ...prev,
+                    [photoType]: downloadUrl
+                }));
             }
-
-            setNewAsset(prev => ({ 
-                ...prev, 
-                [photoType]: downloadUrl,
-                serial: extractedSerial || prev.serial,
-                model: extractedModel || prev.model
-            }));
 
         } catch (err) {
             console.error(err);
@@ -1330,52 +1530,70 @@ const JobWorkflowModal: React.FC<{
             const model = newAsset.model;
             const serial = newAsset.serial || '';
 
-            const prompt = `Senior HVAC & Appliance Technical Advisor.
-Research and decode technical specs for this unit:
-- Manufacturer/Brand: \${brand}
-- Model Number: \${model}
-- Serial Number: \${serial}
+            const prompt = `You are an expert HVAC, Electrical, & Industrial Equipment Master AI.
+Research, decode, and derive technical specifications for this unit:
+- Brand/Manufacturer: ${brand}
+- Model Number: ${model}
+- Serial Number: ${serial}
 
-Your task is to decode the model/serial numbers or look up standard specs to fill out the following properties:
-1. "year": Decode the manufacturing year from the serial number format (e.g., first 2 or 4 digits, or letter date code depending on brand). E.g. "2018".
-2. "tonnage": Decode capacity/tonnage from model number BTUs (e.g. 024 = 2 tons, 036 = 3 tons, 042 = 3.5 tons, 048 = 4 tons, 060 = 5 tons). Return a number.
-3. "refrigerantType": E.g. "R410A", "R22", "R134a", "R404A".
-4. "heatType": E.g. "Gas", "Electric", "Heat Pump", "N/A".
-5. "seerRating": Standard SEER rating for this model series (e.g. "14", "16", "21").
-6. "electricityType": E.g. "230V / 1ph", "460V / 3ph", "115V / 1ph".
-7. "filterType": Standard filter dimensions and type if it's a standard cabinet size (e.g., "20x25x1 MERV 11").
-
-CRITICAL SAFETY RULES:
-- DO NOT make up, guess, or hallucinate any information.
-- Only return a value for a property if it is GUARANTEED or highly confident based on standard brand coding structures or verified manufacturer documentation.
-- If a property cannot be confidently verified, set its value to null (do NOT make up placeholder values, guess years, or guess SEER ratings).
-- If the serial number is blank or does not conform to date coding, set "year" to null.
-- If the model is unrecognized or fake, set all spec fields to null.
+Rules for Decoding & Specs Retrieval:
+1. "type": Classify unit type accurately based on model nomenclature or manufacturer specs (e.g. "Air Handler", "Condenser", "Package Unit", "Furnace", "Heat Pump", "Compressor", "Chiller", "Boiler", "Water Heater", "Generator", "Mini Split").
+2. "year": Decode manufacturing year from serial date code structure (e.g. Carrier week/year, Trane date code, York letter code, Rheem year digits) OR estimate era based on model series. E.g. "2018".
+3. "tonnage": Decode cooling capacity in TONS. Look for nominal MBH in model (018=1.5, 024=2.0, 030=2.5, 036=3.0, 042=3.5, 048=4.0, 060=5.0, 072=6.0, 090=7.5, 120=10.0). ALWAYS return capacity in TONS as a decimal (e.g. 3.0, 4.0), NEVER as raw MBH (like 36 or 48).
+4. "refrigerantType": Identify standard refrigerant for this brand/model series (e.g. R-410A, R-22, R-454B, R-134a, R-404A).
+5. "refrigerantCharge": Factory refrigerant charge if standard for this model (e.g. "5 lbs 8 oz", "104 oz").
+6. "btuCapacity": Nominal BTU capacity (e.g. "36000 BTU/h").
+7. "heatType": E.g. "Gas", "Electric", "Heat Pump", "Hydronic", "N/A".
+8. "seerRating": Standard SEER / SEER2 rating for this model series (e.g. "14", "16", "18", "21").
+9. "electricityType": Electrical voltage & phase (e.g. "208-230V / 1ph", "460V / 3ph", "115V / 1ph").
+10. "volts": Voltage rating (e.g. "208-230V").
+11. "amps": FLA / MCA / Max Fuse Amps (e.g. "18.5A FLA / 25A Max Fuse").
+12. "phase": Electrical phase (e.g. "1Ph", "3Ph").
+13. "filterType": Standard filter size for this cabinet size (e.g. "20x25x1 MERV 11").
+14. "compressorType": Compressor design style if outdoor/package unit (e.g. "Scroll", "Reciprocating", "Inverter").
+15. "blowerType": Blower motor design if air handler/furnace (e.g. "ECM Variable Speed", "PSC").
+16. "systemGroupRole": Suggested role in system (e.g. "Evaporator", "Condensing Unit", "Compressor", "Controller").
 
 Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
 {
+  "type": string | null,
   "year": string | null,
   "tonnage": number | null,
   "refrigerantType": string | null,
+  "refrigerantCharge": string | null,
+  "btuCapacity": string | null,
   "heatType": string | null,
   "seerRating": string | null,
   "electricityType": string | null,
-  "filterType": string | null
+  "volts": string | null,
+  "amps": string | null,
+  "phase": string | null,
+  "filterType": string | null,
+  "compressorType": string | null,
+  "blowerType": string | null,
+  "systemGroupRole": string | null
 }`;
 
             const result: any = await callGeminiAI({
                 prompt,
-                modelName: 'gemini-3.6-flash',
-                config: { response_mime_type: 'application/json' }
+                modelName: 'gemini-3.7-flash',
+                config: { temperature: 0.1, response_mime_type: 'application/json' }
             });
 
             const cleanJson = (result.data?.text || '{}').replace(/```json/g, '').replace(/```/g, '').trim();
             const specs = JSON.parse(cleanJson);
 
+            if (specs.tonnage !== undefined && specs.tonnage !== null) {
+                let numT = typeof specs.tonnage === 'number' ? specs.tonnage : parseFloat(String(specs.tonnage));
+                if (!isNaN(numT) && numT >= 12 && numT <= 600 && numT % 6 === 0) {
+                    specs.tonnage = Math.round((numT / 12) * 10) / 10;
+                }
+            }
+
             const hasSpecs = Object.values(specs).some(val => val !== null && val !== undefined && val !== '');
 
             if (!hasSpecs) {
-                showToast.warn("No verified specifications could be confidently determined for this model/serial.");
+                showToast.warn("No verified specifications could be determined for this model/serial.");
                 setIsResearching(false);
                 return;
             }
@@ -1383,6 +1601,10 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             const updatedAsset = { ...newAsset };
             let count = 0;
 
+            if (specs.type && (!updatedAsset.type || updatedAsset.type === 'System' || updatedAsset.type === 'Equipment' || updatedAsset.type.trim() === '')) {
+                updatedAsset.type = specs.type;
+                count++;
+            }
             if (specs.year && !updatedAsset.year) {
                 updatedAsset.year = specs.year;
                 count++;
@@ -1395,33 +1617,66 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 updatedAsset.refrigerantType = specs.refrigerantType;
                 count++;
             }
-            if (specs.heatType && !updatedAsset.heatType) {
-                updatedAsset.heatType = specs.heatType;
+            if (specs.refrigerantCharge && !updatedAsset.refrigerantCharge) {
+                updatedAsset.refrigerantCharge = specs.refrigerantCharge;
                 count++;
             }
-            if (specs.electricityType && !updatedAsset.electricityType) {
-                updatedAsset.electricityType = specs.electricityType;
+            if (specs.btuCapacity && !updatedAsset.btuCapacity) {
+                updatedAsset.btuCapacity = specs.btuCapacity;
+                count++;
+            }
+            if (specs.heatType && !updatedAsset.heatType) {
+                updatedAsset.heatType = specs.heatType;
                 count++;
             }
             if (specs.seerRating && !updatedAsset.seerRating) {
                 updatedAsset.seerRating = specs.seerRating;
                 count++;
             }
+            if (specs.electricityType && !updatedAsset.electricityType) {
+                updatedAsset.electricityType = specs.electricityType;
+                count++;
+            }
+            if (specs.volts && !updatedAsset.volts) {
+                updatedAsset.volts = specs.volts;
+                count++;
+            }
+            if (specs.amps && !updatedAsset.amps) {
+                updatedAsset.amps = specs.amps;
+                count++;
+            }
+            if (specs.phase && !updatedAsset.phase) {
+                updatedAsset.phase = specs.phase;
+                count++;
+            }
             if (specs.filterType && !updatedAsset.filterType) {
                 updatedAsset.filterType = specs.filterType;
                 count++;
             }
+            if (specs.compressorType && !updatedAsset.compressorType) {
+                updatedAsset.compressorType = specs.compressorType;
+                count++;
+            }
+            if (specs.blowerType && !updatedAsset.blowerType) {
+                updatedAsset.blowerType = specs.blowerType;
+                count++;
+            }
+            if (specs.systemGroupRole && !updatedAsset.systemGroupRole) {
+                updatedAsset.systemGroupRole = specs.systemGroupRole;
+                count++;
+            }
 
             setNewAsset(updatedAsset);
+            setIsResearching(false);
+
             if (count > 0) {
-                showToast.success(`Successfully populated \${count} technical specifications!`);
+                showToast.success(`AI Specs Research complete! Auto-filled ${count} technical specifications (including Equipment Type).`);
             } else {
-                showToast.info("AI lookup completed, but no new details were added (existing fields were preserved or no new confident specs found).");
+                showToast.info("AI Research complete. All verified specs are already filled out.");
             }
-        } catch (error) {
-            console.error(error);
-            showToast.error("Failed to research specifications. Please try again.");
-        } finally {
+        } catch (err) {
+            console.error(err);
+            showToast.error("Failed to research unit specifications.");
             setIsResearching(false);
         }
     };
@@ -1441,52 +1696,60 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             const model = airHandlerDetails.model;
             const serial = airHandlerDetails.serial || '';
 
-            const prompt = `Senior HVAC & Appliance Technical Advisor.
-Research and decode technical specs for this Air Handler / Fan Coil unit:
-- Manufacturer/Brand: \${brand}
-- Model Number: \${model}
-- Serial Number: \${serial}
+            const prompt = `You are an expert HVAC, Electrical, & Industrial Equipment Master AI.
+Research, decode, and derive technical specifications for this Air Handler / Fan Coil unit:
+- Brand/Manufacturer: ${brand}
+- Model Number: ${model}
+- Serial Number: ${serial}
 
-Your task is to decode the model/serial numbers or look up standard specs to fill out the following properties:
-1. "year": Decode the manufacturing year from the serial number format (e.g., first 2 or 4 digits, or letter date code depending on brand). E.g. "2018".
-2. "tonnage": Decode capacity/tonnage from model number BTUs (e.g. 024 = 2 tons, 036 = 3 tons, 042 = 3.5 tons, 048 = 4 tons, 060 = 5 tons). Return a number.
-3. "refrigerantType": E.g. "R410A", "R22", "R134a", "R404A".
-4. "heatType": E.g. "Electric", "Gas", "Heat Pump", "N/A".
-5. "seerRating": Standard SEER rating for this model series (e.g. "14", "16", "21").
-6. "electricityType": E.g. "230V / 1ph", "460V / 3ph", "115V / 1ph".
-7. "filterType": Standard filter dimensions and type if it's a standard cabinet size (e.g., "20x25x1 MERV 11").
-
-CRITICAL SAFETY RULES:
-- DO NOT make up, guess, or hallucinate any information.
-- Only return a value for a property if it is GUARANTEED or highly confident based on standard brand coding structures or verified manufacturer documentation.
-- If a property cannot be confidently verified, set its value to null (do NOT make up placeholder values, guess years, or guess SEER ratings).
-- If the serial number is blank or does not conform to date coding, set "year" to null.
-- If the model is unrecognized or fake, set all spec fields to null.
+Rules for Decoding & Specs Retrieval:
+1. "type": Return "Air Handler" or specific fan coil type (e.g. "Fan Coil Unit", "Multi-Position Air Handler").
+2. "year": Decode manufacturing year from serial date code structure OR estimate era based on model series. E.g. "2018".
+3. "tonnage": Decode cooling capacity in TONS. Look for nominal MBH in model (018=1.5, 024=2.0, 030=2.5, 036=3.0, 042=3.5, 048=4.0, 060=5.0, 072=6.0, 090=7.5, 120=10.0). ALWAYS return capacity in TONS as a decimal (e.g. 3.0, 4.0), NEVER as raw MBH (like 36 or 48).
+4. "refrigerantType": Identify standard refrigerant for this brand/model series (e.g. R-410A, R-22, R-454B, R-134a, R-404A).
+5. "heatType": E.g. "Electric", "Gas", "Heat Pump", "Hydronic", "N/A".
+6. "seerRating": Standard SEER / SEER2 rating for this model series (e.g. "14", "16", "18", "21").
+7. "electricityType": Electrical voltage & phase (e.g. "208-230V / 1ph", "460V / 3ph", "115V / 1ph").
+8. "volts": Voltage rating (e.g. "208-230V").
+9. "amps": FLA / MCA / Max Fuse Amps.
+10. "filterType": Standard filter size for this cabinet size (e.g. "20x25x1 MERV 11").
+11. "blowerType": Blower motor design (e.g. "ECM Variable Speed", "PSC").
 
 Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
 {
+  "type": string | null,
   "year": string | null,
   "tonnage": number | null,
   "refrigerantType": string | null,
   "heatType": string | null,
   "seerRating": string | null,
   "electricityType": string | null,
-  "filterType": string | null
+  "volts": string | null,
+  "amps": string | null,
+  "filterType": string | null,
+  "blowerType": string | null
 }`;
 
             const result: any = await callGeminiAI({
                 prompt,
-                modelName: 'gemini-3.6-flash',
-                config: { response_mime_type: 'application/json' }
+                modelName: 'gemini-3.7-flash',
+                config: { temperature: 0.1, response_mime_type: 'application/json' }
             });
 
             const cleanJson = (result.data?.text || '{}').replace(/```json/g, '').replace(/```/g, '').trim();
             const specs = JSON.parse(cleanJson);
 
+            if (specs.tonnage !== undefined && specs.tonnage !== null) {
+                let numT = typeof specs.tonnage === 'number' ? specs.tonnage : parseFloat(String(specs.tonnage));
+                if (!isNaN(numT) && numT >= 12 && numT <= 600 && numT % 6 === 0) {
+                    specs.tonnage = Math.round((numT / 12) * 10) / 10;
+                }
+            }
+
             const hasSpecs = Object.values(specs).some(val => val !== null && val !== undefined && val !== '');
 
             if (!hasSpecs) {
-                showToast.warn("No verified specifications could be confidently determined for this model/serial.");
+                showToast.warn("No verified specifications could be determined for this model/serial.");
                 setIsResearchingAirHandler(false);
                 return;
             }
@@ -1494,6 +1757,12 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             const updatedDetails = { ...airHandlerDetails };
             let count = 0;
 
+            if (specs.type && (!updatedDetails.type || updatedDetails.type === 'System' || updatedDetails.type === 'Equipment' || updatedDetails.type.trim() === '')) {
+                updatedDetails.type = specs.type;
+                count++;
+            } else if (!updatedDetails.type) {
+                updatedDetails.type = "Air Handler";
+            }
             if (specs.year && !updatedDetails.year) {
                 updatedDetails.year = specs.year;
                 count++;
@@ -1514,6 +1783,14 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 updatedDetails.electricityType = specs.electricityType;
                 count++;
             }
+            if (specs.volts && !updatedDetails.volts) {
+                updatedDetails.volts = specs.volts;
+                count++;
+            }
+            if (specs.amps && !updatedDetails.amps) {
+                updatedDetails.amps = specs.amps;
+                count++;
+            }
             if (specs.seerRating && !updatedDetails.seerRating) {
                 updatedDetails.seerRating = specs.seerRating;
                 count++;
@@ -1522,10 +1799,14 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 updatedDetails.filterType = specs.filterType;
                 count++;
             }
+            if (specs.blowerType && !updatedDetails.blowerType) {
+                updatedDetails.blowerType = specs.blowerType;
+                count++;
+            }
 
             setAirHandlerDetails(updatedDetails);
             if (count > 0) {
-                showToast.success(`Successfully populated \${count} technical specifications for the Air Handler!`);
+                showToast.success(`Successfully populated ${count} technical specifications for the Air Handler!`);
             } else {
                 showToast.info("AI lookup completed, but no new details were added.");
             }
@@ -1543,116 +1824,122 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             showToast.warn("Brand and Model are required.");
             return;
         }
-        const customer = state.customers.find(c => c.id === job.customerId);
-        if (customer) {
-            // Determine the current property ID to attach to the new asset
-            const jobAddressStr = typeof job.address === 'string' ? job.address : '';
-            let currentPropertyId = job.locationId;
-            
-            if (!currentPropertyId && jobAddressStr && customer?.serviceLocations) {
-                const matchingLoc = customer.serviceLocations.find(loc => loc.address === jobAddressStr);
-                if (matchingLoc) currentPropertyId = matchingLoc.id;
-            }
-
-            let updatedEquipment;
-            let rtuId = activeAsset.id || `asset-${Date.now()}`;
-            let rtuEq: EquipmentAsset;
-
-            const baseAsset = {
-                ...activeAsset,
-                id: rtuId,
-                propertyId: activeAsset.propertyId || currentPropertyId || undefined
-            } as EquipmentAsset;
-
-            if (activeAsset.id) {
-                rtuEq = { ...baseAsset };
-                updatedEquipment = (customer.equipment || []).map(e => e.id === activeAsset.id ? rtuEq : e);
-            } else {
-                rtuEq = { ...baseAsset };
-                updatedEquipment = [...(customer.equipment || []), rtuEq];
-            }
-
-            let thermostatId: string | null = null;
-            if (autoCreateThermostat) {
-                thermostatId = `eq-${Date.now() + 1}`;
-                const thermostatEq: EquipmentAsset = {
-                    id: thermostatId,
-                    organizationId: customer.organizationId || state.currentOrganization?.id || '',
-                    customerId: customer.id,
-                    name: thermostatDetails.name || 'Thermostat',
-                    brand: thermostatDetails.brand || rtuEq.brand || '',
-                    model: thermostatDetails.model || '',
-                    serial: '',
-                    type: 'Other',
-                    propertyId: thermostatDetails.propertyId || rtuEq.propertyId || '',
-                    physicalLocation: thermostatDetails.physicalLocation || 'Interior Wall',
-                    exactPlacement: thermostatDetails.exactPlacement || '',
-                    servesArea: thermostatDetails.servesArea || rtuEq.servesArea || '',
-                    linkedAssetIds: [rtuId]
-                } as EquipmentAsset;
-
-                // Link RTU to Thermostat
-                rtuEq.linkedAssetIds = [...(rtuEq.linkedAssetIds || []), thermostatId];
-                updatedEquipment = updatedEquipment.map(e => e.id === rtuId ? rtuEq : e);
-                updatedEquipment.push(thermostatEq);
-            }
-
-            if (autoCreateAirHandler) {
-                const airHandlerId = `eq-${Date.now() + 2}`;
-                const airHandlerEq: EquipmentAsset = {
-                    id: airHandlerId,
-                    organizationId: customer.organizationId || state.currentOrganization?.id || '',
-                    customerId: customer.id,
-                    name: airHandlerDetails.name || 'Air Handler',
-                    brand: airHandlerDetails.brand || rtuEq.brand || '',
-                    model: airHandlerDetails.model || '',
-                    serial: airHandlerDetails.serial || '',
-                    type: 'Air Handler',
-                    propertyId: airHandlerDetails.propertyId || rtuEq.propertyId || '',
-                    physicalLocation: airHandlerDetails.physicalLocation || 'Interior Closet',
-                    exactPlacement: airHandlerDetails.exactPlacement || '',
-                    servesArea: airHandlerDetails.servesArea || rtuEq.servesArea || '',
-                    year: airHandlerDetails.year || undefined,
-                    tonnage: airHandlerDetails.tonnage || undefined,
-                    refrigerantType: airHandlerDetails.refrigerantType || undefined,
-                    heatType: airHandlerDetails.heatType || undefined,
-                    electricityType: airHandlerDetails.electricityType || undefined,
-                    seerRating: airHandlerDetails.seerRating || undefined,
-                    filterType: airHandlerDetails.filterType || undefined,
-                    linkedAssetIds: [rtuId]
-                } as EquipmentAsset;
-
-                // Link RTU to Air Handler
-                rtuEq.linkedAssetIds = [...(rtuEq.linkedAssetIds || []), airHandlerId];
-                updatedEquipment = updatedEquipment.map(e => e.id === rtuId ? rtuEq : e);
-
-                // Cross-link Thermostat to Air Handler if both are created
-                if (autoCreateThermostat && thermostatId) {
-                    airHandlerEq.linkedAssetIds = [...(airHandlerEq.linkedAssetIds || []), thermostatId];
-                    updatedEquipment = updatedEquipment.map(e => {
-                        if (e.id === thermostatId) {
-                            return { ...e, linkedAssetIds: [...(e.linkedAssetIds || []), airHandlerId] };
-                        }
-                        return e;
-                    });
+        try {
+            const customer = state.customers.find(c => c.id === job.customerId);
+            if (customer) {
+                // Determine the current property ID to attach to the new asset
+                const jobAddressStr = typeof job.address === 'string' ? job.address : '';
+                let currentPropertyId = job.locationId;
+                
+                if (!currentPropertyId && jobAddressStr && customer?.serviceLocations) {
+                    const matchingLoc = customer.serviceLocations.find(loc => loc.address === jobAddressStr);
+                    if (matchingLoc) currentPropertyId = matchingLoc.id;
                 }
 
-                updatedEquipment.push(airHandlerEq);
+                let updatedEquipment;
+                let rtuId = activeAsset.id || `asset-${Date.now()}`;
+                let rtuEq: EquipmentAsset;
+
+                const baseAsset = {
+                    ...activeAsset,
+                    id: rtuId,
+                    propertyId: activeAsset.propertyId || currentPropertyId || undefined
+                } as EquipmentAsset;
+
+                if (activeAsset.id) {
+                    rtuEq = { ...baseAsset };
+                    updatedEquipment = (customer.equipment || []).map(e => e.id === activeAsset.id ? rtuEq : e);
+                } else {
+                    rtuEq = { ...baseAsset };
+                    updatedEquipment = [...(customer.equipment || []), rtuEq];
+                }
+
+                let thermostatId: string | null = null;
+                if (autoCreateThermostat) {
+                    thermostatId = `eq-${Date.now() + 1}`;
+                    const thermostatEq: EquipmentAsset = {
+                        id: thermostatId,
+                        organizationId: customer.organizationId || state.currentOrganization?.id || '',
+                        customerId: customer.id,
+                        name: thermostatDetails.name || 'Thermostat',
+                        brand: thermostatDetails.brand || rtuEq.brand || '',
+                        model: thermostatDetails.model || '',
+                        serial: '',
+                        type: 'Other',
+                        propertyId: thermostatDetails.propertyId || rtuEq.propertyId || '',
+                        physicalLocation: thermostatDetails.physicalLocation || 'Interior Wall',
+                        exactPlacement: thermostatDetails.exactPlacement || '',
+                        servesArea: thermostatDetails.servesArea || rtuEq.servesArea || '',
+                        linkedAssetIds: [rtuId]
+                    } as EquipmentAsset;
+
+                    // Link RTU to Thermostat
+                    rtuEq.linkedAssetIds = [...(rtuEq.linkedAssetIds || []), thermostatId];
+                    updatedEquipment = updatedEquipment.map(e => e.id === rtuId ? rtuEq : e);
+                    updatedEquipment.push(thermostatEq);
+                }
+
+                if (autoCreateAirHandler) {
+                    const airHandlerId = `eq-${Date.now() + 2}`;
+                    const airHandlerEq: EquipmentAsset = {
+                        id: airHandlerId,
+                        organizationId: customer.organizationId || state.currentOrganization?.id || '',
+                        customerId: customer.id,
+                        name: airHandlerDetails.name || 'Air Handler',
+                        brand: airHandlerDetails.brand || rtuEq.brand || '',
+                        model: airHandlerDetails.model || '',
+                        serial: airHandlerDetails.serial || '',
+                        type: 'Air Handler',
+                        propertyId: airHandlerDetails.propertyId || rtuEq.propertyId || '',
+                        physicalLocation: airHandlerDetails.physicalLocation || 'Interior Closet',
+                        exactPlacement: airHandlerDetails.exactPlacement || '',
+                        servesArea: airHandlerDetails.servesArea || rtuEq.servesArea || '',
+                        year: airHandlerDetails.year || undefined,
+                        tonnage: airHandlerDetails.tonnage || undefined,
+                        refrigerantType: airHandlerDetails.refrigerantType || undefined,
+                        heatType: airHandlerDetails.heatType || undefined,
+                        electricityType: airHandlerDetails.electricityType || undefined,
+                        seerRating: airHandlerDetails.seerRating || undefined,
+                        filterType: airHandlerDetails.filterType || undefined,
+                        linkedAssetIds: [rtuId]
+                    } as EquipmentAsset;
+
+                    // Link RTU to Air Handler
+                    rtuEq.linkedAssetIds = [...(rtuEq.linkedAssetIds || []), airHandlerId];
+                    updatedEquipment = updatedEquipment.map(e => e.id === rtuId ? rtuEq : e);
+
+                    // Cross-link Thermostat to Air Handler if both are created
+                    if (autoCreateThermostat && thermostatId) {
+                        airHandlerEq.linkedAssetIds = [...(airHandlerEq.linkedAssetIds || []), thermostatId];
+                        updatedEquipment = updatedEquipment.map(e => {
+                            if (e.id === thermostatId) {
+                                return { ...e, linkedAssetIds: [...(e.linkedAssetIds || []), airHandlerId] };
+                            }
+                            return e;
+                        });
+                    }
+
+                    updatedEquipment.push(airHandlerEq);
+                }
+                
+                // Clean any undefined properties to prevent Firestore serialization errors
+                const cleanedEquipment = JSON.parse(JSON.stringify(updatedEquipment));
+                
+                if (state.isDemoMode) {
+                     console.log("Demo Mode: Skipping customer update.");
+                } else {
+                     await db.collection('customers').doc(customer.id).update(cleanUndefinedFields({ equipment: cleanedEquipment }));
+                }
+                dispatch({ type: 'UPDATE_CUSTOMER', payload: { id: customer.id, equipment: cleanedEquipment } });
             }
-            
-            // Clean any undefined properties to prevent Firestore serialization errors
-            const cleanedEquipment = JSON.parse(JSON.stringify(updatedEquipment));
-            
-            if (state.isDemoMode) {
-                 console.log("Demo Mode: Skipping customer update.");
-            } else {
-                 await db.collection('customers').doc(customer.id).update(cleanUndefinedFields({ equipment: cleanedEquipment }));
-            }
-            dispatch({ type: 'UPDATE_CUSTOMER', payload: { id: customer.id, equipment: cleanedEquipment } });
+            showToast.success("Asset saved!");
+        } catch (err: any) {
+            console.error("Failed to save asset:", err);
+            showToast.error("Failed to save asset: " + (err?.message || "Unknown error"));
+        } finally {
+            setIsAddAssetOpen(false);
+            setNewAsset({ brand: '', model: '', serial: '', type: 'System' });
         }
-        setIsAddAssetOpen(false);
-        setNewAsset({ brand: '', model: '', serial: '', type: 'System' });
-        showToast.success("Asset saved!");
     };
 
     const handleDeleteAsset = async (id: string) => {
@@ -1674,6 +1961,35 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
     };
 
     const handleLeaveSite = async () => {
+        const hasExistingSignOff = !!(
+            workflowState.jobRecordSignedOff ||
+            workflowState.customerSignature ||
+            workflowState.signature ||
+            workflowState.siteManagerSignature ||
+            workflowState.techSignature ||
+            job.customerSignature ||
+            job.signature ||
+            job.siteManagerSignature ||
+            job.techSignature ||
+            job.signOffSheetUrl ||
+            (job as any)?.signoffSheetUrl ||
+            (job as any)?.signOff?.sheetUrl ||
+            (job?.invoice as any)?.signatureUrl ||
+            job.invoiceSignature
+        );
+
+        if (!workflowState.jobRecordSignedOff) {
+            if (hasExistingSignOff) {
+                workflowState.jobRecordSignedOff = true;
+                workflowState.jobRecordSignedOffAt = new Date().toISOString();
+                workflowState.jobRecordSignedOffBy = state.currentUser?.name || 'Technician';
+            } else {
+                showToast.warn("Technician Sign-Off Required: Please review and sign off on the full job record before closing this job.");
+                setIsJobRecordReviewOpen(true);
+                return;
+            }
+        }
+
         const missingItems: string[] = [];
         
         // Step 1 check
@@ -1743,8 +2059,10 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             checkOut = job.checkOutTime || nowStr;
         }
 
+        const isReviewPending = !workflowState.repairPostponed;
         const checkoutUpdates: any = {
-            jobStatus: (workflowState.repairPostponed ? 'Needs Follow-up' : 'Completed') as any,
+            jobStatus: (workflowState.repairPostponed ? 'Needs Follow-up' : 'Needs Review') as any,
+            needsAdminVerification: isReviewPending ? true : undefined,
             endTime: nowStr,
             checkOutTime: checkOut,
             timeOnSiteMinutes: durationMins,
@@ -1754,6 +2072,59 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         };
         if (!job.checkInTime) {
             checkoutUpdates.checkInTime = checkIn;
+        }
+
+        // Auto-generate mileage log for this completed job if not logged yet
+        try {
+            const existingJobLog = (state.vehicleLogs || []).find((l: any) => l.jobId === job.id || (l.notes && l.notes.includes(job.id)));
+            if (!existingJobLog && state.currentUser?.id) {
+                const jobSiteAddr = job.customerName || job.locationName || job.address || 'Service Site';
+                const woId = job.poNumber || job.id.slice(-6).toUpperCase();
+                const autoLogId = `vlog_job_${Date.now()}`;
+                
+                let jobMiles = 15.0;
+                if (jobSiteCoords && (state.currentUser as any)?.lastLocation) {
+                    const R = 3958.8;
+                    const lastLoc = (state.currentUser as any).lastLocation;
+                    const dLat = (jobSiteCoords.lat - lastLoc.latitude) * Math.PI / 180;
+                    const dLon = (jobSiteCoords.lng - lastLoc.longitude) * Math.PI / 180;
+                    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lastLoc.latitude * Math.PI / 180) * Math.cos(jobSiteCoords.lat * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                    const calculatedDist = R * c;
+                    if (!isNaN(calculatedDist) && calculatedDist > 0) {
+                        jobMiles = Math.round(calculatedDist * 10) / 10;
+                    }
+                }
+
+                const vehicleLogEntry = {
+                    id: autoLogId,
+                    userId: state.currentUser.id,
+                    userName: state.currentUser.name || `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() || 'Technician',
+                    vehicleId: (state.currentUser as any)?.assignedVehicleId || 'default-truck',
+                    vehicleName: (state.currentUser as any)?.assignedVehicleName || 'Service Van',
+                    jobId: job.id,
+                    poNumber: woId,
+                    startMiles: 0,
+                    endMiles: jobMiles,
+                    totalMiles: jobMiles,
+                    purpose: 'job',
+                    destination: jobSiteAddr,
+                    notes: `Auto-logged site visit miles for WO #${woId}`,
+                    date: new Date().toISOString().split('T')[0],
+                    createdAt: nowStr,
+                    organizationId: job.organizationId || state.currentOrganization?.id || 'unaffiliated'
+                };
+
+                await db.collection('vehicleLogs').doc(autoLogId).set(cleanUndefinedFields(vehicleLogEntry)).catch(console.error);
+            }
+        } catch (vLogErr) {
+            console.warn("Could not auto-generate vehicle log for job checkout:", vLogErr);
+        }
+
+        // Notify admins if job requires review
+        if (isReviewPending) {
+            const techName = state.currentUser?.name || `${state.currentUser?.firstName || ''} ${state.currentUser?.lastName || ''}`.trim() || 'Technician';
+            notifyAdminsJobPendingReview(job, techName, job.organizationId || state.currentOrganization?.id || '');
         }
 
         // Lookup Subcontractor. Subcontractors are stored in the job owner's sub collection.
@@ -1778,6 +2149,35 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
     };
 
     const handleCompleteDiagnosticOnly = async () => {
+        const hasExistingSignOff = !!(
+            workflowState.jobRecordSignedOff ||
+            workflowState.customerSignature ||
+            workflowState.signature ||
+            workflowState.siteManagerSignature ||
+            workflowState.techSignature ||
+            job.customerSignature ||
+            job.signature ||
+            job.siteManagerSignature ||
+            job.techSignature ||
+            job.signOffSheetUrl ||
+            (job as any)?.signoffSheetUrl ||
+            (job as any)?.signOff?.sheetUrl ||
+            (job?.invoice as any)?.signatureUrl ||
+            job.invoiceSignature
+        );
+
+        if (!workflowState.jobRecordSignedOff) {
+            if (hasExistingSignOff) {
+                workflowState.jobRecordSignedOff = true;
+                workflowState.jobRecordSignedOffAt = new Date().toISOString();
+                workflowState.jobRecordSignedOffBy = state.currentUser?.name || 'Technician';
+            } else {
+                showToast.warn("Technician Sign-Off Required: Please review and sign off on the full job record before completing this job.");
+                setIsJobRecordReviewOpen(true);
+                return;
+            }
+        }
+
         const missingItems: string[] = [];
         
         // Step 1 check
@@ -1954,7 +2354,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         if (!file) return;
         setIsSaving(true);
         try {
-            const orgId = job.organizationId;
+            const orgId = job.organizationId || state.currentOrganization?.id || state.currentUser?.organizationId || 'default';
             const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'receipt.jpg';
             const path = `organizations/${orgId}/jobs/${job.id}/parts/${Date.now()}_${safeName}`;
             const downloadUrl = await uploadFileToStorage(path, file);
@@ -2095,7 +2495,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         
         setIsUploadingDiagnostic(true);
         try {
-            const orgId = job.organizationId;
+            const orgId = job.organizationId || state.currentOrganization?.id || state.currentUser?.organizationId || 'default';
             const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'diagnostic.jpg';
             const path = `organizations/${orgId}/jobs/${job.id}/diagnostics/${Date.now()}_${safeName}`;
             
@@ -2163,7 +2563,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             phase: newReading.phase || 'before', 
             assetId: newReading.assetId || '' 
         };
-        updateWorkflowState('toolReadings', [...workflowState.toolReadings, reading]);
+        updateWorkflowState('toolReadings', [...(Array.isArray(workflowState.toolReadings) ? workflowState.toolReadings : []), reading]);
         setNewReading({ id: '', toolType: '', summary: '', phase: 'before', assetId: '', reportUrl: '' });
         setUploadedDiagnosticName('');
         setIsToolReadingModalOpen(false);
@@ -2199,17 +2599,20 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
 
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const [cameraLabel, setCameraLabel] = useState('Photo');
+    const [cameraAssetId, setCameraAssetId] = useState<string | null>(null);
 
-    const handleNativeCameraTrigger = async (label: string) => {
-        setCameraLabel(label);
-        console.log("HANDLE_NATIVE_CAMERA_TRIGGERED", label);
+    const handleNativeCameraTrigger = async (label?: string, targetAssetId?: string) => {
+        const resolvedLabel = label || (step >= 3 ? 'After' : 'Before');
+        setCameraLabel(resolvedLabel);
+        setCameraAssetId(targetAssetId || null);
+        console.log("HANDLE_NATIVE_CAMERA_TRIGGERED", resolvedLabel, "Asset:", targetAssetId);
         
         try {
-            const isNative = (window as any).Capacitor?.isNativePlatform();
+            const isNative = Capacitor.isNativePlatform();
             
             if (isNative) {
                 const image = await Camera.getPhoto({
-                    quality: 60,
+                    quality: 65,
                     allowEditing: false,
                     resultType: CameraResultType.DataUrl,
                     source: CameraSource.Camera,
@@ -2220,26 +2623,66 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                     const response = await fetch(image.dataUrl);
                     const blob = await response.blob();
                     const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                    processCapturedFile(file, label);
+                    await processCapturedFile(file, resolvedLabel, targetAssetId);
+                    showToast.success("Photo saved! Tap Camera to snap another, or Gallery to select multiple.");
                 }
             } else {
-                // On Web, show our custom camera modal with live preview
+                // On Web, show our custom camera modal with live preview & continuous snapping
                 setIsWebCameraOpen(true);
             }
         } catch (e: any) {
             console.error("Camera error:", e);
+            const msg = (e?.message || '').toLowerCase();
+            if (msg.includes('cancel') || msg.includes('dismiss')) {
+                return;
+            }
             // Fallback to custom camera modal
             setIsWebCameraOpen(true);
         }
     };
 
+    const handlePickGalleryImages = async (label?: string, targetAssetId?: string) => {
+        const resolvedLabel = label || (step >= 3 ? 'After' : 'Before');
+        setCameraLabel(resolvedLabel);
+        setCameraAssetId(targetAssetId || null);
+        try {
+            const isNative = Capacitor.isNativePlatform();
+            if (isNative) {
+                const result = await Camera.pickImages({
+                    quality: 75,
+                    limit: 0
+                });
+                if (result.photos && result.photos.length > 0) {
+                    showToast.info(`Selected ${result.photos.length} photo(s). Uploading...`);
+                    const filePromises = result.photos.map(async (photo, idx) => {
+                        const response = await fetch(photo.webPath);
+                        const blob = await response.blob();
+                        return new File([blob], `gallery_${Date.now()}_${idx}.jpg`, { type: 'image/jpeg' });
+                    });
+                    const convertedFiles = await Promise.all(filePromises);
+                    await handleBatchPhotoFiles(convertedFiles, resolvedLabel, targetAssetId);
+                }
+            } else {
+                if (cameraInputRef.current) {
+                    cameraInputRef.current.click();
+                }
+            }
+        } catch (err: any) {
+            const msg = (err?.message || '').toLowerCase();
+            if (!msg.includes('cancel') && !msg.includes('dismiss')) {
+                console.error("Gallery pick error:", err);
+                showToast.error("Failed to pick photos: " + (err.message || "Unknown error"));
+            }
+        }
+    };
+
     const handleNativeAssetCameraTrigger = async (photoType: 'serialPhotoUrl' | 'unitTagPhotoUrl' | 'conditionPhotoUrl' | 'wideLocationPhotoUrl' | 'accessPointPhotoUrl' | 'qrCodePhotoUrl') => {
         try {
-            const isNative = (window as any).Capacitor?.isNativePlatform();
+            const isNative = Capacitor.isNativePlatform();
             
             if (isNative) {
                 const image = await Camera.getPhoto({
-                    quality: 60,
+                    quality: 65,
                     allowEditing: false,
                     resultType: CameraResultType.DataUrl,
                     source: CameraSource.Camera,
@@ -2260,43 +2703,191 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             }
         } catch (e: any) {
             console.error("Camera error:", e);
+            const msg = (e?.message || '').toLowerCase();
+            if (msg.includes('cancel') || msg.includes('dismiss')) {
+                return;
+            }
             setAssetCameraTarget(photoType);
             setIsWebCameraOpen(true);
         }
     };
 
-    const processCapturedFile = async (file: File, label: string) => {
+    const handlePickNativeAssetGallery = async (photoType: 'serialPhotoUrl' | 'unitTagPhotoUrl' | 'conditionPhotoUrl' | 'wideLocationPhotoUrl' | 'accessPointPhotoUrl' | 'qrCodePhotoUrl') => {
+        try {
+            if (Capacitor.isNativePlatform()) {
+                const result = await Camera.pickImages({
+                    quality: 80,
+                    limit: 1
+                });
+                if (result.photos && result.photos.length > 0) {
+                    const response = await fetch(result.photos[0].webPath);
+                    const blob = await response.blob();
+                    const file = new File([blob], `${photoType}_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                    const mockEvent = { target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>;
+                    await handleAssetPhotoUpload(mockEvent, photoType);
+                    return;
+                }
+            }
+        } catch (err: any) {
+            const msg = (err?.message || '').toLowerCase();
+            if (msg.includes('cancel') || msg.includes('dismiss')) return;
+            console.warn("Asset gallery pick warning:", err);
+        }
+        // Fallback to hidden file input
+        const fileInput = document.getElementById(`asset-file-input-${photoType}`) as HTMLInputElement;
+        fileInput?.click();
+    };
+
+    const processCapturedFile = async (file: File, label: string, targetAssetId?: string) => {
         setIsSaving(true);
         try {
-            const orgId = job.organizationId;
+            const orgId = job.organizationId || state.currentOrganization?.id || state.currentUser?.organizationId || 'default';
             const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : 'upload.jpg';
             const path = `organizations/${orgId}/jobs/${job.id}/workflowFiles/${Date.now()}_${safeName}`;
-            const downloadUrl = await uploadFileToStorage(path, file);
             const newFileId = `file-${Date.now()}`;
             const timestamp = new Date().toISOString();
             const userName = `${state.currentUser?.firstName || ''} ${state.currentUser?.lastName || ''}`.trim() || 'Technician';
 
-            const flatFile = {
+            // Auto-determine Before vs After phase based on active step if label is generic
+            let resolvedLabel = label || 'Photo';
+            const lowerLabel = resolvedLabel.toLowerCase().trim();
+            const isExplicitAfter = lowerLabel.includes('after') || lowerLabel.includes('repair') || lowerLabel.includes('comp') || lowerLabel.includes('post') || lowerLabel.includes('fix') || lowerLabel.includes('done');
+            const isExplicitBefore = lowerLabel.includes('before') || lowerLabel.includes('pre') || lowerLabel.includes('arrival') || lowerLabel.includes('diag');
+            
+            let phaseCategory = 'Before';
+            if (isExplicitAfter) {
+                phaseCategory = 'After';
+            } else if (isExplicitBefore) {
+                phaseCategory = 'Before';
+            } else {
+                phaseCategory = (step >= 3 || lowerLabel === 'after') ? 'After' : 'Before';
+            }
+
+            if (resolvedLabel === 'Photo' || resolvedLabel === 'Job Photo' || resolvedLabel === 'General' || resolvedLabel === 'Camera' || resolvedLabel === 'Gallery') {
+                resolvedLabel = phaseCategory;
+            }
+
+            const assignedAssetId = targetAssetId || cameraAssetId || undefined;
+
+            let downloadUrl = '';
+            let isPendingUpload = false;
+
+            if (typeof navigator !== 'undefined' && navigator.onLine) {
+                try {
+                    downloadUrl = await uploadFileToStorage(path, file);
+                } catch (uploadErr) {
+                    console.warn("[JobWorkflowModal] Storage upload failed, fallback to offline sync queue:", uploadErr);
+                    isPendingUpload = true;
+                }
+            } else {
+                isPendingUpload = true;
+            }
+
+            if (isPendingUpload || !downloadUrl) {
+                try {
+                    const fallbackDataUrl = await compressFile(file, 0.7);
+                    downloadUrl = fallbackDataUrl;
+                    await offlineSyncManager.registerPendingUpload({
+                        id: newFileId,
+                        jobId: job.id,
+                        parentId: job.id,
+                        parentCollection: 'jobs',
+                        orgId: String(orgId),
+                        storagePath: path,
+                        dataUrl: fallbackDataUrl,
+                        fileName: String(file.name || 'upload.jpg'),
+                        fileType: String(file.type || 'image/jpeg'),
+                        timestamp: Date.now(),
+                        updateField: 'files'
+                    });
+                } catch (cErr) {
+                    console.error("[JobWorkflowModal] Failed to process offline photo:", cErr);
+                }
+            }
+
+            if (!downloadUrl) {
+                throw new Error("Unable to upload or cache photo.");
+            }
+
+            const flatFile: StoredFile = {
                 id: String(newFileId),
-                organizationId: String(job.organizationId),
+                organizationId: String(orgId),
                 parentId: String(job.id),
                 parentType: 'job',
                 fileName: String(file.name || 'upload.jpg'),
                 fileType: String(file.type || 'image/jpeg'),
                 dataUrl: String(downloadUrl),
+                url: String(downloadUrl),
                 createdAt: String(timestamp),
                 uploadedBy: String(userName),
-                label: String(label)
+                label: String(resolvedLabel),
+                category: phaseCategory,
+                phase: phaseCategory.toLowerCase(),
+                ...(assignedAssetId ? { assetId: assignedAssetId } : {}),
+                pendingUpload: isPendingUpload,
+                metadata: {
+                    label: String(resolvedLabel),
+                    category: phaseCategory,
+                    phase: phaseCategory.toLowerCase(),
+                    ...(assignedAssetId ? { assetId: assignedAssetId } : {}),
+                    pendingUpload: isPendingUpload
+                }
             };
 
+            const currentFiles = (files && files.length > 0) ? files : (job.files || []);
+            const seen = new Set<string>();
+            const cleanExisting = currentFiles.filter((f: any) => {
+                const key = f.id || f.dataUrl || f.url;
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            const updatedFiles = [...cleanExisting, flatFile];
+
             if (state.isDemoMode) {
-                addFilesToJob([flatFile as any]);
+                setFiles(updatedFiles);
+                onUpdate({ ...job, files: updatedFiles } as any);
             } else {
                 await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                    files: firebase.firestore.FieldValue.arrayUnion(flatFile),
+                    files: updatedFiles,
                     updatedAt: timestamp
                 }));
-                addFilesToJob([flatFile as any]);
+                setFiles(updatedFiles);
+                onUpdate({ ...job, files: updatedFiles } as any);
+            }
+
+            if (isPendingUpload) {
+                showToast.info("Photo saved offline! It will upload automatically once connection is restored.");
+            }
+
+            // Auto-trigger AI Data Plate OCR when uploaded photo label matches data tag / plate keywords
+            if (downloadUrl && (lowerLabel.includes('tag') || lowerLabel.includes('plate') || lowerLabel.includes('data') || lowerLabel.includes('serial'))) {
+                scanDataPlatePhoto(downloadUrl, {
+                    brand: newAsset.brand,
+                    model: newAsset.model,
+                    serial: newAsset.serial,
+                    year: newAsset.year,
+                    tonnage: newAsset.tonnage ? String(newAsset.tonnage) : undefined,
+                    refrigerantType: newAsset.refrigerantType,
+                    electricityType: newAsset.electricityType,
+                    seerRating: newAsset.seerRating
+                }).then(ocrData => {
+                    if (ocrData && (ocrData.model || ocrData.serial || ocrData.brand || ocrData.tonnage || ocrData.year || ocrData.refrigerantType)) {
+                        setNewAsset(prev => ({
+                            ...prev,
+                            unitTagPhotoUrl: prev.unitTagPhotoUrl || downloadUrl,
+                            brand: prev.brand && prev.brand.trim() !== '' ? prev.brand : (ocrData.brand || prev.brand),
+                            model: prev.model && prev.model.trim() !== '' ? prev.model : (ocrData.model || prev.model),
+                            serial: prev.serial && prev.serial.trim() !== '' ? prev.serial : (ocrData.serial || prev.serial),
+                            year: prev.year && prev.year.trim() !== '' ? prev.year : (ocrData.year || prev.year),
+                            tonnage: prev.tonnage ? prev.tonnage : (ocrData.tonnage ? Number(ocrData.tonnage) : prev.tonnage),
+                            refrigerantType: prev.refrigerantType && prev.refrigerantType.trim() !== '' ? prev.refrigerantType : (ocrData.refrigerantType || prev.refrigerantType),
+                            electricityType: prev.electricityType && prev.electricityType.trim() !== '' ? prev.electricityType : (ocrData.electricityType || prev.electricityType),
+                            seerRating: prev.seerRating && prev.seerRating.trim() !== '' ? prev.seerRating : (ocrData.seerRating || prev.seerRating)
+                        }));
+                        showToast.success("AI Data Plate Vision scanned photo! Equipment form auto-filled.");
+                    }
+                }).catch(ocrErr => console.warn("Auto data plate OCR scan warning:", ocrErr));
             }
         } catch (error) {
             console.error("Photo process failed:", error);
@@ -2306,29 +2897,268 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         }
     };
 
-    const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, label: string) => {
-        const files = Array.from(e.target.files || []);
-        if (files.length === 0) return;
-        
-        for (const file of files) {
-            await processCapturedFile(file, label);
+    const handleBatchPhotoFiles = async (inputFiles: File[], label: string, targetAssetId?: string) => {
+        if (inputFiles.length === 0) return;
+
+        if (inputFiles.length === 1) {
+            await processCapturedFile(inputFiles[0], label, targetAssetId);
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const orgId = job.organizationId || state.currentOrganization?.id || state.currentUser?.organizationId || 'default';
+            const userName = `${state.currentUser?.firstName || ''} ${state.currentUser?.lastName || ''}`.trim() || 'Technician';
+
+            let resolvedLabel = label || 'Photo';
+            const lowerLabel = resolvedLabel.toLowerCase().trim();
+            const isExplicitAfter = lowerLabel.includes('after') || lowerLabel.includes('repair') || lowerLabel.includes('comp') || lowerLabel.includes('post') || lowerLabel.includes('fix') || lowerLabel.includes('done');
+            const isExplicitBefore = lowerLabel.includes('before') || lowerLabel.includes('pre') || lowerLabel.includes('arrival') || lowerLabel.includes('diag');
+
+            let phaseCategory = 'Before';
+            if (isExplicitAfter) {
+                phaseCategory = 'After';
+            } else if (isExplicitBefore) {
+                phaseCategory = 'Before';
+            } else {
+                phaseCategory = (step >= 3 || lowerLabel === 'after') ? 'After' : 'Before';
+            }
+
+            if (resolvedLabel === 'Photo' || resolvedLabel === 'Job Photo' || resolvedLabel === 'General' || resolvedLabel === 'Camera' || resolvedLabel === 'Gallery') {
+                resolvedLabel = phaseCategory;
+            }
+
+            const assignedAssetId = targetAssetId || cameraAssetId || undefined;
+            const total = inputFiles.length;
+            const newUploadedFiles: StoredFile[] = [];
+            let offlineCount = 0;
+
+            // Sequential processing to protect mobile memory and prevent cellular uplink saturation
+            for (let i = 0; i < total; i++) {
+                const file = inputFiles[i];
+                showToast.info(`Optimizing and uploading photo ${i + 1} of ${total}...`);
+
+                const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : `upload_${i}.jpg`;
+                const path = `organizations/${orgId}/jobs/${job.id}/workflowFiles/${Date.now()}_${i}_${safeName}`;
+                const newFileId = `file-${Date.now()}-${i}`;
+                const timestamp = new Date().toISOString();
+
+                let downloadUrl = '';
+                let isPendingUpload = false;
+
+                if (typeof navigator !== 'undefined' && navigator.onLine) {
+                    try {
+                        downloadUrl = await uploadFileToStorage(path, file);
+                    } catch (uploadErr) {
+                        console.warn(`[JobWorkflowModal] Batch photo ${i + 1} upload failed, queuing for offline sync:`, uploadErr);
+                        isPendingUpload = true;
+                    }
+                } else {
+                    isPendingUpload = true;
+                }
+
+                if (isPendingUpload || !downloadUrl) {
+                    try {
+                        const fallbackDataUrl = await compressFile(file, 0.7);
+                        downloadUrl = fallbackDataUrl;
+                        offlineCount++;
+                        await offlineSyncManager.registerPendingUpload({
+                            id: newFileId,
+                            jobId: job.id,
+                            parentId: job.id,
+                            parentCollection: 'jobs',
+                            orgId: String(orgId),
+                            storagePath: path,
+                            dataUrl: fallbackDataUrl,
+                            fileName: String(file.name || `upload_${i}.jpg`),
+                            fileType: String(file.type || 'image/jpeg'),
+                            timestamp: Date.now(),
+                            updateField: 'files'
+                        });
+                    } catch (cErr) {
+                        console.error(`[JobWorkflowModal] Failed to compress offline photo ${i + 1}:`, cErr);
+                    }
+                }
+
+                if (downloadUrl) {
+                    newUploadedFiles.push({
+                        id: String(newFileId),
+                        organizationId: String(orgId),
+                        parentId: String(job.id),
+                        parentType: 'job',
+                        fileName: String(file.name || `upload_${i}.jpg`),
+                        fileType: String(file.type || 'image/jpeg'),
+                        dataUrl: String(downloadUrl),
+                        url: String(downloadUrl),
+                        createdAt: String(timestamp),
+                        uploadedBy: String(userName),
+                        label: String(resolvedLabel),
+                        category: phaseCategory,
+                        phase: phaseCategory.toLowerCase(),
+                        ...(assignedAssetId ? { assetId: assignedAssetId } : {}),
+                        pendingUpload: isPendingUpload,
+                        metadata: {
+                            label: String(resolvedLabel),
+                            category: phaseCategory,
+                            phase: phaseCategory.toLowerCase(),
+                            ...(assignedAssetId ? { assetId: assignedAssetId } : {}),
+                            pendingUpload: isPendingUpload
+                        }
+                    });
+                }
+            }
+
+            if (newUploadedFiles.length === 0) {
+                showToast.error("Failed to process selected photos.");
+                return;
+            }
+
+            const currentFiles = (files && files.length > 0) ? files : (job.files || []);
+            const seen = new Set<string>();
+            const cleanExisting = currentFiles.filter((f: any) => {
+                const key = f.id || f.dataUrl || f.url;
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            const updatedFiles = [...cleanExisting, ...newUploadedFiles];
+
+            if (state.isDemoMode) {
+                setFiles(updatedFiles);
+                onUpdate({ ...job, files: updatedFiles } as any);
+            } else {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
+                    files: updatedFiles,
+                    updatedAt: new Date().toISOString()
+                }));
+                setFiles(updatedFiles);
+                onUpdate({ ...job, files: updatedFiles } as any);
+            }
+
+            if (offlineCount > 0) {
+                showToast.success(`Saved ${newUploadedFiles.length} photo(s)! (${offlineCount} queued for auto-sync when online)`);
+            } else {
+                showToast.success(`Successfully uploaded all ${newUploadedFiles.length} photo(s)!`);
+            }
+        } catch (error) {
+            console.error("Batch photo upload failed:", error);
+            showToast.error("Failed to upload some photos. Please check your network connection.");
+        } finally {
+            setIsSaving(false);
         }
     };
 
+    const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, label: string) => {
+        const inputFiles = Array.from(e.target.files || []);
+        e.target.value = '';
+        await handleBatchPhotoFiles(inputFiles, label, cameraAssetId || undefined);
+    };
+
     const handleDeletePhoto = async (fileToDelete: StoredFile) => {
-        if (!window.confirm("Delete this photo?")) return;
+        if (!(await globalConfirm(t("Are you sure you want to delete this photo?"), t("Delete Photo"), t("Delete"), t("Cancel")))) return;
         
         setIsSaving(true);
         try {
-            if (state.isDemoMode) {
-                removeFileFromJob(fileToDelete);
-            } else {
-                // Nuclear delete: Use arrayRemove to ensure it's removed from the array field
-                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                    files: firebase.firestore.FieldValue.arrayRemove(fileToDelete)
-                }));
-                removeFileFromJob(fileToDelete);
+            const targetId = fileToDelete.id;
+            const targetUrl = fileToDelete.url || fileToDelete.dataUrl;
+
+            // 1. Filter out all instances (including duplicates) by ID and URL
+            const currentFiles = (files && files.length > 0) ? files : (job.files || []);
+            const updatedFiles = currentFiles.filter(f => {
+                if (targetId && f.id === targetId) return false;
+                if (targetUrl && (f.url === targetUrl || f.dataUrl === targetUrl)) return false;
+                return true;
+            });
+
+            // 2. Also clean up any unitStates referencing this photo
+            const updatedUnitStates = (workflowState.unitStates || []).map((us: any) => {
+                let changed = false;
+                const newUs = { ...us };
+                if (targetUrl && (newUs.beforePhotoUrl === targetUrl || newUs.beforePhotoDataUrl === targetUrl)) {
+                    delete newUs.beforePhotoUrl;
+                    delete newUs.beforePhotoDataUrl;
+                    changed = true;
+                }
+                if (targetUrl && (newUs.afterPhotoUrl === targetUrl || newUs.afterPhotoDataUrl === targetUrl)) {
+                    delete newUs.afterPhotoUrl;
+                    delete newUs.afterPhotoDataUrl;
+                    changed = true;
+                }
+                if (targetUrl && newUs.photoUrl === targetUrl) {
+                    delete newUs.photoUrl;
+                    changed = true;
+                }
+                if (Array.isArray(newUs.photos)) {
+                    newUs.photos = newUs.photos.filter((p: any) => {
+                        const pUrl = typeof p === 'string' ? p : (p?.url || p?.dataUrl);
+                        return pUrl !== targetUrl && (!targetId || p?.id !== targetId);
+                    });
+                    changed = true;
+                }
+                return changed ? newUs : us;
+            });
+
+            const updates: any = {
+                files: updatedFiles,
+                unitStates: updatedUnitStates,
+                updatedAt: new Date().toISOString()
+            };
+
+            // 3. Clean up any customer equipment referencing this photo
+            const customer = state.customers?.find(c => c.id === job.customerId);
+            if (customer && customer.id && targetUrl) {
+                let eqChanged = false;
+                const updatedCustomerEq = (customer.equipment || []).map((eq: any) => {
+                    let changed = false;
+                    const newEq = { ...eq };
+                    if (newEq.unitTagPhotoUrl === targetUrl || newEq.unitTagPhotoDataUrl === targetUrl) {
+                        delete newEq.unitTagPhotoUrl;
+                        delete newEq.unitTagPhotoDataUrl;
+                        changed = true;
+                    }
+                    if (newEq.dataPlatePhotoUrl === targetUrl || newEq.dataPlatePhotoDataUrl === targetUrl) {
+                        delete newEq.dataPlatePhotoUrl;
+                        delete newEq.dataPlatePhotoDataUrl;
+                        changed = true;
+                    }
+                    if (newEq.photoUrl === targetUrl || newEq.photoDataUrl === targetUrl) {
+                        delete newEq.photoUrl;
+                        delete newEq.photoDataUrl;
+                        changed = true;
+                    }
+                    if (newEq.serialPhotoUrl === targetUrl || newEq.serialPhotoDataUrl === targetUrl) {
+                        delete newEq.serialPhotoUrl;
+                        delete newEq.serialPhotoDataUrl;
+                        changed = true;
+                    }
+                    if (newEq.conditionPhotoUrl === targetUrl || newEq.conditionPhotoDataUrl === targetUrl) {
+                        delete newEq.conditionPhotoUrl;
+                        delete newEq.conditionPhotoDataUrl;
+                        changed = true;
+                    }
+                    if (changed) eqChanged = true;
+                    return changed ? newEq : eq;
+                });
+
+                if (eqChanged) {
+                    if (!state.isDemoMode) {
+                        await db.collection('customers').doc(customer.id).update(cleanUndefinedFields({ equipment: updatedCustomerEq }));
+                    }
+                    dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, equipment: updatedCustomerEq } });
+                }
             }
+
+            if (state.isDemoMode) {
+                setFiles(updatedFiles);
+                updateWorkflowState('unitStates', updatedUnitStates);
+                onUpdate({ ...job, ...updates } as any);
+            } else {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
+                setFiles(updatedFiles);
+                updateWorkflowState('unitStates', updatedUnitStates);
+                onUpdate({ ...job, ...updates } as any);
+            }
+            showToast.success(t("Photo deleted successfully."));
         } catch (e) {
             console.error("Delete failed:", e);
             showToast.error("Failed to delete photo. Please try again.");
@@ -2340,14 +3170,40 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
     const handleAssignPhotoToAsset = async (fileId: string, assetId: string) => {
         setIsSaving(true);
         try {
-            const updatedFiles = files.map(f => {
-                if (f.id === fileId) {
+            const targetAssetId = assetId ? assetId.trim() : '';
+            const assignedAsset = assets?.find(a => a.id === targetAssetId);
+            const unitTag = assignedAsset?.name || (assignedAsset as any)?.title || '';
+
+            const currentFiles = (files && files.length > 0) ? files : (job.files || []);
+            const updatedFiles = currentFiles.map(f => {
+                if (f.id === fileId || f.dataUrl === fileId || f.url === fileId) {
+                    const newMeta = { ...(f.metadata || {}) };
+                    if (targetAssetId) {
+                        newMeta.assetId = targetAssetId;
+                    } else {
+                        delete newMeta.assetId;
+                    }
+
+                    // Update label to reflect the newly assigned unit
+                    let updatedLabel = f.label || newMeta.label || 'Photo';
+                    if (unitTag) {
+                        const baseCategory = f.category || newMeta.category || 'Photo';
+                        updatedLabel = `${baseCategory} (${unitTag})`;
+                        newMeta.label = updatedLabel;
+                        newMeta.notes = unitTag;
+                    } else if (!targetAssetId) {
+                        // Removed from unit -> General photo
+                        const baseCategory = f.category || newMeta.category || 'General';
+                        updatedLabel = baseCategory;
+                        newMeta.label = updatedLabel;
+                        delete newMeta.notes;
+                    }
+
                     return {
                         ...f,
-                        metadata: {
-                            ...(f.metadata || {}),
-                            assetId: assetId || undefined
-                        }
+                        label: updatedLabel,
+                        assetId: targetAssetId || undefined,
+                        metadata: newMeta
                     };
                 }
                 return f;
@@ -2364,7 +3220,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 setFiles(updatedFiles);
                 onUpdate({ ...job, files: updatedFiles } as any);
             }
-            showToast.success(assetId ? "Photo linked to unit!" : "Photo set to general job photo.");
+            showToast.success(targetAssetId ? "Photo linked to unit!" : "Photo set to general job photo.");
         } catch (err) {
             console.error("Failed to assign photo to asset:", err);
             showToast.error("Failed to link photo to unit.");
@@ -2376,14 +3232,18 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
     const handleUpdatePhotoLabel = async (fileId: string, label: string) => {
         setIsSaving(true);
         try {
-            const updatedFiles = files.map(f => {
-                if (f.id === fileId) {
+            const targetLabel = label ? label.trim() : 'General';
+            const currentFiles = (files && files.length > 0) ? files : (job.files || []);
+            const updatedFiles = currentFiles.map(f => {
+                if (f.id === fileId || f.dataUrl === fileId || f.url === fileId) {
                     return {
                         ...f,
-                        label: label,
+                        label: targetLabel,
+                        name: targetLabel,
                         metadata: {
                             ...(f.metadata || {}),
-                            label: label
+                            label: targetLabel,
+                            notes: targetLabel
                         }
                     };
                 }
@@ -2410,20 +3270,59 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         }
     };
 
-    const handleSaveSignOff = async (signOffFile: StoredFile) => {
-        const updatedFiles = [...files, signOffFile];
+    const handleSaveSignOff = async (signOffFile: StoredFile, updatedJobFields?: Partial<Job>) => {
+        const updatedFiles = updatedJobFields?.files || [...files, signOffFile];
+        const sheetUrl = signOffFile.url || signOffFile.dataUrl;
+        const signOffData = updatedJobFields?.signOff || {
+            managerName: signOffFile.metadata?.managerName || null,
+            technicianName: signOffFile.metadata?.technicianName || state.currentUser?.firstName || null,
+            dateOfService: signOffFile.metadata?.dateOfService || new Date().toISOString().split('T')[0],
+            sheetUrl: sheetUrl,
+            timestamp: new Date().toISOString(),
+            status: 'COMPLETED'
+        };
+
+        const updates: any = {
+            files: updatedFiles,
+            signOffSheetUrl: sheetUrl,
+            signoffSheetUrl: sheetUrl,
+            customWorkOrderFormUrl: sheetUrl,
+            signOff: signOffData,
+            signOffSignature: sheetUrl || 'SIGNED_ON_FILE',
+            jobRecordSignedOff: true,
+            jobRecordSignedOffAt: new Date().toISOString(),
+            jobRecordSignedOffBy: state.currentUser?.name || state.currentUser?.firstName || 'Technician',
+            updatedAt: new Date().toISOString(),
+            ...(updatedJobFields || {})
+        };
+
+        setWorkflowState(prev => ({
+            ...prev,
+            jobRecordSignedOff: true,
+            jobRecordSignedOffAt: updates.jobRecordSignedOffAt,
+            jobRecordSignedOffBy: updates.jobRecordSignedOffBy,
+            customerSignature: updates.customerSignature ?? prev.customerSignature,
+            customerSignatureName: updates.customerSignatureName ?? prev.customerSignatureName,
+            siteManagerSignature: updates.siteManagerSignature ?? prev.siteManagerSignature,
+            siteManagerName: updates.siteManagerName ?? prev.siteManagerName,
+            techSignature: updates.techSignature ?? prev.techSignature,
+            techSignatureName: updates.techSignatureName ?? prev.techSignatureName,
+            signature: updates.signature ?? prev.signature,
+            signerName: updates.signerName ?? prev.signerName,
+            signatureTimestamp: updates.signatureTimestamp ?? prev.signatureTimestamp
+        }));
+
         setIsSaving(true);
         try {
             if (state.isDemoMode) {
                 setFiles(updatedFiles);
-                onUpdate({ ...job, files: updatedFiles } as any);
+                dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
+                onUpdate({ ...job, ...updates } as any);
             } else {
-                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                    files: updatedFiles,
-                    updatedAt: new Date().toISOString()
-                }));
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
                 setFiles(updatedFiles);
-                onUpdate({ ...job, files: updatedFiles } as any);
+                dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
+                onUpdate({ ...job, ...updates } as any);
             }
         } catch (err) {
             console.error("Failed to save sign-off sheet:", err);
@@ -2437,9 +3336,21 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         const fileToDelete = files.find(f => f.id === fileId);
         if (!fileToDelete) return;
         
-        const isSignOff = fileToDelete.fileName === 'SignOff_Sheet.html' || fileToDelete.metadata?.label === 'Sign-Off Sheet';
+        const isSignOff = fileToDelete.fileName === 'SignOff_Sheet.html' || 
+                          fileToDelete.fileName?.toLowerCase().includes('signoff') ||
+                          fileToDelete.fileName?.toLowerCase().includes('sign-off') ||
+                          fileToDelete.fileName?.toLowerCase().includes('sign_off') ||
+                          fileToDelete.metadata?.label === 'Sign-Off Sheet' ||
+                          fileToDelete.metadata?.label?.toLowerCase().includes('sign-off') ||
+                          fileToDelete.metadata?.label?.toLowerCase().includes('signoff') ||
+                          fileToDelete.label?.toLowerCase().includes('sign-off') ||
+                          fileToDelete.label?.toLowerCase().includes('signoff') ||
+                          fileToDelete.category === 'signoff' ||
+                          fileToDelete.metadata?.category === 'signoff' ||
+                          fileToDelete.id?.startsWith('signoff-doc');
+
         const confirmMsg = isSignOff 
-            ? t("Are you sure you want to remove this signed validation sheet? You will need to regenerate and collect the signature again if required.")
+            ? t("Are you sure you want to remove this signed validation sheet? This will clear all recorded signatures and sign-off data for this job.")
             : t("Are you sure you want to remove this document?");
             
         const confirmDelete = await globalConfirm(
@@ -2452,14 +3363,55 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
 
         setIsSaving(true);
         try {
-            if (state.isDemoMode) {
-                removeFileFromJob(fileToDelete);
-            } else {
-                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                    files: firebase.firestore.FieldValue.arrayRemove(fileToDelete),
-                    updatedAt: new Date().toISOString()
+            const targetUrl = fileToDelete.url || fileToDelete.dataUrl;
+            const updatedFiles = files.filter(f => f.id !== fileId && (!targetUrl || (f.dataUrl !== targetUrl && f.url !== targetUrl)));
+            
+            const updates: any = {
+                files: updatedFiles,
+                updatedAt: new Date().toISOString()
+            };
+
+            if (isSignOff) {
+                updates.signOff = null;
+                updates.signOffSheetUrl = null;
+                updates.signoffSheetUrl = null;
+                updates.customWorkOrderFormUrl = null;
+                updates.signOffSignature = null;
+                updates.customerSignature = null;
+                updates.customerSignatureName = null;
+                updates.siteManagerSignature = null;
+                updates.siteManagerName = null;
+                updates.techSignature = null;
+                updates.techSignatureName = null;
+                updates.signature = null;
+                updates.signerName = null;
+                updates.signatureTimestamp = null;
+                updates.signedAt = null;
+                updates.managerName = null;
+
+                setWorkflowState(prev => ({
+                    ...prev,
+                    customerSignature: null,
+                    customerSignatureName: null,
+                    siteManagerSignature: null,
+                    siteManagerName: null,
+                    techSignature: null,
+                    techSignatureName: null,
+                    signature: null,
+                    signerName: null,
+                    signatureTimestamp: null
                 }));
-                removeFileFromJob(fileToDelete);
+            }
+
+            if (state.isDemoMode) {
+                setFiles(updatedFiles);
+                dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
+                onUpdate({ ...job, ...updates } as any);
+            } else {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
+                setFiles(updatedFiles);
+                dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
+                onUpdate({ ...job, ...updates } as any);
             }
             showToast.success(t("Document removed."));
         } catch (e) {
@@ -2508,24 +3460,41 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
     };
 
     const handleViewEditProposal = async (proposalId: string) => {
+        const existingProp = state.proposals?.find(p => p.id === proposalId);
+        const shouldUpdateJobId = !existingProp?.jobId || existingProp.jobId === job.id;
+        const updatedLinkedJobIds = Array.from(new Set([...(existingProp?.linkedJobIds || []), job.id]));
+
         try {
             if (state.isDemoMode) {
                 console.log("Demo Mode: Skipping proposal update.");
             } else {
-                await db.collection('proposals').doc(proposalId).update(cleanUndefinedFields({ 
-                    jobId: job.id,
-                    poNumber: job.poNumber || null
-                }));
+                const propUpdates: any = {
+                    linkedJobIds: updatedLinkedJobIds
+                };
+                if (shouldUpdateJobId) {
+                    propUpdates.jobId = job.id;
+                    propUpdates.poNumber = job.poNumber || null;
+                }
+                await db.collection('proposals').doc(proposalId).update(cleanUndefinedFields(propUpdates));
             }
         } catch (e) { console.error("Warning: Could not formally link proposal to jobId.", e); }
 
         dispatch({
             type: 'UPDATE_PROPOSAL',
-            payload: { id: proposalId, jobId: job.id, poNumber: job.poNumber || null }
+            payload: {
+                id: proposalId,
+                linkedJobIds: updatedLinkedJobIds,
+                ...(shouldUpdateJobId ? { jobId: job.id, poNumber: job.poNumber || null } : {})
+            }
         });
 
-        // Link the proposal to the job itself so that the invoice editor knows about the linked proposal
-        await handleJobUpdate({ proposalId: proposalId });
+        // Link the proposal to the job's linkedProposalIds (and proposalId only if this is the primary job)
+        const updatedJobLinkedProps = Array.from(new Set([...(job.linkedProposalIds || []), proposalId]));
+        const jobUpdates: any = { linkedProposalIds: updatedJobLinkedProps };
+        if (shouldUpdateJobId) {
+            jobUpdates.proposalId = proposalId;
+        }
+        await handleJobUpdate(jobUpdates);
 
         await saveCurrentState();
         dispatch({ type: 'SET_ACTIVE_JOB_ID_FOR_WORKFLOW', payload: job.id });
@@ -2582,7 +3551,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         }
     };
 
-    const handleBuildProposal = async () => {
+    const handleBuildProposal = async (forceNew: boolean = false) => {
         await saveCurrentState();
         dispatch({ type: 'SET_ACTIVE_JOB_ID_FOR_WORKFLOW', payload: job.id });
         
@@ -2592,51 +3561,37 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             basePath = '/briefing';
         }
         
-        if (job.proposalId) {
-            const continueExisting = await globalConfirm(
-                t('A proposal has already been started for this job. Would you like to continue editing the existing proposal instead of creating a new one?'),
-                t('Existing Proposal Found'),
-                t('Edit Existing'),
-                t('Create New Anyway')
-            );
-            if (continueExisting) {
-                navigate(`${basePath}/proposal?jobId=${job.id}&source=workflow&proposalId=${job.proposalId}`);
-                onClose();
-                return;
-            }
+        const existingProposalId = job.proposalId || (job.linkedProposalIds && job.linkedProposalIds.length > 0 ? job.linkedProposalIds[0] : null);
+        if (!forceNew && existingProposalId) {
+            navigate(`${basePath}/proposal?jobId=${job.id}&source=workflow&proposalId=${existingProposalId}`);
+        } else {
+            navigate(`${basePath}/proposal?jobId=${job.id}&source=workflow${forceNew ? '&new=true' : ''}`);
         }
-        
-        navigate(`${basePath}/proposal?jobId=${job.id}&source=workflow`);
         onClose();
     };
 
-    const handleInvoiceClick = async () => {
-        if (job.invoice && job.invoice.id) {
-            const continueExisting = await globalConfirm(
-                t('An invoice has already been started for this job. Would you like to continue editing the existing invoice instead of starting a new one?'),
-                t('Existing Invoice Found'),
-                t('Edit Existing'),
-                t('Start New')
-            );
-            if (!continueExisting) {
-                const orgId = job.organizationId || state.currentOrganization?.id;
-                if (orgId) {
-                    try {
-                        const nextInvId = await getNextInvoiceNumber(orgId);
-                        const clearedInvoice = {
-                            id: nextInvId,
-                            status: 'Unpaid',
-                            items: [],
-                            subtotal: 0,
-                            taxRate: (state.currentOrganization?.taxRate || 8.25) / 100,
-                            taxAmount: 0,
-                            totalAmount: 0,
-                            amount: 0
-                        };
-                        await handleJobUpdate({ invoice: clearedInvoice });
-                    } catch (err) {
-                        console.error("Failed to reset invoice:", err);
-                    }
+    const handleInvoiceClick = async (forceNew: boolean = false) => {
+        if (forceNew) {
+            const orgId = job.organizationId || state.currentOrganization?.id;
+            if (orgId) {
+                try {
+                    const nextInvId = await getNextInvoiceNumber(orgId);
+                    const clearedInvoice = {
+                        id: nextInvId,
+                        status: 'Unpaid',
+                        items: [],
+                        subtotal: 0,
+                        taxRate: (state.currentOrganization?.taxRate || 8.25) / 100,
+                        taxAmount: 0,
+                        totalAmount: 0,
+                        amount: 0,
+                        createdAt: new Date().toISOString(),
+                        jobId: job.id
+                    };
+                    await handleJobUpdate({ invoice: clearedInvoice });
+                    showToast.success(t(`New secondary invoice INV-${nextInvId} created!`));
+                } catch (err: any) {
+                    console.error("Failed to create secondary invoice:", err);
                 }
             }
         }
@@ -2648,33 +3603,65 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
     return (
         <>
         <div className="fixed inset-0 z-[100] bg-slate-50 dark:bg-slate-900 flex flex-col md:h-screen w-full overflow-hidden">
-            <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0 safe-top">
-                <div className="flex items-center gap-3">
-                    <button onClick={onClose} aria-label="Close" title="Close" className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-800 dark:text-slate-100">
-                        <X size={24}/>
-                    </button>
-                    <div>
-                        <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">{job.customerName}</h2>
-                        <p className="text-xs text-slate-500">{job.address}</p>
-                    </div>
+            {activeViewMode === 'dashboard' ? (
+                <div className="flex-1 overflow-y-auto w-full custom-scrollbar p-3 sm:p-5">
+                    <JobDashboardView
+                        job={job}
+                        assets={assets}
+                        files={files}
+                        unitStates={workflowState.unitStates || []}
+                        currentUser={state.currentUser}
+                        onClose={onClose}
+                        onCheckIn={handleCheckIn}
+                        onStartRoute={handleStartRoute}
+                        onJobUpdate={handleJobUpdate}
+                        onUpdateUnitState={(updatedState) => {
+                            const currentStates = workflowState.unitStates || [];
+                            const targetId = updatedState.assetId;
+                            const idx = currentStates.findIndex(s => s.assetId === targetId);
+                            const newStates = idx >= 0 
+                                ? currentStates.map((s, i) => i === idx ? { ...s, ...updatedState } : s)
+                                : [...currentStates, updatedState];
+                            updateWorkflowState('unitStates', newStates);
+                            handleJobUpdate({ unitStates: newStates });
+                        }}
+                        onAddEquipment={() => setIsAddAssetOpen(true)}
+                        onOpenChecklists={() => setIsChecklistsModalOpen(true)}
+                        onOpenProposals={() => handleBuildProposal()}
+                        onOpenTools={() => setIsIndustryToolsOpen(true)}
+                        onOpenBilling={() => setIsBillingModalOpen(true)}
+                        onOpenAuditHistory={() => setIsAuditHistoryOpen(true)}
+                        onOpenReopenModal={() => setIsReopenModalOpen(true)}
+                        onOpenJobRecord={() => setIsJobRecordReviewOpen(true)}
+                        onOpenSubBill={() => setIsSubBillOpen(true)}
+                        onAddInvoiceLineItem={(item) => {
+                            const currentInvoice = job.invoice || { id: `inv_${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: 0, taxAmount: 0, totalAmount: 0, amount: 0 };
+                            const newItems = [...(currentInvoice.items || []), { id: `li_${Date.now()}`, name: item.name, amount: item.amount, quantity: 1, total: item.amount, description: item.description }];
+                            const newSubtotal = newItems.reduce((sum: number, i: any) => sum + (i.total || i.amount || 0), 0);
+                            const effectiveTaxRate = typeof currentInvoice.taxRate === 'number' ? currentInvoice.taxRate : 0;
+                            const newTax = typeof currentInvoice.taxAmount === 'number' && currentInvoice.taxAmount > 0 ? currentInvoice.taxAmount : newSubtotal * effectiveTaxRate;
+                            const newTotal = newSubtotal + newTax;
+                            handleJobUpdate({
+                                visitType: 'Diagnostic & Repair',
+                                invoice: {
+                                    ...currentInvoice,
+                                    items: newItems,
+                                    subtotal: newSubtotal,
+                                    taxAmount: newTax,
+                                    totalAmount: newTotal,
+                                    amount: newTotal
+                                }
+                            });
+                        }}
+                        takeNativePhoto={(label, targetAssetId) => handleNativeCameraTrigger(label, targetAssetId)}
+                        pickGalleryPhotos={(label, targetAssetId) => handlePickGalleryImages(label, targetAssetId)}
+                        onDeletePhoto={handleDeletePhoto}
+                        onViewPhoto={setViewingPhoto}
+                        onStopClock={handleStopClock}
+                    />
                 </div>
-                 <div className="flex items-center gap-2">
-                    {job.checkInTime && (!job.checkOutTime || new Date(job.checkInTime).getTime() > new Date(job.checkOutTime).getTime()) && (
-                        <Button 
-                            variant="secondary" 
-                            onClick={handleStopClock} 
-                            className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 dark:bg-red-950/20 dark:hover:bg-red-900/30 dark:text-red-400 dark:border-red-900 text-xs font-black uppercase tracking-wider h-10 px-4 rounded-xl flex items-center gap-2 shrink-0 shadow-sm"
-                        >
-                            <Clock size={14} className="animate-pulse" />
-                            {t("Stop Clock")}
-                        </Button>
-                    )}
-                    <Button variant="secondary" onClick={() => setIsAssistantOpen(true)} className="hidden md:flex relative !p-2 shrink-0">
-                         <Sparkles size={18} className="text-primary-500"/>
-                    </Button>
-                </div>
-            </div>
-
+            ) : (
+                <div className="flex-1 flex flex-col overflow-hidden">
             <div className="flex justify-center items-center py-2.5 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shrink-0 sticky top-0 z-20">
                 <div className="relative w-full max-w-4xl px-2 sm:px-4 mx-auto overflow-x-auto no-scrollbar">
                     <div className="flex justify-between items-center relative z-10 w-full min-w-[320px] gap-1 sm:gap-2">
@@ -2770,6 +3757,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     files={files}
                                     handlePhotoUpload={handlePhotoUpload}
                                     takeNativePhoto={() => handleNativeCameraTrigger('Before')}
+                                    pickGalleryPhotos={() => handlePickGalleryImages('Before')}
                                     takeNativeAssetPhoto={handleNativeAssetCameraTrigger}
                                     onDeletePhoto={handleDeletePhoto}
                                     onViewPhoto={setViewingPhoto}
@@ -2800,9 +3788,10 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     setIsWaiverOpen={setIsWaiverOpen} 
                                     setIsImportModalOpen={() => openImport('diagnosis')} 
                                     setIsToolModalOpen={handleOpenToolReadingModal}
-                                    buildProposal={handleBuildProposal} 
+                                    buildProposal={handleBuildProposal}
+                                    onCreateNewProposal={() => handleBuildProposal(true)} 
                                     onOpenProposalSelector={() => setIsProposalSelectorOpen(true)}
-                                    linkedProposals={state.proposals?.filter(p => p.jobId === job.id)}
+                                    linkedProposals={state.proposals?.filter(p => p.jobId === job.id || p.id === job.proposalId || p.linkedJobIds?.includes(job.id) || job.linkedProposalIds?.includes(p.id))}
                                     onViewEditProposal={handleViewEditProposal}
                                     onUnlinkProposal={handleUnlinkProposal}
                                     checklists={workflowState.diagnosisChecklist} 
@@ -2814,6 +3803,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     setNotes={(val) => updateWorkflowState('diagnosisNotes', val)} 
                                     handlePhotoUpload={handlePhotoUpload} 
                                     takeNativePhoto={() => handleNativeCameraTrigger('Before')}
+                                    pickGalleryPhotos={() => handlePickGalleryImages('Before')}
                                     files={files} 
                                     onDeletePhoto={handleDeletePhoto} 
                                     onViewPhoto={setViewingPhoto} 
@@ -2828,17 +3818,72 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     onAssignPhotoToAsset={handleAssignPhotoToAsset}
                                     onEditAsset={(asset) => { setNewAsset(asset); setIsAddAssetOpen(true); }}
                                 />
-                                {job.visitType === 'Diagnostic Only' && (
-                                    <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl flex items-center justify-between">
-                                        <div>
-                                            <h4 className="font-bold text-purple-900 dark:text-purple-300">{t("Proceeding to Repair?")}</h4>
-                                            <p className="text-sm text-purple-700 dark:text-purple-400">{t("Upgrade this visit to include repair workflow steps.")}</p>
-                                        </div>
-                                        <Button onClick={handleUpgradeToRepair} className="bg-purple-600 hover:bg-purple-700 text-white font-bold whitespace-nowrap">
-                                            {t("Upgrade to Repair Now")} <ArrowRight size={16} className="ml-1 inline" />
+                                <div className="p-4 bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 rounded-xl space-y-3">
+                                    <div>
+                                        <h4 className="font-bold text-sm text-purple-900 dark:text-purple-300">{t("Diagnostic Outcome & Next Steps")}</h4>
+                                        <p className="text-xs text-purple-700 dark:text-purple-400">{t("Select the appropriate workflow path following diagnosis:")}</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                        <Button 
+                                            type="button"
+                                            onClick={async () => {
+                                                await handleJobUpdate({ jobStatus: 'In Progress', visitType: 'Diagnostic & Repair' });
+                                                scrollToSection('repair');
+                                                showToast.success(t("Proceeding to Repair Workflow"));
+                                            }}
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-11 flex items-center justify-center gap-1.5"
+                                        >
+                                            🔧 {t("1. Continue to Repair")}
+                                        </Button>
+
+                                        <Button 
+                                            type="button"
+                                            onClick={() => {
+                                                scrollToSection('billing');
+                                                showToast.info(t("Proceeding to Billing & Closeout"));
+                                            }}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs h-11 flex items-center justify-center gap-1.5"
+                                        >
+                                            💳 {t("2. Complete & Continue to Billing")}
+                                        </Button>
+
+                                        <Button 
+                                            type="button"
+                                            onClick={async () => {
+                                                await handleJobUpdate({ jobStatus: 'Awaiting Customer Approval' });
+                                                setIsProposalSelectorOpen(true);
+                                                showToast.success(t("Status updated: Awaiting Customer Approval"));
+                                            }}
+                                            className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs h-11 flex items-center justify-center gap-1.5"
+                                        >
+                                            📄 {t("3. Send Proposal / Awaiting Approval")}
+                                        </Button>
+
+                                        <Button 
+                                            type="button"
+                                            onClick={async () => {
+                                                await handleJobUpdate({ jobStatus: 'Needs Follow-up', repairPostponed: true });
+                                                setIsScheduleFollowUpOpen(true);
+                                                showToast.warn(t("Status updated: Return Visit Required"));
+                                            }}
+                                            className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-11 flex items-center justify-center gap-1.5"
+                                        >
+                                            📅 {t("4. Return Visit Required")}
+                                        </Button>
+
+                                        <Button 
+                                            type="button"
+                                            onClick={async () => {
+                                                await handleJobUpdate({ repairPostponed: true, repairPostponedReason: 'No Repair Authorized' });
+                                                scrollToSection('billing');
+                                                showToast.info(t("No Repair Authorized: Proceeding to Billing"));
+                                            }}
+                                            className="bg-slate-600 hover:bg-slate-700 text-white font-bold text-xs h-11 flex items-center justify-center gap-1.5 sm:col-span-2 lg:col-span-1"
+                                        >
+                                            🚫 {t("5. No Repair Authorized")}
                                         </Button>
                                     </div>
-                                )}
+                                </div>
                             </div>
                         )}
                     </div>
@@ -2865,6 +3910,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     setWorkNotes={(val) => updateWorkflowState('workNotes', val)} 
                                     handlePhotoUpload={handlePhotoUpload} 
                                     takeNativePhoto={() => handleNativeCameraTrigger('After')}
+                                    pickGalleryPhotos={() => handlePickGalleryImages('After')}
                                     files={files} 
                                     onDeletePhoto={handleDeletePhoto} 
                                     onViewPhoto={setViewingPhoto} 
@@ -2953,24 +3999,32 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                         {expandedSections.billing && (
                             <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
                                 <BillingStep 
-                                    handleGoToPayments={handleInvoiceClick} 
+                                    handleGoToPayments={() => handleInvoiceClick(false)}
+                                    onCreateSecondaryInvoice={() => handleInvoiceClick(true)}
+                                    existingInvoiceId={job.invoice?.id}
                                     onOpenInvoiceSelector={() => setIsInvoiceSelectorOpen(true)} 
                                     onOpenSignOff={() => setIsSignOffOpen(true)} 
                                     files={files}
                                     onPreviewFile={(file) => {
-                                        let content = file.dataUrl || '';
-                                        if (content.startsWith('data:text/html;base64,')) {
-                                            try {
-                                                const base64Part = content.split('base64,')[1];
-                                                content = decodeURIComponent(escape(atob(base64Part)));
-                                            } catch (err) {
-                                                console.error("Failed to decode base64 preview html:", err);
+                                        const rawUrl = file.dataUrl || file.url || '';
+                                        const isHtml = file.fileType === 'text/html' || file.fileName?.toLowerCase().endsWith('.html') || rawUrl.startsWith('data:text/html');
+                                        let htmlContent: string | undefined = undefined;
+                                        if (isHtml) {
+                                            if (rawUrl.startsWith('data:text/html;base64,')) {
+                                                try {
+                                                    const base64Part = rawUrl.split('base64,')[1];
+                                                    htmlContent = decodeURIComponent(escape(atob(base64Part)));
+                                                } catch (err) {
+                                                    console.error("Failed to decode base64 preview html:", err);
+                                                }
+                                            } else {
+                                                htmlContent = rawUrl;
                                             }
                                         }
                                         setPreviewDoc({
                                             id: file.id,
-                                            title: file.metadata?.label || "Sign-Off Sheet",
-                                            htmlContent: content,
+                                            title: file.metadata?.label || file.label || "Sign-Off Sheet",
+                                            htmlContent: htmlContent,
                                             ...file
                                         });
                                     }}
@@ -2978,6 +4032,12 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     onUploadFile={handlePhotoUpload}
                                     isSubcontractor={isSubcontractor || isSubcontractorJob}
                                     onOpenSubBill={() => setIsSubBillOpen(true)}
+                                    onOpenJobRecordReview={() => setIsJobRecordReviewOpen(true)}
+                                    isJobRecordSignedOff={workflowState.jobRecordSignedOff}
+                                    jobRecordSignedOffBy={workflowState.jobRecordSignedOffBy}
+                                    jobRecordSignedOffAt={workflowState.jobRecordSignedOffAt}
+                                    membershipOffered={workflowState.membershipOffered}
+                                    setMembershipOffered={(val) => setWorkflowState(prev => ({ ...prev, membershipOffered: val }))}
                                 />
                                 <div className="mt-4 p-5 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
                                     <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-1">{t("Deferred Billing / Roll to Next Visit")}</h4>
@@ -3058,8 +4118,8 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                     )}
                 </div>
             </div>
-
-        </div>
+            </div>
+            )}
 
         {/* Appointment Modal for Next Visit */}
         {isAppointmentModalOpen && (
@@ -3327,11 +4387,16 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 {assets && assets.length > 0 && (
                     <Select label={t("Associated Unit (Optional)")} value={newReading.assetId || ''} onChange={e => setNewReading({...newReading, assetId: e.target.value})}>
                         <option value="">{t("General / Not Unit Specific")}</option>
-                        {assets.map(asset => (
-                            <option key={asset.id} value={asset.id}>
-                                {asset.name || asset.type} {asset.serial ? `(${asset.serial.slice(-4)})` : ''}
-                            </option>
-                        ))}
+                        {assets.map(asset => {
+                            const serialText = asset.serial || asset.serialNumber ? ` • S/N: ${asset.serial || asset.serialNumber}` : '';
+                            const modelText = asset.model || asset.modelNumber ? ` • M/N: ${asset.model || asset.modelNumber}` : '';
+                            const brandText = asset.brand ? ` (${asset.brand})` : '';
+                            return (
+                                <option key={asset.id} value={asset.id}>
+                                    {asset.name || `${asset.brand || ''} ${t(asset.type || 'Unit')}`.trim()}{brandText}{modelText}{serialText}
+                                </option>
+                            );
+                        })}
                     </Select>
                 )}
                 <Textarea label={t("Reading Summary")} placeholder={t("e.g. Low Side: 120 PSI, High Side: 350 PSI, Subcool: 12F")} value={newReading.summary} onChange={e => setNewReading({...newReading, summary: e.target.value})} />
@@ -3428,25 +4493,52 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         
         {isInvoiceEditorOpen && <InvoiceEditorModal isOpen={true} onClose={() => setIsInvoiceEditorOpen(false)} jobId={job.id} />}
         <LiveAssistModal isOpen={isLiveAssistOpen} onClose={() => setIsLiveAssistOpen(false)} job={job} />
-        <WaiverModal isOpen={isWaiverOpen} onClose={() => setIsWaiverOpen(false)} onSign={() => {}} job={job} />
+        <WaiverModal 
+            isOpen={isWaiverOpen} 
+            onClose={() => setIsWaiverOpen(false)} 
+            onSign={(sig) => {
+                updateWorkflowState('preWorkWaiverSignature', sig);
+                updateWorkflowState('preWorkWaiverSignedAt', new Date().toISOString());
+                updateWorkflowState('preWorkWaiverTitle', 'Waiver Agreement');
+            }} 
+            job={job} 
+        />
         <SignOffModal isOpen={isSignOffOpen} onClose={() => setIsSignOffOpen(false)} job={job} onSave={handleSaveSignOff} />
+        <ReopenJobModal isOpen={isReopenModalOpen} onClose={() => setIsReopenModalOpen(false)} job={job} onJobReopened={(updated) => { handleJobUpdate(updated); }} />
+        <AuditHistoryModal isOpen={isAuditHistoryOpen} onClose={() => setIsAuditHistoryOpen(false)} job={job} />
         <SubcontractorBillModal isOpen={isSubBillOpen} onClose={() => setIsSubBillOpen(false)} job={job} onSave={handleSaveSignOff} />
+        {isJobRecordReviewOpen && (
+            <JobDetailModal
+                isOpen={isJobRecordReviewOpen}
+                onClose={() => setIsJobRecordReviewOpen(false)}
+                job={job}
+                isAdmin={true}
+                isReviewMode={true}
+                isJobRecordSignedOff={workflowState.jobRecordSignedOff}
+                onSignOffJobRecord={handleJobRecordSignOff}
+            />
+        )}
 
         <BarcodeScannerModal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScan={handleScanResult} />
         <WebCameraModal isOpen={isWebCameraOpen} onClose={() => {
             setIsWebCameraOpen(false);
             setAssetCameraTarget(null);
+            setCameraAssetId(null);
         }} onCapture={(dataUrl) => {
-             setIsWebCameraOpen(false);
              const target = assetCameraTarget;
-             setAssetCameraTarget(null);
+             const assignedAssetId = cameraAssetId;
+             if (target) {
+                 setIsWebCameraOpen(false);
+                 setAssetCameraTarget(null);
+                 setCameraAssetId(null);
+             }
              fetch(dataUrl).then(r => r.blob()).then(async blob => {
                   const file = new File([blob], `webcam_${Date.now()}.jpg`, { type: 'image/jpeg' });
                   if (target) {
                       const mockEvent = { target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>;
                       await handleAssetPhotoUpload(mockEvent, target);
                   } else {
-                      processCapturedFile(file, cameraLabel);
+                      processCapturedFile(file, cameraLabel, assignedAssetId || undefined);
                   }
              });
         }} />
@@ -3471,11 +4563,13 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         <input 
             type="file" 
             accept="image/*" 
+            multiple
             title="Camera upload"
             ref={cameraInputRef} 
             onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) processCapturedFile(file, cameraLabel);
+                if (e.target.files && e.target.files.length > 0) {
+                    handlePhotoUpload(e, cameraLabel);
+                }
             }}
             className="hidden" 
         />
@@ -3493,11 +4587,13 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         )}
         
         {isIndustryToolsOpen && (
-            <div className="fixed inset-0 z-[100] bg-black/50 overflow-y-auto">
-                <div className="min-h-screen p-4 flex items-center justify-center">
-                     <div className="relative w-full max-w-6xl bg-slate-50 dark:bg-slate-950 rounded-3xl overflow-hidden shadow-2xl">
-                         <button aria-label="Close" title="Close" onClick={() => setIsIndustryToolsOpen(false)} className="absolute top-4 right-4 z-10 bg-slate-200 p-2 rounded-full"><X size={20}/></button>
-                         <div className="h-[80vh] overflow-y-auto">
+            <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm overflow-y-auto">
+                <div className="min-h-screen p-3 sm:p-6 flex items-center justify-center">
+                     <div className="relative w-full max-w-6xl bg-slate-50 dark:bg-slate-950 rounded-3xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800">
+                         <button aria-label="Close" title="Close" onClick={() => setIsIndustryToolsOpen(false)} className="absolute top-4 right-4 z-20 bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 p-2.5 rounded-full transition-all text-slate-700 dark:text-slate-200 cursor-pointer shadow-md">
+                             <X size={20}/>
+                         </button>
+                         <div className="max-h-[88vh] overflow-y-auto custom-scrollbar">
                              <IndustryToolsHub />
                          </div>
                      </div>
@@ -3884,55 +4980,135 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                             <div className="grid grid-cols-2 gap-2">
                                 <Input 
                                     label={t("GPS Latitude")} 
-                                    type="number" 
-                                    step="any"
-                                    value={newAsset.gpsPin?.lat ?? ''} 
+                                    type="text" 
+                                    inputMode="decimal"
+                                    value={newAsset.gpsPin?.lat !== undefined && newAsset.gpsPin?.lat !== null ? String(newAsset.gpsPin.lat) : ''} 
                                     onChange={e => {
-                                        const currentPin = newAsset.gpsPin || { lat: 0, lng: 0 };
-                                        setNewAsset({...newAsset, gpsPin: { ...currentPin, lat: e.target.value === '' ? 0 : Number(e.target.value) }});
+                                        const val = e.target.value.trim();
+                                        if (val === '') {
+                                            const currentLng = newAsset.gpsPin?.lng;
+                                            setNewAsset({
+                                                ...newAsset,
+                                                gpsPin: (currentLng !== undefined && currentLng !== null) ? { lat: 0, lng: currentLng } : undefined
+                                            });
+                                        } else {
+                                            const parsed = parseFloat(val);
+                                            const currentLng = newAsset.gpsPin?.lng || 0;
+                                            setNewAsset({
+                                                ...newAsset,
+                                                gpsPin: { lat: isNaN(parsed) ? 0 : parsed, lng: currentLng }
+                                            });
+                                        }
                                     }} 
                                     placeholder="29.4241"
                                 />
                                 <Input 
                                     label={t("GPS Longitude")} 
-                                    type="number" 
-                                    step="any"
-                                    value={newAsset.gpsPin?.lng ?? ''} 
+                                    type="text" 
+                                    inputMode="decimal"
+                                    value={newAsset.gpsPin?.lng !== undefined && newAsset.gpsPin?.lng !== null ? String(newAsset.gpsPin.lng) : ''} 
                                     onChange={e => {
-                                        const currentPin = newAsset.gpsPin || { lat: 0, lng: 0 };
-                                        setNewAsset({...newAsset, gpsPin: { ...currentPin, lng: e.target.value === '' ? 0 : Number(e.target.value) }});
+                                        const val = e.target.value.trim();
+                                        if (val === '') {
+                                            const currentLat = newAsset.gpsPin?.lat;
+                                            setNewAsset({
+                                                ...newAsset,
+                                                gpsPin: (currentLat !== undefined && currentLat !== null) ? { lat: currentLat, lng: 0 } : undefined
+                                            });
+                                        } else {
+                                            const parsed = parseFloat(val);
+                                            const currentLat = newAsset.gpsPin?.lat || 0;
+                                            setNewAsset({
+                                                ...newAsset,
+                                                gpsPin: { lat: currentLat, lng: isNaN(parsed) ? 0 : parsed }
+                                            });
+                                        }
                                     }} 
                                     placeholder="-98.4936"
                                 />
                             </div>
                         </div>
-                        <button 
-                            type="button"
-                            onClick={async () => {
-                                setGpsLoading(true);
-                                try {
-                                    const loc = await getCurrentLocation();
-                                    if (loc) {
+                        <div className="flex flex-wrap gap-2 mt-1">
+                            <button 
+                                type="button"
+                                onClick={async () => {
+                                    setGpsLoading(true);
+                                    try {
+                                        const loc = await getCurrentLocation();
+                                        const lat = loc ? (typeof loc.lat === 'number' ? loc.lat : (loc as any).latitude) : undefined;
+                                        const lng = loc ? (typeof loc.lng === 'number' ? loc.lng : (loc as any).longitude) : undefined;
+                                        if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+                                            setNewAsset(prev => ({
+                                                ...prev,
+                                                gpsPin: { lat, lng }
+                                            }));
+                                            showToast.success(t(`GPS Coordinates Captured: ${lat.toFixed(6)}, ${lng.toFixed(6)}`));
+                                        } else {
+                                            showToast.error(t("Failed to capture location. Please check device permissions."));
+                                        }
+                                    } catch (err) {
+                                        showToast.error(t("Error capturing GPS coordinates."));
+                                    } finally {
+                                        setGpsLoading(false);
+                                    }
+                                }}
+                                disabled={gpsLoading}
+                                className="flex-1 min-w-[140px] flex items-center justify-center gap-1.5 py-2 px-3 border border-indigo-200 hover:border-indigo-300 dark:border-indigo-900 dark:hover:border-indigo-800 rounded-lg bg-indigo-50/50 hover:bg-indigo-50 dark:bg-indigo-950/20 dark:hover:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 text-xs font-semibold h-9 transition-colors disabled:opacity-50"
+                            >
+                                <MapPin size={14} className={gpsLoading ? "animate-bounce" : ""} />
+                                {gpsLoading ? t("Capturing GPS...") : t("Capture Device GPS")}
+                            </button>
+
+                            {jobSiteCoords && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
                                         setNewAsset(prev => ({
                                             ...prev,
-                                            gpsPin: { lat: loc.latitude, lng: loc.longitude }
+                                            gpsPin: { lat: jobSiteCoords.lat, lng: jobSiteCoords.lng }
                                         }));
-                                        showToast.success(t("GPS Coordinates Captured!"));
-                                    } else {
-                                        showToast.error(t("Failed to capture location. Please check device permissions."));
-                                    }
-                                } catch (err) {
-                                    showToast.error(t("Error capturing GPS coordinates."));
-                                } finally {
-                                    setGpsLoading(false);
-                                }
-                            }}
-                            disabled={gpsLoading}
-                            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 border border-indigo-200 hover:border-indigo-300 dark:border-indigo-900 dark:hover:border-indigo-800 rounded bg-indigo-50/50 hover:bg-indigo-50 dark:bg-indigo-950/20 dark:hover:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 text-xs font-semibold h-9 transition-colors disabled:opacity-50 mt-1"
-                        >
-                            <MapPin size={14} className={gpsLoading ? "animate-bounce" : ""} />
-                            {gpsLoading ? t("Capturing GPS...") : t("Capture Device GPS")}
-                        </button>
+                                        showToast.success(t("Populated from Job Site address!"));
+                                    }}
+                                    className="flex items-center justify-center gap-1.5 py-2 px-3 border border-emerald-200 hover:border-emerald-300 dark:border-emerald-900 dark:hover:border-emerald-800 rounded-lg bg-emerald-50/50 hover:bg-emerald-50 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 text-xs font-semibold h-9 transition-colors"
+                                    title={t("Use geocoded coordinates for this job's address")}
+                                >
+                                    <Navigation size={13} />
+                                    <span>{t("Use Job Site GPS")}</span>
+                                </button>
+                            )}
+
+                            {newAsset.gpsPin && (newAsset.gpsPin.lat !== 0 || newAsset.gpsPin.lng !== 0) && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setNewAsset(prev => ({ ...prev, gpsPin: undefined }));
+                                        showToast.info(t("GPS coordinates cleared."));
+                                    }}
+                                    className="flex items-center justify-center gap-1 py-2 px-3 border border-rose-200 hover:border-rose-300 dark:border-rose-900 rounded-lg bg-rose-50/50 hover:bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 text-xs font-semibold h-9 transition-colors"
+                                >
+                                    <X size={13} />
+                                    <span>{t("Clear GPS")}</span>
+                                </button>
+                            )}
+                        </div>
+
+                        {newAsset.gpsPin && typeof newAsset.gpsPin.lat === 'number' && typeof newAsset.gpsPin.lng === 'number' && (newAsset.gpsPin.lat !== 0 || newAsset.gpsPin.lng !== 0) && (
+                            <div className="flex items-center justify-between text-[11px] font-mono bg-indigo-50/50 dark:bg-indigo-950/30 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/50 mt-1">
+                                <span className="text-indigo-900 dark:text-indigo-200 font-bold flex items-center gap-1">
+                                    <MapPin size={12} className="text-indigo-600" />
+                                    {newAsset.gpsPin.lat.toFixed(6)}, {newAsset.gpsPin.lng.toFixed(6)}
+                                </span>
+                                <a 
+                                    href={`https://www.google.com/maps?q=${newAsset.gpsPin.lat},${newAsset.gpsPin.lng}`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-0.5 font-sans font-semibold"
+                                >
+                                    <span>{t("Preview Map")}</span>
+                                    <ExternalLink size={11} />
+                                </a>
+                            </div>
+                        )}
                     </div>
 
                     {/* Refrigeration Linking */}
@@ -4018,6 +5194,41 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     {newAsset.serialPhotoUrl ? (
                                         <>
                                             <img src={newAsset.serialPhotoUrl} alt="Serial" className="absolute inset-0 w-full h-full object-cover rounded-xl" />
+                                            <div className="absolute top-1 left-1 flex gap-1 z-10">
+                                                <button type="button" onClick={async (e) => {
+                                                    e.preventDefault(); e.stopPropagation();
+                                                    try {
+                                                        showToast.info("Scanning data plate with AI Vision...");
+                                                        const ocrData = await scanDataPlatePhoto(newAsset.serialPhotoUrl!, {
+                                                            brand: newAsset.brand,
+                                                            model: newAsset.model,
+                                                            serial: newAsset.serial,
+                                                            year: newAsset.year,
+                                                            tonnage: newAsset.tonnage ? String(newAsset.tonnage) : undefined,
+                                                            refrigerantType: newAsset.refrigerantType,
+                                                            electricityType: newAsset.electricityType,
+                                                            seerRating: newAsset.seerRating
+                                                        });
+                                                        setNewAsset(prev => ({
+                                                            ...prev,
+                                                            brand: prev.brand && prev.brand.trim() !== '' ? prev.brand : (ocrData.brand || prev.brand),
+                                                            model: prev.model && prev.model.trim() !== '' ? prev.model : (ocrData.model || prev.model),
+                                                            serial: prev.serial && prev.serial.trim() !== '' ? prev.serial : (ocrData.serial || prev.serial),
+                                                            year: prev.year && prev.year.trim() !== '' ? prev.year : (ocrData.year || prev.year),
+                                                            tonnage: prev.tonnage ? prev.tonnage : (ocrData.tonnage ? Number(ocrData.tonnage) : prev.tonnage),
+                                                            refrigerantType: prev.refrigerantType && prev.refrigerantType.trim() !== '' ? prev.refrigerantType : (ocrData.refrigerantType || prev.refrigerantType),
+                                                            electricityType: prev.electricityType && prev.electricityType.trim() !== '' ? prev.electricityType : (ocrData.electricityType || prev.electricityType),
+                                                            seerRating: prev.seerRating && prev.seerRating.trim() !== '' ? prev.seerRating : (ocrData.seerRating || prev.seerRating)
+                                                        }));
+                                                        showToast.success("AI Data Plate Vision scan complete!");
+                                                    } catch (err) {
+                                                        console.error("AI Data Plate OCR Failed:", err);
+                                                        showToast.error("Data plate OCR scan failed.");
+                                                    }
+                                                }} className="p-1 bg-primary-600 hover:bg-primary-700 text-white rounded-full shadow-md transition-transform hover:scale-110" title="Scan / Parse Data Plate with AI">
+                                                    <Sparkles size={12} />
+                                                </button>
+                                            </div>
                                             <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNewAsset({...newAsset, serialPhotoUrl: '', serialPhotoLabel: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
                                                 <X size={12}/>
                                             </button>
@@ -4054,6 +5265,41 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     {newAsset.unitTagPhotoUrl ? (
                                         <>
                                             <img src={newAsset.unitTagPhotoUrl} alt="Tag" className="absolute inset-0 w-full h-full object-cover rounded-xl" />
+                                            <div className="absolute top-1 left-1 flex gap-1 z-10">
+                                                <button type="button" onClick={async (e) => {
+                                                    e.preventDefault(); e.stopPropagation();
+                                                    try {
+                                                        showToast.info("Scanning data plate with AI Vision...");
+                                                        const ocrData = await scanDataPlatePhoto(newAsset.unitTagPhotoUrl!, {
+                                                            brand: newAsset.brand,
+                                                            model: newAsset.model,
+                                                            serial: newAsset.serial,
+                                                            year: newAsset.year,
+                                                            tonnage: newAsset.tonnage ? String(newAsset.tonnage) : undefined,
+                                                            refrigerantType: newAsset.refrigerantType,
+                                                            electricityType: newAsset.electricityType,
+                                                            seerRating: newAsset.seerRating
+                                                        });
+                                                        setNewAsset(prev => ({
+                                                            ...prev,
+                                                            brand: prev.brand && prev.brand.trim() !== '' ? prev.brand : (ocrData.brand || prev.brand),
+                                                            model: prev.model && prev.model.trim() !== '' ? prev.model : (ocrData.model || prev.model),
+                                                            serial: prev.serial && prev.serial.trim() !== '' ? prev.serial : (ocrData.serial || prev.serial),
+                                                            year: prev.year && prev.year.trim() !== '' ? prev.year : (ocrData.year || prev.year),
+                                                            tonnage: prev.tonnage ? prev.tonnage : (ocrData.tonnage ? Number(ocrData.tonnage) : prev.tonnage),
+                                                            refrigerantType: prev.refrigerantType && prev.refrigerantType.trim() !== '' ? prev.refrigerantType : (ocrData.refrigerantType || prev.refrigerantType),
+                                                            electricityType: prev.electricityType && prev.electricityType.trim() !== '' ? prev.electricityType : (ocrData.electricityType || prev.electricityType),
+                                                            seerRating: prev.seerRating && prev.seerRating.trim() !== '' ? prev.seerRating : (ocrData.seerRating || prev.seerRating)
+                                                        }));
+                                                        showToast.success("AI Data Plate Vision scan complete!");
+                                                    } catch (err) {
+                                                        console.error("AI Data Plate OCR Failed:", err);
+                                                        showToast.error("Data plate OCR scan failed.");
+                                                    }
+                                                }} className="p-1 bg-primary-600 hover:bg-primary-700 text-white rounded-full shadow-md transition-transform hover:scale-110" title="Scan / Parse Data Plate with AI">
+                                                    <Sparkles size={12} />
+                                                </button>
+                                            </div>
                                             <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setNewAsset({...newAsset, unitTagPhotoUrl: '', unitTagPhotoLabel: ''}); }} className="absolute top-1 right-1 p-1 bg-red-600 hover:bg-red-700 text-white rounded-full z-10 shadow-md transition-transform hover:scale-110" title="Remove Photo" aria-label="Remove Photo">
                                                 <X size={12}/>
                                             </button>
@@ -4237,6 +5483,63 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 </div>
             </Modal>
         )}
+
+        {/* 4 Dedicated Standalone Modals for Master Job Actions */}
+        <JobChecklistsModal
+            isOpen={isChecklistsModalOpen}
+            onClose={() => setIsChecklistsModalOpen(false)}
+            job={job}
+            workflowState={workflowState}
+            onUpdateWorkflowState={updateWorkflowState}
+        />
+
+        <JobProposalsModal
+            isOpen={isProposalsModalOpen}
+            onClose={() => setIsProposalsModalOpen(false)}
+            job={job}
+            unitStates={workflowState.unitStates || []}
+            onOpenProposalGenerator={(forceNew?: boolean) => handleBuildProposal(forceNew)}
+            onAddProposalLineItem={(item) => {
+                const currentInvoice = job.invoice || { id: `inv_${Date.now()}`, status: 'Unpaid', items: [], subtotal: 0, taxRate: 0, taxAmount: 0, totalAmount: 0, amount: 0 };
+                const newItems = [...(currentInvoice.items || []), { id: `li_${Date.now()}`, name: item.name, amount: item.price, quantity: 1, total: item.price, description: item.name }];
+                const newSubtotal = newItems.reduce((sum: number, i: any) => sum + (i.total || i.amount || 0), 0);
+                const effectiveTaxRate = typeof currentInvoice.taxRate === 'number' ? currentInvoice.taxRate : 0;
+                const newTax = typeof currentInvoice.taxAmount === 'number' && currentInvoice.taxAmount > 0 ? currentInvoice.taxAmount : newSubtotal * effectiveTaxRate;
+                const newTotal = newSubtotal + newTax;
+                handleJobUpdate({
+                    visitType: 'Diagnostic & Repair',
+                    invoice: {
+                        ...currentInvoice,
+                        items: newItems,
+                        subtotal: newSubtotal,
+                        taxAmount: newTax,
+                        totalAmount: newTotal,
+                        amount: newTotal
+                    }
+                });
+            }}
+        />
+
+        <JobToolsModal
+            isOpen={isToolsModalOpen}
+            onClose={() => setIsToolsModalOpen(false)}
+            job={job}
+            workflowState={workflowState}
+            onUpdateWorkflowState={updateWorkflowState}
+        />
+
+        <JobBillingModal
+            isOpen={isBillingModalOpen}
+            onClose={() => setIsBillingModalOpen(false)}
+            job={job}
+            workflowState={workflowState}
+            unitStates={workflowState.unitStates || []}
+            onUpdateWorkflowState={updateWorkflowState}
+            onCompleteJob={() => handleLeaveSite()}
+            onOpenJobRecordReview={() => setIsJobRecordReviewOpen(true)}
+            onOpenInvoiceEditor={(forceNew) => handleInvoiceClick(forceNew)}
+        />
+        </div>
         </>
     );
 };

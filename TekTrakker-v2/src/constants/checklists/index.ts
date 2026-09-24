@@ -139,31 +139,26 @@ export const CHECKLISTS: Record<string, {name: string, items: Omit<InspectionTem
     ],
     General: [
         {
-            name: "General Contractor - Safety & Pre-Construction",
+            name: "Handyman - Pre-Job Setup & Safety Audit",
             items: [
-                { label: "Verify site permits and zoning notices are physically posted.", type: "PassFail", required: true },
-                { label: "Check sub-contractor COIs (Certificates of Insurance) on file.", type: "PassFail", required: true },
-                { label: "Establish temporary power and water hookups.", type: "PassFail", required: true },
-                { label: "Erect dust barriers (ZipWalls) and set up HEPA negative air scrubbers.", type: "PassFail", required: true },
-                { label: "Cover all HVAC supply/return registers in the active zone.", type: "PassFail", required: true },
-                { label: "Lay Ram Board or heavy drop cloths across client traffic paths.", type: "PassFail", required: true },
-                { label: "Conduct lead/asbestos testing if property built pre-1978.", type: "Textarea", required: true },
-                { label: "Take 360-degree 'Before' photos of all rooms involved.", type: "Photo", required: true },
-                { label: "Review timeline milestones and daily working hours with homeowner.", type: "Textarea", required: true }
+                { label: "Review customer work order request details and verify scope of work.", type: "Textarea", required: true },
+                { label: "Inspect job area for existing structural, wall, or floor damage.", type: "Photo", required: true },
+                { label: "Verify wall stud location and electrical cable clearance for mounting/drilling.", type: "PassFail", required: true },
+                { label: "Confirm water or electrical shutoff locations if working near utility lines.", type: "PassFail", required: true },
+                { label: "Set up drop cloths and floor protection along primary access path.", type: "PassFail", required: true },
+                { label: "Unpack customer-provided hardware or fixtures and confirm all parts are present.", type: "PassFail", required: true }
             ]
         },
         {
-            name: "General Contractor - Punch List & Demobilization",
+            name: "Handyman - Post-Job Quality & Cleanup Verification",
             items: [
-                { label: "Execute critical phase inspections (framing, rough-in) passed by city.", type: "PassFail", required: true },
-                { label: "Review final punch list to ensure zero incomplete trim or paint tasks.", type: "Textarea", required: true },
-                { label: "Test all new doors and windows for smooth sliding and locking.", type: "PassFail", required: true },
-                { label: "Remove all ZipWalls and dust barriers without damaging existing paint.", type: "PassFail", required: true },
-                { label: "Perform deep clean of the area (HEPA vacuuming, wiping surfaces).", type: "PassFail", required: true },
-                { label: "Remove dumpsters and portable toilets from the property.", type: "PassFail", required: true },
-                { label: "Hand over all warranty packets and appliance manuals to the client.", type: "PassFail", required: true },
-                { label: "Perform final client walkthrough and collect sign-off signature.", type: "PassFail", required: true },
-                { label: "Capture final 'After' showcase photos for the portfolio.", type: "Photo", required: true }
+                { label: "Test mounted TV, shelf, or fixture with weight/level check.", type: "PassFail", required: true },
+                { label: "Operate repaired door, drawer, lock, or window through full range of motion.", type: "PassFail", required: true },
+                { label: "Check all plumbing/electrical connections for leaks, loose wires, or heat.", type: "PassFail", required: true },
+                { label: "Vacuum all drywall dust, wood shavings, and packaging remnants.", type: "PassFail", required: true },
+                { label: "Reinstall any removed hardware, outlet covers, or trim.", type: "PassFail", required: true },
+                { label: "Walk customer through completed work and demonstrate operation.", type: "PassFail", required: true },
+                { label: "Final photo of clean, completed work area.", type: "Photo", required: true }
             ]
         }
     ],
@@ -225,6 +220,17 @@ export const CHECKLISTS: Record<string, {name: string, items: Omit<InspectionTem
                 { label: "Walk the perimeter with the client for final touch-up signoff.", type: "PassFail", required: true },
                 { label: "Photo of the completed and cleaned focus wall.", type: "Photo", required: true }
             ]
+        },
+        {
+            name: "Painting - Exterior Prep & Specialty Coating Commissioning",
+            items: [
+                { label: "Pressure wash exterior siding and masonry to eliminate mildew, chalk, and dirt.", type: "PassFail", required: true },
+                { label: "Scrape, wire-brush, and prime bare wood and rusty metal railings with DTM primer.", type: "PassFail", required: true },
+                { label: "Caulk exterior window/door casings with 50-year elastomeric sealant.", type: "PassFail", required: true },
+                { label: "Verify ambient surface temperature and humidity meet coating specs.", type: "Text", required: true },
+                { label: "Inspect epoxy floor or cabinet refinishing cure time before footprint/contact.", type: "PassFail", required: true },
+                { label: "Final photo of exterior elevation or refinished surface.", type: "Photo", required: true }
+            ]
         }
     ],
     Roofing: [
@@ -259,6 +265,20 @@ export const CHECKLISTS: Record<string, {name: string, items: Omit<InspectionTem
     ],
     Contracting: [
         {
+            name: "General Contractor - Safety & Pre-Construction",
+            items: [
+                { label: "Verify site permits and zoning notices are physically posted.", type: "PassFail", required: true },
+                { label: "Check sub-contractor COIs (Certificates of Insurance) on file.", type: "PassFail", required: true },
+                { label: "Establish temporary power and water hookups.", type: "PassFail", required: true },
+                { label: "Erect dust barriers (ZipWalls) and set up HEPA negative air scrubbers.", type: "PassFail", required: true },
+                { label: "Cover all HVAC supply/return registers in the active zone.", type: "PassFail", required: true },
+                { label: "Lay Ram Board or heavy drop cloths across client traffic paths.", type: "PassFail", required: true },
+                { label: "Conduct lead/asbestos testing if property built pre-1978.", type: "Textarea", required: true },
+                { label: "Take 360-degree 'Before' photos of all rooms involved.", type: "Photo", required: true },
+                { label: "Review timeline milestones and daily working hours with homeowner.", type: "Textarea", required: true }
+            ]
+        },
+        {
             name: "Contracting - Code Compliance & Structural Review",
             items: [
                 { label: "Review approved blueprints against actual framed dimensions.", type: "Textarea", required: true },
@@ -269,6 +289,20 @@ export const CHECKLISTS: Record<string, {name: string, items: Omit<InspectionTem
                 { label: "Verify HVAC ductwork is insulated and sealed with mastic.", type: "PassFail", required: true },
                 { label: "Call in municipal inspector for rough-in signoff.", type: "PassFail", required: true },
                 { label: "Take pre-drywall photos documenting all in-wall utilities.", type: "Photo", required: true }
+            ]
+        },
+        {
+            name: "General Contractor - Punch List & Demobilization",
+            items: [
+                { label: "Execute critical phase inspections (framing, rough-in) passed by city.", type: "PassFail", required: true },
+                { label: "Review final punch list to ensure zero incomplete trim or paint tasks.", type: "Textarea", required: true },
+                { label: "Test all new doors and windows for smooth sliding and locking.", type: "PassFail", required: true },
+                { label: "Remove all ZipWalls and dust barriers without damaging existing paint.", type: "PassFail", required: true },
+                { label: "Perform deep clean of the area (HEPA vacuuming, wiping surfaces).", type: "PassFail", required: true },
+                { label: "Remove dumpsters and portable toilets from the property.", type: "PassFail", required: true },
+                { label: "Hand over all warranty packets and appliance manuals to the client.", type: "PassFail", required: true },
+                { label: "Perform final client walkthrough and collect sign-off signature.", type: "PassFail", required: true },
+                { label: "Capture final 'After' showcase photos for the portfolio.", type: "Photo", required: true }
             ]
         },
         {
@@ -332,6 +366,9 @@ export const CHECKLISTS: Record<string, {name: string, items: Omit<InspectionTem
             items: [
                 { label: "Terminate all endpoints using T568A or T568B consistency.", type: "PassFail", required: true },
                 { label: "Run Fluke/Certifier tests on all lines for crosstalk and attenuation losses.", type: "Textarea", required: true },
+                { label: "Perform Wi-Fi spectrum heatmap survey and verify coverage in high-density areas.", type: "PassFail", required: true },
+                { label: "Verify server rack grounding busbar connection to main GEC.", type: "PassFail", required: true },
+                { label: "Perform UPS battery load test under simulated power outage.", type: "PassFail", required: true },
                 { label: "Apply printed logic labels to both ends of every cable.", type: "PassFail", required: true },
                 { label: "Dress cables in the rack using velcro straps (not zip-ties compressing jackets).", type: "PassFail", required: true },
                 { label: "Seal all wall penetrations with approved fire-block.", type: "PassFail", required: true },
@@ -392,7 +429,8 @@ export const CHECKLISTS: Record<string, {name: string, items: Omit<InspectionTem
                 { label: "Change default administrator passwords to complex physical credentials.", type: "PassFail", required: true },
                 { label: "Aim and focus all camera lenses; wipe outer glass to prevent IR reflection.", type: "PassFail", required: true },
                 { label: "Adjust motion detection zones to ignore high traffic public sidewalks/trees.", type: "Textarea", required: true },
-                { label: "Test panic buttons and verify command center dispatch signal.", type: "PassFail", required: true },
+                { label: "Test access control egress hardware (crash bars, maglocks, REX sensors) for free exit.", type: "PassFail", required: true },
+                { label: "Trigger intrusion alarm panic buttons and verify central station dispatch test.", type: "PassFail", required: true },
                 { label: "Clean up drywall dust and packaging from all room sensors.", type: "PassFail", required: true },
                 { label: "Guide client in setting up geofencing on their mobile app.", type: "PassFail", required: true },
                 { label: "Verify 30-day loop recording functionality is activated.", type: "PassFail", required: true },
@@ -431,3 +469,6 @@ export const CHECKLISTS: Record<string, {name: string, items: Omit<InspectionTem
         }
     ]
 };
+
+// Aliases for trade name variations
+CHECKLISTS['General Contracting'] = CHECKLISTS['Contracting'];

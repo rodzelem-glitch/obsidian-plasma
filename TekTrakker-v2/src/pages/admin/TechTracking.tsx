@@ -17,7 +17,7 @@ const TechTracking: React.FC = () => {
     
     console.log("[TechTracking-Debug] State Subcontractors:", state.subcontractors, "State Users:", state.users?.length, state.users);
     
-    const WORKFORCE_ROLES = new Set(['employee', 'both', 'supervisor', 'technician', 'subcontractor', 'admin']);
+    const WORKFORCE_ROLES = new Set(['employee', 'both', 'supervisor', 'technician', 'subcontractor', 'admin', 'master_admin']);
 
     const allTechs = useMemo(() => {
         const linkedSubOrgIds = (state.subcontractors || [])
@@ -30,7 +30,8 @@ const TechTracking: React.FC = () => {
                 allowedOrgIds.has(u.organizationId) && 
                 u.status !== 'archived' &&
                 WORKFORCE_ROLES.has((u.role || '').toLowerCase()) &&
-                (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id)
+                (currentUser?.role !== 'supervisor' || u.reportsTo === currentUser?.id || u.id === currentUser?.id) &&
+                Boolean((u.firstName || '').trim() || (u.lastName || '').trim() || (u.email || '').trim() || (u as any).displayName || (u as any).name)
             )
             .map((u: User) => {
                 const hasLocation = !!u.location;

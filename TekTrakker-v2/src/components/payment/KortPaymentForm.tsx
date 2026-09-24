@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import Button from '../ui/Button';
 import { Loader2 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { SiteSealEmbed } from './SiteSealEmbed';
 
 // Use the global Payments object injected by the script in index.html
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -10,15 +11,17 @@ declare var Payments: any;
 
 interface KortPaymentFormProps {
     amount: number; // in dollars
+    tipAmount?: number;
     jobId: string;
     accountId?: string;
     organizationId?: string;
     organization?: any;
-    onSuccess?: (paymentId: string, fee?: number, feeName?: string) => void;
+    onSuccess?: (paymentId: string, fee?: number, feeName?: string, tip?: number) => void;
     onError?: (error: string) => void;
 }
 
-export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId, accountId, organizationId, organization, onSuccess, onError }) => {
+export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, tipAmount = 0, jobId, accountId, organizationId, organization, onSuccess, onError }) => {
+    const isSubmittingRef = useRef(false);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [paymentsInstance, setPaymentsInstance] = useState<any>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -55,8 +58,8 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
     fee = Math.round(fee * 100) / 100;
     const totalAmount = amount + fee;
 
-    const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY;
-    const activeAccountId = accountId || import.meta.env.VITE_KORT_ACCOUNT_ID;
+    const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY || organization?.kortPublishableKey || 'pk_rYhq97y3dI980o5n7f';
+    const activeAccountId = accountId || organization?.kortAccountId || import.meta.env.VITE_KORT_ACCOUNT_ID || 'acct_80k1rF6Qk1jB3devSmfv7';
     const isSandbox = !publishableKey || !publishableKey.startsWith('pk_rYhq');
 
     useEffect(() => {
@@ -208,8 +211,10 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
     }, [publishableKey, activeAccountId, paymentMethod]);
 
     const handlePayment = async () => {
+        if (isSubmittingRef.current) return;
         if (!paymentsInstance || (!paymentForm && paymentMethod !== 'ach_debit')) return;
 
+        isSubmittingRef.current = true;
         setIsProcessing(true);
         setError(null);
 
@@ -217,6 +222,7 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
             // 1. Get Payment Intent from our backend
             const functions = getFunctions();
             const createIntent = httpsCallable(functions, 'createKortPaymentIntent');
+            const baseAmount = Math.max(0, Math.round((amount - (tipAmount || 0)) * 100) / 100);
             const intentRes = await createIntent({
                 amount: totalAmount,
                 currency: 'usd',
@@ -225,7 +231,8 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
                 jobId: jobId,
                 paymentMethodType: paymentMethod,
                 metadata: {
-                    originalAmount: amount,
+                    originalAmount: baseAmount,
+                    tipAmount: tipAmount || 0,
                     processingFee: fee
                 }
             });
@@ -282,7 +289,7 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
                 });
                 const achData = achResult.data as any;
                 if (achData.success) {
-                    if (onSuccess) onSuccess(achData.id || 'ach_payment', fee, 'ACH Bank Transfer Fee');
+                    if (onSuccess) onSuccess(achData.id || 'ach_payment', fee, 'ACH Bank Transfer Fee', tipAmount || 0);
                     return;
                 } else {
                     throw new Error('ACH payment failed.');
@@ -304,7 +311,7 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
                     console.log('Tilled successful result payload:', result);
                 }
                 const feeName = paymentMethod === 'card' ? 'Credit Card Processing Fee' : 'ACH Bank Transfer Fee';
-                onSuccess(intentId, fee, feeName);
+                onSuccess(intentId, fee, feeName, tipAmount || 0);
             }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (err: any) {
@@ -316,6 +323,7 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
             setError(errorMessage);
             if (onError) onError(errorMessage);
         } finally {
+            isSubmittingRef.current = false;
             setIsProcessing(false);
         }
     };
@@ -327,10 +335,23 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
             </h3>
             
             <div className="mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-4">
-                <div className="flex justify-between items-center text-sm mb-2 text-slate-500">
-                    <span>Subtotal</span>
-                    <span>${amount.toFixed(2)}</span>
-                </div>
+                {tipAmount > 0 ? (
+                    <>
+                        <div className="flex justify-between items-center text-sm mb-2 text-slate-500">
+                            <span>Payment Amount</span>
+                            <span>${(amount - tipAmount).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm mb-2 text-emerald-600 font-medium">
+                            <span>Technician Tip</span>
+                            <span>${tipAmount.toFixed(2)}</span>
+                        </div>
+                    </>
+                ) : (
+                    <div className="flex justify-between items-center text-sm mb-2 text-slate-500">
+                        <span>Subtotal</span>
+                        <span>${amount.toFixed(2)}</span>
+                    </div>
+                )}
                 {fee > 0 && (
                     <div className="flex justify-between items-center text-sm mb-2 text-slate-500">
                         <span>Processing Fee</span>
@@ -537,7 +558,7 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
                 className="w-full" 
                 size="lg" 
                 onClick={handlePayment} 
-                disabled={isProcessing || (!paymentForm && paymentMethod !== 'ach_debit') || !!error}
+                disabled={isProcessing || (!paymentForm && paymentMethod !== 'ach_debit')}
             >
                 {isProcessing ? (
                     <>
@@ -555,6 +576,12 @@ export const KortPaymentForm: React.FC<KortPaymentFormProps> = ({ amount, jobId,
                 </svg>
                 Payments are secure and encrypted
             </p>
+
+            {organization?.pciComplianceSealHtml && (
+                <div className="mt-3 flex justify-center">
+                    <SiteSealEmbed sealHtml={organization.pciComplianceSealHtml} />
+                </div>
+            )}
         </div>
     );
 };

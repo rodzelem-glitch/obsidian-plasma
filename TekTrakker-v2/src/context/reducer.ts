@@ -1,4 +1,5 @@
 import { initialState, type AppState } from './state';
+import { getOrGenerateAccountNumber, sanitizeCustomer } from '../lib/utils';
 import type { 
     User, Organization, Job, Customer, Appointment, 
     PartOrder, Proposal, InventoryItem, 
@@ -65,7 +66,7 @@ export type Action =
     | { type: 'SET_NOTIFICATIONS'; payload: Notification[] }
     | { type: 'ADD_NOTIFICATION'; payload: Notification }
     | { type: 'MARK_ALL_READ'; payload?: any }
-    | { type: 'MARK_NOTIFICATION_READ'; payload: string }
+    | { type: 'MARK_NOTIFICATION_READ'; payload: string | { id: string; userId?: string; userEmail?: string } }
     | { type: 'SET_INCIDENTS'; payload: IncidentReport[] }
     | { type: 'ADD_INCIDENT'; payload: any }
     | { type: 'UPDATE_INCIDENT'; payload: any }
@@ -123,7 +124,9 @@ export type Action =
     | { type: 'DELETE_NOTIFICATION'; payload: string }
     | { type: 'UPDATE_SHIFT_LOG'; payload: { userId: string, log: ShiftLog } }
     | { type: 'ADD_SHIFT_LOG'; payload: { userId: string, log: ShiftLog } }
+    | { type: 'DELETE_SHIFT_LOG'; payload: { userId: string, logId: string } }
     | { type: 'SET_SHIFT_LOGS'; payload: { userId: string, logs: ShiftLog[] } }
+    | { type: 'SET_ALL_SHIFT_LOGS'; payload: Record<string, ShiftLog[]> }
     | { type: 'SET_VEHICLES'; payload: Vehicle[] }
     | { type: 'UPDATE_VEHICLE'; payload: any }
     | { type: 'ADD_VEHICLE'; payload: any }
@@ -214,11 +217,28 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'SYNC_ALL_ORGS': return { ...state, allOrganizations: action.payload };
         case 'SET_FRANCHISES': return { ...state, franchises: action.payload };
         case 'UPDATE_ORGANIZATION': return { ...state, currentOrganization: state.currentOrganization?.id === action.payload.id ? action.payload : state.currentOrganization, allOrganizations: state.allOrganizations.map(o => o.id === action.payload.id ? action.payload : o) };
-        case 'SET_CUSTOMERS': return { ...state, customers: action.payload };
-        case 'ADD_CUSTOMER': 
+        case 'SET_CUSTOMERS': return { 
+            ...state, 
+            customers: (action.payload || []).map(c => sanitizeCustomer({
+                ...c,
+                accountNumber: c.accountNumber || getOrGenerateAccountNumber(c)
+            }))
+        };
+        case 'ADD_CUSTOMER': {
             if (state.customers.some(c => c.id === action.payload.id)) return state;
-            return { ...state, customers: [...state.customers, action.payload] };
-        case 'UPDATE_CUSTOMER': return { ...state, customers: state.customers.map(c => c.id === action.payload.id ? { ...c, ...action.payload } : c) };
+            const newCust = sanitizeCustomer({
+                ...action.payload,
+                accountNumber: action.payload.accountNumber || getOrGenerateAccountNumber(action.payload)
+            });
+            return { ...state, customers: [...state.customers, newCust] };
+        }
+        case 'UPDATE_CUSTOMER': return { 
+            ...state, 
+            customers: state.customers.map(c => c.id === action.payload.id 
+                ? sanitizeCustomer({ ...c, ...action.payload, accountNumber: action.payload.accountNumber || c.accountNumber || getOrGenerateAccountNumber({ ...c, ...action.payload }) }) 
+                : c
+            ) 
+        };
         case 'DELETE_CUSTOMER': return { ...state, customers: state.customers.filter(c => c.id !== action.payload) };
         case 'DELETE_MESSAGE': return { ...state, messages: state.messages.filter(m => m.id !== action.payload) };
         case 'DELETE_NOTIFICATION': return { ...state, notifications: state.notifications.filter(n => n.id !== action.payload) };
@@ -301,8 +321,34 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'UPDATE_PROJECT': return { ...state, projects: state.projects.map(p => p.id === action.payload.id ? { ...p, ...action.payload } : p) };
         case 'DELETE_PROJECT': return { ...state, projects: state.projects.filter(p => p.id !== action.payload) };
         case 'SYNC_DATA': return { ...state, ...action.payload };
-        case 'MARK_ALL_READ': return { ...state, notifications: state.notifications.map(n => ({ ...n, read: true })) };
-        case 'MARK_NOTIFICATION_READ': return { ...state, notifications: state.notifications.map(n => n.id === action.payload ? { ...n, read: true } : n) };
+        case 'MARK_ALL_READ': {
+            const targetUserId = typeof action.payload === 'string' ? action.payload : action.payload?.userId;
+            const targetUserEmail = typeof action.payload === 'object' ? action.payload?.userEmail : undefined;
+            return {
+                ...state,
+                notifications: state.notifications.map(n => {
+                    const readBy = Array.isArray(n.readBy) ? [...n.readBy] : [];
+                    if (targetUserId && !readBy.includes(targetUserId)) readBy.push(targetUserId);
+                    if (targetUserEmail && !readBy.includes(targetUserEmail)) readBy.push(targetUserEmail);
+                    return { ...n, read: true, readBy };
+                })
+            };
+        }
+        case 'MARK_NOTIFICATION_READ': {
+            const targetId = typeof action.payload === 'string' ? action.payload : action.payload?.id;
+            const targetUserId = typeof action.payload === 'object' ? action.payload?.userId : undefined;
+            const targetUserEmail = typeof action.payload === 'object' ? action.payload?.userEmail : undefined;
+            return {
+                ...state,
+                notifications: state.notifications.map(n => {
+                    if (n.id !== targetId) return n;
+                    const readBy = Array.isArray(n.readBy) ? [...n.readBy] : [];
+                    if (targetUserId && !readBy.includes(targetUserId)) readBy.push(targetUserId);
+                    if (targetUserEmail && !readBy.includes(targetUserEmail)) readBy.push(targetUserEmail);
+                    return { ...n, read: true, readBy };
+                })
+            };
+        }
         case 'SET_MEMBERSHIP_PLANS': return { ...state, membershipPlans: action.payload };
         case 'UPDATE_MEMBERSHIP_PLAN': return { ...state, membershipPlans: state.membershipPlans.map(p => p.id === action.payload.id ? { ...p, ...action.payload } : p) };
         case 'SET_AGREEMENTS': return { ...state, serviceAgreements: action.payload };
@@ -342,20 +388,48 @@ export const appReducer = (state: AppState, action: Action): AppState => {
         case 'DELETE_SHOP_ORDER': return { ...state, shopOrders: state.shopOrders.filter(o => o.id !== action.payload) };
         case 'UPDATE_SHIFT_LOG': {
             const { userId, log } = action.payload;
-            const userLogs = state.shiftLogs[userId] || [];
+            const currentShiftLogsMap: Record<string, ShiftLog[]> = Array.isArray(state.shiftLogs) ? {} : (state.shiftLogs || {});
+            const userLogs = currentShiftLogsMap[userId] || [];
             const updatedUserLogs = userLogs.map(s => s.id === log.id ? log : s);
             if (!userLogs.find(s => s.id === log.id)) updatedUserLogs.push(log);
-            return { ...state, shiftLogs: { ...state.shiftLogs, [userId]: updatedUserLogs } };
+            return { ...state, shiftLogs: { ...currentShiftLogsMap, [userId]: updatedUserLogs } };
         }
         case 'ADD_SHIFT_LOG': {
             const { userId, log } = action.payload;
-            const userLogs = state.shiftLogs[userId] || [];
+            const currentShiftLogsMap: Record<string, ShiftLog[]> = Array.isArray(state.shiftLogs) ? {} : (state.shiftLogs || {});
+            const userLogs = currentShiftLogsMap[userId] || [];
             if (userLogs.some(s => s.id === log.id)) return state;
-            return { ...state, shiftLogs: { ...state.shiftLogs, [userId]: [...userLogs, log] } };
+            return { ...state, shiftLogs: { ...currentShiftLogsMap, [userId]: [...userLogs, log] } };
+        }
+        case 'DELETE_SHIFT_LOG': {
+            const { userId, logId } = action.payload;
+            const currentShiftLogsMap: Record<string, ShiftLog[]> = Array.isArray(state.shiftLogs) ? {} : (state.shiftLogs || {});
+            const userLogs = currentShiftLogsMap[userId] || [];
+            const updatedUserLogs = userLogs.filter(s => s.id !== logId);
+            return { ...state, shiftLogs: { ...currentShiftLogsMap, [userId]: updatedUserLogs } };
         }
         case 'SET_SHIFT_LOGS': {
             const { userId, logs } = action.payload;
-            return { ...state, shiftLogs: { ...state.shiftLogs, [userId]: logs } };
+            const currentShiftLogsMap: Record<string, ShiftLog[]> = Array.isArray(state.shiftLogs) ? {} : (state.shiftLogs || {});
+            return { ...state, shiftLogs: { ...currentShiftLogsMap, [userId]: logs } };
+        }
+        case 'SET_ALL_SHIFT_LOGS': {
+            const currentShiftLogsMap: Record<string, ShiftLog[]> = Array.isArray(state.shiftLogs) ? {} : (state.shiftLogs || {});
+            const merged: Record<string, ShiftLog[]> = { ...action.payload };
+            // Preserve active (un-clocked-out) shifts for all users so incoming org snapshots never silently drop an in-progress clock-in
+            Object.keys(currentShiftLogsMap).forEach(uid => {
+                const activeShifts = (currentShiftLogsMap[uid] || []).filter(s => !s.clockOut);
+                if (activeShifts.length > 0) {
+                    const serverList = [...(merged[uid] || [])];
+                    activeShifts.forEach(activeS => {
+                        if (!serverList.some(s => s.id === activeS.id)) {
+                            serverList.push(activeS);
+                        }
+                    });
+                    merged[uid] = serverList;
+                }
+            });
+            return { ...state, shiftLogs: merged };
         }
         case 'SET_VEHICLES': return { ...state, vehicles: action.payload };
         case 'UPDATE_VEHICLE': return { ...state, vehicles: state.vehicles.map(v => v.id === action.payload.id ? { ...v, ...action.payload } : v) };

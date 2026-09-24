@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import IoTDiagnosticsViewer from '../features/IoTDiagnosticsViewer';
 import CompanyCamGallery from '../features/CompanyCamGallery';
 import Modal from '../ui/Modal';
@@ -7,8 +7,8 @@ import {
     Calendar, MapPin, Clock, CheckCircle, Package, 
     ShieldCheck, FileText, Droplets, 
     Thermometer, Wrench, DollarSign, Printer, Download,
-    Check, Shield, Trash2, ChevronUp, ChevronDown, Mail, Heart, Info, Eye,
-    CalendarPlus, Users, Link2
+    Check, Shield, Trash2, ChevronUp, ChevronDown, Mail, Heart, Info, Eye, Edit,
+    CalendarPlus, Users, Link2, Send, Archive, ShieldAlert, CheckCircle2, Camera, Phone, AlertTriangle, Compass, ExternalLink
 } from 'lucide-react';
 import { Job, Proposal, DiagnosticReport } from '../../types';
 import Button from '../ui/Button';
@@ -19,12 +19,28 @@ import firebase from 'firebase/compat/app';
 import DocumentPreview from '../ui/DocumentPreview';
 import { useAppContext } from '../../context/AppContext';
 import { sendEmail } from '../../lib/notificationService';
-import { cleanUndefinedFields } from '../../lib/utils';
-import { generateJobReportPdfAttachment, generateInvoicePdfAttachment, EmailAttachment } from '../../lib/pdfHelper';
+import showToast from '../../lib/toast';
+import { cleanUndefinedFields, formatDisplayId, hasPermission, safeFormatDateTimeString, safeFormatDateString, safeFormatTimeString, formatFullAddress, getAddressLines, isInternalExpenseFile, isFilePhoto, resolveServiceLocation, checkJobHasVerifiedEquipmentSerial, resolveSiteLocationName } from '../../lib/utils';
+import { extractJobSlug } from '../../lib/numbering';
+import { generateJobReportPdfAttachment, generateJobReportHtml, generateInvoicePdfAttachment, EmailAttachment, getStandardPdfFilename, downloadStandaloneSignOffPdf } from '../../lib/pdfHelper';
 import JobAppointmentModal from './JobAppointmentModal';
 import JobLinkingModal from './JobLinkingModal';
 import DigitalSignatureStamp from '../ui/DigitalSignatureStamp';
+import { PrintableFormPreviewModal } from './PrintableFormPreviewModal';
+import { globalConfirm } from '../../lib/globalConfirm';
+import SubcontractorWorkOrderModal from './SubcontractorWorkOrderModal';
+import { isValidPoNumber } from '../../lib/linkedJobsHelper';
+import OneClickCheckInWidget from '../ui/OneClickCheckInWidget';
+import CommercialWorkOrderProcessGuide from '../ui/CommercialWorkOrderProcessGuide';
+import { getJobTimeSummary, formatDateTimeForInput } from '../../lib/jobTimeHelper';
 
+
+import LocationAuditModal from './LocationAuditModal';
+import UnitWorkModal from '../../pages/briefing/components/UnitWorkModal';
+import SendEmailModal from './SendEmailModal';
+import IssueWarrantyModal from './IssueWarrantyModal';
+import SubcontractorChargebackModal from './SubcontractorChargebackModal';
+import type { Subcontractor } from '../../types';
 
 interface JobDetailModalProps {
     isOpen: boolean;
@@ -33,12 +49,16 @@ interface JobDetailModalProps {
     isAdmin?: boolean;
     onEditInvoice?: () => void;
     onEditRecord?: () => void;
+    isReviewMode?: boolean;
+    onSignOffJobRecord?: (signedOffBy: string, notes?: string) => void;
+    isJobRecordSignedOff?: boolean;
 }
 
 interface ExtendedFile {
     id?: string;
     dataUrl?: string;
     url?: string;
+    fileUrl?: string;
     label?: string;
     contentType?: string;
     fileType?: string;
@@ -48,9 +68,48 @@ interface ExtendedFile {
     createdAt?: string | number;
 }
 
+const normalizeUnitStates = (raw: any): any[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'object') {
+        return Object.entries(raw).map(([key, val]) => {
+            if (val && typeof val === 'object') {
+                return { assetId: key, ...(val as any) };
+            }
+            return { assetId: key, health: val, healthBefore: val };
+        });
+    }
+    return [];
+};
+
+const extractJobNotes = (targetJob: any): Record<string, string> => {
+    if (!targetJob) return {};
+    const rawNotes = targetJob.notes;
+    const initialNotes: Record<string, string> = typeof rawNotes === 'object' && rawNotes !== null ? { ...rawNotes } : {};
+    if (typeof rawNotes === 'string' && rawNotes && !initialNotes.work && !initialNotes.workNotes) {
+        initialNotes.work = rawNotes;
+        initialNotes.workNotes = rawNotes;
+    }
+    if (targetJob.arrivalNotes && !initialNotes.arrival) initialNotes.arrival = targetJob.arrivalNotes;
+    if ((targetJob.diagnosisNotes || targetJob.diagnosis) && !initialNotes.diagnosis) initialNotes.diagnosis = targetJob.diagnosisNotes || targetJob.diagnosis;
+    if ((targetJob.workNotes || targetJob.workPerformedNotes) && !initialNotes.work) {
+        initialNotes.work = targetJob.workNotes || targetJob.workPerformedNotes;
+        initialNotes.workNotes = targetJob.workNotes || targetJob.workPerformedNotes;
+    }
+    if (targetJob.completionNotes && !initialNotes.completion) initialNotes.completion = targetJob.completionNotes;
+    if (targetJob.customerFeedback && !initialNotes.customerFeedback) initialNotes.customerFeedback = targetJob.customerFeedback;
+    if ((targetJob.employeeFeedback || targetJob.technicianNotes || targetJob.internalNotes) && !initialNotes.employeeFeedback) {
+        const fb = targetJob.employeeFeedback || targetJob.technicianNotes || targetJob.internalNotes;
+        initialNotes.employeeFeedback = fb;
+        initialNotes.feedback = fb;
+    }
+    return initialNotes;
+};
+
 const JobDetailModal: React.FC<JobDetailModalProps> = ({ 
     isOpen, onClose, job, isAdmin, 
-    onEditInvoice, onEditRecord 
+    onEditInvoice, onEditRecord,
+    isReviewMode, onSignOffJobRecord, isJobRecordSignedOff
 }) => {
     const [proposal, setProposal] = useState<Record<string, unknown> | null>(null);
     const [previewDoc, setPreviewDoc] = useState<Record<string, unknown> | null>(null);
@@ -59,60 +118,173 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
     const [isRefunding, setIsRefunding] = useState(false);
     const [expandedSystems, setExpandedSystems] = useState<Record<string, boolean>>({});
     const [isPropertyExpanded, setIsPropertyExpanded] = useState(false);
+    const [isLocationAuditOpen, setIsLocationAuditOpen] = useState(false);
+    const [selectedAssetForAssessment, setSelectedAssetForAssessment] = useState<any | null>(null);
     const { state, dispatch } = useAppContext();
     const [isScheduleFollowUpOpen, setIsScheduleFollowUpOpen] = useState(false);
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
-    const [activeTab, setActiveTab] = useState<'preview' | 'technical'>('preview');
+    const [isPrintingTechSheet, setIsPrintingTechSheet] = useState(false);
+    const [isSendSubcontractorModalOpen, setIsSendSubcontractorModalOpen] = useState(false);
+    const [isChargebackModalOpen, setIsChargebackModalOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<'technical' | 'preview'>('technical');
     const [isEditMode, setIsEditMode] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [localNotes, setLocalNotes] = useState<any>({});
     const [localUnitStates, setLocalUnitStates] = useState<any[]>([]);
     const [localFiles, setLocalFiles] = useState<any[]>([]);
     const [localTechRecs, setLocalTechRecs] = useState<string>('');
+    const [localSubcontractorPhone, setLocalSubcontractorPhone] = useState<string>('');
     const [selectedPropToLink, setSelectedPropToLink] = useState('');
     const [selectedJobToLink, setSelectedJobToLink] = useState('');
     const [isLinkingModalOpen, setIsLinkingModalOpen] = useState(false);
     const [isAuditHistoryOpen, setIsAuditHistoryOpen] = useState(false);
 
-    const poNumber = job?.poNumber || job?.workOrderNumber || job?.invoice?.poNumber;
+    const currentJob = useMemo(() => {
+        return (state.jobs || []).find((j: any) => j.id === job?.id) || job;
+    }, [state.jobs, job]);
+
+    const timeSummary = useMemo(() => {
+        return getJobTimeSummary(currentJob);
+    }, [currentJob]);
+
+    const [isEditingTimes, setIsEditingTimes] = useState(false);
+    const [editCheckIn, setEditCheckIn] = useState('');
+    const [editCheckOut, setEditCheckOut] = useState('');
+    const [editTimeOnSite, setEditTimeOnSite] = useState<number | ''>('');
+    const [isSavingTimes, setIsSavingTimes] = useState(false);
+
+    const handleOpenTimeEditor = () => {
+        setEditCheckIn(timeSummary.checkInTime ? formatDateTimeForInput(timeSummary.checkInTime) : (currentJob?.appointmentTime ? formatDateTimeForInput(currentJob.appointmentTime) : ''));
+        setEditCheckOut(timeSummary.checkOutTime ? formatDateTimeForInput(timeSummary.checkOutTime) : '');
+        setEditTimeOnSite(timeSummary.timeOnSiteMinutes ?? '');
+        setIsEditingTimes(true);
+    };
+
+    const handleSaveTimeCorrections = async () => {
+        if (!currentJob) return;
+        setIsSavingTimes(true);
+        try {
+            const checkInIso = editCheckIn ? new Date(editCheckIn).toISOString() : null;
+            const checkOutIso = editCheckOut ? new Date(editCheckOut).toISOString() : null;
+            const timeOnSite = editTimeOnSite !== '' ? Number(editTimeOnSite) : null;
+
+            const updatedEntries = [...(currentJob.timeEntries || [])];
+            if (updatedEntries.length > 0) {
+                const lastIdx = updatedEntries.length - 1;
+                updatedEntries[lastIdx] = {
+                    ...updatedEntries[lastIdx],
+                    checkInTime: checkInIso || updatedEntries[lastIdx].checkInTime,
+                    checkOutTime: checkOutIso || null,
+                    timeOnSiteMinutes: timeOnSite !== null ? timeOnSite : null
+                };
+            } else if (checkInIso) {
+                updatedEntries.push({
+                    checkInTime: checkInIso,
+                    checkOutTime: checkOutIso || null,
+                    timeOnSiteMinutes: timeOnSite !== null ? timeOnSite : null
+                });
+            }
+
+            const totalMins = updatedEntries.reduce((acc, entry) => acc + (entry.timeOnSiteMinutes || 0), 0) || (timeOnSite || 0);
+
+            const updates: any = {
+                checkInTime: checkInIso || firebase.firestore.FieldValue.delete(),
+                checkOutTime: checkOutIso || firebase.firestore.FieldValue.delete(),
+                timeOnSiteMinutes: totalMins > 0 ? totalMins : firebase.firestore.FieldValue.delete(),
+                timeEntries: updatedEntries.length > 0 ? updatedEntries : firebase.firestore.FieldValue.delete()
+            };
+
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(currentJob.id).update(updates);
+            }
+
+            const updatedJob = {
+                ...currentJob,
+                checkInTime: checkInIso || undefined,
+                checkOutTime: checkOutIso || undefined,
+                timeOnSiteMinutes: totalMins > 0 ? totalMins : undefined,
+                timeEntries: updatedEntries
+            };
+
+            dispatch({ type: 'UPDATE_JOB', payload: updatedJob as Job });
+            showToast.success('In & Out times updated successfully');
+            setIsEditingTimes(false);
+        } catch (err: any) {
+            console.error('Failed to update in/out times:', err);
+            showToast.error('Failed to save in/out times');
+        } finally {
+            setIsSavingTimes(false);
+        }
+    };
+
+    const assignedSub = useMemo(() => {
+        if (!currentJob) return null;
+        const subId = (currentJob as any)?.subcontractorId || (currentJob as any)?.assignedPartnerId || currentJob.subcontractorWorkOrder?.subcontractorId;
+        if (!subId) return null;
+        return state.subcontractors?.find((s: any) => s.id === subId) || {
+            id: subId,
+            companyName: (currentJob as any)?.subcontractorName || (currentJob.subcontractorWorkOrder as any)?.subcontractorName || 'Assigned Subcontractor',
+            email: (currentJob as any)?.subcontractorEmail || '',
+            trade: 'Subcontractor'
+        } as Subcontractor;
+    }, [currentJob, state.subcontractors]);
+
+    const poNumber = currentJob?.poNumber || currentJob?.workOrderNumber || currentJob?.invoice?.poNumber;
+
+    const isValidRefNum = (num?: string) => {
+        if (!num) return false;
+        const clean = String(num).trim().toLowerCase();
+        return clean !== '' && clean !== 'n/a' && clean !== 'none' && clean !== 'null' && clean !== 'undefined' && clean !== '0';
+    };
 
     const linkedProposals = useMemo(() => {
+        if (!currentJob) return [];
         return (state.proposals || []).filter((p: any) => 
-            p.id === job?.proposalId || 
-            p.id === job?.projectId || 
-            job?.linkedProposalIds?.includes(p.id) || 
-            p.linkedJobIds?.includes(job?.id) ||
-            (poNumber && p.customerId === job?.customerId && (p.poNumber === poNumber || p.workOrderNumber === poNumber))
+            p.id === currentJob.proposalId || 
+            p.id === currentJob.projectId || 
+            p.jobId === currentJob.id ||
+            currentJob.linkedProposalIds?.includes(p.id) || 
+            p.linkedJobIds?.includes(currentJob.id) ||
+            (isValidRefNum(poNumber) && p.customerId === currentJob.customerId && ((isValidRefNum(p.poNumber) && p.poNumber.trim().toLowerCase() === String(poNumber).trim().toLowerCase()) || (isValidRefNum(p.workOrderNumber) && p.workOrderNumber.trim().toLowerCase() === String(poNumber).trim().toLowerCase())))
         );
-    }, [state.proposals, job, poNumber]);
+    }, [state.proposals, currentJob, poNumber]);
 
     const availableProposals = useMemo(() => {
+        if (!currentJob) return [];
         return (state.proposals || []).filter((p: any) => 
-            p.customerId === job?.customerId && 
+            p.customerId === currentJob.customerId && 
             !linkedProposals.some((lp: any) => lp.id === p.id)
         );
-    }, [state.proposals, job, linkedProposals]);
+    }, [state.proposals, currentJob, linkedProposals]);
 
     const linkedJobs = useMemo(() => {
-        return (state.jobs || []).filter((j: any) => 
-            j.id !== job?.id && (
-                job?.linkedJobIds?.includes(j.id) || 
-                j.linkedJobIds?.includes(job?.id) ||
-                j.parentJobId === job?.id ||
-                (job?.parentJobId && j.id === job?.parentJobId) ||
-                (job?.parentJobId && j.parentJobId === job?.parentJobId) ||
-                (poNumber && j.customerId === job?.customerId && (j.poNumber === poNumber || j.workOrderNumber === poNumber || j.invoice?.poNumber === poNumber))
-            )
-        );
-    }, [state.jobs, job, poNumber]);
+        if (!currentJob) return [];
+        const jobLocId = currentJob.locationId || currentJob.propertyId || currentJob.location?.id;
+        return (state.jobs || []).filter((j: any) => {
+            if (j.id === currentJob.id) return false;
+            const jLocId = j.locationId || j.propertyId || j.location?.id;
+            const isLocationMatch = !jobLocId || !jLocId || jobLocId === jLocId;
+            if (!isLocationMatch) return false;
+
+            return (
+                currentJob.linkedJobIds?.includes(j.id) || 
+                j.linkedJobIds?.includes(currentJob.id) ||
+                j.parentJobId === currentJob.id ||
+                (currentJob.parentJobId && j.id === currentJob.parentJobId) ||
+                (currentJob.parentJobId && j.parentJobId === currentJob.parentJobId) ||
+                (poNumber && isValidPoNumber(poNumber) && j.customerId === currentJob.customerId && (j.poNumber === poNumber || j.workOrderNumber === poNumber || j.invoice?.poNumber === poNumber))
+            );
+        });
+    }, [state.jobs, currentJob, poNumber]);
 
     const availableJobs = useMemo(() => {
+        if (!currentJob) return [];
         return (state.jobs || []).filter((j: any) => 
-            j.customerId === job?.customerId && 
-            j.id !== job?.id && 
+            j.id !== currentJob.id &&
+            j.customerId === currentJob.customerId &&
             !linkedJobs.some((lj: any) => lj.id === j.id)
         );
-    }, [state.jobs, job, linkedJobs]);
+    }, [state.jobs, currentJob, linkedJobs]);
 
     const linkedInvoices = useMemo(() => {
         const invoiceIds = job?.linkedInvoiceIds || [];
@@ -126,12 +298,115 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
     useEffect(() => {
         if (job) {
-            setLocalNotes(job.notes || {});
-            setLocalUnitStates(job.unitStates || []);
-            setLocalFiles(job.files || []);
+            setLocalNotes(extractJobNotes(job));
+            setLocalTechRecs(job.techRecommendations || job.recommendations || '');
+            setLocalUnitStates(normalizeUnitStates(job.unitStates));
+            setLocalSubcontractorPhone((job as any).subcontractorPhone || job.subcontractorWorkOrder?.customSubPhone || '');
+            
+            const combinedFiles = [...(job.files || [])];
+
+            // Ingest direct job photo arrays
+            const directPhotoArrays = [
+                { items: job.photos || job.images, defaultLabel: 'Job Photo', defaultPhase: '' },
+                { items: job.beforePhotos, defaultLabel: 'Before Repair Photo', defaultPhase: 'before' },
+                { items: job.afterPhotos, defaultLabel: 'After Repair Photo', defaultPhase: 'after' }
+            ];
+
+            directPhotoArrays.forEach(arr => {
+                if (arr.items && Array.isArray(arr.items)) {
+                    arr.items.forEach((p: any, pIdx: number) => {
+                        const url = typeof p === 'string' ? p : (p?.dataUrl || p?.url || p?.fileUrl);
+                        if (url && !combinedFiles.some((f: any) => (f.dataUrl || f.url || f.fileUrl) === url)) {
+                            combinedFiles.push({
+                                id: `photo-${job.id}-${pIdx}-${Math.random().toString(36).substring(2, 6)}`,
+                                dataUrl: url,
+                                url: url,
+                                label: typeof p === 'object' ? (p.label || p.title || arr.defaultLabel) : arr.defaultLabel,
+                                type: 'Photo',
+                                fileType: 'image/jpeg',
+                                metadata: {
+                                    label: typeof p === 'object' ? (p.label || p.title || arr.defaultLabel) : arr.defaultLabel,
+                                    phase: arr.defaultPhase || (typeof p === 'object' ? (p.phase || p.category) : '')
+                                },
+                                createdAt: job.appointmentTime
+                            });
+                        }
+                    });
+                }
+            });
+
+            const safeJobUnitStates = normalizeUnitStates(job.unitStates);
+            if (safeJobUnitStates.length > 0) {
+                safeJobUnitStates.forEach((us: any) => {
+                    const usPhotos = Array.isArray(us.photos) ? us.photos : (us.photos ? [us.photos] : []);
+                    const unitPhotos = [
+                        { url: us.beforePhotoUrl, label: `Unit ${us.assetTag || us.assetId || us.name || us.unitName || ''} (Before Repair)`, assetId: us.assetId || us.id, phase: 'before' },
+                        { url: us.afterPhotoUrl, label: `Unit ${us.assetTag || us.assetId || us.name || us.unitName || ''} (After Repair)`, assetId: us.assetId || us.id, phase: 'after' },
+                        { url: us.photoUrl, label: `Unit ${us.assetTag || us.assetId || us.name || us.unitName || ''} Photo`, assetId: us.assetId || us.id },
+                        ...usPhotos.map((p: any) => typeof p === 'string' ? { url: p, label: 'Unit Photo', assetId: us.assetId || us.id } : { ...p, assetId: us.assetId || us.id })
+                    ];
+                    unitPhotos.forEach((up: any) => {
+                        if (up && up.url && !combinedFiles.some((f: any) => (f.dataUrl || f.url) === up.url)) {
+                            combinedFiles.push({
+                                id: `us-${job.id}-${Math.random().toString(36).substring(2, 7)}`,
+                                dataUrl: up.url,
+                                url: up.url,
+                                label: up.label || 'Unit Photo',
+                                type: 'Photo',
+                                fileType: 'image/jpeg',
+                                metadata: { label: up.label || 'Unit Photo', assetId: up.assetId, phase: up.phase || '' },
+                                createdAt: job.appointmentTime
+                            });
+                        }
+                    });
+                });
+            }
+
+            // Include files & photos from explicitly linked jobs at the same location
+            const jobLocId = job.locationId || job.propertyId || job.location?.id;
+            linkedJobs.forEach((lj: any) => {
+                const ljLocId = lj.locationId || lj.propertyId || lj.location?.id;
+                if (!jobLocId || !ljLocId || jobLocId === ljLocId) {
+                    if (lj.files && Array.isArray(lj.files)) {
+                        lj.files.forEach((f: any) => {
+                            if (!combinedFiles.some((existing: any) => (existing.id && existing.id === f.id) || (existing.dataUrl || existing.url) === (f.dataUrl || f.url))) {
+                                combinedFiles.push({ ...f, jobId: lj.id });
+                            }
+                        });
+                    }
+                    const safeLjUnitStates = normalizeUnitStates(lj.unitStates);
+                    if (safeLjUnitStates.length > 0) {
+                        safeLjUnitStates.forEach((us: any) => {
+                            const usPhotos = Array.isArray(us.photos) ? us.photos : (us.photos ? [us.photos] : []);
+                            const unitPhotos = [
+                                { url: us.beforePhotoUrl, label: `Unit ${us.assetTag || us.assetId || ''} (Before Repair)`, assetId: us.assetId, phase: 'before' },
+                                { url: us.afterPhotoUrl, label: `Unit ${us.assetTag || us.assetId || ''} (After Repair)`, assetId: us.assetId, phase: 'after' },
+                                { url: us.photoUrl, label: `Unit ${us.assetTag || us.assetId || ''} Photo`, assetId: us.assetId },
+                                ...usPhotos.map((p: any) => typeof p === 'string' ? { url: p, label: 'Unit Photo', assetId: us.assetId } : { ...p, assetId: us.assetId })
+                            ];
+                            unitPhotos.forEach((up: any) => {
+                                if (up && up.url && !combinedFiles.some((f: any) => (f.dataUrl || f.url) === up.url)) {
+                                    combinedFiles.push({
+                                        id: `us-${lj.id}-${Math.random().toString(36).substring(2, 7)}`,
+                                        dataUrl: up.url,
+                                        url: up.url,
+                                        label: up.label || 'Unit Photo',
+                                        type: 'Photo',
+                                        fileType: 'image/jpeg',
+                                        metadata: { label: up.label || 'Unit Photo', assetId: up.assetId, phase: up.phase || '' },
+                                        createdAt: lj.appointmentTime
+                                    });
+                                }
+                            });
+                        });
+                    }
+                }
+            });
+
+            setLocalFiles(combinedFiles);
             setLocalTechRecs(job.techRecommendations || '');
         }
-    }, [job]);
+    }, [job, linkedJobs]);
 
     const customer = useMemo(() => {
         return state.customers?.find(c => c.id === job?.customerId);
@@ -139,71 +414,148 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
     const serviceLocation = useMemo(() => {
         if (!customer || !job) return null;
-        const jobAddr = typeof job.address === 'string' ? job.address.trim().toLowerCase() : '';
-        return customer.serviceLocations?.find(loc => {
-            if (loc.id === job.locationId) return true;
-            const locAddr = typeof loc.address === 'string' ? loc.address.trim().toLowerCase() : '';
-            return locAddr && jobAddr && (locAddr === jobAddr || locAddr.includes(jobAddr) || jobAddr.includes(locAddr));
-        });
-    }, [customer, job]);
+        return resolveServiceLocation(job, customer, (state as any)?.serviceLocations);
+    }, [customer, job, state.serviceLocations]);
 
     const jobAssets = useMemo(() => {
-        if (!customer || !job) return [];
-        let customerEquipment = customer.equipment || [];
-        
-        // Find all equipment IDs associated with this job's unitStates and files (photos)
-        const requiredAssetIds = new Set([
-            ...(job.unitStates?.map(s => s.assetId) || []),
-            ...(job.files?.map(f => f.metadata?.assetId || f.assetId).filter(Boolean) || [])
-        ]);
-        
-        // Filter customer equipment by location ID
-        const hasMultipleLocations = (customer.serviceLocations?.length || 0) > 1;
-        let filteredEquipment = customerEquipment;
-        
+        if (!job) return [];
+        let customerEquipment = customer?.equipment || [];
+        const finalMap = new Map<string, any>();
+
         const getSubLocationIds = (parentId: string, locations: any[]): string[] => {
             const childIds = locations.filter(loc => loc.parentId === parentId).map(loc => loc.id);
             const nestedIds = childIds.flatMap(id => getSubLocationIds(id, locations));
             return [parentId, ...childIds, ...nestedIds];
         };
 
-        if (job.locationId) {
-            const validPropertyIds = customer.serviceLocations
-                ? getSubLocationIds(job.locationId, customer.serviceLocations)
-                : [job.locationId];
-            filteredEquipment = customerEquipment.filter(e => (e.propertyId && validPropertyIds.includes(e.propertyId)) || (!hasMultipleLocations && !e.propertyId));
+        // 1. Add customer equipment for this location IF no explicit unitStates exist on the job
+        const safeJobUnits = normalizeUnitStates((currentJob || job).unitStates);
+        const hasExplicitUnitStates = safeJobUnits.length > 0;
+        const hasMultipleLocations = (customer?.serviceLocations?.length || 0) > 1;
+        const jobLocId = job.locationId || job.serviceLocationId || job.propertyId || currentJob?.locationId;
+
+        if (!hasExplicitUnitStates) {
+            let filteredEquipment = customerEquipment;
+            if (jobLocId && customer?.serviceLocations) {
+                const validPropertyIds = getSubLocationIds(jobLocId, customer.serviceLocations);
+                filteredEquipment = customerEquipment.filter(e => 
+                    (e.propertyId && validPropertyIds.includes(e.propertyId)) || 
+                    (e.locationId && validPropertyIds.includes(e.locationId)) ||
+                    (!hasMultipleLocations && !e.propertyId && !e.locationId)
+                );
+            }
+            filteredEquipment.forEach(eq => {
+                if (eq && eq.id) {
+                    finalMap.set(eq.id, { ...eq });
+                }
+            });
         }
+
+        // 2. Add all unit states recorded directly on this job by the tech during the visit
+        if (safeJobUnits.length > 0) {
+            safeJobUnits.forEach((us: any, idx: number) => {
+                const id = us.assetId || us.equipmentId || us.id || `unit-state-${idx}`;
+                const existing = finalMap.get(id) || customerEquipment.find(ce => ce.id === id || (us.assetId && ce.id === us.assetId) || (us.assetTag && ce.assetTag === us.assetTag));
+                
+                const mergedUnit = {
+                    ...(existing || {}),
+                    id: existing?.id || id,
+                    assetId: existing?.id || id,
+                    name: us.name || us.unitName || us.title || existing?.name || `Serviced System #${(id || '').slice(-4).toUpperCase()}`,
+                    type: us.type || us.unitType || existing?.type || 'Equipment Unit',
+                    brand: us.brand || us.make || existing?.brand || 'Brand N/A',
+                    model: us.model || us.modelNumber || existing?.model || '',
+                    serial: us.serial || us.serialNumber || existing?.serial || 'N/A',
+                    assetTag: us.assetTag || existing?.assetTag || `Tag: #${(id || '').slice(-4).toUpperCase()}`,
+                    servesArea: us.servesArea || existing?.servesArea,
+                    exactPlacement: us.exactPlacement || existing?.exactPlacement,
+                    physicalLocation: us.physicalLocation || existing?.physicalLocation,
+                    tonnage: us.tonnage || us.tons || existing?.tonnage,
+                    refrigerantType: us.refrigerant || us.refrigerantType || existing?.refrigerantType,
+                    electricityType: us.electricityType || existing?.electricityType,
+                    heatType: us.heatType || existing?.heatType,
+                    year: us.year || us.yearBuilt || existing?.year,
+                    installDate: us.installDate || existing?.installDate,
+                    condition: us.healthAfter || us.health || us.healthBefore || existing?.condition || 'Good',
+                    serialPhotoUrl: us.serialPhotoUrl || us.unitTagPhotoUrl || us.platePhotoUrl || existing?.serialPhotoUrl,
+                    unitTagPhotoUrl: us.unitTagPhotoUrl || existing?.unitTagPhotoUrl,
+                    conditionPhotoUrl: us.conditionPhotoUrl || existing?.conditionPhotoUrl,
+                    notes: us.notes || us.technicianNotes || existing?.notes
+                };
+
+                finalMap.set(mergedUnit.id, mergedUnit);
+            });
+        }
+
+        // 3. Check any files with assetId metadata to make sure those assets are also present
+        if (job.files && Array.isArray(job.files)) {
+            job.files.forEach((f: any) => {
+                const fileAssetId = f.metadata?.assetId || f.assetId;
+                if (fileAssetId && !finalMap.has(fileAssetId)) {
+                    const custEq = customerEquipment.find(ce => ce.id === fileAssetId);
+                    if (custEq) {
+                        finalMap.set(custEq.id, { ...custEq });
+                    }
+                }
+            });
+        }
+
+        return Array.from(finalMap.values());
+    }, [customer, job, currentJob]);
+
+    const jobSubmissionAudit = useMemo(() => {
+        if (!customer || !customer.submissionRules) return null;
+        const rules = customer.submissionRules;
+        const actualPo = currentJob?.poNumber || (currentJob as any)?.workOrderNumber || currentJob?.invoice?.poNumber || (currentJob as any)?.po || '';
+        const poOk = !rules.requirePoNumber || (typeof actualPo === 'string' && actualPo.trim().length > 0);
         
-        // Ensure all equipment listed in unitStates or associated with photos is included, even if filtered out by locationId
-        const finalEquipment = [...filteredEquipment];
-        customerEquipment.forEach(e => {
-            if (requiredAssetIds.has(e.id) && !finalEquipment.some(fe => fe.id === e.id)) {
-                finalEquipment.push(e);
-            }
-        });
-        
-        // If there are serviced systems or systems with photos that are NOT in customer equipment at all,
-        // construct placeholder equipment objects so they still render in the history report
-        requiredAssetIds.forEach(assetId => {
-            if (assetId && !finalEquipment.some(fe => fe.id === assetId)) {
-                const us = job.unitStates?.find(s => s.assetId === assetId);
-                finalEquipment.push({
-                    id: assetId,
-                    name: `System #${assetId.slice(-4).toUpperCase()}`,
-                    type: 'Equipment Unit',
-                    brand: 'Unknown Brand',
-                    model: '',
-                    serial: 'N/A',
-                    assetTag: `Tag: #${assetId.slice(-4).toUpperCase()}`,
-                    condition: us?.health || 'Good'
-                } as any);
-            }
-        });
-        
-        return finalEquipment;
-    }, [customer, job]);
+        const sigOk = !rules.requireSignedWorkOrder || 
+            !!currentJob?.customerSignature || 
+            !!currentJob?.signature ||
+            !!currentJob?.signOffSheetUrl ||
+            !!(currentJob as any)?.signoffSheetUrl ||
+            !!(currentJob as any)?.customWorkOrderFormUrl ||
+            !!(currentJob as any)?.signOff?.sheetUrl ||
+            (currentJob as any)?.signOff?.status === 'COMPLETED' ||
+            !!(currentJob as any)?.invoiceSignature ||
+            !!(currentJob as any)?.invoice?.signatureUrl ||
+            !!(currentJob as any)?.workflowState?.customerSignature ||
+            !!(currentJob as any)?.workflowState?.siteManagerSignature ||
+            !!(currentJob as any)?.signatures?.length ||
+            (localFiles || []).some((f: any) => 
+                f.fileName?.includes('SignOff') || 
+                f.fileName?.includes('Signature') || 
+                f.label?.includes('Sign-Off') || 
+                f.metadata?.category === 'signoff' || 
+                f.metadata?.category === 'signature'
+            );
+        const photoOk = !rules.requireBeforeAfterPhotos || !!(currentJob?.photos && currentJob.photos.length > 0) || (localFiles && localFiles.length > 0);
+        const serialOk = !rules.requireEquipmentSerial || checkJobHasVerifiedEquipmentSerial(currentJob || job, customer, state.equipment, jobAssets);
+
+        const totalRulesCount = [rules.requirePoNumber, rules.requireSignedWorkOrder, rules.requireBeforeAfterPhotos, rules.requireEquipmentSerial].filter(Boolean).length;
+        const passedRulesCount = [rules.requirePoNumber && poOk, rules.requireSignedWorkOrder && sigOk, rules.requireBeforeAfterPhotos && photoOk, rules.requireEquipmentSerial && serialOk].filter(Boolean).length;
+
+        const isCompliant = poOk && sigOk && photoOk && serialOk;
+
+        return {
+            customerName: customer.name,
+            rules,
+            poOk,
+            sigOk,
+            photoOk,
+            serialOk,
+            totalRulesCount,
+            passedRulesCount,
+            isCompliant,
+            portal: rules.thirdPartyPortal
+        };
+    }, [customer, currentJob, job, localFiles, jobAssets, state.equipment]);
+
+    const isSubcontractor = state.currentUser?.role === 'Subcontractor';
+    const siteLocationName = resolveSiteLocationName(job, serviceLocation) || 'Service Site Location';
 
     const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+    const [isIssueWarrantyOpen, setIsIssueWarrantyOpen] = useState(false);
     const [emailRecipient, setEmailRecipient] = useState(job?.customerEmail || '');
     const [emailSubject, setEmailSubject] = useState(`Service Report - ${job?.customerName || 'Client'} - Job #${job?.id}`);
     const [emailCustomMessage, setEmailCustomMessage] = useState('');
@@ -232,8 +584,15 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
     const [selectedAttachments, setSelectedAttachments] = useState<string[]>([]);
 
+    const hasInitializedEmailAttachmentsRef = useRef(false);
     useEffect(() => {
-        if (isEmailModalOpen && job) {
+        if (!isEmailModalOpen) {
+            hasInitializedEmailAttachmentsRef.current = false;
+            return;
+        }
+        if (hasInitializedEmailAttachmentsRef.current) return;
+        hasInitializedEmailAttachmentsRef.current = true;
+        if (job) {
             const filesToAttach = (job.files || []).filter(f => !isInternalExpenseFile(f));
             setSelectedAttachments(filesToAttach.map(f => f.id || f.dataUrl));
         }
@@ -313,953 +672,76 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
             setEmailRecipient(initialEmails.join(', '));
             setEmailSubject(`Service Report - ${customer?.name || job.customerName || 'Client'} - Job #${job.id}`);
             setEmailCustomMessage(
-                `Hi,\n\nPlease find attached the service report for our visit on ${job.appointmentTime ? new Date(job.appointmentTime).toLocaleDateString() : ''}.\n\nBest regards,\n${state.currentOrganization?.name || 'TekTrakker Service Team'}`
+                `Hi,\n\nPlease find attached the service report for our visit on ${safeFormatDateString(job.appointmentTime)}.\n\nBest regards,\n${state.currentOrganization?.name || 'TekTrakker Service Team'}`
             );
         }
     }, [isOpen, job, serviceLocation, state.currentOrganization, customer]);
 
 
     const generateEmailHtml = (customerFacing = !isAdmin, isPdfOrPrint = false) => {
-        if (!job) return '';
-        const org = state.currentOrganization as any || {};
-        
-        const formatAddressInline = (addr: any) => {
-            if (typeof addr === 'string') return addr;
-            if (!addr) return 'Address not recorded';
-            return `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} ${addr.zip || ''}`;
-        };
+        const activeJob = currentJob || job;
+        if (!activeJob) return '';
 
-        const tech = job.assignedTechnicianId 
-            ? state.users?.find((u: any) => u.id === job.assignedTechnicianId) 
-            : null;
-        const techName = tech ? `${tech.firstName} ${tech.lastName}` : (job.assignedTechnicianName || 'Our Technician');
-        const techRole = tech?.role || 'Service Technician';
-        const avatarUrl = tech?.profilePicUrl;
+        const resolvedAssistants = Array.isArray(activeJob.assistants)
+            ? activeJob.assistants.map((a: any) => {
+                if (typeof a === 'object' && a !== null) return a;
+                const u = state.users?.find((user: any) => user.id === a || user.uid === a);
+                return u ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : a;
+            })
+            : [];
 
-        const crewNames = (job.assistants || []).map((id: string) => {
-            const u = state.users?.find((user: any) => user.id === id);
-            return u ? `${u.firstName} ${u.lastName}` : '';
-        }).filter(Boolean).join(', ');
-
-        // Force non-admin customer filtering for security to prevent internal expense leaks
-        const customerPhotoFiles = (localFiles || []).filter(f => 
-            !deletedFiles.has(f.id || (f as ExtendedFile).dataUrl || '') && (
-                f.type === 'Photo' || 
-                (f as ExtendedFile).contentType?.startsWith('image/') || 
-                (f as ExtendedFile).fileType?.startsWith('image/')
-            ) &&
-            !isInternalExpenseFile(f)
-        ) || [];
-
-        const customerDocFiles = (localFiles || []).filter(f => 
-            (f.type === 'Document' || 
-            (f as ExtendedFile).contentType === 'application/pdf' || 
-            (f as ExtendedFile).fileType === 'application/pdf' ||
-            (f as ExtendedFile).fileType === 'text/html' ||
-            f.fileName?.toLowerCase().endsWith('.html') ||
-            f.fileName?.toLowerCase().endsWith('.pdf')) &&
-            f.fileName !== 'Signed_Waivers.html' &&
-            f.fileName !== 'Waiver_Pending_Signature.html' &&
-            f.metadata?.label !== 'Legal Waiver' &&
-            (f as ExtendedFile).label !== 'Legal Waiver' &&
-            !isInternalExpenseFile(f)
-        ) || [];
-
-        // Resolve location contacts (POCs)
-        const pocList: Array<{ name: string; phone?: string | null; email?: string | null; role: string }> = [];
-        let hasLocationContacts = false;
-        const locId = job.locationId || serviceLocation?.id;
-        if (customer?.contacts && Array.isArray(customer.contacts) && locId) {
-            customer.contacts.forEach((c: any) => {
-                if (c.name && c.allowedLocationIds?.includes(locId)) {
-                    hasLocationContacts = true;
-                    pocList.push({ name: c.name, phone: c.phone, email: c.email, role: c.role || c.title || 'Site POC' });
-                }
-            });
-        }
-        if (serviceLocation?.contacts && Array.isArray(serviceLocation.contacts)) {
-            const validLocContacts = serviceLocation.contacts.filter((c: any) => c && c.name);
-            if (validLocContacts.length > 0) {
-                hasLocationContacts = true;
-                validLocContacts.forEach((c: any) => {
-                    if (!pocList.some(p => p.name.trim().toLowerCase() === c.name.trim().toLowerCase())) {
-                        pocList.push({ name: c.name, phone: c.phone, email: c.email, role: c.role || 'Site POC' });
-                    }
-                });
-            }
-        }
-        if (!hasLocationContacts) {
-            if (job.customerName && (job.customerPhone || job.customerEmail)) {
-                pocList.push({ name: job.customerName, phone: job.customerPhone, email: job.customerEmail, role: 'Primary Customer' });
-            }
-            if (customer?.contacts && Array.isArray(customer.contacts)) {
-                customer.contacts.forEach((c: any) => {
-                    if (c.name) {
-                        pocList.push({ name: c.name, phone: c.phone, email: c.email, role: c.role || c.title || 'Property Manager' });
-                    }
-                });
-            }
-        }
-        const seenNames = new Set<string>();
-        const uniquePocs = pocList.filter(poc => {
-            const lowerName = poc.name.trim().toLowerCase();
-            if (seenNames.has(lowerName)) return false;
-            seenNames.add(lowerName);
-            return true;
-        }).slice(0, 3);
-
-        const outerContainerStyle = isPdfOrPrint
-            ? `font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; color: #1e293b; background-color: #ffffff; box-sizing: border-box; width: 100%; text-align: left;`
-            : `font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; color: #1e293b; background-color: #ffffff; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; box-sizing: border-box; width: 100%;`;
-
-        let html = `
-        <div style="${outerContainerStyle}">
-            <style>
-                @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
-                * { box-sizing: border-box; }
-                .pdf-card, .pdf-photo, .pdf-timeline-item, tr, table, img, div {
-                    page-break-inside: avoid !important;
-                    break-inside: avoid !important;
-                    break-inside: avoid-page !important;
-                }
-                img {
-                    max-width: 100%;
-                    height: auto;
-                    display: block;
-                }
-            </style>
-            <!-- Header Table -->
-            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border-bottom: 3px solid #0284c7; padding-bottom: 16px; margin-bottom: 24px;">
-                <tr>
-                    <td style="vertical-align: middle; text-align: left; padding-bottom: 12px;">
-                        ${org.logoUrl ? `
-                        <img src="${org.logoUrl}" style="max-height: 54px; max-width: 220px; object-fit: contain; margin-bottom: 8px; display: block;" alt="${org.name || 'Company Logo'}" />
-                        ` : ''}
-                        <h1 style="color: #0f172a; margin: 0; font-size: 22px; font-weight: 950; text-transform: uppercase; letter-spacing: -0.5px;">Service History Report</h1>
-                        <p style="margin: 4px 0 0; font-size: 11px; color: #0284c7; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Job ID: #${job.id.toUpperCase()}</p>
-                    </td>
-                    <td style="vertical-align: middle; text-align: right; padding-bottom: 12px;" width="260">
-                        <p style="margin: 0; font-size: 14px; color: #0f172a; font-weight: 850;">${org.name || 'TekTrakker Services'}</p>
-                        ${org.phone ? `<p style="margin: 2px 0 0; font-size: 11px; color: #64748b; font-weight: 600;">${org.phone}</p>` : ''}
-                        ${org.email ? `<p style="margin: 2px 0 0; font-size: 11px; color: #64748b;"><a href="mailto:${org.email}" style="color: #0284c7; text-decoration: none;">${org.email}</a></p>` : ''}
-                    </td>
-                </tr>
-            </table>
-
-            <!-- 3-COLUMN LOCATION & ENTITY BREAKDOWN (CUSTOMER, BILL TO, SERVICE SITE LOCATION) WITH TIME ON SITE & WO INFO -->
-            <div class="pdf-card" style="background-color: #ffffff; padding: 20px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #cbd5e1; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 12px; margin-bottom: 16px;">
-                    <tr>
-                        <!-- 1. CUSTOMER / PROPERTY MGR -->
-                        <td width="33%" style="vertical-align: top; padding-right: 12px;">
-                            <span style="font-size: 9px; font-weight: 900; color: #0284c7; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">1. CUSTOMER / PROPERTY MGR</span>
-                            <span style="font-weight: 800; color: #0f172a; font-size: 13px; display: block; margin-bottom: 2px;">${customer?.name || job.customerName || 'Customer'}</span>
-                            <span style="color: #64748b; font-size: 11px; display: block; line-height: 1.4;">${formatAddressInline(customer?.address || job.address)}</span>
-                            ${job.customerPhone ? `<span style="color: #475569; font-size: 11px; font-weight: 600; display: block; margin-top: 4px;">Phone: ${job.customerPhone}</span>` : ''}
-                            ${job.customerEmail ? `<span style="color: #64748b; font-size: 11px; display: block; word-break: break-all;">Email: ${job.customerEmail}</span>` : ''}
-                        </td>
-
-                        <!-- 2. BILL TO (PAYING ENTITY) -->
-                        <td width="33%" style="vertical-align: top; padding-left: 12px; padding-right: 12px; border-left: 1px solid #f1f5f9;">
-                            <span style="font-size: 9px; font-weight: 900; color: #0284c7; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">2. BILL TO (PAYING ENTITY)</span>
-                            <span style="font-weight: 800; color: #0f172a; font-size: 13px; display: block; margin-bottom: 2px;">${customer?.name || (customer as any)?.companyName || job.customerName || 'Paying Customer'}</span>
-                            <span style="color: #64748b; font-size: 11px; display: block; line-height: 1.4;">${formatAddressInline(customer?.address || job.address)}</span>
-                            ${job.poNumber ? `<span style="display: inline-block; font-weight: 800; color: #0369a1; background-color: #e0f2fe; border: 1px solid #bae6fd; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-top: 6px;">PO / WO #: ${job.poNumber}</span>` : ''}
-                        </td>
-
-                        <!-- 3. SERVICE SITE LOCATION -->
-                        <td width="34%" style="vertical-align: top; padding-left: 12px; border-left: 1px solid #f1f5f9;">
-                            <span style="font-size: 9px; font-weight: 900; color: #0284c7; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px;">3. SERVICE SITE LOCATION</span>
-                            <span style="font-weight: 800; color: #0f172a; font-size: 13px; display: block; margin-bottom: 2px;">${serviceLocation?.propertyName || job.locationName || 'Service Site'}</span>
-                            <span style="color: #64748b; font-size: 11px; display: block; line-height: 1.4;">${formatAddressInline(job.address || serviceLocation?.address)}</span>
-                            ${serviceLocation?.gateCode ? `<span style="color: #475569; font-size: 11px; font-weight: 700; font-family: monospace; display: block; margin-top: 4px;">Gate/Access: ${serviceLocation.gateCode}</span>` : ''}
-                        </td>
-                    </tr>
-                </table>
-
-                <!-- JOB DETAILS & TIME ON SITE SUMMARY BAR -->
-                <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 12px; color: #475569; border-top: 1px solid #f1f5f9; padding-top: 14px; border-collapse: collapse;">
-                    <tr>
-                        <td style="padding-bottom: 8px; text-align: left;" width="33%">
-                            <span style="font-size: 9px; font-weight: bold; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 2px;">Status</span>
-                            <span style="background-color: ${job.jobStatus === 'COMPLETED' ? '#dcfce7' : job.jobStatus === 'IN PROGRESS' ? '#e0f2fe' : '#fee2e2'}; color: ${job.jobStatus === 'COMPLETED' ? '#15803d' : job.jobStatus === 'IN PROGRESS' ? '#0369a1' : '#991b1b'}; padding: 4px 10px; border-radius: 20px; font-weight: 800; text-transform: uppercase; font-size: 9px; display: inline-block;">${job.jobStatus}</span>
-                        </td>
-                        <td style="padding-bottom: 8px; text-align: left; padding-left: 12px;" width="33%">
-                            <span style="font-size: 9px; font-weight: bold; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 2px;">Scheduled Appointment</span>
-                            <strong style="color: #1e293b;">${new Date(job.appointmentTime).toLocaleString()}</strong>
-                        </td>
-                        <td style="padding-bottom: 8px; text-align: left; padding-left: 12px;" width="34%">
-                            <span style="font-size: 9px; font-weight: bold; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 2px;">Assigned Technician</span>
-                            <strong style="color: #1e293b;">${job.assignedTechnicianName || 'Unassigned'}</strong>
-                            ${crewNames ? `<span style="font-size: 10px; color: #64748b; display: block;">Crew: ${crewNames}</span>` : ''}
-                        </td>
-                    </tr>
-                    ${job.timeEntries && job.timeEntries.length > 0 ? `
-                    <tr>
-                        <td style="padding-top: 12px; border-top: 1px dashed #e2e8f0; text-align: left;" colspan="3">
-                            <span style="font-size: 9px; font-weight: bold; color: #0284c7; text-transform: uppercase; display: block; margin-bottom: 8px;">Visit & Time on Site History</span>
-                            <div style="font-size: 11px; line-height: 1.5; color: #475569;">
-                                ${job.timeEntries.map((entry, idx) => `
-                                <div class="pdf-timeline-item" style="display: flex; justify-content: space-between; margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #f8fafc; page-break-inside: avoid; break-inside: avoid;">
-                                    <span><strong style="color: #0f172a;">Visit #${idx + 1}:</strong> ${new Date(entry.checkInTime).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                                    <span style="font-weight: 500;">
-                                        Arrived: <strong style="color: #1e293b;">${new Date(entry.checkInTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</strong>
-                                        ${entry.checkOutTime ? ` | Departed: <strong style="color: #1e293b;">${new Date(entry.checkOutTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</strong>` : ' (Active)'}
-                                        ${entry.timeOnSiteMinutes !== undefined && entry.timeOnSiteMinutes !== null ? ` <span style="color: #0284c7; font-weight: bold;">(Duration: ${entry.timeOnSiteMinutes >= 60 ? `${Math.floor(entry.timeOnSiteMinutes / 60)}h ${entry.timeOnSiteMinutes % 60}m` : `${entry.timeOnSiteMinutes}m`})</span>` : ''}
-                                    </span>
-                                </div>
-                                `).join('')}
-                            </div>
-                        </td>
-                    </tr>
-                    ` : (job.checkInTime ? `
-                    <tr>
-                        <td style="padding-top: 12px; border-top: 1px dashed #e2e8f0; text-align: left;" colspan="3">
-                            <span style="font-size: 9px; font-weight: bold; color: #0284c7; text-transform: uppercase; display: block; margin-bottom: 4px;">Time on Site</span>
-                            <span style="color: #1e293b; font-weight: 600; font-size: 11px;">
-                                Arrived: ${new Date(job.checkInTime).toLocaleString()}
-                                ${job.checkOutTime ? ` | Departed: ${new Date(job.checkOutTime).toLocaleString()}` : ''}
-                                ${job.timeOnSiteMinutes !== undefined ? ` | Duration: ${job.timeOnSiteMinutes >= 60 ? `${Math.floor(job.timeOnSiteMinutes / 60)}h ${job.timeOnSiteMinutes % 60}m` : `${job.timeOnSiteMinutes}m`}` : ''}
-                            </span>
-                        </td>
-                    </tr>
-                    ` : '')}
-                </table>
-            </div>
-
-            ${uniquePocs.length > 0 ? `
-            <!-- ASSOCIATED LOCATION POINTS OF CONTACT (POCS) -->
-            <div class="pdf-card" style="background-color: #ffffff; padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #e2e8f0; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                <span style="font-size: 9px; font-weight: bold; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 10px;">Associated Location Points of Contact (POCs)</span>
-                <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 12px; border-collapse: collapse;">
-                    <tr>
-                        ${uniquePocs.map((poc, idx) => `
-                        <td width="33%" style="vertical-align: top; padding-right: 12px; ${idx > 0 ? 'border-left: 1px solid #f1f5f9; padding-left: 12px;' : ''}; text-align: left;">
-                            <p style="margin: 0; font-weight: 700; color: #1e293b;">${poc.name}</p>
-                            <p style="margin: 2px 0 0; color: #0284c7; font-weight: 800; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px;">${poc.role}</p>
-                            ${poc.phone ? `<p style="margin: 4px 0 0; color: #475569; font-weight: 600;">${poc.phone}</p>` : ''}
-                            ${poc.email ? `<p style="margin: 2px 0 0; color: #64748b; text-decoration: none; word-break: break-all;">${poc.email}</p>` : ''}
-                        </td>
-                        `).join('')}
-                    </tr>
-                </table>
-            </div>
-            ` : ''}`;
-
-        // Overall recommendations
-        if (emailOptions.includeRecommendations && job.techRecommendations) {
-            html += `
-            <div class="pdf-card" style="background-color: #ecfdf5; border-left: 4px solid #10b981; padding: 18px 24px; border-radius: 8px; margin-bottom: 24px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                <h4 style="margin: 0 0 8px; color: #065f46; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Technician Direct Recommendations</h4>
-                <p style="margin: 0; font-size: 13px; color: #047857; font-weight: 600; line-height: 1.5;">${job.techRecommendations.replace(/\n/g, '<br />')}</p>
-            </div>
-            `;
-        }
-        // Performed Tasks list
-        if (job.tasks && job.tasks.length > 0) {
-            html += `
-            <div class="pdf-card" style="margin-bottom: 24px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                <h4 style="margin: 0 0 10px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Tasks Performed</h4>
-                <div style="display: block;">
-                    ${job.tasks.map(t => `<span style="background-color: #f1f5f9; color: #334155; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; margin-right: 6px; margin-bottom: 6px; display: inline-block; border: 1px solid #e2e8f0;">${t}</span>`).join('')}
-                </div>
-            </div>
-            `;
-        }
-        // ------------------------------------------------------------
-        // SECTION 1: SYSTEM PROFILES & SPECIFICATIONS
-        // ------------------------------------------------------------
-        if (emailOptions.includeAssets && jobAssets.length > 0) {
-            html += `
-            <div style="margin-bottom: 24px; text-align: left;">
-                <h4 style="margin: 0 0 12px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">System Profiles & Specifications</h4>
-            `;
-            
-            jobAssets.forEach(asset => {
-                const specs = [
-                    { label: 'Area Serviced', value: asset.servesArea },
-                    { label: 'Exact Placement', value: asset.exactPlacement },
-                    { label: 'Physical Location', value: asset.physicalLocation },
-                    { label: 'System Type', value: asset.type },
-                    { label: 'Tonnage / Capacity', value: asset.tonnage ? `${asset.tonnage} Tons` : null },
-                    { label: 'Refrigerant', value: asset.refrigerantType },
-                    { label: 'Electrical', value: asset.electricityType },
-                    { label: 'Heat Type', value: asset.heatType },
-                    { label: 'MFR Year', value: asset.year },
-                    { label: 'Install Date', value: asset.installDate },
-                ].filter(spec => spec.value);
-
-                const warrantyInfo = [];
-                if (asset.warranty?.manufacturerDurationMonths) {
-                    warrantyInfo.push({
-                        label: 'MFR Warranty',
-                        value: `${asset.warranty.manufacturerDurationMonths} Mos` + (asset.warranty.manufacturerStartDate ? ` (Starts: ${asset.warranty.manufacturerStartDate})` : '')
+        return generateJobReportHtml(
+            {
+                ...activeJob,
+                customer,
+                serviceLocation,
+                equipmentList: jobAssets.length > 0 ? jobAssets : (activeJob?.equipmentList || activeJob?.equipment || activeJob?.units || []),
+                unitStates: localUnitStates.length > 0 ? localUnitStates : (activeJob?.unitStates || []),
+                files: (() => {
+                    const combined = [...(Array.isArray(activeJob?.files) ? activeJob.files : []), ...(Array.isArray(localFiles) ? localFiles : [])];
+                    const seen = new Set<string>();
+                    return combined.filter((f: any) => {
+                        const key = f.id || f.dataUrl || f.url || f.fileName;
+                        if (!key || seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
                     });
-                }
-                if (asset.warranty?.laborDurationMonths) {
-                    warrantyInfo.push({
-                        label: 'Labor Warranty',
-                        value: `${asset.warranty.laborDurationMonths} Mos` + (asset.warranty.laborStartDate ? ` (Starts: ${asset.warranty.laborStartDate})` : '')
-                    });
-                }
-
-                const linkedAssets = customer?.equipment?.filter((eq: any) => asset.linkedAssetIds?.includes(eq.id)) || [];
-
-                // Spec photos (Serial, Unit plate, etc.) which identify the system
-                const specPhotos: Array<{ url: string; label: string }> = [];
-                if (asset.serialPhotoUrl) specPhotos.push({ url: asset.serialPhotoUrl, label: 'Serial Tag' });
-                if (asset.unitTagPhotoUrl) specPhotos.push({ url: asset.unitTagPhotoUrl, label: 'Unit Plate' });
-
-                html += `
-                <div class="pdf-card" style="border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; background-color: #ffffff; margin-bottom: 20px; text-align: left; page-break-inside: avoid; break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                    <div style="margin-bottom: 12px;">
-                        <h5 style="margin: 0; font-size: 14px; font-weight: 800; color: #0f172a;">${asset.name || asset.type} ${asset.brand ? `• ${asset.brand}` : ''} ${asset.model ? `(${asset.model})` : ''}</h5>
-                        <p style="margin: 4px 0 0; font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; font-family: monospace; letter-spacing: 0.5px;">TAG: ${asset.assetTag || 'N/A'} | SERIAL: ${asset.serial || 'N/A'}</p>
-                    </div>
-
-                    <!-- Specs Table -->
-                    ${specs.length > 0 ? `
-                    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 12px; font-size: 11px;">
-                        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
-                            ${Array.from({ length: Math.ceil(specs.length / 3) }).map((_, rowIndex) => `
-                            <tr>
-                                ${specs.slice(rowIndex * 3, rowIndex * 3 + 3).map((s) => `
-                                <td width="33%" style="padding-bottom: 6px; vertical-align: top; padding-right: 8px; text-align: left;">
-                                    <span style="color: #94a3b8; font-size: 8px; font-weight: bold; text-transform: uppercase; display: block; margin-bottom: 2px;">${s.label}</span>
-                                    <span style="color: #334155; font-weight: 700; font-size: 11px;">${s.value}</span>
-                                </td>
-                                `).join('')}
-                            </tr>
-                            `).join('')}
-                        </table>
-                    </div>
-                    ` : ''}
-
-                    <!-- Warranty Info -->
-                    ${warrantyInfo.length > 0 ? `
-                    <div style="background-color: #f5f3ff; border: 1px solid #e0e7ff; border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 11px;">
-                        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
-                            <tr>
-                                ${warrantyInfo.map((w) => `
-                                <td width="50%" style="vertical-align: top; padding-right: 8px; text-align: left;">
-                                    <span style="color: #8b5cf6; font-size: 8px; font-weight: bold; text-transform: uppercase; display: block; margin-bottom: 2px;">${w.label}</span>
-                                    <span style="color: #5b21b6; font-weight: 700; font-size: 11px;">${w.value}</span>
-                                </td>
-                                `).join('')}
-                            </tr>
-                        </table>
-                    </div>
-                    ` : ''}
-
-                    <!-- Spec Photos -->
-                    ${(emailOptions.includePhotos && specPhotos.length > 0) ? `
-                    <div style="text-align: left; margin-top: 10px;">
-                        ${specPhotos.map(p => `
-                        <div style="display: inline-block; width: 70px; margin-right: 8px; margin-bottom: 8px; vertical-align: top; text-align: center;">
-                            <a href="${p.url}" target="_blank" style="display: block; width: 70px; height: 70px; border-radius: 6px; overflow: hidden; border: 1px solid #e2e8f0; background-color: #ffffff;">
-                                <img src="${p.url}" style="width: 100%; height: 100%; object-fit: cover; display: block;" alt="${p.label}" />
-                            </a>
-                            <span style="font-size: 8px; font-weight: bold; color: #64748b; display: block; margin-top: 2px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${p.label}</span>
-                        </div>
-                        `).join('')}
-                    </div>
-                    ` : ''}
-
-                    <!-- Linked Systems -->
-                    ${linkedAssets.length > 0 ? `
-                    <div style="margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px; font-size: 10px; color: #64748b;">
-                        <span style="font-weight: 700; text-transform: uppercase; display: block; margin-bottom: 4px;">Linked Systems:</span>
-                        ${linkedAssets.map(la => `• ${la.name || la.type || 'Linked Unit'} ${la.brand ? `(${la.brand})` : ''} ${la.serial ? `[S/N: ${la.serial}]` : ''}`).join(', ')}
-                    </div>
-                    ` : ''}
-                </div>
-                `;
-            });
-            
-            html += `
-            </div>
-            `;
-        }
-
-        // Parts Used
-        if (emailOptions.includeParts && job.partsUsed && job.partsUsed.length > 0) {
-            html += `
-            <div class="pdf-card" style="margin-bottom: 24px; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; text-align: left; page-break-inside: avoid; break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 12px; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
-                            <th style="padding: 12px 16px; text-align: left; font-weight: 800; font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Parts Used</th>
-                            <th style="padding: 12px 16px; text-align: right; font-weight: 800; font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; width: 60px;">Qty</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${job.partsUsed.map(p => `
-                        <tr style="border-bottom: 1px solid #f1f5f9;">
-                            <td style="padding: 12px 16px; color: #1e293b; font-weight: 600; text-align: left;">${p.name} ${p.sku ? `<span style="font-size: 9px; color: #94a3b8; font-family: monospace;">(${p.sku})</span>` : ''}</td>
-                            <td style="padding: 12px 16px; text-align: right; color: #334155; font-weight: 700;">${p.quantity}</td>
-                        </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-            `;
-        }
-
-
-
-        // Workmanship & Parts Warranty Coverage
-        const inv = job.invoice as Record<string, unknown> || {};
-        const wm: number = (inv?.workmanshipWarrantyMonths as number) || 0;
-        const pm: number = (inv?.partsWarrantyMonths as number) || 0;
-        const agreed: boolean = !!inv?.warrantyDisclaimerAgreed;
-        const issued = inv?.warrantyIssuedDate ? new Date(inv.warrantyIssuedDate as string) : new Date(job.appointmentTime);
-        const now = new Date();
-        const addMonths = (d: Date, m: number) => { const r = new Date(d); r.setMonth(r.getMonth() + m); return r; };
-        const wmExpiry = wm > 0 ? addMonths(issued, wm) : null;
-        const pmExpiry = pm > 0 ? addMonths(issued, pm) : null;
-        const monthsLeft = (d: Date | null) => d ? Math.max(0, Math.round((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30.44))) : 0;
-        const wmActive = agreed && !!wmExpiry && wmExpiry > now;
-        const pmActive = agreed && !!pmExpiry && pmExpiry > now;
-
-        if (wm > 0 || pm > 0) {
-            html += `
-            <div class="pdf-card" style="background-color: #eff6ff; border: 1px solid #bfdbfe; border-left: 5px solid #1d4ed8; border-radius: 12px; padding: 24px; margin-bottom: 24px; text-align: left; page-break-inside: avoid; break-inside: avoid; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                <div style="margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 9px; font-weight: 800; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.5px;">Agreed Warranty & Protections</span>
-                </div>
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
-                    <tr>
-                        ${wm > 0 ? `
-                        <td width="${pm > 0 ? '50%' : '100%'}" style="vertical-align: top; padding-right: 8px; text-align: left;">
-                            <div style="background-color: #ffffff; border: 1px solid #dbeafe; border-radius: 8px; padding: 14px;">
-                                <span style="font-size: 8px; font-weight: 800; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">Workmanship Warranty</span>
-                                <span style="font-size: 22px; font-weight: 900; color: #1e3a8a;">${wmActive ? monthsLeft(wmExpiry) : '—'} <span style="font-size: 12px; font-weight: bold; color: #64748b;">mo left</span></span>
-                                ${wmExpiry ? `<p style="margin: 6px 0 0; font-size: 9px; color: #94a3b8; font-weight: 600;">${wmActive ? `Exp: ${wmExpiry.toLocaleDateString()}` : `Expired: ${wmExpiry.toLocaleDateString()}`}</p>` : ''}
-                            </div>
-                        </td>
-                        ` : ''}
-                        ${pm > 0 ? `
-                        <td width="${wm > 0 ? '50%' : '100%'}" style="vertical-align: top; padding-left: 8px; text-align: left;">
-                            <div style="background-color: #ffffff; border: 1px solid #dbeafe; border-radius: 8px; padding: 14px;">
-                                <span style="font-size: 8px; font-weight: 800; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">Parts Warranty</span>
-                                <span style="font-size: 22px; font-weight: 900; color: #1e3a8a;">${pmActive ? monthsLeft(pmExpiry) : '—'} <span style="font-size: 12px; font-weight: bold; color: #64748b;">mo left</span></span>
-                                ${pmExpiry ? `<p style="margin: 6px 0 0; font-size: 9px; color: #94a3b8; font-weight: 600;">${pmActive ? `Exp: ${pmExpiry.toLocaleDateString()}` : `Expired: ${pmExpiry.toLocaleDateString()}`}</p>` : ''}
-                            </div>
-                        </td>
-                        ` : ''}
-                    </tr>
-                </table>
-            </div>
-            `;
-        }
-
-        // ------------------------------------------------------------
-        // PREPARE CHRONOLOGICAL DATA GROUPS (BEFORE vs AFTER)
-        // ------------------------------------------------------------
-        const getPhotoPhase = (f: any): 'before' | 'after' => {
-            const label = ((f.metadata?.label || f.label || f.fileName || '') as string).toLowerCase().trim();
-            if (
-                label.includes('after') ||
-                label.includes('comp') ||
-                label.includes('work') ||
-                label.includes('post') ||
-                label.includes('repair') ||
-                label.includes('fix') ||
-                label.includes('done') ||
-                label.includes('validation') ||
-                label.includes('sign') ||
-                label.includes('approval')
-            ) {
-                return 'after';
+                })(),
+                notes: localNotes && Object.keys(localNotes).length > 0 ? localNotes : activeJob?.notes,
+                arrivalNotes: localNotes?.arrival || activeJob?.arrivalNotes,
+                diagnosisNotes: localNotes?.diagnosis || activeJob?.diagnosisNotes || activeJob?.diagnosis,
+                workNotes: localNotes?.work || localNotes?.workNotes || activeJob?.workNotes || activeJob?.workPerformedNotes,
+                completionNotes: localNotes?.completion || activeJob?.completionNotes,
+                techRecommendations: localTechRecs || activeJob?.techRecommendations || activeJob?.recommendations,
+                assistants: resolvedAssistants.length > 0 ? resolvedAssistants : activeJob.assistants,
+                crewNames: resolvedAssistants.filter(Boolean).join(', ') || activeJob.crewNames
+            },
+            state.currentOrganization,
+            undefined,
+            {
+                customerFacing,
+                isPdfOrPrint,
+                users: state.users,
+                includeInvoice: (emailOptions as any)?.includeInvoice ?? true,
+                includeSignOff: (emailOptions as any)?.includeSignOff ?? true,
+                includeWarranty: true,
+                includePhotos: emailOptions.includePhotos ?? true,
+                includeRecommendations: emailOptions.includeRecommendations ?? true,
+                includeThankYouNote: emailOptions.includeThankYouNote ?? true,
+                includeAssets: emailOptions.includeAssets ?? true,
+                includeArrivalNotes: emailOptions.includeArrivalNotes ?? true,
+                includeDiagnosisNotes: emailOptions.includeDiagnosisNotes ?? true,
+                includeWorkNotes: emailOptions.includeWorkNotes ?? true,
+                includeCompletionNotes: emailOptions.includeCompletionNotes ?? true,
+                includeCustomerFeedback: emailOptions.includeCustomerFeedback ?? true,
+                includeEmployeeFeedback: emailOptions.includeEmployeeFeedback ?? true,
+                localNotes,
+                localUnitStates,
+                localFiles,
+                deletedFiles
             }
-            return 'before';
-        };
-
-        const completionSummaryNote = {
-            label: 'Completion summary',
-            value: localNotes?.completion,
-            active: emailOptions.includeCompletionNotes
-        };
-
-        const otherNotesToRender = [
-            { label: 'Arrival Note', value: localNotes?.arrival, active: emailOptions.includeArrivalNotes },
-            { label: 'Diagnosis findings', value: localNotes?.diagnosis, active: emailOptions.includeDiagnosisNotes },
-            { label: 'Work Performed Notes', value: localNotes?.work || localNotes?.workNotes, active: emailOptions.includeWorkNotes },
-            { label: 'Customer Feedback Notes', value: job.customerFeedback || localNotes?.customerFeedback, active: emailOptions.includeCustomerFeedback },
-            { label: 'Employee / Technician Feedback', value: localNotes?.employeeFeedback || localNotes?.feedback, active: emailOptions.includeEmployeeFeedback }
-        ].filter(n => n.value && n.active);
-
-        const didFallbackDiagnosis = false;
-
-        const didFallbackRepair = false;
-
-        const beforePhotos: Array<{ url: string; label: string; assetName?: string }> = [];
-        const afterPhotos: Array<{ url: string; label: string; assetName?: string }> = [];
-
-        customerPhotoFiles.forEach((p: any) => {
-            const url = p.dataUrl || p.url;
-            if (!url) return;
-            const label = p.metadata?.label || p.label || 'Job Photo';
-            
-            let matchedAssetName = '';
-            const fileAssetId = (p.metadata?.assetId || p.assetId || '').toLowerCase().trim();
-            const fileLabel = (p.metadata?.label || p.label || '').toLowerCase().trim();
-            
-            const matchedAsset = jobAssets.find(asset => {
-                const assetId = (asset.id || '').toLowerCase().trim();
-                const assetTag = (asset.assetTag || '').toLowerCase().trim();
-                const assetName = (asset.name || '').toLowerCase().trim();
-                return (
-                    (fileAssetId && assetId && fileAssetId === assetId) ||
-                    (assetId && fileLabel === assetId) ||
-                    (assetTag && fileLabel === assetTag) ||
-                    (assetName && fileLabel === assetName) ||
-                    (assetTag && fileLabel.includes(assetTag)) ||
-                    (assetName && fileLabel.includes(assetName))
-                );
-            });
-            if (matchedAsset) {
-                matchedAssetName = matchedAsset.name || matchedAsset.type;
-            }
-
-            const phase = getPhotoPhase(p);
-            if (phase === 'after') {
-                afterPhotos.push({ url, label, assetName: matchedAssetName });
-            } else {
-                beforePhotos.push({ url, label, assetName: matchedAssetName });
-            }
-        });
-
-        const beforeReadings = (job.toolReadings || []).filter(r => !r.phase || r.phase === 'before');
-        const afterReadings = (job.toolReadings || []).filter(r => r.phase === 'after');
-
-
-        // ------------------------------------------------------------
-        // SECTION 2: BEFORE REPAIR STATUS & DIAGNOSTICS
-        // ------------------------------------------------------------
-        html += `
-        <div style="margin-bottom: 24px; text-align: left; border-top: 1px solid #e2e8f0; padding-top: 20px;">
-            <h3 style="margin: 0 0 16px; font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #4338ca; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">1. Initial Diagnosis & Before Repair</h3>
-            
-            <!-- Initial Manifold Gauge Readings Card -->
-            <div class="pdf-card" style="background-color: #eef2ff; border: 1px solid #c7d2fe; padding: 14px 18px; border-radius: 8px; margin-bottom: 16px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 9px; color: #4338ca; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">INITIAL MANIFOLD GAUGE READINGS (BEFORE REPAIR)</span>
-                <p style="margin: 0; font-size: 11px; color: #1e293b; line-height: 1.6; font-weight: 600;">
-                    Circuit 1 Initial: Suction 130.2 psig, Discharge 379.6 psig, Superheat 16.1°F, Subcooling 2.9°F<br />
-                    Circuit 2 Initial: Suction 117.4 psig, Discharge 383.2 psig, Superheat 23.3°F, Subcooling 0.9°F
-                </p>
-            </div>
-        `;
-
-        // Before Health & Findings of Serviced Systems
-        if (emailOptions.includeAssets && jobAssets.length > 0) {
-            html += `
-            <div style="margin-bottom: 16px;">
-                <span style="font-size: 8px; font-weight: 800; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 8px; letter-spacing: 0.5px;">Initial System Health & Diagnosis</span>
-            `;
-            
-            jobAssets.forEach(asset => {
-                const unitState = (localUnitStates || []).find(s => s.assetId === asset.id);
-                const healthBefore = unitState?.healthBefore || unitState?.health || asset.condition || 'Fair / Undercharged';
-                const healthColor = healthBefore === 'Good' ? '#10b981' : healthBefore === 'Fair' || healthBefore.includes('Fair') ? '#f59e0b' : healthBefore === 'Poor' ? '#f97316' : '#ef4444';
-                const healthBg = healthBefore === 'Good' ? '#f0fdf4' : healthBefore === 'Fair' || healthBefore.includes('Fair') ? '#fffbeb' : healthBefore === 'Poor' ? '#fff7ed' : '#fef2f2';
-
-                html += `
-                <div class="pdf-card" style="border: 1px solid #e2e8f0; border-left: 4px solid ${healthColor}; padding: 14px; border-radius: 8px; background-color: #ffffff; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid;">
-                    <div style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #1e293b;">${asset.name || asset.type}</strong>
-                        <span style="background-color: ${healthBg}; color: ${healthColor}; border: 1px solid ${healthColor}33; padding: 2px 6px; border-radius: 12px; font-weight: 800; text-transform: uppercase; font-size: 7px; letter-spacing: 0.5px;">Health: ${healthBefore}</span>
-                    </div>
-                    <div style="font-size: 11px; color: #475569; line-height: 1.4;">
-                        <span style="color: #94a3b8; font-size: 7px; font-weight: bold; text-transform: uppercase; display: block; margin-bottom: 2px;">Diagnosis Findings</span>
-                        ${unitState?.diagnosis || 'Unit refrigerant readings showed low subcooling and elevated superheat on both circuits, consistent with insufficient refrigerant charge.'}
-                    </div>
-                </div>
-                `;
-            });
-            html += `</div>`;
-        }
-
-        // Before Notes (Field Notes)
-        if (otherNotesToRender.length > 0) {
-            const beforeNotes = otherNotesToRender.filter(n => {
-                const isDiag = n.label.toLowerCase().includes('diagnosis');
-                if (isDiag && didFallbackDiagnosis) return false;
-                return n.label.toLowerCase().includes('arrival') || isDiag;
-            });
-            if (beforeNotes.length > 0) {
-                html += `
-                <div style="margin-bottom: 14px;">
-                    <div style="display: block;">
-                        ${beforeNotes.map(note => `
-                        <div class="pdf-card" style="background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                            <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #4338ca; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">DIAGNOSIS & ARRIVAL FINDINGS (FULL FIELD NOTES)</span>
-                            <p style="margin: 0; font-size: 11px; color: #334155; line-height: 1.5; font-weight: 500;">${note.value.replace(/\n/g, '<br />')}</p>
-                        </div>
-                        `).join('')}
-                    </div>
-                </div>
-                `;
-            }
-        }
-
-        // Before Photos with Red "BEFORE REPAIR" Badge
-        if (emailOptions.includePhotos && beforePhotos.length > 0) {
-            html += `
-            <div class="pdf-card" style="margin-bottom: 14px; page-break-inside: avoid; break-inside: avoid;">
-                <span style="font-size: 9px; font-weight: 800; color: #ef4444; text-transform: uppercase; display: block; margin-bottom: 8px; letter-spacing: 0.5px;">BEFORE REPAIR FIELD PHOTOS</span>
-                <div style="text-align: left;">
-                    ${beforePhotos.map(p => `
-                    <div class="pdf-photo" style="display: inline-block; width: 105px; margin-right: 8px; margin-bottom: 8px; vertical-align: top; text-align: center; position: relative; page-break-inside: avoid; break-inside: avoid;">
-                        <a href="${p.url}" target="_blank" style="display: block; width: 105px; height: 90px; border-radius: 6px; overflow: hidden; border: 1px solid #ef4444; background-color: #f8fafc; position: relative;">
-                            <img src="${p.url}" style="width: 100%; height: 100%; object-fit: cover; display: block;" alt="${p.label}" />
-                            <span style="position: absolute; top: 4px; left: 4px; background-color: #ef4444; color: #ffffff; padding: 2px 5px; border-radius: 3px; font-size: 7px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase;">BEFORE REPAIR</span>
-                        </a>
-                        <span style="font-size: 8px; font-weight: bold; color: #64748b; display: block; margin-top: 3px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${p.label}${p.assetName ? ` (${p.assetName})` : ''}">${p.label}</span>
-                    </div>
-                    `).join('')}
-                </div>
-            </div>
-            `;
-        }
-
-        html += `</div>`;
-
-
-        // ------------------------------------------------------------
-        // SECTION 3: AFTER REPAIR STATUS & VERIFICATION
-        // ------------------------------------------------------------
-        html += `
-        <div style="margin-bottom: 20px; text-align: left; border-top: 1px solid #e2e8f0; padding-top: 16px;">
-            <h3 style="margin: 0 0 14px; font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #059669; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">2. Resolution & After Repair Verification</h3>
-            
-            <!-- Refrigerant Management Log Card -->
-            <div class="pdf-card" style="background-color: #f5f3ff; border: 1px solid #ddd6fe; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 9px; color: #7c3aed; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">REFRIGERANT MANAGEMENT LOG</span>
-                <p style="margin: 0; font-size: 11px; color: #4c1d95; font-weight: 600; line-height: 1.5;">
-                    • Circuit 1: Added 4 lb of R-410A Refrigerant &nbsp;|&nbsp; • Circuit 2: Added 3 lb of R-410A Refrigerant (Total: 7 lb)
-                </p>
-            </div>
-
-            <!-- Final Manifold Gauge Readings Card -->
-            <div class="pdf-card" style="background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 9px; color: #047857; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">FINAL MANIFOLD GAUGE READINGS</span>
-                <p style="margin: 0; font-size: 11px; color: #065f46; line-height: 1.5; font-weight: 600;">
-                    Circuit 1 Final: Suction 126.2 psig, Discharge 380.9 psig, Superheat 13.9°F, Subcooling 10.1°F<br />
-                    Circuit 2 Final: Suction 127.8 psig, Discharge 375.8 psig, Superheat 11.8°F, Subcooling 8.2°F
-                </p>
-            </div>
-        `;
-
-        // After Health & Resolutions of Serviced Systems
-        if (emailOptions.includeAssets && jobAssets.length > 0) {
-            html += `
-            <div style="margin-bottom: 14px;">
-                <span style="font-size: 8px; font-weight: 800; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">RESOLVED SYSTEM HEALTH & WORK DETAILS</span>
-            `;
-            
-            jobAssets.forEach(asset => {
-                const unitState = (localUnitStates || []).find(s => s.assetId === asset.id);
-                const healthAfter = unitState?.healthAfter || unitState?.health || 'EXCELLENT / OPERATIONAL';
-                const healthColor = '#10b981';
-                const healthBg = '#f0fdf4';
-
-                html += `
-                <div class="pdf-card" style="border: 1px solid #e2e8f0; border-left: 4px solid ${healthColor}; padding: 12px 14px; border-radius: 8px; background-color: #ffffff; margin-bottom: 10px; page-break-inside: avoid; break-inside: avoid;">
-                    <div style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-                        <strong style="font-size: 11px; color: #1e293b;">${asset.name || asset.type}</strong>
-                        <span style="background-color: ${healthBg}; color: ${healthColor}; border: 1px solid ${healthColor}33; padding: 2px 6px; border-radius: 12px; font-weight: 800; text-transform: uppercase; font-size: 7px; letter-spacing: 0.5px;">Post-Service Health: ${healthAfter}</span>
-                    </div>
-                    <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 11px; border-top: 1px solid #f1f5f9; padding-top: 6px; border-collapse: collapse;">
-                        <tr>
-                            <td width="50%" style="vertical-align: top; padding-right: 8px; text-align: left;">
-                                <span style="font-weight: 800; text-transform: uppercase; font-size: 7px; color: #047857; display: block; margin-bottom: 2px; letter-spacing: 0.5px;">Repairs & Work Done</span>
-                                <span style="color: #475569; line-height: 1.4;">${unitState?.repair || 'Added 4 lb of R-410A to Circuit 1 and 3 lb of R-410A to Circuit 2, for a total of 7 lb. System monitored while pressures stabilized.'}</span>
-                            </td>
-                            <td width="50%" style="vertical-align: top; border-left: 1px solid #f1f5f9; padding-left: 8px; text-align: left;">
-                                <span style="font-weight: 800; text-transform: uppercase; font-size: 7px; color: #9333ea; display: block; margin-bottom: 2px; letter-spacing: 0.5px;">Unit Recommendations</span>
-                                <span style="color: #475569; line-height: 1.4;">${unitState?.recommendations || 'Recommend electronic refrigerant leak search on both circuits.'}</span>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-                `;
-            });
-            html += `</div>`;
-        }
-
-        // After Notes (Work Performed Notes)
-        if (otherNotesToRender.length > 0) {
-            const afterNotes = otherNotesToRender.filter(n => {
-                const isWork = n.label.toLowerCase().includes('work');
-                if (isWork && didFallbackRepair) return false;
-                return !n.label.toLowerCase().includes('arrival') && !n.label.toLowerCase().includes('diagnosis');
-            });
-            if (afterNotes.length > 0) {
-                html += `
-                <div style="margin-bottom: 14px;">
-                    <div style="display: block;">
-                        ${afterNotes.map(note => `
-                        <div class="pdf-card" style="background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                            <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #10b981; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">WORK PERFORMED NOTES</span>
-                            <p style="margin: 0; font-size: 11px; color: #334155; line-height: 1.5; font-weight: 500;">${note.value.replace(/\n/g, '<br />')}</p>
-                        </div>
-                        `).join('')}
-                    </div>
-                </div>
-                `;
-            }
-        }
-
-        // After Photos with Green "AFTER VERIFIED" Badge
-        if (emailOptions.includePhotos && afterPhotos.length > 0) {
-            html += `
-            <div class="pdf-card" style="margin-bottom: 16px; page-break-inside: avoid; break-inside: avoid;">
-                <span style="font-size: 9px; font-weight: 800; color: #10b981; text-transform: uppercase; display: block; margin-bottom: 8px; letter-spacing: 0.5px;">AFTER REPAIR & VERIFICATION PHOTOS</span>
-                <div style="text-align: left;">
-                    ${afterPhotos.map(p => `
-                    <div class="pdf-photo" style="display: inline-block; width: 110px; margin-right: 10px; margin-bottom: 10px; vertical-align: top; text-align: center; position: relative; page-break-inside: avoid; break-inside: avoid;">
-                        <a href="${p.url}" target="_blank" style="display: block; width: 110px; height: 95px; border-radius: 6px; overflow: hidden; border: 1px solid #10b981; background-color: #f8fafc; position: relative;">
-                            <img src="${p.url}" style="width: 100%; height: 100%; object-fit: cover; display: block;" alt="${p.label}" />
-                            <span style="position: absolute; top: 4px; left: 4px; background-color: #10b981; color: #ffffff; padding: 2px 6px; border-radius: 3px; font-size: 7px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase;">AFTER VERIFIED</span>
-                        </a>
-                        <span style="font-size: 8px; font-weight: bold; color: #64748b; display: block; margin-top: 4px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${p.label}${p.assetName ? ` (${p.assetName})` : ''}">${p.label} ${p.assetName ? `(${p.assetName})` : ''}</span>
-                    </div>
-                    `).join('')}
-                </div>
-            </div>
-            `;
-        }
-
-        html += `</div>`;
-
-        // Standalone Completion Summary Section (Rendered before the invoice block just like the example)
-        if (completionSummaryNote.value && completionSummaryNote.active) {
-            html += `
-            <div class="pdf-card" style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 9px; color: #6366f1; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">Completion Summary</span>
-                <p style="margin: 0; font-size: 12px; color: #334155; line-height: 1.5; font-weight: 500;">${completionSummaryNote.value.replace(/\n/g, '<br />')}</p>
-            </div>
-            `;
-        }
-
-        // OPTIONAL: Include Invoice Details in Email Report
-        if ((emailOptions as any).includeInvoice && job.invoice) {
-            const inv = job.invoice;
-            const invTotal = Number(inv.totalAmount) || Number(inv.amount) || 0;
-            const invSubtotal = Number(inv.subtotal) || 0;
-            const invTax = Number(inv.taxAmount) || 0;
-            const invItems = inv.items || [];
-            
-            html += `
-            <div class="pdf-card" style="margin-bottom: 24px; border-top: 1px solid #f1f5f9; padding-top: 20px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 16px;">
-                    <tr>
-                        <td style="text-align: left; vertical-align: middle;">
-                            <h4 style="margin: 0; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #4f46e5;">Invoice Summary: #${inv.id}</h4>
-                        </td>
-                        <td style="text-align: right; vertical-align: middle;">
-                            <span style="background-color: ${inv.status === 'Paid' ? '#10b981' : '#f59e0b'}; color: white; padding: 4px 10px; border-radius: 20px; font-weight: 800; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px;">${inv.status}</span>
-                        </td>
-                    </tr>
-                </table>
-                
-                <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 16px;">
-                    <thead>
-                        <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
-                            <th style="padding: 10px 12px; text-align: left; font-weight: 800; color: #64748b; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Description</th>
-                            <th style="padding: 10px 12px; text-align: center; font-weight: 800; color: #64748b; width: 50px; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Qty</th>
-                            <th style="padding: 10px 12px; text-align: right; font-weight: 800; color: #64748b; width: 90px; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${invItems.map(item => `
-                            <tr style="border-bottom: 1px solid #f1f5f9;">
-                                <td style="padding: 10px 12px; text-align: left;">
-                                    <div style="font-weight: 700; color: #1e293b;">${item.name || item.description || ''}</div>
-                                    ${item.description && item.description !== item.name ? `<div style="font-size: 10px; color: #64748b; margin-top: 2px;">${item.description}</div>` : ''}
-                                </td>
-                                <td style="padding: 10px 12px; text-align: center; color: #475569;">${item.quantity || 1}</td>
-                                <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: #1e293b;">$${Number(item.total || ((item.unitPrice || 0) * (item.quantity || 1))).toFixed(2)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-                
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 12px; margin-top: 12px;">
-                    <tr>
-                        <td style="width: 50%;"></td>
-                        <td style="width: 50%;">
-                            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
-                                <tr>
-                                    <td style="padding: 6px 0; color: #64748b; text-align: left; font-weight: 600;">Subtotal</td>
-                                    <td style="padding: 6px 0; font-weight: 700; text-align: right; color: #1e293b;">$${invSubtotal.toFixed(2)}</td>
-                                </tr>
-                                <tr>
-                                    <td style="padding: 6px 0; color: #64748b; text-align: left; font-weight: 600;">Tax</td>
-                                    <td style="padding: 6px 0; font-weight: 700; text-align: right; color: #1e293b;">$${invTax.toFixed(2)}</td>
-                                </tr>
-                                ${inv.additionalFeeAmount ? `
-                                <tr>
-                                    <td style="padding: 6px 0; color: #64748b; text-align: left; font-weight: 600;">${inv.additionalFeeName || 'Adjustment'}</td>
-                                    <td style="padding: 6px 0; font-weight: 700; text-align: right; color: ${inv.additionalFeeAmount < 0 ? '#10b981' : '#1e293b'};">${inv.additionalFeeAmount < 0 ? '-' : ''}$${Math.abs(inv.additionalFeeAmount).toFixed(2)}</td>
-                                </tr>
-                                ` : ''}
-                                <tr style="border-top: 2px solid #0f172a;">
-                                    <td style="padding: 10px 0; font-weight: 800; text-align: left; color: #0f172a; font-size: 14px;">Grand Total</td>
-                                    <td style="padding: 10px 0; font-weight: 900; text-align: right; color: #4f46e5; font-size: 16px;">$${invTotal.toFixed(2)}</td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                </table>
-
-                ${inv.paymentMethod || job.id ? `
-                <div style="font-size: 10px; color: #475569; font-weight: bold; text-align: left; margin-top: 16px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
-                    <p style="margin: 0;">Method: ${inv.paymentMethod || 'Credit Card'} | Transaction: ${job.id.slice(-8).toUpperCase()}</p>
-                </div>
-                ` : ''}
-
-                ${job.invoiceSignature ? `
-                <div style="margin-top: 16px; border-top: 1px dashed #e2e8f0; padding-top: 12px; text-align: left;">
-                    <span style="font-size: 8px; font-weight: 800; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">Customer Approval Signature</span>
-                    <div style="background-color: #ffffff; padding: 8px; border-radius: 8px; border: 1px solid #e2e8f0; display: inline-block;">
-                        <img src="${job.invoiceSignature}" height="40" style="display: block; max-width: 200px; object-fit: contain;" alt="Customer Signature" />
-                    </div>
-                    ${job.invoiceSignedDate ? `<span style="font-size: 9px; color: #64748b; display: block; margin-top: 4px; font-weight: 600;">Signed: ${new Date(job.invoiceSignedDate).toLocaleString()}</span>` : ''}
-                </div>
-                ` : ''}
-            </div>
-            `;
-        }
-
-        // OPTIONAL: Include Signed Sign-Off Sheet in Email Report
-        if ((emailOptions as any).includeSignOff) {
-            const signOffFile = (localFiles || []).find(f => f.fileName === 'SignOff_Sheet.html' || f.metadata?.label === 'Sign-Off Sheet');
-            if (signOffFile && signOffFile.dataUrl) {
-                try {
-                    let signOffHtml = '';
-                    if (signOffFile.dataUrl.includes('base64,')) {
-                        const base64Part = signOffFile.dataUrl.split('base64,')[1];
-                        signOffHtml = decodeURIComponent(escape(atob(base64Part)));
-                    } else {
-                        signOffHtml = signOffFile.dataUrl;
-                    }
-                    
-                    html += `
-                    <div class="pdf-card" style="margin-bottom: 24px; border-top: 1px solid #f1f5f9; padding-top: 20px; text-align: left; page-break-inside: avoid; break-inside: avoid;">
-                        <h4 style="margin: 0 0 12px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #10b981;">Signed Work Validation & Sign-Off</h4>
-                        ${signOffHtml}
-                    </div>
-                    `;
-                } catch (err) {
-                    console.error("Failed to decode sign-off HTML for email:", err);
-                }
-            }
-        }
-
-        // Branding footer with A Personal Thank You note, review links and organization's footer information
-        const googleReview = state.currentOrganization?.reviewLinks?.google || state.currentOrganization?.reviewLink;
-        const ttReview = `${window.location.origin}/#/marketplace/${state.currentOrganization?.id || job.organizationId}`;
-
-        const thankYouNoteText = (typeof job.notes === 'object' && job.notes?.thankYouNote) || "Thank you so much for your business! It was an absolute pleasure servicing your equipment and property today. If you have any questions, please reach out to us.";
-
-        const orgName = org.name || 'TekTrakker Services';
-        const orgPhone = org.phone || '';
-        const orgEmail = org.email || '';
-        const orgWebsite = org.website || '';
-        const orgLicense = org.licenseNumber || '';
-        const orgAddress = org.address ? `${org.address.street || ''}, ${org.address.city || ''}, ${org.address.state || ''} ${org.address.zip || ''}` : '';
-        const orgComplianceFooter = org.complianceFooter || '';
-        const orgTerms = org.termsAndConditions || org.invoiceTerms || '';
-
-        html += `
-            <div class="pdf-card" style="border-top: 1px solid #f1f5f9; padding-top: 20px; margin-top: 28px; text-align: center; font-size: 11px; color: #64748b; page-break-inside: avoid; break-inside: avoid;">
-                ${emailOptions.includeThankYouNote ? `
-                <!-- A PERSONAL THANK YOU & REVIEW COMBINED CARD -->
-                <div style="background-color: #f5f3ff; border: 1px solid #ddd6fe; border-left: 4px solid #7c3aed; padding: 20px; border-radius: 12px; margin-bottom: 24px; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 14px;">
-                        <tr>
-                            ${avatarUrl ? `
-                            <td width="55" style="vertical-align: top; padding-right: 14px;">
-                                <img src="${avatarUrl}" width="48" height="48" style="border-radius: 50%; object-fit: cover; border: 2px solid #7c3aed; display: block;" alt="${techName}" />
-                            </td>` : `
-                            <td width="55" style="vertical-align: top; padding-right: 14px;">
-                                <div style="width: 48px; height: 48px; border-radius: 50%; background-color: #e0e7ff; color: #7c3aed; text-align: center; line-height: 48px; font-size: 22px; font-weight: bold; border: 2px solid #7c3aed;">♥</div>
-                            </td>`}
-                            <td style="vertical-align: top; text-align: left;">
-                                <span style="font-size: 9px; font-weight: 800; color: #7c3aed; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 2px;">A Personal Thank You</span>
-                                <h4 style="margin: 0 0 4px; color: #1e1b4b; font-size: 14px; font-weight: 800;">From ${techName} <span style="font-size: 11px; font-weight: bold; color: #64748b;">(${techRole})</span></h4>
-                                <p style="margin: 0; font-size: 12px; color: #3730a3; font-style: italic; line-height: 1.5;">"${thankYouNoteText.replace(/\n/g, '<br />')}"</p>
-                            </td>
-                        </tr>
-                    </table>
-
-                    <div style="border-top: 1px dashed #ddd6fe; padding-top: 14px; text-align: center;">
-                        <p style="margin: 0 0 10px; font-weight: 800; font-size: 12px; color: #1e1b4b;">How did we do? Support us with a quick review!</p>
-                        <div>
-                            ${googleReview ? `<a href="${googleReview}" style="background-color: #f59e0b; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 11px; display: inline-block; margin-right: 10px; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">Review on Google</a>` : ''}
-                            <a href="${ttReview}" style="background-color: #0284c7; color: white; padding: 10px 20px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 11px; display: inline-block; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2);">Review on TekTrakker</a>
-                        </div>
-                    </div>
-                </div>
-                ` : `
-                <p style="margin: 0 0 16px; font-weight: 800; font-size: 13px; color: #0f172a;">How did we do? Support us with a quick review!</p>
-                <div style="margin-bottom: 24px;">
-                    ${googleReview ? `<a href="${googleReview}" style="background-color: #f59e0b; color: white; padding: 12px 22px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 12px; display: inline-block; margin-right: 12px; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">Review on Google</a>` : ''}
-                    <a href="${ttReview}" style="background-color: #0284c7; color: white; padding: 12px 22px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 12px; display: inline-block; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2);">Review on TekTrakker</a>
-                </div>
-                `}
-                
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-top: 20px; font-size: 11px; color: #64748b; border-top: 1px dashed #e2e8f0; padding-top: 20px; text-align: left;">
-                    <tr>
-                        <td style="vertical-align: top; padding-right: 20px; text-align: left;" width="50%">
-                            <h4 style="margin: 0 0 6px; font-size: 12px; font-weight: bold; color: #334155;">${orgName}</h4>
-                            ${orgAddress ? `<p style="margin: 0 0 4px; line-height: 1.4;">${orgAddress}</p>` : ''}
-                            ${orgPhone ? `<p style="margin: 0 0 4px;"><strong>Phone:</strong> ${orgPhone}</p>` : ''}
-                            ${orgEmail ? `<p style="margin: 0 0 4px;"><strong>Email:</strong> <a href="mailto:${orgEmail}" style="color: #4f46e5; text-decoration: none;">${orgEmail}</a></p>` : ''}
-                            ${orgWebsite ? `<p style="margin: 0 0 4px;"><strong>Web:</strong> <a href="${orgWebsite.startsWith('http') ? orgWebsite : 'https://' + orgWebsite}" style="color: #4f46e5; text-decoration: none;" target="_blank">${orgWebsite}</a></p>` : ''}
-                            ${orgLicense ? `<p style="margin: 0 0 4px;"><strong>License #:</strong> ${orgLicense}</p>` : ''}
-                        </td>
-                        <td style="vertical-align: top; text-align: right;" width="50%">
-                            <p style="margin: 0 0 4px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; font-size: 8px; color: #94a3b8;">Service report generated via TekTrakker Platform</p>
-                            <p style="margin: 0 0 10px; font-size: 9px; color: #94a3b8;">Official customer service document.</p>
-                            ${orgComplianceFooter ? `<p style="margin: 0; font-size: 9px; line-height: 1.4; color: #94a3b8; font-style: italic;">${orgComplianceFooter}</p>` : ''}
-                        </td>
-                    </tr>
-                    ${orgTerms ? `
-                    <tr>
-                        <td colspan="2" style="padding-top: 12px; border-top: 1px dashed #e2e8f0; margin-top: 12px; font-size: 9px; color: #94a3b8; line-height: 1.4; text-align: left;">
-                            <strong>Terms & Disclaimers:</strong> ${orgTerms}
-                        </td>
-                    </tr>` : ''}
-                </table>
-                <div style="margin-top: 24px; border-top: 1px dashed #e2e8f0; padding-top: 16px; text-align: center;">
-                    <table align="center" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin: 0 auto; display: inline-block;">
-                        <tr>
-                            <td style="vertical-align: middle; padding-right: 6px; font-size: 9px; color: #94a3b8; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
-                                Powered by
-                            </td>
-                            <td style="vertical-align: middle;">
-                                <a href="https://tektrakker.web.app" target="_blank" style="text-decoration: none; display: block;">
-                                    <img src="/tektrakker-logo-web.png" style="height: 14px; width: auto; display: block; object-fit: contain;" alt="TekTrakker" />
-                                </a>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-            </div>
-        </div>
-        `;
-        
-        return html;
+        );
     };
-
-
-
-
-
-
 
 
     const handleTogglePoc = (email: string, checked: boolean) => {
@@ -1318,7 +800,22 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                 });
 
             if (attachReportPdf) {
-                const reportPdf = await generateJobReportPdfAttachment(job, state.currentOrganization, emailCustomMessage);
+                const fullJobForPdf = {
+                    ...job,
+                    customer,
+                    serviceLocation,
+                    files: localFiles.length > 0 ? localFiles : (job.files || []),
+                    notes: localNotes && Object.keys(localNotes).length > 0 ? localNotes : job.notes,
+                    arrivalNotes: localNotes?.arrival || job?.arrivalNotes,
+                    diagnosisNotes: localNotes?.diagnosis || job?.diagnosisNotes || job?.diagnosis,
+                    workNotes: localNotes?.work || localNotes?.workNotes || job?.workNotes || job?.workPerformedNotes,
+                    completionNotes: localNotes?.completion || job?.completionNotes,
+                    techRecommendations: localTechRecs || job?.techRecommendations || job?.recommendations,
+                    equipmentList: jobAssets.length > 0 ? jobAssets : (job.equipmentList || job.equipment || job.units || []),
+                    unitStates: localUnitStates.length > 0 ? localUnitStates : (job.unitStates || []),
+                    customerEquipment: customer?.equipment || []
+                };
+                const reportPdf = await generateJobReportPdfAttachment(fullJobForPdf, state.currentOrganization, emailCustomMessage);
                 emailAttachments.push(reportPdf);
             }
 
@@ -1380,74 +877,95 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
     };
 
     const handleDeletePhoto = async (file: ExtendedFile) => {
-        if (!window.confirm("Delete this photo permanently?")) return;
+        if (!(await globalConfirm("Delete this photo permanently?", "Delete Photo", "Delete", "Cancel"))) return;
         try {
             setDeletedFiles(prev => new Set(prev).add(file.id || file.dataUrl));
-            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                files: firebase.firestore.FieldValue.arrayRemove(file)
-            }));
+            const updatedFiles = (job.files || []).filter((f: any) => {
+                if (file.id && f.id === file.id) return false;
+                const fileUrl = file.url || file.dataUrl;
+                if (fileUrl && (f.url === fileUrl || f.dataUrl === fileUrl)) return false;
+                return true;
+            });
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
+                    files: updatedFiles,
+                    updatedAt: new Date().toISOString()
+                }));
+            }
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, files: updatedFiles } });
+            showToast.success("Photo deleted successfully.");
         } catch (e) {
             console.error(e);
-            alert("Failed to delete photo.");
+            showToast.error("Failed to delete photo.");
         }
     };
 
     const handleLinkProposal = async (proposalId: string) => {
         if (!proposalId) return;
         try {
-            // Update Job
-            const updatedProposalIds = [...(job.linkedProposalIds || [])];
-            if (!updatedProposalIds.includes(proposalId)) {
-                updatedProposalIds.push(proposalId);
-            }
-            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                linkedProposalIds: updatedProposalIds
-            }));
+            const currentJobData = (state.jobs || []).find((j: any) => j.id === job.id) || job;
+            const updatedProposalIds = Array.from(new Set([...(currentJobData.linkedProposalIds || []), proposalId]));
 
-            // Update Proposal
-            const propRef = db.collection('proposals').doc(proposalId);
-            const propSnap = await propRef.get();
-            if (propSnap.exists) {
-                const propData = propSnap.data() || {};
-                const updatedJobIds = [...(propData.linkedJobIds || [])];
-                if (!updatedJobIds.includes(job.id)) {
-                    updatedJobIds.push(job.id);
-                }
-                await propRef.update(cleanUndefinedFields({
-                    linkedJobIds: updatedJobIds
+            // Update Job
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
+                    linkedProposalIds: updatedProposalIds
                 }));
             }
-            alert("Proposal linked successfully.");
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, linkedProposalIds: updatedProposalIds } });
+
+            // Update Proposal
+            if (!state.isDemoMode) {
+                const propRef = db.collection('proposals').doc(proposalId);
+                const propSnap = await propRef.get();
+                if (propSnap.exists) {
+                    const propData = propSnap.data() || {};
+                    const updatedJobIds = Array.from(new Set([...(propData.linkedJobIds || []), job.id]));
+                    const propRefNum = propData.referenceNumber || (propData.id?.startsWith('PROP-') && !propData.id.includes(extractJobSlug(job.id)) ? propData.id : null);
+                    await propRef.update(cleanUndefinedFields({
+                        linkedJobIds: updatedJobIds,
+                        referenceNumber: propRefNum
+                    }));
+                    dispatch({ type: 'UPDATE_PROPOSAL', payload: { id: proposalId, linkedJobIds: updatedJobIds, referenceNumber: propRefNum } });
+                }
+            }
+            showToast.success("Proposal linked successfully.");
         } catch (error: any) {
             console.error(error);
-            alert("Failed to link proposal: " + error.message);
+            showToast.error("Failed to link proposal: " + error.message);
         }
     };
 
     const handleUnlinkProposal = async (proposalId: string) => {
         try {
-            // Update Job
-            const updatedProposalIds = (job.linkedProposalIds || []).filter((id: string) => id !== proposalId);
+            const currentJobData = (state.jobs || []).find((j: any) => j.id === job.id) || job;
+            const updatedProposalIds = (currentJobData.linkedProposalIds || []).filter((id: string) => id !== proposalId);
             const updates: any = { linkedProposalIds: updatedProposalIds };
-            if (job.proposalId === proposalId) updates.proposalId = '';
-            if (job.projectId === proposalId) updates.projectId = '';
+            if (currentJobData.proposalId === proposalId) updates.proposalId = '';
+            if (currentJobData.projectId === proposalId) updates.projectId = '';
             
-            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
+            }
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
 
             // Update Proposal
-            const propRef = db.collection('proposals').doc(proposalId);
-            const propSnap = await propRef.get();
-            if (propSnap.exists) {
-                const propData = propSnap.data() || {};
-                const updatedJobIds = (propData.linkedJobIds || []).filter((id: string) => id !== job.id);
-                const propUpdates: any = { linkedJobIds: updatedJobIds };
-                if (propData.jobId === job.id) propUpdates.jobId = '';
-                await propRef.update(cleanUndefinedFields(propUpdates));
+            if (!state.isDemoMode) {
+                const propRef = db.collection('proposals').doc(proposalId);
+                const propSnap = await propRef.get();
+                if (propSnap.exists) {
+                    const propData = propSnap.data() || {};
+                    const updatedJobIds = (propData.linkedJobIds || []).filter((id: string) => id !== job.id);
+                    const propUpdates: any = { linkedJobIds: updatedJobIds };
+                    if (propData.jobId === job.id) propUpdates.jobId = '';
+                    await propRef.update(cleanUndefinedFields(propUpdates));
+                    dispatch({ type: 'UPDATE_PROPOSAL', payload: { id: proposalId, ...propUpdates } });
+                }
             }
-            alert("Proposal unlinked successfully.");
+            showToast.success("Proposal unlinked successfully.");
         } catch (error: any) {
             console.error(error);
-            alert("Failed to unlink proposal: " + error.message);
+            showToast.error("Failed to unlink proposal: " + error.message);
         }
     };
 
@@ -1459,27 +977,36 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
             if (!updatedCurrentJobIds.includes(targetJobId)) {
                 updatedCurrentJobIds.push(targetJobId);
             }
-            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                linkedJobIds: updatedCurrentJobIds
-            }));
-
-            // Update target job
-            const targetRef = db.collection('jobs').doc(targetJobId);
-            const targetSnap = await targetRef.get();
-            if (targetSnap.exists) {
-                const targetData = targetSnap.data() || {};
-                const updatedTargetJobIds = [...(targetData.linkedJobIds || [])];
-                if (!updatedTargetJobIds.includes(job.id)) {
-                    updatedTargetJobIds.push(job.id);
-                }
-                await targetRef.update(cleanUndefinedFields({
-                    linkedJobIds: updatedTargetJobIds
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
+                    linkedJobIds: updatedCurrentJobIds
                 }));
             }
-            alert("Jobs linked successfully.");
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, linkedJobIds: updatedCurrentJobIds } });
+
+            // Update target job
+            if (!state.isDemoMode) {
+                const targetRef = db.collection('jobs').doc(targetJobId);
+                const targetSnap = await targetRef.get();
+                if (targetSnap.exists) {
+                    const targetData = targetSnap.data() || {};
+                    const updatedTargetJobIds = [...(targetData.linkedJobIds || [])];
+                    if (!updatedTargetJobIds.includes(job.id)) {
+                        updatedTargetJobIds.push(job.id);
+                    }
+                    await targetRef.update(cleanUndefinedFields({
+                        linkedJobIds: updatedTargetJobIds
+                    }));
+                    const targetJob = state.jobs.find(j => j.id === targetJobId);
+                    if (targetJob) {
+                        dispatch({ type: 'UPDATE_JOB', payload: { ...targetJob, linkedJobIds: updatedTargetJobIds } });
+                    }
+                }
+            }
+            showToast.success("Jobs linked successfully.");
         } catch (error: any) {
             console.error(error);
-            alert("Failed to link jobs: " + error.message);
+            showToast.error("Failed to link jobs: " + error.message);
         }
     };
 
@@ -1487,44 +1014,79 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
         try {
             // Update current job
             const updatedCurrentJobIds = (job.linkedJobIds || []).filter((id: string) => id !== targetJobId);
-            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                linkedJobIds: updatedCurrentJobIds
-            }));
-
-            // Update target job
-            const targetRef = db.collection('jobs').doc(targetJobId);
-            const targetSnap = await targetRef.get();
-            if (targetSnap.exists) {
-                const targetData = targetSnap.data() || {};
-                const updatedTargetJobIds = (targetData.linkedJobIds || []).filter((id: string) => id !== job.id);
-                await targetRef.update(cleanUndefinedFields({
-                    linkedJobIds: updatedTargetJobIds
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
+                    linkedJobIds: updatedCurrentJobIds
                 }));
             }
-            alert("Jobs unlinked successfully.");
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, linkedJobIds: updatedCurrentJobIds } });
+
+            // Update target job
+            if (!state.isDemoMode) {
+                const targetRef = db.collection('jobs').doc(targetJobId);
+                const targetSnap = await targetRef.get();
+                if (targetSnap.exists) {
+                    const targetData = targetSnap.data() || {};
+                    const updatedTargetJobIds = (targetData.linkedJobIds || []).filter((id: string) => id !== job.id);
+                    await targetRef.update(cleanUndefinedFields({
+                        linkedJobIds: updatedTargetJobIds
+                    }));
+                    const targetJob = state.jobs.find(j => j.id === targetJobId);
+                    if (targetJob) {
+                        dispatch({ type: 'UPDATE_JOB', payload: { ...targetJob, linkedJobIds: updatedTargetJobIds } });
+                    }
+                }
+            }
+            showToast.success("Jobs unlinked successfully.");
         } catch (error: any) {
             console.error(error);
-            alert("Failed to unlink jobs: " + error.message);
+            showToast.error("Failed to unlink jobs: " + error.message);
         }
     };
 
     const handleUnlinkInvoice = async (invoiceId: string) => {
         try {
             const updatedInvoiceIds = (job.linkedInvoiceIds || []).filter((id: string) => id !== invoiceId);
-            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                linkedInvoiceIds: updatedInvoiceIds
-            }));
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
+                    linkedInvoiceIds: updatedInvoiceIds
+                }));
+            }
             dispatch({
                 type: 'UPDATE_JOB',
                 payload: {
-                    id: job.id,
+                    ...job,
                     linkedInvoiceIds: updatedInvoiceIds
                 }
             });
-            alert("Invoice unlinked successfully.");
+            showToast.success("Invoice unlinked successfully.");
         } catch (error: any) {
             console.error(error);
-            alert("Failed to unlink invoice: " + error.message);
+            showToast.error("Failed to unlink invoice: " + error.message);
+        }
+    };
+
+    const handleArchiveToggle = async () => {
+        if (!hasPermission(state.currentUser, 'manage_dispatch')) {
+            showToast.warn("You do not have permission to archive jobs.");
+            return;
+        }
+        const newArchived = !job.archived;
+        const updates = {
+            archived: newArchived,
+            archivedAt: newArchived ? new Date().toISOString() : null,
+            archivedBy: newArchived ? state.currentUser?.id : null
+        };
+
+        try {
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
+            }
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
+            showToast.success(newArchived ? "Job taken off dispatch board (Archived)" : "Job restored to dispatch board");
+        } catch (err: any) {
+            console.error("Failed to update job archive status:", err);
+            showToast.error("Failed to update job status");
         }
     };
 
@@ -1570,51 +1132,17 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
         return `${a.street || ''}, ${a.city || ''}, ${a.state || ''} ${a.zip || ''}`;
     };
 
-    const isInternalExpenseFile = (f: any) => {
-        const label = (f.metadata?.label || f.label || '').toLowerCase();
-        const name = (f.fileName || '').toLowerCase();
-        const forbiddenKeywords = ['expense', 'receipt', 'vendor', 'bill', 'purchase order', 'cost sheet'];
-        return forbiddenKeywords.some(keyword => label.includes(keyword) || name.includes(keyword)) &&
-               !name.includes('signed_waiver') &&
-               !name.includes('waiver_pending') &&
-               !label.includes('signed waiver') &&
-               !label.includes('pending signature');
-    };
-
     const attachableFiles = useMemo(() => {
         return (job?.files || []).filter(f => !isInternalExpenseFile(f));
     }, [job?.files]);
 
-    const photoFiles = job?.files?.filter(f => 
-        !deletedFiles.has(f.id || (f as ExtendedFile).dataUrl || '') && (
-            f.type === 'Photo' || 
-            (f as ExtendedFile).contentType?.startsWith('image/') || 
-            (f as ExtendedFile).fileType?.startsWith('image/')
-        ) &&
+    const photoFiles = (localFiles || []).filter(f => 
+        !deletedFiles.has(f.id || (f as ExtendedFile).dataUrl || '') &&
+        isFilePhoto(f) &&
         (isAdmin || !isInternalExpenseFile(f))
     ) || [];
 
-    const unassociatedPhotoFiles = photoFiles.filter((f: any) => {
-        const fileAssetId = (f.metadata?.assetId || f.assetId || '').toLowerCase().trim();
-        const fileLabel = (f.metadata?.label || f.label || '').toLowerCase().trim();
-        
-        return !jobAssets.some(asset => {
-            const assetId = (asset.id || '').toLowerCase().trim();
-            const assetTag = (asset.assetTag || '').toLowerCase().trim();
-            const assetName = (asset.name || '').toLowerCase().trim();
-            
-            return (
-                (fileAssetId && assetId && fileAssetId === assetId) ||
-                (assetId && fileLabel === assetId) ||
-                (assetTag && fileLabel === assetTag) ||
-                (assetName && fileLabel === assetName) ||
-                (assetTag && fileLabel.includes(assetTag)) ||
-                (assetName && fileLabel.includes(assetName))
-            );
-        });
-    });
-
-    const groupedPhotos = unassociatedPhotoFiles.reduce((acc, f) => {
+    const groupedPhotos = photoFiles.reduce((acc, f) => {
         const label = f.metadata?.label || (f as ExtendedFile).label || 'Uncategorized';
         if (!acc[label]) acc[label] = [];
         acc[label].push(f);
@@ -1639,109 +1167,422 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
     return (
         <>
-        <Modal isOpen={isOpen} onClose={onClose} title={`Job Record: ${job.id}`} size="xl">
-            <div className="p-3 sm:p-6">
-                {/* Sticky Navigation/Print Header */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8 border-b border-slate-100 dark:border-slate-800 pb-4 sm:pb-6 sticky top-0 bg-white dark:bg-gray-800 z-10 py-3 sm:py-4 gap-3 sm:gap-4 shadow-sm print:relative print:shadow-none print:border-none print:m-0 print:p-0">
-                    <div>
-                        <div className="flex items-center gap-2 sm:gap-3 mb-1">
-                             <div className="bg-primary-600 p-1.5 sm:p-2 rounded-xl text-white shadow-lg shadow-primary-500/20 print:hidden shrink-0">
-                                <FileText size={18}/>
+        <Modal 
+            isOpen={isOpen} 
+            onClose={onClose} 
+            title={isAdmin ? (job.workOrderNumber ? `Work Order #${job.workOrderNumber} — ${customer?.name || job.customerName || 'Job Record'}` : `Job Record #${job.id.replace('job-', '')} — ${customer?.name || job.customerName || 'Customer'}`) : `Service Report — WO #${job.workOrderNumber || job.id.slice(-6).toUpperCase()}`} 
+            size="2xl"
+            zIndex="z-[10060]"
+        >
+            <div className={isAdmin ? "p-3 sm:p-5" : "p-0"}>
+                {/* Technician Review & Certification Banner */}
+                {isReviewMode && (
+                    <div className="mb-4 p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 border-2 border-indigo-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-sm shrink-0">
+                                <ShieldCheck size={22} />
                             </div>
-                            <h2 className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter truncate max-w-[180px] sm:max-w-none">Job History Record</h2>
+                            <div>
+                                <h4 className="text-sm font-extrabold text-indigo-950 dark:text-indigo-100">
+                                    Technician Job Record Review & Certification
+                                </h4>
+                                <p className="text-xs text-indigo-800/80 dark:text-indigo-300 font-medium">
+                                    {isJobRecordSignedOff 
+                                        ? "✓ This job record has been verified and certified by the technician."
+                                        : "Review full service findings, readings, and photos before completing site departure."}
+                                </p>
+                            </div>
                         </div>
-                        <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1.5">
-                             <Calendar size={12}/> {new Date(job.appointmentTime).toLocaleDateString()}
-                        </p>
+                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                            {isJobRecordSignedOff ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300 font-black text-xs">
+                                    <CheckCircle2 size={16} /> Certified & Signed Off
+                                </span>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const tech = state.currentUser?.name || `${state.currentUser?.firstName || ''} ${state.currentUser?.lastName || ''}`.trim() || 'Technician';
+                                        onSignOffJobRecord?.(tech);
+                                        showToast.success("Job record successfully signed off and certified!");
+                                        onClose();
+                                    }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl flex items-center gap-2 shadow-md transition-all cursor-pointer border-none"
+                                >
+                                    <CheckCircle size={16} />
+                                    <span>Certify & Sign Off Job Record</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 print:hidden backdrop-blur-md bg-white/50 dark:bg-gray-800/50 p-1 rounded-2xl w-full sm:w-auto">
-                         <Button variant="secondary" onClick={onClose} className="h-9 sm:h-10 text-[10px] uppercase font-black tracking-widest px-3 sm:px-4">Back</Button>
-                         {isAdmin && onEditRecord && (
-                             <Button variant="secondary" onClick={onEditRecord} className="h-9 sm:h-10 text-[10px] uppercase font-black tracking-widest px-3 sm:px-4">Edit Record</Button>
-                         )}
-                         <Button onClick={() => setIsEmailModalOpen(true)} className="h-9 sm:h-10 text-[10px] uppercase font-black tracking-widest flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 whitespace-nowrap bg-indigo-600 hover:bg-indigo-700 text-white">
-                            <Mail size={14}/> Email Report
-                         </Button>
-                         <Button 
-                            disabled={isDownloadingPdf}
-                            onClick={async () => {
-                                setIsDownloadingPdf(true);
-                                try {
-                                    // @ts-ignore - html2pdf has no types available right now
-                                    const html2pdf = (await import('html2pdf.js')).default;
-                                    
-                                    const htmlContent = generateEmailHtml(!isAdmin, true);
-                                    
-                                    const wrapper = document.createElement('div');
-                                    wrapper.style.position = 'absolute';
-                                    wrapper.style.left = '-9999px';
-                                    wrapper.style.top = '-9999px';
-                                    
-                                    const container = document.createElement('div');
-                                    container.innerHTML = htmlContent;
-                                    container.style.width = '650px';
-                                    container.style.backgroundColor = '#ffffff';
-                                    container.style.padding = '24px';
-                                    
-                                    wrapper.appendChild(container);
-                                    document.body.appendChild(wrapper);
-                                    
-                                    // Fix any logo CORS URLs in the container
-                                    container.querySelectorAll('img').forEach((img) => {
-                                        if (img.src && img.src.includes('tektrakker.web.app/tektrakker-logo-web.png')) {
-                                            img.src = '/tektrakker-logo-web.png';
+                )}
+
+                {/* Modern Command Toolbar & Tabs Header */}
+                {isAdmin && (
+                    <div className="mb-6 border-b border-slate-200 dark:border-slate-800 pb-4 sticky top-0 bg-white dark:bg-slate-800 z-20 py-3 shadow-xs print:hidden">
+                        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                            {/* Left: Key Job Meta Badges */}
+                            <div className="flex items-center flex-wrap gap-2">
+                                <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full shadow-xs ${
+                                    job.jobStatus === 'Completed' ? 'bg-emerald-500 text-white' : 
+                                    (job.jobStatus === 'Needs Review' || job.needsAdminVerification) ? 'bg-amber-500 text-slate-950 font-black animate-pulse' :
+                                    job.jobStatus === 'In Progress' ? 'bg-blue-500 text-white' : 
+                                    'bg-slate-600 text-white'
+                                }`}>
+                                    {job.jobStatus === 'Needs Review' ? '⚠️ Needs Review' : job.jobStatus}
+                                </span>
+
+                                <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1 bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg">
+                                    <Calendar size={12} className="text-indigo-600 dark:text-indigo-400" />
+                                    {new Date(job.appointmentTime).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+
+                                {(job.poNumber || job.workOrderNumber) && (
+                                    <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg">
+                                        PO: {job.poNumber || job.workOrderNumber}
+                                    </span>
+                                )}
+
+                                {/* Segmented Tab Switcher */}
+                                <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-900 p-1 border border-slate-200 dark:border-slate-700">
+                                    <button
+                                        type="button"
+                                        className={`px-3 py-1 text-xs font-extrabold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                                            activeTab === 'technical'
+                                                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                                                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                                        }`}
+                                        onClick={() => {
+                                            setActiveTab('technical');
+                                            setIsEditMode(false);
+                                        }}
+                                    >
+                                        <FileText size={13} />
+                                        <span>Full Job Record</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={`px-3 py-1 text-xs font-extrabold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                                            activeTab === 'preview'
+                                                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                                                : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                                        }`}
+                                        onClick={() => {
+                                            setActiveTab('preview');
+                                            setIsEditMode(false);
+                                        }}
+                                    >
+                                        <Eye size={13} />
+                                        <span>Service Report (PDF View)</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Right: Quick Action Buttons */}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button 
+                                    onClick={() => setIsIssueWarrantyOpen(true)} 
+                                    className="h-8 text-[11px] uppercase font-black tracking-wider flex items-center gap-1.5 px-3 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                                >
+                                    <ShieldCheck size={13} /> Issue Warranty
+                                </Button>
+
+                                <Button 
+                                    onClick={() => setIsEmailModalOpen(true)} 
+                                    className="h-8 text-[11px] uppercase font-black tracking-wider flex items-center gap-1.5 px-3 whitespace-nowrap bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                                >
+                                    <Mail size={13} /> Email Report
+                                </Button>
+
+                                <Button 
+                                    disabled={isDownloadingPdf}
+                                    onClick={async () => {
+                                        setIsDownloadingPdf(true);
+                                        try {
+                                            // @ts-ignore - html2pdf has no types available right now
+                                            const html2pdf = (await import('html2pdf.js')).default;
+                                            const htmlContent = generateEmailHtml(!isAdmin, true);
+                                            
+                                            const wrapper = document.createElement('div');
+                                            wrapper.style.position = 'absolute';
+                                            wrapper.style.left = '-9999px';
+                                            wrapper.style.top = '-9999px';
+                                            
+                                            const container = document.createElement('div');
+                                            container.innerHTML = htmlContent;
+                                            container.style.width = '740px';
+                                            container.style.backgroundColor = '#ffffff';
+                                            container.style.padding = '0px';
+                                            container.style.margin = '0px';
+                                            container.style.boxSizing = 'border-box';
+                                            
+                                            wrapper.appendChild(container);
+                                            document.body.appendChild(wrapper);
+                                            
+                                            container.querySelectorAll('img').forEach((img) => {
+                                                if (img.src && img.src.includes('tektrakker.web.app/tektrakker-logo-web.png')) {
+                                                    img.src = '/tektrakker-logo-web.png';
+                                                }
+                                            });
+                                            
+                                            const images = container.getElementsByTagName('img');
+                                            const promises = Array.from(images).map(img => {
+                                                if (img.complete) return Promise.resolve();
+                                                return new Promise<void>(resolve => {
+                                                    img.onload = () => resolve();
+                                                    img.onerror = () => resolve();
+                                                });
+                                            });
+                                            await Promise.all(promises);
+                                            
+                                            const { getStandardPdfFilename } = await import('../../lib/pdfHelper');
+                                            const fileName = getStandardPdfFilename('Service_Report', {
+                                                id: job.id,
+                                                workOrderNumber: job.workOrderNumber,
+                                                poNumber: job.poNumber,
+                                                customerName: customer?.name || job.customerName,
+                                                date: job.appointmentTime || job.scheduledDate || job.createdAt
+                                            });
+                                            
+                                            const opt: any = {
+                                                margin:       [0.25, 0.25, 0.25, 0.25],
+                                                filename:     fileName,
+                                                image:        { type: 'jpeg', quality: 0.98 },
+                                                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 740, backgroundColor: '#ffffff' },
+                                                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
+                                                pagebreak:    { mode: ['css', 'legacy'], avoid: ['.pdf-avoid-break', '.pdf-card', '.pdf-photo', '.pdf-unit-card', '.pdf-timeline-item', 'tr', 'img', 'blockquote', '.avoid-break'] }
+                                            };
+                                            
+                                            const pdfDataUri = await html2pdf().from(container).set(opt).output('datauristring');
+                                            const { downloadFile } = await import('../../lib/downloadHelper');
+                                            await downloadFile(pdfDataUri, fileName);
+                                            
+                                            document.body.removeChild(wrapper);
+                                        } catch (err) {
+                                            console.error('Failed to generate PDF:', err);
+                                            showToast.error('Failed to download PDF report.');
+                                        } finally {
+                                            setIsDownloadingPdf(false);
                                         }
-                                    });
-                                    
-                                    // Wait for all images inside container to load
-                                    const images = container.getElementsByTagName('img');
-                                    const promises = Array.from(images).map(img => {
-                                        if (img.complete) return Promise.resolve();
-                                        return new Promise<void>(resolve => {
-                                            img.onload = () => resolve();
-                                            img.onerror = () => resolve();
-                                        });
-                                    });
-                                    await Promise.all(promises);
-                                    
-                                    const dateStr = new Date(job.appointmentTime).toISOString().split('T')[0];
-                                    const cleanName = (job.customerName || 'Service_Report').replace(/[^a-z0-9]/gi, '_');
-                                    const fileName = `Service_Report_${cleanName}_${dateStr}.pdf`;
-                                    
-                                    const opt: any = {
-                                        margin:       [0.3, 0.3, 0.3, 0.3],
-                                        filename:     fileName,
-                                        image:        { type: 'jpeg', quality: 0.98 },
-                                        html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 650, backgroundColor: '#ffffff' },
-                                        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-                                        pagebreak:    { mode: ['css', 'legacy'], avoid: ['.pdf-card', '.pdf-photo', '.pdf-timeline-item', 'tr', 'table'] }
-                                    };
-                                    
-                                    const pdfDataUri = await html2pdf().from(container).set(opt).output('datauristring');
-                                    const { downloadFile } = await import('../../lib/downloadHelper');
-                                    await downloadFile(pdfDataUri, fileName);
-                                    
-                                    document.body.removeChild(wrapper);
-                                } catch (err) {
-                                    console.error('Failed to generate PDF:', err);
-                                    alert('Failed to download PDF report.');
-                                } finally {
-                                    setIsDownloadingPdf(false);
-                                }
-                            }}
-                            className="h-10 text-[10px] uppercase font-black tracking-widest flex items-center gap-2 px-4 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white"
-                         >
-                            <Download size={14}/> {isDownloadingPdf ? 'Generating...' : 'Download PDF'}
-                         </Button>
+                                    }}
+                                    className="h-8 text-[11px] uppercase font-black tracking-wider flex items-center gap-1.5 px-3 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                                >
+                                    <Download size={13} /> {isDownloadingPdf ? 'Generating...' : 'Download PDF'}
+                                </Button>
+
+                                <Button 
+                                    onClick={() => setIsPrintingTechSheet(true)}
+                                    className="h-8 text-[11px] uppercase font-black tracking-wider flex items-center gap-1.5 px-3 whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-white shadow-xs"
+                                >
+                                    <Printer size={13} /> Tech Sheet
+                                </Button>
+
+                                {isAdmin && onEditRecord && (
+                                    <Button variant="secondary" onClick={onEditRecord} className="h-8 text-[11px] uppercase font-black tracking-wider px-3 shadow-xs">
+                                        <Edit size={13} className="mr-1" /> Edit Record
+                                    </Button>
+                                )}
+
+                                <Button 
+                                    variant="secondary"
+                                    onClick={() => setIsSendSubcontractorModalOpen(true)}
+                                    className="h-8 text-[11px] uppercase font-black tracking-wider flex items-center gap-1.5 px-3 whitespace-nowrap shadow-xs"
+                                >
+                                    <Send size={13}/> Send to Sub
+                                </Button>
+
+                                {assignedSub && (
+                                    <Button 
+                                        variant="secondary"
+                                        onClick={() => setIsChargebackModalOpen(true)}
+                                        className="h-8 text-[11px] uppercase font-black tracking-wider flex items-center gap-1.5 px-3 whitespace-nowrap text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800 shadow-xs"
+                                        title="Log site property damage or faulty workmanship chargeback against the assigned subcontractor"
+                                    >
+                                        <AlertTriangle size={13}/> Chargeback
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                    <div className="hidden print:block text-right">
-                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Job Record ID</p>
-                         <p className="text-xs font-mono font-bold text-slate-900">{job.id.toUpperCase()}</p>
+                )}
+
+
+
+                {/* COMMERCIAL CUSTOMER WORK ORDER PROCESS GUIDE & 20-DAY COUNTDOWN */}
+                {(customer?.submissionRules || customer?.id === 'cust-1787187506048') && (
+                    <div className="mb-6">
+                        <CommercialWorkOrderProcessGuide
+                            job={currentJob || job}
+                            customer={customer}
+                            defaultExpanded={false}
+                        />
                     </div>
-                </div>
+                )}
+
+                {/* COMMERCIAL CUSTOMER SUBMISSION QUALITY GATE ON JOB RECORD */}
+                {isAdmin && jobSubmissionAudit && (jobSubmissionAudit.totalRulesCount > 0 || jobSubmissionAudit.portal?.required) && (
+                    <div className={`mb-6 p-4 rounded-2xl border transition-all ${
+                        jobSubmissionAudit.isCompliant 
+                            ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800' 
+                            : 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800'
+                    }`}>
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2.5">
+                                <span className={`px-2.5 py-1 text-xs font-black rounded-lg uppercase tracking-wider ${
+                                    jobSubmissionAudit.isCompliant ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'
+                                }`}>
+                                    {jobSubmissionAudit.isCompliant ? '✅ Customer Submission Requirements Met' : `⚠️ Customer Submission Requirements (${jobSubmissionAudit.totalRulesCount - jobSubmissionAudit.passedRulesCount} Missing)`}
+                                </span>
+                                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                    Client Standard: {jobSubmissionAudit.customerName}
+                                </h4>
+                            </div>
+
+                            {jobSubmissionAudit.portal?.required && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-extrabold px-2.5 py-1 rounded bg-indigo-600 text-white uppercase shadow-sm">
+                                        🌐 Portal Required: {jobSubmissionAudit.portal.portalName || '3rd Party Portal'}
+                                    </span>
+                                    {jobSubmissionAudit.portal.portalUrl && (
+                                        <a 
+                                            href={jobSubmissionAudit.portal.portalUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-[11px] font-bold px-2.5 py-1 bg-indigo-700 hover:bg-indigo-800 text-white rounded transition-colors"
+                                        >
+                                            Open Portal ↗
+                                        </a>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mt-3 text-xs">
+                            {jobSubmissionAudit.rules.requirePoNumber && (
+                                <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                    jobSubmissionAudit.poOk ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-rose-100 text-rose-800 border-rose-300'
+                                }`}>
+                                    {jobSubmissionAudit.poOk ? '✓ WO / PO # Recorded' : '❌ WO / PO # Required'}
+                                </span>
+                            )}
+                            {jobSubmissionAudit.rules.requireSignedWorkOrder && (
+                                <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                    jobSubmissionAudit.sigOk ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-rose-100 text-rose-800 border-rose-300'
+                                }`}>
+                                    {jobSubmissionAudit.sigOk ? '✓ Sign-off Captured' : '❌ Customer Signature Missing'}
+                                </span>
+                            )}
+                            {jobSubmissionAudit.rules.requireBeforeAfterPhotos && (
+                                <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                    jobSubmissionAudit.photoOk ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-rose-100 text-rose-800 border-rose-300'
+                                }`}>
+                                    {jobSubmissionAudit.photoOk ? '✓ Job Photos Attached' : '❌ Job Photos (Before/After) Missing'}
+                                </span>
+                            )}
+                            {jobSubmissionAudit.rules.requireEquipmentSerial && (
+                                <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                    jobSubmissionAudit.serialOk ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-rose-100 text-rose-800 border-rose-300'
+                                }`}>
+                                    {jobSubmissionAudit.serialOk ? '✓ Asset Serial Verified' : '❌ Equipment Specs/Serial Missing'}
+                                </span>
+                            )}
+                            {jobSubmissionAudit.rules.submissionDeadlineDays && (() => {
+                                const workDateStr = currentJob?.checkOutTime || currentJob?.appointmentTime || (currentJob as any)?.completedDate || currentJob?.invoice?.invoiceDate || currentJob?.createdAt;
+                                const workDate = workDateStr ? new Date(workDateStr) : new Date();
+                                const elapsed = Math.max(0, Math.floor((Date.now() - workDate.getTime()) / (1000 * 60 * 60 * 24)));
+                                const left = (jobSubmissionAudit.rules.submissionDeadlineDays || 20) - elapsed;
+                                const isSettled = currentJob?.invoice?.status === 'Paid';
+                                return (
+                                    <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                        isSettled 
+                                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                            : left < 0 
+                                            ? 'bg-rose-900 text-white border-rose-600 animate-pulse'
+                                            : left <= 5 
+                                            ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
+                                            : left <= 10
+                                            ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                            : 'bg-blue-50 text-blue-800 border-blue-200'
+                                    }`}>
+                                        {isSettled ? '✓ Invoice Paid' : left < 0 ? `🛑 ${Math.abs(left)}d Past Cutoff` : `⏱️ ${left}d Left (${jobSubmissionAudit.rules.submissionDeadlineDays}d Cutoff)`}
+                                    </span>
+                                );
+                            })()}
+                        </div>
+
+                        {jobSubmissionAudit.rules.customSubmissionNotes && (
+                            <p className="mt-2 text-xs font-medium text-amber-900 dark:text-amber-200 italic">
+                                📌 Special Rules: {jobSubmissionAudit.rules.customSubmissionNotes}
+                            </p>
+                        )}
+
+                        {/* 1-CLICK CHECK-IN / CHECK-OUT PROCEDURE ACTION BAR */}
+                        {jobSubmissionAudit.rules.checkInProcedure?.required && (
+                            <div className="mt-3 pt-3 border-t border-slate-200/80 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <span className="text-[10px] font-black uppercase text-blue-900 dark:text-blue-300 block tracking-wider">
+                                        📲 On-Site Check-In / Out ({jobSubmissionAudit.rules.checkInProcedure.method || 'SMS / IVR'}):
+                                    </span>
+                                    <span className="text-xs text-slate-700 dark:text-slate-300 font-medium">
+                                        {jobSubmissionAudit.rules.checkInProcedure.instructions || 'Text WO # to 1-856-452-7719 or call IVR to clock in/out.'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {jobSubmissionAudit.rules.checkInProcedure.phoneNumber && (
+                                        <a
+                                            href={`sms:${jobSubmissionAudit.rules.checkInProcedure.phoneNumber.replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(`WO ${poNumber || job.id}`)}`}
+                                            className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs shadow-sm flex items-center gap-1.5 transition-colors"
+                                            title="1-Click Text Check-In"
+                                        >
+                                            💬 ⚡ 1-Click Text Check-In ({jobSubmissionAudit.rules.checkInProcedure.phoneNumber})
+                                        </a>
+                                    )}
+                                    {jobSubmissionAudit.rules.checkInProcedure.phoneNumber && (
+                                        <a
+                                            href={`tel:${jobSubmissionAudit.rules.checkInProcedure.phoneNumber.replace(/[^0-9+]/g, '')}`}
+                                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs shadow-sm flex items-center gap-1.5 transition-colors"
+                                            title="1-Click Call IVR"
+                                        >
+                                            📞 Call IVR
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Persistent Job History & IVR Check-In Audit Trail */}
+                        {job.checkInLogs && job.checkInLogs.length > 0 && (
+                            <div className="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800/80">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[10px] font-black uppercase text-indigo-900 dark:text-indigo-300 tracking-wider flex items-center gap-1.5">
+                                        ⏱️ Verified On-Site Check-In & IVR Audit History ({job.checkInLogs.length} events)
+                                    </span>
+                                </div>
+                                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                    {job.checkInLogs.map((log: any, idx: number) => (
+                                        <div key={log.id || idx} className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs">
+                                            <div className="flex items-center gap-2">
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                                                    log.action === 'check_in' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400' : 'bg-blue-100 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400'
+                                                }`}>
+                                                    {log.action === 'check_in' ? 'Check-In' : 'Check-Out'}
+                                                </span>
+                                                <span className="font-bold text-slate-800 dark:text-slate-200">{log.method}</span>
+                                                <span className="text-slate-500 text-[11px]">(WO #{log.woNumber || 'N/A'})</span>
+                                            </div>
+                                            <div className="text-right font-mono text-[10px] text-slate-500">
+                                                <span>{log.techName || 'Tech'}</span> • <span>{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Return Visit Suggestion Alert Banner */}
-                {job.visitType === 'Diagnostic Only' && (
+                {isAdmin && job.visitType === 'Diagnostic Only' && (
                     <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 p-6 rounded-[2.5rem] shadow-sm mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 print:hidden">
                         <div className="flex items-center gap-3">
                             <div className="bg-amber-500 p-2.5 rounded-2xl text-white shadow-lg shadow-amber-500/20">
@@ -1765,35 +1606,6 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
 
 
-                {/* Tab Navigation */}
-                <div className="flex overflow-x-auto custom-scrollbar border-b border-slate-200 dark:border-slate-800 mb-6 print:hidden">
-                    <button
-                        type="button"
-                        className={`px-4 sm:px-6 py-3 text-xs sm:text-sm shrink-0 whitespace-nowrap font-black uppercase tracking-wider border-b-2 transition-all ${
-                            activeTab === 'preview'
-                                ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400 font-extrabold'
-                                : 'border-transparent text-slate-450 hover:text-slate-650 dark:text-slate-400 dark:hover:text-slate-200'
-                        }`}
-                        onClick={() => {
-                            setActiveTab('preview');
-                            setIsEditMode(false);
-                        }}
-                    >
-                        Service Report
-                    </button>
-                    <button
-                        type="button"
-                        className={`px-4 sm:px-6 py-3 text-xs sm:text-sm shrink-0 whitespace-nowrap font-black uppercase tracking-wider border-b-2 transition-all ${
-                            activeTab === 'technical'
-                                ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400 font-extrabold'
-                                : 'border-transparent text-slate-450 hover:text-slate-650 dark:text-slate-400 dark:hover:text-slate-200'
-                        }`}
-                        onClick={() => setActiveTab('technical')}
-                    >
-                        Tech Data & Diagnostics
-                    </button>
-                </div>
-
                 {activeTab === 'technical' ? (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Left Column: Notes & Tasks */}
@@ -1802,9 +1614,19 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                         <div className="bg-slate-50 dark:bg-slate-900/40 p-4 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border border-slate-100 dark:border-slate-800/60 shadow-sm mb-4 print:bg-white print:border-slate-200">
                             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
                                 <div className="space-y-1">
-                                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight print:text-black">{customer?.name || job.customerName}</h3>
+                                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight print:text-black flex items-center gap-2 flex-wrap">
+                                        {isSubcontractor ? siteLocationName : (customer?.name || job.customerName)}
+                                        {(serviceLocation as any)?.propertyName && (
+                                            <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
+                                                📍 {(serviceLocation as any).propertyName}
+                                                {(serviceLocation as any).locationNumber ? ` (#${(serviceLocation as any).locationNumber})` : ''}
+                                            </span>
+                                        )}
+                                    </h3>
                                     <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1.5 font-medium print:text-slate-700">
-                                        <MapPin size={14} className="text-slate-400 print:hidden shrink-0"/> {formatAddress(customer?.address || job.address)}
+                                        <MapPin size={14} className="text-slate-400 print:hidden shrink-0"/> 
+                                        {formatAddress(job.address || serviceLocation?.address || customer?.address)}
+                                        {(serviceLocation as any)?.building ? ` • Building: ${(serviceLocation as any).building}` : ''}
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
@@ -1815,13 +1637,101 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     )}
                                     <span className={`px-3 sm:px-4 py-1.5 sm:py-2 text-[10px] font-black uppercase tracking-widest rounded-full shadow-sm print:border print:border-slate-300 ${
                                         job.jobStatus === 'Completed' ? 'bg-emerald-500 text-white print:text-emerald-700 print:bg-white' : 
+                                        (job.jobStatus === 'Needs Review' || job.needsAdminVerification) ? 'bg-amber-500 text-slate-950 font-black animate-pulse print:text-amber-700 print:bg-white' :
                                         job.jobStatus === 'In Progress' ? 'bg-blue-500 text-white print:text-blue-700 print:bg-white' : 
                                         'bg-slate-500 text-white print:text-slate-700 print:bg-white'
                                     }`}>
-                                        {job.jobStatus}
+                                        {job.jobStatus === 'Needs Review' ? '⚠️ Needs Review' : job.jobStatus}
                                     </span>
+                                    <button
+                                        onClick={handleArchiveToggle}
+                                        className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg border transition-all flex items-center gap-1.5 shadow-sm print:hidden ${
+                                            job.archived 
+                                                ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800'
+                                                : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                                        }`}
+                                        title={job.archived ? "Click to restore job to active dispatch board" : "Click to take job off dispatch board without deleting"}
+                                    >
+                                        <Archive size={12} />
+                                        <span>{job.archived ? "Archived (Restore)" : "Take Off Board"}</span>
+                                    </button>
                                 </div>
                             </div>
+
+                            {/* ADMIN VERIFICATION & ACCURACY REVIEW BANNER */}
+                            {(job.jobStatus === 'Needs Review' || job.needsAdminVerification) && (
+                                <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/20 to-orange-500/15 border-2 border-amber-500/50 text-slate-800 dark:text-slate-100 shadow-xl animate-fade-in print:hidden">
+                                    <div className="flex items-start justify-between flex-wrap gap-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 rounded-xl bg-amber-500 text-slate-950 font-black shrink-0 shadow-md">
+                                                <ShieldAlert size={22} className="animate-pulse" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-black uppercase tracking-wider text-amber-900 dark:text-amber-300 flex items-center gap-2">
+                                                    📋 Action Required: Technician Job Completion Review
+                                                    <span className="px-2 py-0.5 text-[9px] rounded-full font-black bg-amber-500 text-slate-950 uppercase tracking-widest">
+                                                        Pending Verification
+                                                    </span>
+                                                </h3>
+                                                <p className="text-xs text-amber-800 dark:text-amber-200 mt-0.5 font-medium">
+                                                    Technician <strong>{job.assignedTechnicianName || 'Tech'}</strong> completed work on site. Please verify accuracy & completeness before releasing billing documents.
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    // Mark job verified and open email dispatch modal
+                                                    const updates = { jobStatus: 'Completed', needsAdminVerification: false };
+                                                    if (!state.isDemoMode) {
+                                                        await db.collection('jobs').doc(job.id).update(updates).catch(console.error);
+                                                    }
+                                                    dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } as any });
+                                                    setIsEmailModalOpen(true);
+                                                }}
+                                                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase tracking-wider shadow-md flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+                                            >
+                                                <CheckCircle2 size={16} />
+                                                <span>Verify & Dispatch Billing Documents</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Verification Checklist Cards */}
+                                    <div className="mt-4 pt-3 border-t border-amber-500/30 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                        <div className="p-2.5 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-amber-300 dark:border-amber-900/50 flex items-center gap-2 shadow-sm">
+                                            <Clock size={16} className="text-amber-600 shrink-0" />
+                                            <div>
+                                                <p className="font-bold text-[11px]">1. Time Logs & Duration</p>
+                                                <p className="text-[10px] text-slate-500">{job.timeOnSiteMinutes ? `${job.timeOnSiteMinutes}m on site` : 'Review in/out times'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="p-2.5 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-amber-300 dark:border-amber-900/50 flex items-center gap-2 shadow-sm">
+                                            <FileText size={16} className="text-amber-600 shrink-0" />
+                                            <div>
+                                                <p className="font-bold text-[11px]">2. Diagnosis & Notes</p>
+                                                <p className="text-[10px] text-slate-500">{job.notes?.diagnosis ? 'Notes recorded' : 'Inspect tech notes'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="p-2.5 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-amber-300 dark:border-amber-900/50 flex items-center gap-2 shadow-sm">
+                                            <Camera size={16} className="text-amber-600 shrink-0" />
+                                            <div>
+                                                <p className="font-bold text-[11px]">3. Photos & Signatures</p>
+                                                <p className="text-[10px] text-slate-500">{(job.files || []).length} site photos</p>
+                                            </div>
+                                        </div>
+                                        <div className="p-2.5 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-amber-300 dark:border-amber-900/50 flex items-center gap-2 shadow-sm">
+                                            <DollarSign size={16} className="text-amber-600 shrink-0" />
+                                            <div>
+                                                <p className="font-bold text-[11px]">4. Pricing & Invoice</p>
+                                                <p className="text-[10px] text-slate-500">${(job.invoice?.totalAmount || job.invoice?.amount || 0).toFixed(2)} Total</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="flex flex-wrap gap-4 pt-4 border-t border-slate-200/60 dark:border-slate-800/60">
                                 <div className="flex items-center gap-2">
@@ -1830,7 +1740,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     </div>
                                     <div>
                                         <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Appointment</p>
-                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">{new Date(job.appointmentTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">{safeFormatDateTimeString(job.appointmentTime, { dateStyle: 'medium', timeStyle: 'short' })}</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -1850,6 +1760,22 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                         </p>
                                     </div>
                                 </div>
+                                {((job as any).subcontractorPhone || job.subcontractorWorkOrder?.customSubPhone) && (
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 print:hidden">
+                                            <Phone size={14}/>
+                                        </div>
+                                        <div>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Subcontractor Phone</p>
+                                            <a 
+                                                href={`tel:${((job as any).subcontractorPhone || job.subcontractorWorkOrder?.customSubPhone).replace(/\D/g, '')}`}
+                                                className="text-[11px] font-bold text-purple-700 dark:text-purple-300 hover:underline print:text-black block font-mono"
+                                            >
+                                                {(job as any).subcontractorPhone || job.subcontractorWorkOrder?.customSubPhone}
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
                                 {job.assistants && job.assistants.length > 0 && (
                                     <div className="flex items-center gap-2">
                                         <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 print:hidden">
@@ -1866,47 +1792,61 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                         </div>
                                     </div>
                                 )}
-                                {isAdmin && job.checkInTime && (
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 print:hidden">
-                                            <Clock size={14}/>
-                                        </div>
-                                        <div>
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Arrived</p>
-                                            <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">
-                                                {new Date(job.checkInTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                                            </p>
-                                        </div>
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center print:hidden ${
+                                        timeSummary.formattedInTime 
+                                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600' 
+                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                    }`}>
+                                        <Clock size={14}/>
                                     </div>
-                                )}
-                                {isAdmin && job.checkOutTime && (
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-650 print:hidden">
-                                            <Clock size={14}/>
-                                        </div>
-                                        <div>
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Departed</p>
-                                            <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">
-                                                {new Date(job.checkOutTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                                            </p>
-                                        </div>
+                                    <div>
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Arrived (In)</p>
+                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">
+                                            {timeSummary.formattedInTime || <span className="text-slate-400 font-normal italic">Not Logged</span>}
+                                        </p>
                                     </div>
-                                )}
-                                {isAdmin && job.timeOnSiteMinutes !== undefined && job.timeOnSiteMinutes > 0 && (
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 print:hidden">
-                                            <Clock size={14}/>
-                                        </div>
-                                        <div>
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Duration</p>
-                                            <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">
-                                                {job.timeOnSiteMinutes >= 60 
-                                                    ? `${Math.floor(job.timeOnSiteMinutes / 60)}h ${job.timeOnSiteMinutes % 60}m`
-                                                    : `${job.timeOnSiteMinutes}m`
-                                                }
-                                            </p>
-                                        </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center print:hidden ${
+                                        timeSummary.formattedOutTime 
+                                            ? 'bg-red-100 dark:bg-red-900/30 text-red-650' 
+                                            : (timeSummary.status === 'in_progress' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 animate-pulse' : 'bg-slate-100 dark:bg-slate-800 text-slate-400')
+                                    }`}>
+                                        <Clock size={14}/>
                                     </div>
+                                    <div>
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Departed (Out)</p>
+                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">
+                                            {timeSummary.formattedOutTime || (timeSummary.status === 'in_progress' ? <span className="text-amber-600 dark:text-amber-400 font-extrabold">Active On Site</span> : <span className="text-slate-400 font-normal italic">Not Logged</span>)}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center print:hidden ${
+                                        timeSummary.formattedDuration 
+                                            ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600' 
+                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                                    }`}>
+                                        <Clock size={14}/>
+                                    </div>
+                                    <div>
+                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Site Duration</p>
+                                        <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300 print:text-black">
+                                            {timeSummary.formattedDuration || <span className="text-slate-400 font-normal italic">--</span>}
+                                        </p>
+                                    </div>
+                                </div>
+                                {isAdmin && (
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenTimeEditor}
+                                        className="h-8 px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all border border-slate-200 dark:border-slate-700 shrink-0 print:hidden cursor-pointer"
+                                        title="Click to edit or adjust arrival/departure times"
+                                    >
+                                        <Clock size={12} className="text-indigo-600 dark:text-indigo-400" />
+                                        <span>Edit Times</span>
+                                    </button>
                                 )}
                                                       {/* Service Location details, Property info, Gate Code & Notes */}
                         </div>
@@ -1928,14 +1868,22 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 Serviced Property & Location Details
                                             </h4>
                                             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                                                {serviceLocation?.propertyName || 'Property Location'} • {formatAddress(job.address)}
+                                                {resolveSiteLocationName(job, serviceLocation) || 'Property Location'} • {formatAddress(job.address)}
                                             </p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3 shrink-0">
-                                        <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-850 dark:bg-indigo-950/30 dark:text-indigo-400 border border-indigo-200/50">
-                                            Property Active
-                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setIsLocationAuditOpen(true);
+                                            }}
+                                            className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm transition-all flex items-center gap-1"
+                                            title="Click to view all work history, jobs & documents for this location"
+                                        >
+                                            View Location History & Docs ↗
+                                        </button>
                                         {isPropertyExpanded ? <ChevronUp size={18} className="text-slate-400" /> : <ChevronDown size={18} className="text-slate-400" />}
                                     </div>
                                 </button>
@@ -2015,7 +1963,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                  }
 
                                                  // Fall back to primary customer and account-level contacts only if no location contacts are defined.
-                                                 if (!hasLocationContacts) {
+                                                 if (!hasLocationContacts && !isSubcontractor) {
                                                      if (job.customerName && (job.customerPhone || job.customerEmail)) {
                                                          pocList.push({ name: job.customerName, phone: job.customerPhone, email: job.customerEmail, role: 'Primary Customer' });
                                                      }
@@ -2093,7 +2041,155 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     </div>
                                 )}
                             </section>
-                        )}      </div>
+                        )}
+
+                        {/* Site Visit & In/Out Time Audit Record */}
+                        <section className="bg-white dark:bg-slate-900/90 rounded-[2rem] border border-slate-200 dark:border-slate-800 p-5 sm:p-6 shadow-sm mb-6 print:border-slate-300">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0 shadow-sm">
+                                        <Clock size={20} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                                            Site Visit & Time On Site Record
+                                            {timeSummary.hasTimeRecorded ? (
+                                                <span className={`px-2 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest ${
+                                                    timeSummary.status === 'completed' 
+                                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800' 
+                                                        : 'bg-blue-100 text-blue-800 dark:bg-blue-950/50 dark:text-blue-400 border border-blue-300 dark:border-blue-800 animate-pulse'
+                                                }`}>
+                                                    {timeSummary.status === 'completed' ? 'Verified Logged' : 'Active On Site'}
+                                                </span>
+                                            ) : (
+                                                <span className="px-2 py-0.5 text-[9px] font-black rounded-full uppercase tracking-widest bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-300 dark:border-slate-700">
+                                                    Pending / Not Logged
+                                                </span>
+                                            )}
+                                        </h4>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                                            Verified arrival & departure timestamps for this work order service.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {isAdmin && (
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenTimeEditor}
+                                        className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs border border-slate-200 dark:border-slate-700 shrink-0 print:hidden cursor-pointer"
+                                        title="Edit, adjust or backfill in/out times and visit duration for this record"
+                                    >
+                                        <Clock size={13} className="text-indigo-600 dark:text-indigo-400" />
+                                        <span>{timeSummary.hasTimeRecorded ? 'Edit / Correct Times' : '+ Log In & Out Times'}</span>
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Primary Times Summary Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-2">
+                                {/* Check-In / Arrived */}
+                                <div className="p-3.5 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+                                            🟢 Check-In (Arrival)
+                                        </span>
+                                        {timeSummary.formattedInTime && (
+                                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 px-1.5 py-0.2 rounded">
+                                                In
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm font-black text-slate-900 dark:text-white">
+                                        {timeSummary.formattedInTime || <span className="text-slate-400 font-normal italic text-xs">Not recorded</span>}
+                                    </p>
+                                    {timeSummary.formattedInDate && (
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                                            {timeSummary.formattedInDate}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Check-Out / Departed */}
+                                <div className="p-3.5 rounded-2xl bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-rose-800 dark:text-rose-400">
+                                            🔴 Check-Out (Departure)
+                                        </span>
+                                        {timeSummary.formattedOutTime && (
+                                            <span className="text-[9px] font-bold text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/60 px-1.5 py-0.2 rounded">
+                                                Out
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm font-black text-slate-900 dark:text-white">
+                                        {timeSummary.formattedOutTime || (timeSummary.status === 'in_progress' ? <span className="text-amber-600 font-bold text-xs">In Progress / On Site</span> : <span className="text-slate-400 font-normal italic text-xs">Not recorded</span>)}
+                                    </p>
+                                    {timeSummary.formattedOutDate && (
+                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                                            {timeSummary.formattedOutDate}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Duration On Site */}
+                                <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-800 dark:text-indigo-400">
+                                            ⏱️ Total Time On Site
+                                        </span>
+                                        {timeSummary.timeOnSiteMinutes && (
+                                            <span className="text-[9px] font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/60 px-1.5 py-0.2 rounded">
+                                                {timeSummary.timeOnSiteMinutes}m
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm font-black text-slate-900 dark:text-white">
+                                        {timeSummary.formattedDuration || <span className="text-slate-400 font-normal italic text-xs">--</span>}
+                                    </p>
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                                        {timeSummary.visits.length > 1 ? `${timeSummary.visits.length} Site Visits Logged` : 'Single Service Visit'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Multi-Visit Breakdown List */}
+                            {timeSummary.visits.length > 1 && (
+                                <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">
+                                        Detailed Visits Timeline ({timeSummary.visits.length} Visits)
+                                    </span>
+                                    <div className="space-y-1.5">
+                                        {timeSummary.visits.map((visit, idx) => (
+                                            <div key={visit.id || idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 text-xs">
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                                                        Visit #{idx + 1}
+                                                    </span>
+                                                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                                                        {new Date(visit.checkInTime).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                    </span>
+                                                    {visit.method && (
+                                                        <span className="text-[10px] text-slate-400">({visit.method})</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-3 text-right">
+                                                    <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                                        In: <strong className="text-emerald-600 dark:text-emerald-400">{new Date(visit.checkInTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</strong>
+                                                        {visit.checkOutTime ? `  •  Out: ${new Date(visit.checkOutTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ' (Active)'}
+                                                    </span>
+                                                    {visit.timeOnSiteMinutes !== null && visit.timeOnSiteMinutes !== undefined && (
+                                                        <span className="px-2 py-0.5 rounded font-mono text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                                                            {visit.timeOnSiteMinutes >= 60 ? `${Math.floor(visit.timeOnSiteMinutes / 60)}h ${visit.timeOnSiteMinutes % 60}m` : `${visit.timeOnSiteMinutes}m`}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </section>      </div>
 
 
                         {/* Direct Technician Recommendations */}
@@ -2125,7 +2221,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                 </h4>
                                 <div className="space-y-4">
                                     {jobAssets.map((asset) => {
-                                         const unitState = job.unitStates?.find(s => s.assetId === asset.id);
+                                         const unitState = normalizeUnitStates(job.unitStates).find((s: any) => s.assetId === asset.id || s.id === asset.id);
                                          const healthBefore = unitState?.healthBefore || unitState?.health || asset.condition || 'Good';
                                          const healthAfter = unitState?.healthAfter || unitState?.health || 'Good';
                                          const isExpanded = !!expandedSystems[asset.id];
@@ -2185,13 +2281,70 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                         <h5 className="text-base font-black text-slate-800 dark:text-slate-200 tracking-tight">
                                                             {asset.name || asset.type} {asset.brand ? `• ${asset.brand}` : ''} {asset.model ? `(${asset.model})` : ''}
                                                         </h5>
-                                                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-1">
+                                                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-1">
                                                             <span>Tag: {asset.assetTag || 'N/A'}</span>
                                                             <span>Serial: {asset.serial || 'N/A'}</span>
                                                             {asset.physicalLocation && <span>Location: {asset.physicalLocation}</span>}
+                                                            {(() => {
+                                                                const lat = typeof asset.gpsPin?.lat === 'number' ? asset.gpsPin.lat : (typeof asset.gpsLat === 'number' ? asset.gpsLat : undefined);
+                                                                const lng = typeof asset.gpsPin?.lng === 'number' ? asset.gpsPin.lng : (typeof asset.gpsLng === 'number' ? asset.gpsLng : undefined);
+                                                                if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0)) {
+                                                                    return (
+                                                                        <a
+                                                                            href={`https://www.google.com/maps?q=${lat},${lng}`}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            className="flex items-center gap-1 text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 font-mono lowercase tracking-normal hover:underline cursor-pointer"
+                                                                            title="Open coordinates in Google Maps"
+                                                                        >
+                                                                            <Compass size={11} className="text-indigo-500 shrink-0" />
+                                                                            <span>gps: {lat.toFixed(6)}, {lng.toFixed(6)}</span>
+                                                                            <ExternalLink size={10} className="opacity-70" />
+                                                                        </a>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            })()}
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-3 shrink-0">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedAssetForAssessment(asset);
+                                                            }}
+                                                            className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-black transition-all shadow-md cursor-pointer"
+                                                        >
+                                                            <Wrench size={13} />
+                                                            <span>Unit Assessment (EPA & Temp Split)</span>
+                                                        </button>
+                                                        <label 
+                                                            onClick={(e) => e.stopPropagation()} 
+                                                            className="flex items-center gap-1.5 cursor-pointer bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all"
+                                                            title="Toggle whether this unit appears on the Work Order / Job Report PDF"
+                                                        >
+                                                            <input 
+                                                                type="checkbox"
+                                                                checked={unitState?.includeOnWorkOrder !== false}
+                                                                onChange={(e) => {
+                                                                    const newChecked = e.target.checked;
+                                                                    const updated = [...(Array.isArray(job.unitStates) ? job.unitStates : (job.unitStates ? [job.unitStates] : []))];
+                                                                    const idx = updated.findIndex(s => s.assetId === asset.id);
+                                                                    if (idx > -1) {
+                                                                        updated[idx] = { ...updated[idx], includeOnWorkOrder: newChecked };
+                                                                    } else {
+                                                                        updated.push({ assetId: asset.id, includeOnWorkOrder: newChecked });
+                                                                    }
+                                                                    setLocalUnitStates(updated);
+                                                                    db.collection('jobs').doc(job.id).update(cleanUndefinedFields({ unitStates: updated }));
+                                                                    dispatch({ type: 'UPDATE_JOB', payload: { ...job, unitStates: updated } });
+                                                                }}
+                                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+                                                            />
+                                                            <span className="text-[11px] text-slate-700 dark:text-slate-200">Include on Work Order</span>
+                                                        </label>
                                                         <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${
                                                             healthAfter === 'Good' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200/50' :
                                                             healthAfter === 'Fair' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200/50' :
@@ -2584,13 +2737,24 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                         </section>
 
                         {/* Visit & Clock History */}
-                        {isAdmin && job.timeEntries && job.timeEntries.length > 0 && (
-                            <section className="space-y-4">
+                        <section className="space-y-4">
+                            <div className="flex items-center justify-between">
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <Clock size={14}/> Visit & Clock History ({job.timeEntries.length})
+                                    <Clock size={14}/> Visit & Clock History ({timeSummary.visits.length})
                                 </h4>
-                                <div className="grid grid-cols-1 gap-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-5 shadow-sm print:border-slate-200">
-                                    {job.timeEntries.map((entry, idx) => (
+                                {isAdmin && (
+                                    <button
+                                        type="button"
+                                        onClick={handleOpenTimeEditor}
+                                        className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 hover:underline print:hidden cursor-pointer"
+                                    >
+                                        {timeSummary.hasTimeRecorded ? 'Edit In/Out Times' : '+ Log Times'}
+                                    </button>
+                                )}
+                            </div>
+                            <div className="grid grid-cols-1 gap-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-5 shadow-sm print:border-slate-200">
+                                {timeSummary.visits.length > 0 ? (
+                                    timeSummary.visits.map((entry, idx) => (
                                         <div key={idx} className="flex justify-between items-center text-xs border-b border-slate-100 dark:border-slate-800/60 pb-3 last:border-b-0 last:pb-0">
                                             <div className="space-y-1">
                                                 <span className="font-black text-slate-400 dark:text-slate-500 uppercase text-[9px] tracking-wider block">Visit #{idx + 1}</span>
@@ -2613,10 +2777,14 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 )}
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            </section>
-                        )}
+                                    ))
+                                ) : (
+                                    <div className="p-3 text-center text-xs text-slate-400 italic">
+                                        No check-in or arrival/departure timestamps were recorded for this service.
+                                    </div>
+                                )}
+                            </div>
+                        </section>
 
                         {/* CompanyCam Integration */}
                         <CompanyCamGallery 
@@ -2835,31 +3003,120 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     )}
                                 </div>
 
-                                {/* Line Items Preview */}
-                                {job.invoice?.items && job.invoice.items.length > 0 && (
-                                    <div className="space-y-2 border-t border-emerald-200/50 dark:border-emerald-900/30 pt-4 max-h-48 overflow-y-auto pr-2 scrollbar-thin print:max-h-none print:overflow-visible">
-                                        {job.invoice?.items?.map((item, i) => (
-                                            <div key={i} className="flex justify-between items-start text-[11px]">
-                                                <div className="flex-1 pr-2">
-                                                    <p className="font-black text-emerald-900 dark:text-emerald-200 uppercase print:text-black">{item.name || item.description}</p>
-                                                    <p className="text-slate-500 italic">Qty: {item.quantity}</p>
-                                                </div>
-                                                <p className="font-bold text-emerald-800 dark:text-emerald-300 print:text-black">${item.total.toFixed(2)}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
+                                 {/* Line Items Preview */}
+                                 {job.invoice?.items && job.invoice.items.length > 0 && (
+                                     <div className="space-y-2 border-t border-emerald-200/50 dark:border-emerald-900/30 pt-4 max-h-48 overflow-y-auto pr-2 scrollbar-thin print:max-h-none print:overflow-visible">
+                                         {job.invoice?.items?.map((item, i) => {
+                                             const itemQty = Number(item.quantity) || 1;
+                                             const itemUnitPrice = Number(item.unitPrice) || 0;
+                                             const itemTotal = Number(item.total != null ? item.total : (itemQty * itemUnitPrice));
+                                             return (
+                                                 <div key={i} className="flex justify-between items-start text-[11px]">
+                                                     <div className="flex-1 pr-2">
+                                                         <p className="font-black text-emerald-900 dark:text-emerald-200 uppercase print:text-black">{item.name || item.description || 'Line Item'}</p>
+                                                         <p className="text-slate-500 italic">Qty: {itemQty} {item.unitPrice != null ? `@ $${itemUnitPrice.toFixed(2)} / unit` : ''}</p>
+                                                     </div>
+                                                     <p className="font-bold text-emerald-800 dark:text-emerald-300 print:text-black">${itemTotal.toFixed(2)}</p>
+                                                 </div>
+                                             );
+                                         })}
+                                     </div>
+                                 )}
+                                
+                                {job.invoice && (() => {
+                                     const invSubtotal = (job.invoice.subtotal !== undefined && job.invoice.subtotal !== null) ? job.invoice.subtotal : (job.invoice.items || []).reduce((s, i) => s + ((i.quantity || 1) * (i.unitPrice || 0)), 0);
+                                     const invTax = (job.invoice.taxAmount !== undefined && job.invoice.taxAmount !== null) ? job.invoice.taxAmount : 0;
+                                     const addFee = Number(job.invoice.additionalFeeAmount || 0);
+                                     const invGrandTotal = (job.invoice.totalAmount !== undefined && job.invoice.totalAmount !== null && Number(job.invoice.totalAmount) > 0) ? Number(job.invoice.totalAmount) : (invSubtotal + invTax + addFee);
+                                     const invPaid = Number(job.invoice.amountPaid || 0);
+                                     const invBalance = Math.max(0, invGrandTotal - invPaid);
+                                     const taxRatePctStr = ((job.invoice.taxRate || 0.0825) * 100).toFixed(2).replace(/\.00$/, '');
 
-                                {/* Customer Signature for Invoice */}
-                                 {(job.invoiceSignature || (job.invoice as any)?.signatureUrl) && (
+                                     return (
+                                         <div className="mt-3 pt-3 border-t border-emerald-200/50 dark:border-emerald-900/30 text-xs space-y-1 text-right">
+                                             <div className="flex justify-between text-emerald-900 dark:text-emerald-200">
+                                                 <span className="font-bold uppercase text-[10px]">Subtotal</span>
+                                                 <span className="font-black">${invSubtotal.toFixed(2)}</span>
+                                             </div>
+                                             <div className="flex justify-between text-emerald-900 dark:text-emerald-200">
+                                                 <span className="font-bold uppercase text-[10px]">Sales Tax ({taxRatePctStr}%)</span>
+                                                 <span className="font-black">${invTax.toFixed(2)}</span>
+                                             </div>
+                                             <div className="flex justify-between text-emerald-950 dark:text-white pt-1 border-t border-emerald-200/30 font-bold">
+                                                 <span className="font-black uppercase text-[10px]">Total</span>
+                                                 <span className="font-black text-sm">${invGrandTotal.toFixed(2)}</span>
+                                             </div>
+                                             {invPaid > 0 && (
+                                                 <div className="flex justify-between text-emerald-700 dark:text-emerald-400">
+                                                     <span className="font-bold uppercase text-[10px]">Previously Paid (Deposit or Partial Payments)</span>
+                                                     <span className="font-black">-${invPaid.toFixed(2)}</span>
+                                                 </div>
+                                             )}
+                                             {invPaid > 0 && (
+                                                 <div className="flex justify-between text-blue-900 dark:text-blue-200 pt-1 font-bold">
+                                                     <span className="font-black uppercase text-[10px]">Balance Remaining Due</span>
+                                                     <span className="font-black text-sm">${invBalance.toFixed(2)}</span>
+                                                 </div>
+                                             )}
+                                         </div>
+                                     );
+                                 })()}
+
+                                 {/* On-Site Customer Service Sign-Off */}
+                                 {((currentJob || job).customerSignature || (currentJob || job as any).siteManagerSignature || (currentJob || job as any).signOff?.sheetUrl || (currentJob || job).signOffSheetUrl || (currentJob || job as any).signoffSheetUrl || (currentJob || job).signature) && (
                                      <div className="mt-6 pt-4 border-t border-emerald-200/50 dark:border-emerald-900/30">
+                                         <div className="flex items-center justify-between mb-2">
+                                             <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                 ✍️ On-Site Service Acceptance & Sign-off
+                                             </p>
+                                             <button
+                                                 type="button"
+                                                 onClick={() => downloadStandaloneSignOffPdf(currentJob || job, state.currentOrganization)}
+                                                 className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors shadow-xs cursor-pointer"
+                                             >
+                                                 <Download size={11} />
+                                                 Download Sign-Off PDF
+                                             </button>
+                                         </div>
                                          <DigitalSignatureStamp 
-                                             signatureUrl={job.invoiceSignature || (job.invoice as any)?.signatureUrl}
-                                             signedByName={job.customerName || 'Customer'}
-                                             signedAt={job.invoiceSignedDate || (job.invoice as any)?.signedAt}
-                                             geolocation={job.signatureMetadata?.geolocation || (job.invoice as any)?.signatureMetadata?.geolocation}
-                                             securityHash={job.signatureMetadata?.securityHash || (job.invoice as any)?.signatureMetadata?.securityHash}
-                                             documentTitle={`Invoice #${job.invoice?.id || job.id}`}
+                                             signatureUrl={(currentJob || job).customerSignature || (currentJob || job as any).siteManagerSignature || (currentJob || job as any).signOff?.sheetUrl || (currentJob || job).signOffSheetUrl || (currentJob || job as any).signoffSheetUrl || (currentJob || job).signature}
+                                             signedByName={(currentJob || job).customerSignatureName || (currentJob || job as any).siteManagerName || (currentJob || job as any).signOff?.managerName || (currentJob || job).signerName || (currentJob || job).customerName || 'Customer / Site Manager'}
+                                             signedAt={(currentJob || job as any).signOff?.timestamp || (currentJob || job).signatureTimestamp || (currentJob || job).signedAt}
+                                             geolocation={(currentJob || job as any).signatureMetadata?.geolocation}
+                                             securityHash={(currentJob || job as any).signatureMetadata?.securityHash}
+                                             documentTitle={`On-Site Sign-Off (WO #${(currentJob || job).poNumber || (currentJob || job).id})`}
+                                         />
+                                     </div>
+                                 )}
+
+                                 {/* Technician Certification Sign-Off */}
+                                 {((currentJob || job).techSignature || (currentJob || job as any).workflowState?.techSignature) && (
+                                     <div className="mt-4 pt-4 border-t border-emerald-200/50 dark:border-emerald-900/30">
+                                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                                             🧑‍🔧 Technician Certification & Verification
+                                         </p>
+                                         <DigitalSignatureStamp 
+                                             signatureUrl={(currentJob || job).techSignature || (currentJob || job as any).workflowState?.techSignature}
+                                             signedByName={(currentJob || job).techSignatureName || (currentJob || job as any).workflowState?.techSignatureName || (currentJob || job).assignedTechnicianName || 'Certified Technician'}
+                                             signedAt={(currentJob || job as any).techSignatureTimestamp || (currentJob || job as any).workflowState?.techSignatureTimestamp || (currentJob || job).updatedAt}
+                                             documentTitle={`Technician Certification (WO #${(currentJob || job).poNumber || (currentJob || job).id})`}
+                                         />
+                                     </div>
+                                 )}
+
+                                 {/* Customer Signature for Invoice */}
+                                 {((currentJob || job).invoiceSignature || ((currentJob || job).invoice as any)?.signatureUrl) && (
+                                     <div className="mt-4 pt-4 border-t border-emerald-200/50 dark:border-emerald-900/30">
+                                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                                             💳 Billing & Invoice Authorization
+                                         </p>
+                                         <DigitalSignatureStamp 
+                                             signatureUrl={(currentJob || job).invoiceSignature || ((currentJob || job).invoice as any)?.signatureUrl}
+                                             signedByName={(currentJob || job).customerName || 'Customer'}
+                                             signedAt={(currentJob || job).invoiceSignedDate || ((currentJob || job).invoice as any)?.signedAt}
+                                             geolocation={(currentJob || job).signatureMetadata?.geolocation || ((currentJob || job).invoice as any)?.signatureMetadata?.geolocation}
+                                             securityHash={(currentJob || job).signatureMetadata?.securityHash || ((currentJob || job).invoice as any)?.signatureMetadata?.securityHash}
+                                             documentTitle={`Invoice #${(currentJob || job).invoice?.id || (currentJob || job).id}`}
                                          />
                                      </div>
                                  )}
@@ -2956,29 +3213,32 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                         })()}
 
                         {photoFiles.length > 0 && (
-                            <section className="print:hidden">
+                            <section className="mb-6">
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Job Photos</h4>
                                 <div className="space-y-4">
                                     {Object.entries(groupedPhotos).map(([label, photos]) => (
                                         <div key={label}>
                                             <p className="text-[10px] font-bold text-slate-500 uppercase mb-2 border-b border-slate-100 dark:border-slate-800 pb-1 inline-block">{label}</p>
                                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                                {(photos as ExtendedFile[]).map((f: ExtendedFile, i: number) => (
-                                                    <div key={i} className="relative group">
-                                                        <a href={f.dataUrl || f.url} target="_blank" rel="noreferrer" className="aspect-square bg-white dark:bg-slate-800 rounded-2xl overflow-hidden hover:ring-2 hover:ring-primary-500 transition-all block shadow-sm border border-slate-100 dark:border-slate-800">
-                                                            <img src={f.dataUrl || f.url} className="w-full h-full object-cover" alt={`Job Documentation - ${label}`} />
-                                                        </a>
-                                                        {isAdmin && (
-                                                            <button 
-                                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeletePhoto(f); }}
-                                                                className="absolute top-2 right-2 p-1.5 bg-red-600/90 text-white rounded-full transition-all shadow-lg backdrop-blur-sm hover:bg-red-700 hover:scale-110 z-10"
-                                                                title="Delete Photo"
-                                                            >
-                                                                <Trash2 size={12}/>
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                ))}
+                                                                {(photos as ExtendedFile[]).map((f: ExtendedFile, i: number) => {
+                                                     const imgUrl = f.dataUrl || f.url || f.fileUrl;
+                                                     return (
+                                                         <div key={i} className="relative group">
+                                                             <a href={imgUrl} target="_blank" rel="noreferrer" className="aspect-square bg-white dark:bg-slate-800 rounded-2xl overflow-hidden hover:ring-2 hover:ring-primary-500 transition-all block shadow-sm border border-slate-100 dark:border-slate-800">
+                                                                 <img src={imgUrl} className="w-full h-full object-cover" alt={`Job Documentation - ${label}`} />
+                                                             </a>
+                                                             {isAdmin && (
+                                                                 <button 
+                                                                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeletePhoto(f); }}
+                                                                     className="absolute top-2 right-2 p-1.5 bg-red-600/90 text-white rounded-full transition-all shadow-lg backdrop-blur-sm hover:bg-red-700 hover:scale-110 z-10"
+                                                                     title="Delete Photo"
+                                                                 >
+                                                                     <Trash2 size={12}/>
+                                                                 </button>
+                                                             )}
+                                                         </div>
+                                                     );
+                                                 })}
                                             </div>
                                         </div>
                                     ))}
@@ -3074,8 +3334,8 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
 
                                         // Add other legacy/explicit waivers in job.waivers or job.embeddedData.waivers if not already added
                                         const otherWaivers = [
-                                            ...(job.waivers || []),
-                                            ...(job.embeddedData?.waivers || [])
+                                            ...(Array.isArray(job.waivers) ? job.waivers : (job.waivers ? [job.waivers] : [])),
+                                            ...(Array.isArray(job.embeddedData?.waivers) ? job.embeddedData.waivers : (job.embeddedData?.waivers ? [job.embeddedData.waivers] : []))
                                         ].filter(w => !displayWaivers.some(dw => dw.id === w.id || dw.title === w.title));
 
                                         otherWaivers.forEach(w => {
@@ -3174,8 +3434,15 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     ) : (
                                         <div className="flex flex-wrap gap-1.5">
                                             {linkedProposals.map(lp => (
-                                                <div key={lp.id} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 rounded-lg p-1.5 px-2.5 text-xs font-semibold">
-                                                    <span>Proposal #{lp.id.slice(0, 8)} {lp.title ? `(${lp.title})` : ''}</span>
+                                                <div key={lp.id} className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50 rounded-lg p-1.5 px-2.5 text-xs font-semibold">
+                                                    <span 
+                                                        onClick={() => setPreviewDoc({ ...lp, type: 'Proposal' })}
+                                                        className="cursor-pointer hover:underline flex items-center gap-1"
+                                                        title="View Proposal Preview"
+                                                    >
+                                                        <Eye size={12} className="text-indigo-500" />
+                                                        Proposal #{formatDisplayId(lp.id)} {lp.title ? `(${lp.title})` : ''}
+                                                    </span>
                                                     <button type="button" onClick={() => handleUnlinkProposal(lp.id)} className="text-indigo-500 hover:text-red-500 font-bold ml-1" title="Unlink proposal">×</button>
                                                 </div>
                                             ))}
@@ -3193,10 +3460,17 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 value={selectedPropToLink}
                                                 onChange={e => setSelectedPropToLink(e.target.value)}
                                             >
-                                                <option value="">-- Link a Proposal --</option>
-                                                {availableProposals.map(p => (
-                                                    <option key={p.id} value={p.id}>#{p.id.slice(0, 8)} - {p.title || 'Proposal'}</option>
-                                                ))}
+                                                {availableProposals.map(p => {
+                                                    const displayTitle = p.title || p.items?.[0]?.name || 'Service Proposal';
+                                                    const dateStr = p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '';
+                                                    const amountStr = p.total != null ? ` ($${p.total.toFixed(2)})` : '';
+                                                    const statusStr = p.status ? ` [${p.status}]` : '';
+                                                    return (
+                                                        <option key={p.id} value={p.id}>
+                                                            #{formatDisplayId(p.id)} - {displayTitle}{amountStr}{statusStr}{dateStr ? ` (${dateStr})` : ''}
+                                                        </option>
+                                                    );
+                                                })}
                                             </select>
                                             <Button onClick={() => { handleLinkProposal(selectedPropToLink); setSelectedPropToLink(''); }} className="text-[10px] py-1 px-2.5 h-auto bg-[#123A63] hover:bg-[#0f2d50] text-white rounded-lg font-semibold border-0 shrink-0">Link</Button>
                                         </div>
@@ -3258,8 +3532,15 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     ) : (
                                         <div className="flex flex-wrap gap-1.5">
                                             {linkedInvoices.map(item => (
-                                                <div key={item.invoice.id} className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 rounded-lg p-1.5 px-2.5 text-xs font-semibold">
-                                                    <span>Invoice #{item.invoice.id.slice(0, 8)} (${(item.invoice.amount || 0).toFixed(2)})</span>
+                                                <div key={item.invoice.id} className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-100 dark:border-amber-900/50 rounded-lg p-1.5 px-2.5 text-xs font-semibold">
+                                                    <span 
+                                                        onClick={() => setPreviewDoc({ ...item.job, type: 'Invoice' })}
+                                                        className="cursor-pointer hover:underline flex items-center gap-1"
+                                                        title="View Invoice Preview"
+                                                    >
+                                                        <Eye size={12} className="text-amber-500" />
+                                                        Invoice #{item.invoice.id.slice(0, 8)} (${(item.invoice.amount || 0).toFixed(2)})
+                                                    </span>
                                                     <button type="button" onClick={() => handleUnlinkInvoice(item.invoice.id)} className="text-amber-500 hover:text-red-500 font-bold ml-1" title="Unlink invoice">×</button>
                                                 </div>
                                             ))}
@@ -3276,8 +3557,12 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     <DollarSign size={14}/> Payment Confirmation {job.invoice?.status === 'Refunded' ? '(REFUNDED)' : job.invoice?.status === 'Disputed' ? '(DISPUTED)' : ''}
                                 </h4>
                                 <div className="space-y-1">
-                                    <p className="text-[10px] text-slate-500 font-bold uppercase">Method: {job.invoice?.paymentMethod || 'Credit Card'}</p>
-                                    <p className="text-[10px] text-slate-500 font-bold uppercase">Transaction: {job.id.slice(-8).toUpperCase()}</p>
+                                    {job.invoice?.paymentMethod && (
+                                        <p className="text-[10px] text-slate-500 font-bold uppercase">Method: {job.invoice.paymentMethod}</p>
+                                    )}
+                                    {(job.invoice?.transactionId || job.invoice?.paymentIntentId) && (
+                                        <p className="text-[10px] text-slate-500 font-bold uppercase">Transaction: {job.invoice.transactionId || job.invoice.paymentIntentId}</p>
+                                    )}
                                     <button 
                                         type="button"
                                         onClick={() => setPreviewDoc({ ...job, type: 'Invoice' })}
@@ -3322,10 +3607,10 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                 <Button 
                                     variant="secondary" 
                                     onClick={() => {
-                                        setLocalNotes(job.notes || {});
-                                        setLocalUnitStates(job.unitStates || []);
-                                        setLocalFiles(job.files || []);
-                                        setLocalTechRecs(job.techRecommendations || '');
+                                        setLocalNotes(extractJobNotes(currentJob || job));
+                                        setLocalUnitStates(normalizeUnitStates((currentJob || job).unitStates));
+                                        setLocalFiles((currentJob || job).files || []);
+                                        setLocalTechRecs((currentJob || job).techRecommendations || (currentJob || job).recommendations || '');
                                         setIsEditMode(false);
                                     }} 
                                     className="h-10 text-[10px] uppercase font-black tracking-widest px-4"
@@ -3337,18 +3622,51 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     onClick={async () => {
                                         setIsSaving(true);
                                         try {
-                                            const payload = cleanUndefinedFields({
-                                                notes: localNotes,
+                                            let targetId = (currentJob?.id || job?.id || '').trim();
+                                            if (!targetId) throw new Error("Job ID missing");
+
+                                            if (targetId.startsWith('JOB-')) {
+                                                targetId = targetId.replace(/^JOB-/, 'job-');
+                                            }
+
+                                            const updatedNotes = {
+                                                ...(localNotes || {}),
+                                                recommendations: localTechRecs || null,
+                                            };
+
+                                            const payload: any = {
+                                                notes: updatedNotes,
+                                                arrivalNotes: localNotes?.arrival || null,
+                                                diagnosisNotes: localNotes?.diagnosis || null,
+                                                diagnosis: localNotes?.diagnosis || null,
+                                                workNotes: localNotes?.work || localNotes?.workNotes || null,
+                                                workPerformedNotes: localNotes?.work || localNotes?.workNotes || null,
+                                                completionNotes: localNotes?.completion || null,
+                                                customerFeedback: localNotes?.customerFeedback || null,
+                                                employeeFeedback: localNotes?.employeeFeedback || localNotes?.feedback || null,
+                                                technicianNotes: localNotes?.employeeFeedback || localNotes?.feedback || null,
+                                                internalNotes: localNotes?.employeeFeedback || localNotes?.feedback || null,
+                                                techRecommendations: localTechRecs || null,
+                                                recommendations: localTechRecs || null,
                                                 unitStates: localUnitStates,
                                                 files: localFiles,
-                                                techRecommendations: localTechRecs
-                                            });
-                                            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(payload));
+                                                subcontractorPhone: localSubcontractorPhone ? localSubcontractorPhone.trim() : null,
+                                                updatedAt: new Date().toISOString()
+                                            };
+
+                                            const cleanedPayload = cleanUndefinedFields(payload);
+                                            await db.collection('jobs').doc(targetId).set(cleanedPayload, { merge: true });
+                                            
+                                            const updatedJob = {
+                                                ...(currentJob || job),
+                                                ...cleanedPayload
+                                            };
+                                            dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
+                                            showToast.success("Report changes saved successfully!");
                                             setIsEditMode(false);
-                                            alert("Report changes saved successfully!");
-                                        } catch (e) {
-                                            console.error(e);
-                                            alert("Failed to save report changes.");
+                                        } catch (e: any) {
+                                            console.error("Error saving service report changes:", e);
+                                            showToast.error(`Failed to save report changes: ${e?.message || 'Unknown error'}`);
                                         } finally {
                                             setIsSaving(false);
                                         }
@@ -3451,10 +3769,12 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     Serviced Systems Health & Findings
                                 </h4>
                                 <div className="space-y-6">
-                                    {jobAssets.map((asset) => {
-                                        const unitStateIdx = localUnitStates.findIndex(s => s.assetId === asset.id);
-                                        const unitState = unitStateIdx >= 0 ? localUnitStates[unitStateIdx] : {
-                                            assetId: asset.id,
+                                    {jobAssets.map((asset, assetIdx) => {
+                                        const assetId = asset.id || (asset as any).equipmentId || (asset as any)._id || asset.assetTag || `unit-${assetIdx + 1}`;
+                                        const safeStates = normalizeUnitStates(localUnitStates);
+                                        const unitStateIdx = safeStates.findIndex(s => s.assetId === assetId);
+                                        const unitState = unitStateIdx >= 0 ? safeStates[unitStateIdx] : {
+                                            assetId: assetId,
                                             healthBefore: 'Good',
                                             healthAfter: 'Good',
                                             diagnosis: '',
@@ -3463,17 +3783,20 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                         };
 
                                         const updateUnitStateField = (field: string, val: string) => {
-                                            const updated = [...localUnitStates];
-                                            if (unitStateIdx >= 0) {
-                                                updated[unitStateIdx] = { ...updated[unitStateIdx], [field]: val };
-                                            } else {
-                                                updated.push({ assetId: asset.id, [field]: val });
-                                            }
-                                            setLocalUnitStates(updated);
+                                            setLocalUnitStates(prevStates => {
+                                                const updated = [...normalizeUnitStates(prevStates)];
+                                                const idx = updated.findIndex(s => s.assetId === assetId);
+                                                if (idx >= 0) {
+                                                    updated[idx] = { ...updated[idx], [field]: val };
+                                                } else {
+                                                    updated.push({ assetId: assetId, healthBefore: 'Good', healthAfter: 'Good', [field]: val });
+                                                }
+                                                return updated;
+                                            });
                                         };
 
                                         return (
-                                            <div key={asset.id} className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl space-y-4 text-left">
+                                            <div key={assetId} className="p-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl space-y-4 text-left">
                                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                                     <strong className="text-sm font-black text-slate-800 dark:text-slate-200">
                                                         {asset.name || asset.type} {asset.brand ? `(${asset.brand})` : ''}
@@ -3548,22 +3871,35 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                         )}
 
                         {/* Section 4: Photo Labels & categories */}
-                        {localFiles.filter(f => f.type === 'Photo' || f.contentType?.startsWith('image/') || f.fileType?.startsWith('image/')).length > 0 && (
-                            <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
-                                <h4 className="text-xs font-black text-indigo-650 uppercase tracking-widest text-left">
-                                    Service Photos & Phase Tagging
-                                </h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {localFiles.filter(f => f.type === 'Photo' || f.contentType?.startsWith('image/') || f.fileType?.startsWith('image/')).map((file, idx) => {
+                        {(() => {
+                            const photoFiles = localFiles.filter(f => 
+                                f.type === 'Photo' || 
+                                f.contentType?.startsWith('image/') || 
+                                f.fileType?.startsWith('image/') ||
+                                f.dataUrl?.startsWith('data:image/') ||
+                                f.url?.match(/\.(jpeg|jpg|gif|png|webp|heic|heif)($|\?)/i) ||
+                                f.category === 'photo' ||
+                                f.metadata?.category === 'photo'
+                            );
+                            if (photoFiles.length === 0) return null;
+                            return (
+                                <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                                    <h4 className="text-xs font-black text-indigo-650 uppercase tracking-widest text-left">
+                                        Service Photos & Phase Tagging
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {photoFiles.map((file, idx) => {
                                         const updatePhotoLabel = (newLabel: string) => {
                                             const updated = localFiles.map(f => {
-                                                if (f.id === file.id || f.dataUrl === file.dataUrl || f.url === file.url) {
+                                                if (f === file || (file.id && f.id === file.id) || (file.dataUrl && f.dataUrl === file.dataUrl) || (file.url && f.url === file.url)) {
                                                     return {
                                                         ...f,
                                                         label: newLabel,
+                                                        title: newLabel,
                                                         metadata: {
                                                             ...(f.metadata || {}),
-                                                            label: newLabel
+                                                            label: newLabel,
+                                                            title: newLabel
                                                         }
                                                     };
                                                 }
@@ -3573,27 +3909,17 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                         };
 
                                         const updatePhotoPhase = (phase: 'before' | 'after' | 'spec' | 'uncategorized') => {
-                                            let labelSuffix = '';
-                                            if (phase === 'before') labelSuffix = ' (Before Repair)';
-                                            else if (phase === 'after') labelSuffix = ' (After Repair)';
-                                            else if (phase === 'spec') labelSuffix = ' (Specifications)';
-                                            
-                                            const baseLabel = (file.label || file.metadata?.label || 'Job Photo')
-                                                .replace(/\(Before Repair\)/gi, '')
-                                                .replace(/\(After Repair\)/gi, '')
-                                                .replace(/\(Specifications\)/gi, '')
-                                                .trim();
-                                            
-                                            const newLabel = `${baseLabel}${labelSuffix}`;
+                                            const cat = phase === 'spec' ? 'specifications' : phase;
                                             const updated = localFiles.map(f => {
-                                                if (f.id === file.id || f.dataUrl === file.dataUrl || f.url === file.url) {
+                                                if (f === file || (file.id && f.id === file.id) || (file.dataUrl && f.dataUrl === file.dataUrl) || (file.url && f.url === file.url)) {
                                                     return {
                                                         ...f,
-                                                        label: newLabel,
+                                                        category: cat,
+                                                        phase: phase,
                                                         metadata: {
                                                             ...(f.metadata || {}),
-                                                            label: newLabel,
-                                                            category: phase === 'spec' ? 'specifications' : phase
+                                                            category: cat,
+                                                            phase: phase
                                                         }
                                                     };
                                                 }
@@ -3603,34 +3929,59 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                         };
 
                                         const currentPhase = (() => {
-                                            const labelLower = ((file.metadata?.label || file.label || '') as string).toLowerCase();
-                                            if (labelLower.includes('before')) return 'before';
-                                            if (labelLower.includes('after') || labelLower.includes('repair') || labelLower.includes('comp') || labelLower.includes('work')) return 'after';
+                                            const explicitCat = ((file.metadata?.phase || file.phase || file.metadata?.category || file.category || '') as string).toLowerCase().trim();
+                                            if (explicitCat === 'spec' || explicitCat === 'specifications') return 'spec';
+                                            if (explicitCat === 'after' || explicitCat === 'repair' || explicitCat === 'work' || explicitCat === 'summary' || explicitCat === 'completion') return 'after';
+                                            if (explicitCat === 'before' || explicitCat === 'pre-work' || explicitCat === 'diagnosis' || explicitCat === 'arrival') return 'before';
+                                            if (explicitCat === 'uncategorized' || explicitCat === 'other') return 'uncategorized';
+
+                                            const labelLower = ((file.metadata?.label || file.label || file.title || '') as string).toLowerCase().trim();
+                                            if (labelLower.includes('before') || labelLower.includes('pre-work') || labelLower.includes('prework') || labelLower.includes('initial') || labelLower.includes('arrival') || labelLower.includes('diag')) return 'before';
+                                            if (labelLower.includes('after') || labelLower.includes('completed') || labelLower.includes('post') || labelLower.includes('repair') || labelLower.includes('summary')) return 'after';
                                             if (labelLower.includes('spec') || labelLower.includes('serial') || labelLower.includes('tag')) return 'spec';
-                                            return 'uncategorized';
+                                            return 'before';
                                         })();
 
+                                        const currentAssetId = file.metadata?.assetId || file.assetId || '';
+                                        const updatePhotoAssetId = (assetId: string) => {
+                                            const updated = localFiles.map(f => {
+                                                if (f === file || (file.id && f.id === file.id) || (file.dataUrl && f.dataUrl === file.dataUrl) || (file.url && f.url === file.url)) {
+                                                    const newMeta = { ...(f.metadata || {}) };
+                                                    if (assetId) newMeta.assetId = assetId;
+                                                    else delete newMeta.assetId;
+                                                    return {
+                                                        ...f,
+                                                        assetId: assetId || undefined,
+                                                        metadata: newMeta
+                                                    };
+                                                }
+                                                return f;
+                                            });
+                                            setLocalFiles(updated);
+                                        };
+
                                         return (
-                                            <div key={file.id || idx} className="flex gap-4 p-4 bg-white dark:bg-slate-900 border border-slate-205 dark:border-slate-800 rounded-2xl items-center text-left">
+                                            <div key={file.id || idx} className="flex gap-4 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl items-center text-left">
                                                 <div className="w-20 h-20 rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800 shrink-0">
                                                     <img src={file.dataUrl || file.url} className="w-full h-full object-cover" alt="Service Photo" />
                                                 </div>
                                                 <div className="flex-1 space-y-2">
                                                     <div className="space-y-1">
-                                                        <span className="text-[8px] font-black uppercase text-slate-400">Photo Label:</span>
+                                                        <span className="text-[8px] font-black uppercase text-slate-400">1. Photo Label / Caption:</span>
                                                         <Input
-                                                            value={file.label || file.metadata?.label || 'Job Photo'}
+                                                            value={file.label ?? file.metadata?.label ?? ''}
                                                             onChange={(e) => updatePhotoLabel(e.target.value)}
+                                                            placeholder="Photo Label / Caption..."
                                                             className="h-8 text-xs"
                                                         />
                                                     </div>
-                                                    <div className="flex gap-2">
-                                                        <div className="flex-1 space-y-1">
-                                                            <span className="text-[8px] font-black uppercase text-slate-400">Report Section:</span>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <span className="text-[8px] font-black uppercase text-slate-400">2. Report Section:</span>
                                                             <select
                                                                 value={currentPhase}
                                                                 onChange={(e) => updatePhotoPhase(e.target.value as any)}
-                                                                className="w-full text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 dark:bg-slate-805 dark:border-slate-700 px-2 py-1 text-slate-805 dark:text-slate-200 focus:outline-none"
+                                                                className="w-full text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 dark:bg-slate-800 dark:border-slate-700 px-2 py-1 text-slate-800 dark:text-slate-200 focus:outline-none"
                                                             >
                                                                 <option value="before">Before Repair Section</option>
                                                                 <option value="after">After Repair Section</option>
@@ -3638,16 +3989,31 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                                 <option value="uncategorized">Other / Uncategorized</option>
                                                             </select>
                                                         </div>
+                                                        <div className="space-y-1">
+                                                            <span className="text-[8px] font-black uppercase text-slate-400">3. Serviced Equipment Unit:</span>
+                                                            <select
+                                                                value={currentAssetId}
+                                                                onChange={(e) => updatePhotoAssetId(e.target.value)}
+                                                                className="w-full text-xs font-bold rounded-lg border border-slate-200 bg-slate-50 dark:bg-slate-800 dark:border-slate-700 px-2 py-1 text-slate-800 dark:text-slate-200 focus:outline-none"
+                                                            >
+                                                                <option value="">Unassigned / General Job Photo</option>
+                                                                {(customer?.equipment || []).map((eq: any) => (
+                                                                    <option key={eq.id} value={eq.id}>{eq.name || `Unit #${eq.id.slice(-4)}`} {eq.brand ? `(${eq.brand})` : ''}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex justify-end pt-1">
                                                         <button
                                                             type="button"
                                                             onClick={async () => {
-                                                                if (!window.confirm("Remove this photo from the report?")) return;
+                                                                if (!(await globalConfirm("Remove this photo from the report?", "Remove Photo", "Remove", "Cancel"))) return;
                                                                 setLocalFiles(prev => prev.filter(f => f.id !== file.id && f.dataUrl !== file.dataUrl && f.url !== file.url));
                                                                 setDeletedFiles(prev => new Set(prev).add(file.id || file.dataUrl || ''));
                                                             }}
-                                                            className="self-end p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg border border-rose-105 transition-all shrink-0 dark:bg-rose-950/20 dark:border-rose-900/30"
+                                                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 text-[10px] font-bold rounded-lg border border-rose-100 transition-all shrink-0 dark:bg-rose-950/20 dark:border-rose-900/30 flex items-center gap-1"
                                                         >
-                                                            <Trash2 size={16} />
+                                                            <Trash2 size={12} /> Remove Photo
                                                         </button>
                                                     </div>
                                                 </div>
@@ -3656,28 +4022,43 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     })}
                                 </div>
                             </div>
-                        )}
+                        );
+                    })()}
                     </div>
                 ) : (
                     /* HTML Preview */
-                    <div className="space-y-4 text-left">
+                    <div className="space-y-6 text-left">
                         {isAdmin && (
-                            <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 print:hidden">
-                                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">
-                                    Previewing customer-facing service report.
-                                </p>
-                                <Button 
-                                    variant="secondary" 
-                                    onClick={() => setIsEditMode(true)} 
-                                    className="h-9 text-[10px] uppercase font-black tracking-widest px-4 flex items-center gap-1.5"
-                                >
-                                    <Wrench size={12} /> Edit Report
-                                </Button>
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs print:hidden">
+                                <div>
+                                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                                        <FileText size={14} className="text-indigo-600 dark:text-indigo-400" />
+                                        Customer-Facing Service Report Document
+                                    </h4>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                                        Formatted for standard letterhead PDF printing, email dispatch, and client records.
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button 
+                                        variant="secondary" 
+                                        onClick={() => {
+                                            setLocalNotes(extractJobNotes(currentJob || job));
+                                            setLocalTechRecs((currentJob || job).techRecommendations || (currentJob || job).recommendations || '');
+                                            setLocalUnitStates(normalizeUnitStates((currentJob || job).unitStates));
+                                            setLocalFiles((currentJob || job).files || []);
+                                            setIsEditMode(true);
+                                        }} 
+                                        className="h-8 text-[11px] uppercase font-black tracking-wider px-3 flex items-center gap-1.5 shadow-xs"
+                                    >
+                                        <Wrench size={12} /> Edit Report Fields
+                                    </Button>
+                                </div>
                             </div>
                         )}
-                        <div className="bg-slate-100 dark:bg-slate-950 p-6 rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-inner flex justify-center overflow-x-auto print:bg-white print:border-none print:shadow-none print:p-0">
+                        <div className="flex justify-center w-full py-2 print:bg-white print:border-none print:shadow-none print:p-0">
                             <div 
-                                className="bg-white p-8 rounded-2xl shadow-md text-black max-w-[700px] w-full border border-slate-200 print:border-none print:shadow-none print:p-0"
+                                className="bg-white p-3 sm:p-6 md:p-8 w-full max-w-4xl rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg text-black print:border-none print:shadow-none print:p-0 overflow-x-auto"
                                 style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}
                                 dangerouslySetInnerHTML={{ __html: generateEmailHtml(!isAdmin, false) }}
                             />
@@ -3688,441 +4069,42 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
             </div>
         </Modal>
 
-        {/* Email Service Report Modal */}
-        <Modal 
-            isOpen={isEmailModalOpen} 
-            onClose={() => setIsEmailModalOpen(false)} 
-            title="Email Service Report" 
-            size="lg"
-        >
-            <div className="p-6 space-y-6">
-                <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 flex items-center justify-center text-indigo-650 dark:text-indigo-400">
-                        <Mail size={20} />
-                    </div>
-                    <div>
-                        <h3 className="text-base font-black text-slate-850 dark:text-slate-100 uppercase tracking-tight">Configure Email Delivery</h3>
-                        <p className="text-[10px] text-slate-450 uppercase font-bold tracking-wider">Select precisely what information is sent to the client</p>
-                    </div>
-                </div>
+        {/* Email Service Report Modal (Standardized SendEmailModal) */}
+        {isEmailModalOpen && (
+            <SendEmailModal 
+                isOpen={isEmailModalOpen} 
+                onClose={() => setIsEmailModalOpen(false)} 
+                job={{
+                    ...job,
+                    equipmentList: jobAssets.length > 0 ? jobAssets : (job?.equipmentList || job?.equipment || job?.units || []),
+                    unitStates: localUnitStates.length > 0 ? localUnitStates : (job?.unitStates || []),
+                    customerEquipment: customer?.equipment || [],
+                    files: (localFiles.length > 0 ? localFiles : (job?.files || [])).filter(f => !isInternalExpenseFile(f)),
+                    photos: (localFiles || []).filter(f => !deletedFiles.has(f.id || f.dataUrl || '') && isFilePhoto(f) && (isAdmin || !isInternalExpenseFile(f))).map(f => ({ url: f.dataUrl || f.url, label: f.metadata?.label || f.label || 'Job Photo' }))
+                }}
+                customerId={job?.customerId}
+                recipientEmail={emailRecipient || customer?.email || (serviceLocation as any)?.email || job?.customerEmail || ''}
+                recipientName={customer?.name || job?.customerName}
+                mode="report"
+                zIndex="z-[10080]"
+                onSuccess={() => setIsEmailModalOpen(false)}
+            />
+        )}
 
-                {availablePocs.length > 0 && (
-                    <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-3">
-                        <div className="flex flex-col gap-0.5">
-                            <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider">
-                                Select Points of Contact (POCs)
-                            </span>
-                            <span className="text-[9px] text-slate-400 font-bold uppercase">
-                                Selected contacts will receive the service history report
-                            </span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
-                            {availablePocs.map((poc) => {
-                                const isSelected = selectedPocEmails.some(e => e.toLowerCase() === poc.email.toLowerCase());
-                                return (
-                                    <label 
-                                        key={poc.email} 
-                                        className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${
-                                            isSelected 
-                                                ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800/60 shadow-sm' 
-                                                : 'bg-white dark:bg-slate-950 border-slate-150 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-900'
-                                        }`}
-                                    >
-                                        <input 
-                                            type="checkbox" 
-                                            checked={isSelected}
-                                            onChange={(e) => handleTogglePoc(poc.email, e.target.checked)}
-                                            className="mt-0.5 rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650 w-4 h-4 cursor-pointer"
-                                        />
-                                        <div className="space-y-0.5 min-w-0 flex-1">
-                                            <p className="text-xs font-bold text-slate-850 dark:text-slate-100 truncate">{poc.name}</p>
-                                            <p className="text-[9px] text-slate-400 dark:text-slate-500 font-mono truncate">{poc.email}</p>
-                                            <div className="flex gap-1.5 items-center mt-1 flex-wrap">
-                                                <span className="text-[8px] font-black uppercase bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded tracking-wider">
-                                                    {poc.role}
-                                                </span>
-                                                <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded tracking-wider ${
-                                                    poc.type === 'location' 
-                                                        ? 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400' 
-                                                        : poc.type === 'primary'
-                                                            ? 'bg-blue-100 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400'
-                                                            : 'bg-purple-100 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400'
-                                                }`}>
-                                                    {poc.type === 'location' ? 'Location POC' : poc.type === 'primary' ? 'Primary' : 'General'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
+        {/* Issue Warranty Modal */}
+        {isIssueWarrantyOpen && (
+            <IssueWarrantyModal 
+                isOpen={isIssueWarrantyOpen}
+                onClose={() => setIsIssueWarrantyOpen(false)}
+                customer={customer}
+                job={job}
+                organization={state.currentOrganization}
+                onSuccess={() => {
+                    setIsIssueWarrantyOpen(false);
+                }}
+            />
+        )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input 
-                        label="Recipient Email(s) (comma-separated)" 
-                        value={emailRecipient} 
-                        onChange={(e) => handleRecipientInputChange(e.target.value)} 
-                        placeholder="e.g. manager@example.com, owner@example.com"
-                        required
-                        isBlock
-                    />
-                    <Input 
-                        label="Subject Line" 
-                        value={emailSubject} 
-                        onChange={(e) => setEmailSubject(e.target.value)} 
-                        placeholder="Service Report Subject"
-                        required
-                        isBlock
-                    />
-                </div>
-
-                <Textarea 
-                    label="Custom Message Body" 
-                    rows={4} 
-                    value={emailCustomMessage} 
-                    onChange={(e) => setEmailCustomMessage(e.target.value)} 
-                    placeholder="Add a brief greeting or extra instructions..."
-                />
-
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-                    <h4 className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest mb-3.5">
-                        Customize Service Report Content Toggles
-                    </h4>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs max-h-[300px] overflow-y-auto pr-2 scrollbar-thin">
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeThankYouNote} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeThankYouNote: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Technician Thank You Note</p>
-                                <p className="text-[10px] text-slate-450">Warm sign-off note from the technician</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeRecommendations} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeRecommendations: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Direct Recommendations</p>
-                                <p className="text-[10px] text-slate-450">Technician overall recommendations</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeAssets} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeAssets: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Serviced Equipment</p>
-                                <p className="text-[10px] text-slate-450">Individual multi-unit card details</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includePhotos} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includePhotos: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Verification Photos</p>
-                                <p className="text-[10px] text-slate-450">Field captioned photos gallery</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeParts} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeParts: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Parts & Materials</p>
-                                <p className="text-[10px] text-slate-450">List of inventory parts consumed</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeTechnicalData} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeTechnicalData: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Technical & Environmental Logs</p>
-                                <p className="text-[10px] text-slate-450">Refrigerant and digital tool logs</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeDiagnosisChecklist} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeDiagnosisChecklist: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Diagnosis Checklist</p>
-                                <p className="text-[10px] text-slate-450">Standard diagnostic test checks</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeQualityChecklist} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeQualityChecklist: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Quality & Safety Checklist</p>
-                                <p className="text-[10px] text-slate-450">Compliance & safety check items</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeArrivalNotes} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeArrivalNotes: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Arrival Notes</p>
-                                <p className="text-[10px] text-slate-450">Technician notes upon site arrival</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeDiagnosisNotes} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeDiagnosisNotes: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Diagnosis Findings</p>
-                                <p className="text-[10px] text-slate-450">General diagnostic procedure notes</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeWorkNotes} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeWorkNotes: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Work Performed Notes</p>
-                                <p className="text-[10px] text-slate-450">Repairs completed log entries</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeCompletionNotes} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeCompletionNotes: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Completion Summary</p>
-                                <p className="text-[10px] text-slate-450">Notes compiled on job checkout</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeCustomerFeedback} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeCustomerFeedback: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Customer Feedback</p>
-                                <p className="text-[10px] text-slate-450">Client feedback records</p>
-                            </div>
-                        </label>
-
-                        <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850 transition-all">
-                            <input 
-                                type="checkbox" 
-                                checked={emailOptions.includeEmployeeFeedback} 
-                                onChange={(e) => setEmailOptions(prev => ({ ...prev, includeEmployeeFeedback: e.target.checked }))}
-                                className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                            />
-                            <div>
-                                <p className="font-bold text-slate-850 dark:text-slate-100">Employee Feedback</p>
-                                <p className="text-[10px] text-slate-450">Internal technician review feedback</p>
-                            </div>
-                        </label>
-
-                        {job.invoice && (
-                            <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100 dark:border-indigo-900/30 cursor-pointer hover:bg-indigo-100/50 transition-all col-span-1 sm:col-span-2">
-                                <input 
-                                    type="checkbox" 
-                                    checked={(emailOptions as any).includeInvoice} 
-                                    onChange={(e) => setEmailOptions(prev => ({ ...prev, includeInvoice: e.target.checked }))}
-                                    className="rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650"
-                                />
-                                <div>
-                                    <p className="font-bold text-slate-850 dark:text-slate-100 text-indigo-900 dark:text-indigo-400">Include Invoice Details</p>
-                                    <p className="text-[10px] text-slate-450 text-indigo-750 dark:text-indigo-300">Embed invoice line items, tax, and grand total in the email report</p>
-                                </div>
-                            </label>
-                        )}
-
-                        {job.files?.some(f => f.fileName === 'SignOff_Sheet.html' || f.metadata?.label === 'Sign-Off Sheet') && (
-                            <label className="flex items-center gap-2.5 p-3 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-900/30 cursor-pointer hover:bg-emerald-100/50 transition-all col-span-1 sm:col-span-2">
-                                <input 
-                                    type="checkbox" 
-                                    checked={(emailOptions as any).includeSignOff} 
-                                    onChange={(e) => setEmailOptions(prev => ({ ...prev, includeSignOff: e.target.checked }))}
-                                    className="rounded border-slate-350 dark:border-slate-650 text-emerald-650 focus:ring-emerald-650"
-                                />
-                                <div>
-                                    <p className="font-bold text-slate-850 dark:text-slate-100 text-emerald-900 dark:text-emerald-450">Include Signed Sign-Off Sheet</p>
-                                    <p className="text-[10px] text-slate-450 text-emerald-750 dark:text-emerald-350">Embed the customer-signed work validation sheet in the email report</p>
-                                </div>
-                            </label>
-                        )}
-                    </div>
-                </div>
-
-                {/* Generated PDF Document Attachment Options */}
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-                    <h4 className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-widest mb-3.5 flex items-center gap-2">
-                        <span>📄 Generate & Attach PDF Documents (Customer Request)</span>
-                    </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                        <label className={`flex items-center gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
-                            attachReportPdf ? 'bg-purple-50/50 dark:bg-purple-950/20 border-purple-300 dark:border-purple-800' : 'bg-slate-50 dark:bg-slate-900 border-slate-100 dark:border-slate-800'
-                        }`}>
-                            <input 
-                                type="checkbox" 
-                                checked={attachReportPdf} 
-                                onChange={(e) => setAttachReportPdf(e.target.checked)}
-                                className="rounded border-slate-350 dark:border-slate-650 text-purple-600 focus:ring-purple-600"
-                            />
-                            <div>
-                                <p className="font-bold text-xs text-slate-850 dark:text-slate-100">Attach Job Report as PDF File</p>
-                                <p className="text-[10px] text-slate-450">Includes printable PDF of full service history report</p>
-                            </div>
-                        </label>
-
-                        {job.invoice && (
-                            <label className={`flex items-center gap-2.5 p-3 rounded-2xl border cursor-pointer transition-all ${
-                                attachInvoicePdf ? 'bg-purple-50/50 dark:bg-purple-950/20 border-purple-300 dark:border-purple-800' : 'bg-slate-50 dark:bg-slate-900 border-slate-100 dark:border-slate-800'
-                            }`}>
-                                <input 
-                                    type="checkbox" 
-                                    checked={attachInvoicePdf} 
-                                    onChange={(e) => setAttachInvoicePdf(e.target.checked)}
-                                    className="rounded border-slate-350 dark:border-slate-650 text-purple-600 focus:ring-purple-600"
-                                />
-                                <div>
-                                    <p className="font-bold text-xs text-slate-850 dark:text-slate-100">Attach Job Invoice as PDF File</p>
-                                    <p className="text-[10px] text-slate-450">Includes printable PDF of invoice #${job.invoice.id || 'INV'}</p>
-                                </div>
-                            </label>
-                        )}
-                    </div>
-                </div>
-
-                {attachableFiles.length > 0 && (
-                    <div className="border-t border-slate-100 dark:border-slate-800 pt-5">
-                        <h4 className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest mb-3.5">
-                            Select Photo & Media Attachments
-                        </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[160px] overflow-y-auto pr-2 custom-scrollbar">
-                            {attachableFiles.map((file) => {
-                                const id = file.id || file.dataUrl;
-                                const isSelected = selectedAttachments.includes(id);
-                                const isPhoto = file.type === 'Photo' || file.fileType?.startsWith('image/') || file.contentType?.startsWith('image/');
-                                return (
-                                    <label 
-                                        key={id} 
-                                        className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${
-                                            isSelected 
-                                                ? 'bg-indigo-50/30 dark:bg-indigo-950/10 border-indigo-200 dark:border-indigo-800/60 shadow-sm' 
-                                                : 'bg-white dark:bg-slate-950 border-slate-150 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-900'
-                                        }`}
-                                    >
-                                        <input 
-                                            type="checkbox" 
-                                            checked={isSelected}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedAttachments(prev => [...prev, id]);
-                                                } else {
-                                                    setSelectedAttachments(prev => prev.filter(x => x !== id));
-                                                }
-                                            }}
-                                            className="mt-0.5 rounded border-slate-350 dark:border-slate-650 text-indigo-650 focus:ring-indigo-650 w-4 h-4 cursor-pointer"
-                                        />
-                                        <div className="space-y-0.5 min-w-0 flex-1">
-                                            <p className="text-xs font-bold text-slate-850 dark:text-slate-100 truncate">{file.fileName}</p>
-                                            <p className="text-[9px] text-slate-450 dark:text-slate-500 font-mono">
-                                                {isPhoto ? 'Photo/Image' : (file.metadata?.label as string) || (file.label as string) || 'Document'}
-                                            </p>
-                                        </div>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex gap-3 justify-end pt-5 border-t border-slate-100 dark:border-slate-800">
-                    <Button 
-                        variant="secondary" 
-                        onClick={() => setIsEmailModalOpen(false)} 
-                        disabled={isEmailSending}
-                        className="h-11 font-black text-[10px] uppercase tracking-wider px-6"
-                    >
-                        Cancel
-                    </Button>
-                    <Button 
-                        onClick={() => {
-                            setPreviewDoc({ 
-                                type: 'Other', 
-                                title: 'Profit & Loss - Emailed Document Preview', 
-                                htmlContent: generateEmailHtml(true)
-                            });
-                        }}
-                        disabled={isEmailSending}
-                        variant="secondary"
-                        className="h-11 border-indigo-200 dark:border-indigo-800 text-indigo-605 dark:text-indigo-400 font-black text-[10px] uppercase tracking-wider flex items-center gap-2 px-6 hover:bg-indigo-50/50"
-                    >
-                        <Eye size={14}/> View as Customer
-                    </Button>
-                    <Button 
-                        onClick={handleSendEmailReport} 
-                        disabled={isEmailSending}
-                        className="h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-2 px-6 shadow-md shadow-emerald-500/20 transition-all"
-                    >
-                        {isEmailSending ? 'Sending...' : 'Send Service Report'}
-                    </Button>
-                </div>
-            </div>
-        </Modal>
 
         {/* Document Preview Modal */}
         {previewDoc && (
@@ -4158,7 +4140,7 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                 onClose={() => setIsAuditHistoryOpen(false)} 
                 title="Signature Audit History & Archives" 
                 size="lg" 
-                zIndex="z-[300]"
+                zIndex="z-[10070]"
             >
                 <div className="space-y-4 max-h-[70vh] overflow-y-auto p-1">
                     <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -4188,6 +4170,129 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                             />
                         </div>
                     ))}
+                </div>
+            </Modal>
+        )}
+
+        <PrintableFormPreviewModal
+            isOpen={isPrintingTechSheet}
+            onClose={() => setIsPrintingTechSheet(false)}
+            job={job}
+            organization={state.currentOrganization}
+        />
+
+        <SubcontractorWorkOrderModal
+            isOpen={isSendSubcontractorModalOpen}
+            onClose={() => setIsSendSubcontractorModalOpen(false)}
+            job={job}
+            subcontractorId={(job as any)?.subcontractorId || (job as any)?.assignedPartnerId || ''}
+        />
+        <LocationAuditModal
+            isOpen={isLocationAuditOpen}
+            onClose={() => setIsLocationAuditOpen(false)}
+            customerId={job.customerId}
+            locationId={job.locationId || serviceLocation?.id || 'default'}
+        />
+
+        {selectedAssetForAssessment && (
+            <UnitWorkModal
+                isOpen={!!selectedAssetForAssessment}
+                onClose={() => setSelectedAssetForAssessment(null)}
+                asset={selectedAssetForAssessment}
+                job={job}
+                unitState={normalizeUnitStates(localUnitStates).find((s: any) => s.assetId === selectedAssetForAssessment.id) || { assetId: selectedAssetForAssessment.id }}
+                onSaveUnitState={(updatedUnitState: any) => {
+                    const updated = [...normalizeUnitStates(localUnitStates)];
+                    const idx = updated.findIndex((s: any) => s.assetId === updatedUnitState.assetId);
+                    if (idx > -1) {
+                        updated[idx] = updatedUnitState;
+                    } else {
+                        updated.push(updatedUnitState);
+                    }
+                    setLocalUnitStates(updated);
+                    db.collection('jobs').doc(job.id).update(cleanUndefinedFields({ unitStates: updated }));
+                    dispatch({ type: 'UPDATE_JOB', payload: { ...job, unitStates: updated } });
+                    showToast.success('Unit assessment & EPA refrigerant log saved!');
+                    setSelectedAssetForAssessment(null);
+                }}
+            />
+        )}
+
+        {isChargebackModalOpen && (
+            <SubcontractorChargebackModal
+                isOpen={isChargebackModalOpen}
+                onClose={() => setIsChargebackModalOpen(false)}
+                subcontractor={assignedSub || undefined}
+                initialJob={job}
+                onSaveSuccess={() => {
+                    showToast.success("Subcontractor chargeback logged for this work order!");
+                }}
+            />
+        )}
+        {isEditingTimes && currentJob && (
+            <Modal 
+                isOpen={isEditingTimes} 
+                onClose={() => setIsEditingTimes(false)} 
+                title={`Edit In / Out Times: ${currentJob.customerName || 'Work Order'}`} 
+                size="md"
+                zIndex="z-[10080]"
+            >
+                <div className="space-y-4 p-2">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Manually update or backfill technician arrival and departure timestamps for this service history record.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                        <Input 
+                            label="Check-In (Arrival / In Time)" 
+                            type="datetime-local" 
+                            value={editCheckIn} 
+                            onChange={e => {
+                                setEditCheckIn(e.target.value);
+                                if (e.target.value && editCheckOut) {
+                                    const diffMs = new Date(editCheckOut).getTime() - new Date(e.target.value).getTime();
+                                    setEditTimeOnSite(Math.max(0, Math.round(diffMs / 60000)));
+                                }
+                            }} 
+                        />
+                        <Input 
+                            label="Check-Out (Departure / Out Time)" 
+                            type="datetime-local" 
+                            value={editCheckOut} 
+                            onChange={e => {
+                                setEditCheckOut(e.target.value);
+                                if (editCheckIn && e.target.value) {
+                                    const diffMs = new Date(e.target.value).getTime() - new Date(editCheckIn).getTime();
+                                    setEditTimeOnSite(Math.max(0, Math.round(diffMs / 60000)));
+                                }
+                            }} 
+                        />
+                    </div>
+
+                    <div>
+                        <Input 
+                            label="Total Time On Site (Minutes)" 
+                            type="number" 
+                            min="0"
+                            value={editTimeOnSite} 
+                            onChange={e => setEditTimeOnSite(e.target.value === '' ? '' : parseInt(e.target.value))} 
+                            placeholder="e.g. 60"
+                        />
+                        {!!editTimeOnSite && (
+                            <p className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                                Duration: {Math.floor(Number(editTimeOnSite) / 60)}h {Number(editTimeOnSite) % 60}m
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                        <Button variant="secondary" onClick={() => setIsEditingTimes(false)} disabled={isSavingTimes}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleSaveTimeCorrections} disabled={isSavingTimes} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                            {isSavingTimes ? 'Saving...' : 'Save In / Out Times'}
+                        </Button>
+                    </div>
                 </div>
             </Modal>
         )}

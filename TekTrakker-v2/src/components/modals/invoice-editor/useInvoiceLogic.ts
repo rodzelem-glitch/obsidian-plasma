@@ -1,17 +1,21 @@
 import showToast from "lib/toast";
-import { getBaseUrl } from "lib/utils";
+import { getBaseUrl, createEmailButtonHtml } from "lib/utils";
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { db } from 'lib/firebase';
-import type { Job, InvoiceLineItem, Organization, Customer } from 'types';
+import type { Job, InvoiceLineItem, SubLineItem, Organization, Customer } from 'types';
 import { SignaturePadHandle } from 'components/ui/SignaturePad';
-import { formatAddress, getPaymentTermsDays, formatFlatAddress, cleanUndefinedFields } from 'lib/utils';
+import { formatAddress, getPaymentTermsDays, formatFlatAddress, cleanUndefinedFields, resolveServiceLocation, matchTier, extractJobRecommendations } from 'lib/utils';
 import { globalConfirm } from "lib/globalConfirm";
-import { getNextInvoiceNumber } from 'lib/numbering';
+import { getNextInvoiceNumber, resolveJobInvoiceNumber } from 'lib/numbering';
 import { fetchLinkedClusterForJob } from 'lib/linkedJobsHelper';
 import { generateInvoicePdfAttachment } from 'lib/pdfHelper';
 import { createSignaturePackage, handleDocumentEditWithSignatureCheck } from 'lib/signatureUtils';
+import { computeCanonicalFinancials } from 'lib/financialCalculator';
+import { uploadFileToStorage } from 'lib/storageService';
+import { calculateCustomerPartMarkup } from 'lib/estimatorRules';
+import { isImpactCustomer, getImpactDefaultRecipients } from 'lib/impactDirectory';
 
 export const sanitizeMcAlistersInvoice = (
     jobObj: any,
@@ -20,204 +24,12 @@ export const sanitizeMcAlistersInvoice = (
     isTekAir: boolean,
     isMcAlisters: boolean
 ) => {
-    if (!isTekAir || !isMcAlisters) {
-        return {
-            items: itemsList,
-            billToName: currentBillToName,
-            customerName: jobObj?.customerName || '',
-            address: jobObj ? formatAddress(jobObj.address) : '',
-            billToAddress: jobObj?.invoice?.billToAddress || (jobObj ? formatAddress(jobObj.address) : '')
-        };
-    }
-
-    // 1. Identify disallowed items
-    const disallowedKeywords = ['trip', 'fuel', 'apprentice', 'overtime', 'premium', 'shipping'];
-    
-    const disallowedItems = itemsList.filter(item => {
-        const desc = (item.description || '').toLowerCase();
-        const name = (item.name || '').toLowerCase();
-        const typeLower = (item.type || '').toLowerCase();
-        return typeLower === 'fee' && (desc.includes('trip') || name.includes('trip') || desc.includes('travel') || name.includes('travel'))
-            || disallowedKeywords.some(keyword => desc.includes(keyword) || name.includes(keyword));
-    });
-
-    const allowedItems = itemsList.filter(item => !disallowedItems.includes(item));
-    
-    // Group disallowed totals by taxability to keep total/tax exactly the same
-    const taxableDisallowedSum = disallowedItems.filter(i => i.taxable !== false).reduce((sum, i) => sum + (i.total || (i.quantity * i.unitPrice) || 0), 0);
-    const nonTaxableDisallowedSum = disallowedItems.filter(i => i.taxable === false).reduce((sum, i) => sum + (i.total || (i.quantity * i.unitPrice) || 0), 0);
-
-    let updatedItems = allowedItems.map(i => ({ ...i }));
-
-    // Distribute taxable disallowed sum
-    if (taxableDisallowedSum > 0) {
-        const targetIdx = updatedItems.findIndex(item => item.taxable !== false && item.type !== 'Discount');
-        if (targetIdx !== -1) {
-            const target = updatedItems[targetIdx];
-            const qty = target.quantity || 1;
-            const share = taxableDisallowedSum / qty;
-            const shareCents = share * 100;
-            const isExact = Math.abs(shareCents - Math.round(shareCents)) < 1e-9;
-            
-            if (isExact) {
-                const roundedShare = Number(share.toFixed(2));
-                target.unitPrice = Number((target.unitPrice + roundedShare).toFixed(2));
-                target.total = Number((qty * target.unitPrice).toFixed(2));
-                const note = `[Incorporated charges of $${taxableDisallowedSum.toFixed(2)}]`;
-                if (!target.description?.includes(note)) {
-                    target.description = target.description ? `${target.description}\n${note}` : note;
-                }
-            } else {
-                // To prevent rounding errors, append a new taxable allowed item with quantity 1
-                updatedItems.push({
-                    id: `incorporated-taxable-${Date.now()}-${Math.floor(Math.random() * 1005)}`,
-                    name: 'Service Charge',
-                    description: `HVAC service and diagnostic charge. [Incorporated charges of $${taxableDisallowedSum.toFixed(2)}]`,
-                    quantity: 1,
-                    unitPrice: taxableDisallowedSum,
-                    total: taxableDisallowedSum,
-                    type: 'Service',
-                    taxable: true
-                });
-            }
-        } else {
-            // Create a taxable allowed item
-            updatedItems.push({
-                id: `incorporated-taxable-${Date.now()}-${Math.floor(Math.random() * 1005)}`,
-                name: 'Service Charge',
-                description: `HVAC service and diagnostic charge. [Incorporated charges of $${taxableDisallowedSum.toFixed(2)}]`,
-                quantity: 1,
-                unitPrice: taxableDisallowedSum,
-                total: taxableDisallowedSum,
-                type: 'Service',
-                taxable: true
-            });
-        }
-    }
-
-    // Distribute non-taxable disallowed sum
-    if (nonTaxableDisallowedSum > 0) {
-        const targetIdx = updatedItems.findIndex(item => item.taxable === false && item.type !== 'Discount');
-        if (targetIdx !== -1) {
-            const target = updatedItems[targetIdx];
-            const qty = target.quantity || 1;
-            const share = nonTaxableDisallowedSum / qty;
-            const shareCents = share * 100;
-            const isExact = Math.abs(shareCents - Math.round(shareCents)) < 1e-9;
-            
-            if (isExact) {
-                const roundedShare = Number(share.toFixed(2));
-                target.unitPrice = Number((target.unitPrice + roundedShare).toFixed(2));
-                target.total = Number((qty * target.unitPrice).toFixed(2));
-                const note = `[Incorporated charges of $${nonTaxableDisallowedSum.toFixed(2)}]`;
-                if (!target.description?.includes(note)) {
-                    target.description = target.description ? `${target.description}\n${note}` : note;
-                }
-            } else {
-                // To prevent rounding errors, append a new non-taxable allowed item with quantity 1
-                updatedItems.push({
-                    id: `incorporated-nontaxable-${Date.now()}-${Math.floor(Math.random() * 1005)}`,
-                    name: 'Labor Charge',
-                    description: `HVAC labor charge. [Incorporated charges of $${nonTaxableDisallowedSum.toFixed(2)}]`,
-                    quantity: 1,
-                    unitPrice: nonTaxableDisallowedSum,
-                    total: nonTaxableDisallowedSum,
-                    type: 'Labor',
-                    taxable: false
-                });
-            }
-        } else {
-            // Create a non-taxable allowed item
-            updatedItems.push({
-                id: `incorporated-nontaxable-${Date.now()}-${Math.floor(Math.random() * 1005)}`,
-                name: 'Labor Charge',
-                description: `HVAC labor charge. [Incorporated charges of $${nonTaxableDisallowedSum.toFixed(2)}]`,
-                quantity: 1,
-                unitPrice: nonTaxableDisallowedSum,
-                total: nonTaxableDisallowedSum,
-                type: 'Labor',
-                taxable: false
-            });
-        }
-    }
-
-    // Add detailed service description with arrival/departure times to the first labor/service item
-    const checkIn = jobObj.checkInTime || jobObj.appointmentTime || new Date().toISOString();
-    const checkOut = jobObj.checkOutTime || new Date(new Date(checkIn).getTime() + 2 * 3600 * 1000).toISOString();
-    const checkInStr = new Date(checkIn).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const checkOutStr = new Date(checkOut).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    const dateStr = new Date(checkIn).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-    const timeLogNote = `Service Visit Date: ${dateStr} | Arrival: ${checkInStr} | Departure: ${checkOutStr}`;
-
-    let laborServiceIdx = updatedItems.findIndex(item => item.type === 'Labor' || item.type === 'Service');
-    if (laborServiceIdx !== -1) {
-        const item = updatedItems[laborServiceIdx];
-        if (!item.description?.includes('Arrival:')) {
-            item.description = item.description ? `${item.description}\n${timeLogNote}` : timeLogNote;
-        }
-    }
-
-    let storeNumber = jobObj.locationName || '';
-    const nameStr = (jobObj.locationName || jobObj.customerName || '').toLowerCase();
-    const addrStr = (formatAddress(jobObj.address) || jobObj.invoice?.billToAddress || '').toLowerCase();
-    const idStr = (jobObj.id || '').toLowerCase();
-    const parentIdStr = (jobObj.parentJobId || '').toLowerCase();
-    const specInstructions = (jobObj.specialInstructions || '').toLowerCase();
-
-    if (!storeNumber) {
-        if (nameStr.includes('1404') || addrStr.includes('pat booker') || addrStr.includes('8121') || idStr.includes('127557') || parentIdStr.includes('127557') || specInstructions.includes('127557')) {
-            storeNumber = '1404';
-        } else if (nameStr.includes('1386') || addrStr.includes('military hwy') || addrStr.includes('16820')) {
-            storeNumber = '1386';
-        } else if (nameStr.includes('103139') || addrStr.includes('fm 78') || addrStr.includes('8540')) {
-            storeNumber = '103139';
-        } else if (nameStr.includes('101075') || addrStr.includes('se military') || addrStr.includes('2314')) {
-            storeNumber = '101075';
-        } else if (nameStr.includes('103135') || addrStr.includes('loop 1604') || addrStr.includes('7010')) {
-            storeNumber = '103135';
-        }
-    }
-
-    // Check assets in unitStates
-    if (!storeNumber && jobObj.unitStates && jobObj.unitStates.length > 0) {
-        for (const u of jobObj.unitStates) {
-            const assetId = u.assetId || '';
-            if (assetId.includes('1781049548128') || assetId.includes('1781049905036') || assetId.includes('1781064483880') || assetId.includes('1781064750798')) {
-                storeNumber = '1404';
-                break;
-            } else if (assetId.includes('1780185429101')) {
-                storeNumber = '101075';
-                break;
-            }
-        }
-    }
-
-    const storeMap: { [key: string]: { name: string, address: string } } = {
-        '1404': { name: 'McAlisters Deli #1404', address: '8121 Pat Booker Rd, Live Oak, TX 78233' },
-        '1386': { name: 'McAlisters Deli #1386', address: '16820 NM Military Hwy, Shavano Park, TX 78231' },
-        '103139': { name: 'McAlisters Deli #103139', address: '8540 FM 78, Converse, TX 78109' },
-        '101075': { name: 'McAlisters Deli #101075', address: '2314 SE Military Dr, San Antonio, TX 78223' },
-        '103135': { name: 'McAlisters Deli #103135', address: '7010 W. Loop 1604 N., San Antonio, TX 78254' }
-    };
-
-    const serviceLocationName = storeNumber && storeMap[storeNumber]
-        ? storeMap[storeNumber].name
-        : 'McAlisters Deli';
-
-    const formattedJobAddr = formatAddress(jobObj.address);
-    const hasValidJobAddr = formattedJobAddr && !formattedJobAddr.trim().toLowerCase().includes('johnson');
-    const serviceLocationAddress = hasValidJobAddr
-        ? formattedJobAddr
-        : (storeNumber && storeMap[storeNumber]
-            ? storeMap[storeNumber].address
-            : '8121 Pat Booker Rd, Live Oak, TX 78233');
-
     return {
-        items: updatedItems,
-        billToName: 'Best Choice Florida, LLC',
-        customerName: serviceLocationName,
-        address: serviceLocationAddress,
-        billToAddress: '4515 Lyndon B. Johnson Freeway, Dallas, TX 75244'
+        items: itemsList,
+        billToName: (jobObj?.invoice as any)?.billToName || currentBillToName || jobObj?.customerName || '',
+        customerName: jobObj?.customerName || '',
+        address: jobObj ? formatAddress(jobObj.address) : '',
+        billToAddress: jobObj?.invoice?.billToAddress || (jobObj ? formatAddress(jobObj.address) : '')
     };
 };
 
@@ -240,6 +52,24 @@ const formatServiceLocationAddress = (loc: any) => {
     return addressStr;
 };
 
+export const getItemUnitPrice = (item: InvoiceLineItem): number => {
+    if (item.subItems && item.subItems.length > 0) {
+        const subSum = item.subItems.reduce((sum, sub) => sum + ((sub.quantity ?? 1) * (sub.unitPrice ?? 0)), 0);
+        if (subSum > 0) return subSum;
+    }
+    return item.unitPrice || 0;
+};
+
+export const getItemTotal = (item: InvoiceLineItem): number => {
+    if (item.type === 'Discount') {
+        if (item.isPercentage) return item.total || 0;
+        return item.unitPrice < 0 ? item.unitPrice * (item.quantity || 1) : -Math.abs((item.unitPrice || 0) * (item.quantity || 1));
+    }
+    const unitPrice = getItemUnitPrice(item);
+    const qty = item.quantity ?? 1;
+    return qty * unitPrice;
+};
+
 export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => void) => {
     const { state, dispatch } = useAppContext();
     const { currentUser, currentOrganization } = state;
@@ -250,6 +80,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([]);
     const [taxRate, setTaxRate] = useState(8.25);
     const [isSaving, setIsSaving] = useState(false);
+    const isSavedRef = useRef(false);
     
     // UI State
     const [customerName, setCustomerName] = useState('');
@@ -281,6 +112,14 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     const [invoiceDate, setInvoiceDate] = useState<string>('');
     const [dueDate, setDueDate] = useState<string>('');
     const [paymentTerms, setPaymentTerms] = useState<string>('net_30');
+    const [displayFormat, setDisplayFormat] = useState<'itemized' | 'progressive'>('itemized');
+
+    // Deposit / Down Payment State
+    const [requireDeposit, setRequireDeposit] = useState<boolean>(false);
+    const [depositType, setDepositType] = useState<'flat' | 'percentage'>('flat');
+    const [depositValue, setDepositValue] = useState<number>(0);
+    const [depositNotes, setDepositNotes] = useState<string>('');
+    const [depositPaid, setDepositPaid] = useState<boolean>(false);
 
     // Linked Jobs Billing States
     const [linkedJobs, setLinkedJobs] = useState<Job[]>([]);
@@ -332,7 +171,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                         const orgId = job.organizationId || currentOrganization?.id;
                         if (orgId) {
                             try {
-                                const nextInvId = await getNextInvoiceNumber(orgId);
+                                const nextInvId = resolveJobInvoiceNumber(job, 0, state.jobs);
                                 invoice = {
                                     id: nextInvId,
                                     status: 'Unpaid',
@@ -357,8 +196,13 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                     }
                 }
 
-                if (job.invoice && job.invoice.status === 'Failed') {
-                    job.invoice.amountPaid = 0;
+                if (job.invoice) {
+                    if (!job.invoice.id) {
+                        job.invoice.id = resolveJobInvoiceNumber(job, 0, state.jobs);
+                    }
+                    if (job.invoice.status === 'Failed') {
+                        job.invoice.amountPaid = 0;
+                    }
                 }
                 setCurrentJob(job);
 
@@ -387,8 +231,17 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                             setInvoiceDate(draft.invoiceDate || '');
                             setDueDate(draft.dueDate || '');
                             setPaymentTerms(draft.paymentTerms || 'net_30');
+                            const hasDraftDep = draft.requireDeposit ?? ((draft.depositValue && draft.depositValue > 0) || (draft.depositAmount && draft.depositAmount > 0));
+                            setRequireDeposit(Boolean(hasDraftDep));
+                            setDepositType(draft.depositType || 'flat');
+                            setDepositValue(draft.depositValue || 0);
+                            setDepositNotes(draft.depositNotes || '');
+                            setDepositPaid(draft.depositPaid || false);
                             setSyncInvoiceWithLinked(draft.syncInvoiceWithLinked || false);
-                            setTaxRate(job.invoice?.taxRate ? job.invoice.taxRate * 100 : (currentOrganization?.taxRate || 8.25));
+                            const resolvedDraftTaxRate = (job.invoice?.taxRate !== undefined && job.invoice?.taxRate !== null)
+                                ? Number(job.invoice.taxRate) * 100
+                                : (currentOrganization?.taxRate !== undefined && currentOrganization?.taxRate !== null ? Number(currentOrganization.taxRate) : 8.25);
+                            setTaxRate(resolvedDraftTaxRate);
                             setImportedProposalId(job.proposalId || job.invoice?.proposalId || null);
                             
                             if (job.customerId) {
@@ -442,19 +295,28 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                     );
 
                     setLineItems(sanitized.items);
-                    setTaxRate(job.invoice?.taxRate ? job.invoice.taxRate * 100 : (currentOrganization?.taxRate || 8.25));
+                    const resolvedInitialTaxRate = (job.invoice?.taxRate !== undefined && job.invoice?.taxRate !== null)
+                        ? Number(job.invoice.taxRate) * 100
+                        : (currentOrganization?.taxRate !== undefined && currentOrganization?.taxRate !== null ? Number(currentOrganization.taxRate) : 8.25);
+                    setTaxRate(resolvedInitialTaxRate);
                     setCustomerName(sanitized.customerName || job.customerName);
                     setAddress(sanitized.address || formatAddress(job.address));
                     
                     // Load split billing / warranty fields
-                    setBillToName(sanitized.billToName);
-                    setBillToAddress(sanitized.billToAddress || (job.invoice as any)?.billToAddress || formatAddress(job.address));
+                    setBillToName(sanitized.billToName || (job.invoice as any)?.billToName || (job as any)?.billToName || '');
+                    setBillToAddress(sanitized.billToAddress || (job.invoice as any)?.billToAddress || (job as any)?.billToAddress || formatAddress(job.address));
                     setWorkmanshipWarrantyMonths((job.invoice as any)?.workmanshipWarrantyMonths || 0);
                     setPartsWarrantyMonths((job.invoice as any)?.partsWarrantyMonths || 0);
                     setWarrantyNotes((job.invoice as any)?.warrantyNotes || '');
                     setWarrantyDisclaimerAgreed((job.invoice as any)?.warrantyDisclaimerAgreed || false);
                     setMembershipEnrollment((job.invoice as any)?.membershipEnrollment || null);
-                    setRecommendations((job.invoice as any)?.recommendations || '');
+                    const defaultJobRecs = (job.invoice as any)?.recommendations || 
+                        (job as any).recommendations || 
+                        job.techRecommendations || 
+                        (job.notes as any)?.recommendations || 
+                        (job.workflowState as any)?.recommendations || 
+                        '';
+                    setRecommendations(defaultJobRecs);
                     let initialRetainage = 0;
                     let initialFeePercent = 0;
                     let initialFeeName = 'Processing Fee';
@@ -484,7 +346,15 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                     setRetainagePercent(initialRetainage);
                     setAdditionalFeePercent(initialFeePercent);
                     setAdditionalFeeName(initialFeeName);
+                    setDisplayFormat((invoice as any)?.displayFormat || 'itemized');
                     setImportedProposalId(job.proposalId || job.invoice?.proposalId || null);
+
+                    const hasInitialDep = (invoice as any)?.requireDeposit ?? (Number((invoice as any)?.depositValue || (job as any)?.invoice?.depositValue || 0) > 0 || Number((invoice as any)?.depositAmount || (job as any)?.invoice?.depositAmount || 0) > 0);
+                    setRequireDeposit(Boolean(hasInitialDep));
+                    setDepositType((invoice as any)?.depositType || (job as any)?.invoice?.depositType || (job as any)?.depositType || 'flat');
+                    setDepositValue(Number((invoice as any)?.depositValue || (job as any)?.invoice?.depositValue || (job as any)?.depositValue || 0));
+                    setDepositNotes((invoice as any)?.depositNotes || (job as any)?.invoice?.depositNotes || (job as any)?.depositNotes || '');
+                    setDepositPaid(!!((invoice as any)?.depositPaid || (job as any)?.invoice?.depositPaid || (job as any)?.depositPaid));
 
                     const initialPaymentTerms = invoice?.paymentTerms || 'net_30';
                     setPaymentTerms(initialPaymentTerms);
@@ -511,37 +381,44 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                                 const cust = { ...doc.data(), id: doc.id } as Customer;
                                 setCustomer(cust);
                                 
-                                if (cust.taxExempt || cust.taxExemptCertUrl) {
+                                if (cust.taxExempt && cust.taxExemptCertUrl) {
                                     setTaxRate(0);
                                 }
 
                                 // Auto-populate Billing details with corporate customer details if new or defaulting to service target
-                                if (cust.name) {
-                                    if (!job.invoice?.billToName || job.invoice.billToName === job.customerName) {
-                                        setBillToName(cust.name);
+                                const locForBilling = resolveServiceLocation({ address: job.address, locationId: job.locationId, locationName: job.locationName }, cust);
+                                if (locForBilling?.billToSameAsSite) {
+                                    const locBillName = locForBilling.billToName || locForBilling.propertyName || locForBilling.name || '';
+                                    const locBillAddr = locForBilling.billToAddress || formatAddress(locForBilling.address);
+                                    if (locBillName) setBillToName(locBillName);
+                                    if (locBillAddr) setBillToAddress(locBillAddr);
+                                } else {
+                                    if (cust.name) {
+                                        if (!job.invoice?.billToName && !(job as any)?.billToName) {
+                                            setBillToName(cust.name);
+                                        }
                                     }
-                                }
-                                const mainCorpAddr = formatFlatAddress(cust);
-                                if (mainCorpAddr) {
-                                    if (!job.invoice?.billToAddress || job.invoice.billToAddress === formatAddress(job.address)) {
-                                        setBillToAddress(mainCorpAddr);
+                                    const mainCorpAddr = formatFlatAddress(cust);
+                                    if (mainCorpAddr) {
+                                        if (!job.invoice?.billToAddress && !(job as any)?.billToAddress) {
+                                            setBillToAddress(mainCorpAddr);
+                                        }
                                     }
                                 }
 
-                                if (cust.paymentTerms && !invoice?.paymentTerms) {
-                                    setPaymentTerms(cust.paymentTerms);
-                                    if (!invoice?.dueDate) {
-                                        const days = getPaymentTermsDays(cust.paymentTerms);
-                                        const dateStr = invoice?.invoiceDate || invoice?.date || defaultInvoiceDate;
-                                        const cleanStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-                                        const dateObj = new Date(cleanStr.replace(/-/g, '/'));
-                                        if (!isNaN(dateObj.getTime())) {
-                                            dateObj.setDate(dateObj.getDate() + days);
-                                            const yyyy = dateObj.getFullYear();
-                                            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-                                            const dd = String(dateObj.getDate()).padStart(2, '0');
-                                            setDueDate(`${yyyy}-${mm}-${dd}`);
-                                        }
+                                if (cust.paymentTerms) {
+                                    const effectiveTerms = cust.paymentTerms;
+                                    setPaymentTerms(effectiveTerms);
+                                    const days = getPaymentTermsDays(effectiveTerms);
+                                    const dateStr = invoice?.invoiceDate || invoice?.date || defaultInvoiceDate;
+                                    const cleanStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+                                    const dateObj = new Date(cleanStr.replace(/-/g, '/'));
+                                    if (!isNaN(dateObj.getTime())) {
+                                        dateObj.setDate(dateObj.getDate() + days);
+                                        const yyyy = dateObj.getFullYear();
+                                        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+                                        const dd = String(dateObj.getDate()).padStart(2, '0');
+                                        setDueDate(`${yyyy}-${mm}-${dd}`);
                                     }
                                 }
                                 const isCommercial = !!(
@@ -586,7 +463,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 const isSynced = linkedJobs.some(lj => lj.invoice?.id === currentJob.invoice?.id);
                 setSyncInvoiceWithLinked(isSynced);
             } else {
-                setSyncInvoiceWithLinked(true);
+                setSyncInvoiceWithLinked(false);
             }
         } else {
             setSyncInvoiceWithLinked(false);
@@ -596,7 +473,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
     useEffect(() => {
         const baseSubtotal = lineItems
             .filter(item => item.type !== 'Discount' && item.type !== 'Fee')
-            .reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+            .reduce((sum, item) => sum + getItemTotal(item), 0);
 
         let changed = false;
         const nextItems = lineItems.map(item => {
@@ -638,21 +515,30 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
 
     const totals = useMemo(() => {
         const itemsToUse = sanitizedItemsAndBillTo.items;
-        const subtotal = itemsToUse.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-        const isCustomerTaxExempt = !!(customer?.taxExempt || customer?.taxExemptCertUrl);
-        const taxableAmount = isCustomerTaxExempt ? 0 : itemsToUse.filter(i => i.taxable !== false).reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+        const subtotal = itemsToUse.reduce((sum, item) => sum + getItemTotal(item), 0);
+        const isCustomerTaxExempt = !!(customer?.taxExempt && customer?.taxExemptCertUrl);
+        const taxableAmount = isCustomerTaxExempt ? 0 : itemsToUse.filter(i => i.taxable !== false).reduce((sum, item) => sum + getItemTotal(item), 0);
         const tax = isCustomerTaxExempt ? 0 : taxableAmount * (taxRate / 100);
         let total = subtotal + tax;
 
         const additionalFeeAmount = additionalFeePercent ? (total * (additionalFeePercent / 100)) : 0;
         total += additionalFeeAmount;
+
+        let calculatedDepositAmount = 0;
+        if (requireDeposit && depositValue > 0) {
+            calculatedDepositAmount = depositType === 'percentage'
+                ? parseFloat(((total * depositValue) / 100).toFixed(2))
+                : parseFloat(depositValue.toFixed(2));
+        }
+
         return { 
             subtotal: parseFloat(subtotal.toFixed(2)), 
             tax: parseFloat(tax.toFixed(2)), 
             total: parseFloat(total.toFixed(2)), 
-            additionalFeeAmount: parseFloat(additionalFeeAmount.toFixed(2)) 
+            additionalFeeAmount: parseFloat(additionalFeeAmount.toFixed(2)),
+            depositAmount: calculatedDepositAmount
         };
-    }, [sanitizedItemsAndBillTo.items, taxRate, additionalFeePercent]);
+    }, [sanitizedItemsAndBillTo.items, taxRate, additionalFeePercent, requireDeposit, depositType, depositValue, customer?.taxExempt, customer?.taxExemptCertUrl]);
 
     const handleAddItem = (
         type: InvoiceLineItem['type'] = 'Labor', 
@@ -661,7 +547,7 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         taxable?: boolean
     ) => {
         const randomIdSuffix = Math.floor(Math.random() * 1000000);
-        const isTaxExemptCust = !!(customer?.taxExempt || customer?.taxExemptCertUrl);
+        const isTaxExemptCust = !!(customer?.taxExempt && customer?.taxExemptCertUrl);
         const isCommercialCust = customer?.customerType === 'Commercial';
 
         let defaultTaxable = taxable;
@@ -688,13 +574,52 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         setLineItems(prev => [...prev, newItem]);
     };
 
-    const handleUpdateItem = (id: string, field: keyof InvoiceLineItem, value: any) => {
-        const isTaxExemptCust = !!(customer?.taxExempt || customer?.taxExemptCertUrl);
+    const handleUpdateItem = (id: string, field: keyof InvoiceLineItem | 'vendorCost' | 'cost' | 'markupPct', value: any) => {
+        const isTaxExemptCust = !!(customer?.taxExempt && customer?.taxExemptCertUrl);
         const isCommercialCust = customer?.customerType === 'Commercial';
 
         setLineItems(items => items.map(item => {
             if (item.id === id) {
-                const updated = { ...item, [field]: value };
+                const updated: any = { ...item, [field]: value };
+
+                if (field === 'cost' || field === 'vendorCost') {
+                    const numericCost = Math.max(0, Number(value) || 0);
+                    updated.cost = numericCost;
+                    updated.vendorCost = numericCost;
+
+                    if (numericCost > 0) {
+                        const currentUnitPrice = Number(item.unitPrice) || 0;
+                        if (item.markupPct !== undefined && item.markupPct !== null && item.markupPct > 0) {
+                            const newUnitPrice = parseFloat((numericCost * (1 + item.markupPct / 100)).toFixed(2));
+                            updated.unitPrice = newUnitPrice;
+                        } else if (currentUnitPrice > numericCost) {
+                            updated.markupPct = parseFloat((((currentUnitPrice - numericCost) / numericCost) * 100).toFixed(1));
+                        } else {
+                            const suggestedMarkup = calculateCustomerPartMarkup(
+                                numericCost,
+                                customer?.pricingRules?.partsMarkupRules,
+                                customer?.pricingRules?.partsMarkupPercentage ?? customer?.pricingRules?.markupPercentage,
+                                { tier1: customer?.pricingRules?.partsMarkupTier1, tier2: customer?.pricingRules?.partsMarkupTier2 }
+                            );
+                            updated.markupPct = suggestedMarkup;
+                            updated.unitPrice = parseFloat((numericCost * (1 + suggestedMarkup / 100)).toFixed(2));
+                        }
+                    }
+                } else if (field === 'markupPct') {
+                    const markup = Number(value) || 0;
+                    updated.markupPct = markup;
+                    const cost = Number(item.cost ?? item.vendorCost ?? 0);
+                    if (cost > 0) {
+                        updated.unitPrice = parseFloat((cost * (1 + markup / 100)).toFixed(2));
+                    }
+                } else if (field === 'unitPrice') {
+                    const newUnitPrice = Number(value) || 0;
+                    const cost = Number(item.cost ?? item.vendorCost ?? 0);
+                    if (cost > 0 && newUnitPrice > 0) {
+                        updated.markupPct = parseFloat((((newUnitPrice - cost) / cost) * 100).toFixed(1));
+                    }
+                }
+
                 if (field === 'type') {
                     if (value === 'Discount' || isTaxExemptCust) {
                         updated.unitPrice = value === 'Discount' ? -Math.abs(updated.unitPrice || 0) : Math.abs(updated.unitPrice || 0);
@@ -714,8 +639,9 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                         updated.unitPrice = value;
                     }
                 }
-                if (field === 'unitPrice' || field === 'quantity' || field === 'type') {
-                    updated.total = updated.quantity * updated.unitPrice; 
+                if (field === 'unitPrice' || field === 'quantity' || field === 'type' || field === 'subItems' || field === 'cost' || field === 'vendorCost' || field === 'markupPct') {
+                    const unitPrice = getItemUnitPrice(updated);
+                    updated.total = updated.quantity * (updated.type === 'Discount' ? unitPrice : Math.abs(unitPrice));
                 }
                 return updated;
             }
@@ -725,6 +651,78 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
 
     const handleDeleteItem = (id: string) => {
         setLineItems(items => items.filter(i => i.id !== id));
+    };
+
+    const handleAddSubItem = (lineItemId: string) => {
+        setLineItems(items => items.map(item => {
+            if (item.id === lineItemId) {
+                const newSub: SubLineItem = {
+                    id: `sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+                    description: '',
+                    quantity: 1,
+                    unitPrice: 0,
+                    total: 0
+                };
+                const updatedSubItems = [...(item.subItems || []), newSub];
+                const subSum = updatedSubItems.reduce((sum, s) => sum + (s.total || 0), 0);
+                const effectiveUnitPrice = subSum > 0 ? subSum : item.unitPrice;
+                const effectiveTotal = (item.quantity || 1) * effectiveUnitPrice;
+                return {
+                    ...item,
+                    subItems: updatedSubItems,
+                    unitPrice: effectiveUnitPrice,
+                    total: effectiveTotal
+                };
+            }
+            return item;
+        }));
+    };
+
+    const handleUpdateSubItem = (lineItemId: string, subItemId: string, field: keyof SubLineItem, value: any) => {
+        setLineItems(items => items.map(item => {
+            if (item.id === lineItemId && item.subItems) {
+                const updatedSubItems = item.subItems.map(sub => {
+                    if (sub.id === subItemId) {
+                        const updatedSub = { ...sub, [field]: value };
+                        if (field === 'quantity' || field === 'unitPrice') {
+                            const q = field === 'quantity' ? (parseFloat(value) || 0) : (sub.quantity || 0);
+                            const p = field === 'unitPrice' ? (parseFloat(value) || 0) : (sub.unitPrice || 0);
+                            updatedSub.total = q * p;
+                        }
+                        return updatedSub;
+                    }
+                    return sub;
+                });
+                const subSum = updatedSubItems.reduce((sum, s) => sum + (s.total || 0), 0);
+                const effectiveUnitPrice = subSum > 0 ? subSum : item.unitPrice;
+                const effectiveTotal = (item.quantity || 1) * effectiveUnitPrice;
+                return {
+                    ...item,
+                    subItems: updatedSubItems,
+                    unitPrice: effectiveUnitPrice,
+                    total: effectiveTotal
+                };
+            }
+            return item;
+        }));
+    };
+
+    const handleDeleteSubItem = (lineItemId: string, subItemId: string) => {
+        setLineItems(items => items.map(item => {
+            if (item.id === lineItemId && item.subItems) {
+                const filtered = item.subItems.filter(sub => sub.id !== subItemId);
+                const subSum = filtered.reduce((sum, s) => sum + (s.total || 0), 0);
+                const effectiveUnitPrice = subSum > 0 ? subSum : item.unitPrice;
+                const effectiveTotal = (item.quantity || 1) * effectiveUnitPrice;
+                return {
+                    ...item,
+                    subItems: filtered.length > 0 ? filtered : undefined,
+                    unitPrice: effectiveUnitPrice,
+                    total: effectiveTotal
+                };
+            }
+            return item;
+        }));
     };
 
     const handleManualDiscount = () => {
@@ -784,61 +782,161 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         let newItems: InvoiceLineItem[] = [];
 
         if (proposal.isProjectLevel) {
-            const laborItems = (proposal.laborItems || []).map(item => ({
-                id: `prop-labor-${item.id || Math.random()}-${Date.now()}`,
-                name: `${item.unitName || 'Labor'} - Hours`,
-                description: item.scope || `Labor hours for unit: ${item.unitName}`,
-                quantity: item.hours || 1,
-                unitPrice: item.rate || 0,
-                total: item.value || ((item.rate || 0) * (item.hours || 1)),
-                type: 'Labor' as const,
-                taxable: false
-            }));
+            const laborItems = (proposal.laborItems || []).map((item, idx) => {
+                const unitStr = item.unitName ? `[${item.unitName}] ` : '';
+                const title = (item as any).title || item.unitName || 'Labor';
+                const scopeDesc = item.scope || (item.hours ? `${item.hours} hours @ $${item.rate || 0}/hr` : (item.unitName ? `Labor hours for unit: ${item.unitName}` : ''));
+                const hours = Number(item.hours || 1);
+                const rate = Number(item.rate || 0);
+                const total = Number(item.value ?? (hours * rate));
+                const cost = Number((item as any).cost ?? (item as any).laborCost ?? 0) || undefined;
 
-            const partItems = (proposal.partItems || []).map(item => ({
-                id: `prop-part-${item.id || Math.random()}-${Date.now()}`,
-                name: item.partName || 'Part',
-                description: `Part for unit: ${item.unitName}`,
-                quantity: item.quantity || 1,
-                unitPrice: item.customerUnitPrice || 0,
-                total: item.customerLineTotal || ((item.customerUnitPrice || 0) * (item.quantity || 1)),
-                type: 'Part' as const,
-                taxable: true
-            }));
+                return {
+                    id: `prop-labor-${item.id || idx}-${Date.now()}`,
+                    name: `${unitStr}${title}`,
+                    description: scopeDesc,
+                    quantity: hours,
+                    unitPrice: rate,
+                    total: total,
+                    type: 'Labor' as const,
+                    taxable: false,
+                    cost: cost,
+                    vendorCost: cost,
+                    tier: 'Basic'
+                };
+            });
 
-            const allowanceItems = (proposal.allowanceItems || []).map(item => ({
-                id: `prop-allowance-${item.id || Math.random()}-${Date.now()}`,
-                name: item.description || 'Allowance',
-                description: `Scope basis: ${item.basis}`,
-                quantity: 1,
-                unitPrice: item.amount || 0,
-                total: item.amount || 0,
-                type: 'Fee' as const,
-                taxable: true
-            }));
+            const partItems = (proposal.partItems || []).map((item, idx) => {
+                const partName = item.partName || (item as any).name || (item as any).description || 'Part';
+                const unitStr = item.unitName ? `[${item.unitName}] ` : '';
+                const availStr = item.availability ? ` • Availability: ${item.availability}` : '';
+                const descStr = (item as any).partNumber 
+                    ? `Part #: ${(item as any).partNumber}${availStr}` 
+                    : ((item as any).description || (item.availability ? `Availability: ${item.availability}` : (item.unitName ? `Part for unit: ${item.unitName}` : '')));
+                const qty = Number(item.quantity || 1);
+                const unitPrice = Number(item.customerUnitPrice ?? (item as any).unitPrice ?? 0);
+                const total = Number(item.customerLineTotal ?? (qty * unitPrice));
+                const vendorCost = item.vendorCost !== undefined ? Number(item.vendorCost) : undefined;
+                const markupPct = item.markupPct !== undefined ? Number(item.markupPct) : undefined;
+
+                return {
+                    id: `prop-part-${item.id || idx}-${Date.now()}`,
+                    name: `${unitStr}${partName}`,
+                    description: descStr,
+                    quantity: qty,
+                    unitPrice: unitPrice,
+                    total: total,
+                    type: unitPrice < 0 ? ('Discount' as const) : ('Part' as const),
+                    taxable: (item as any).taxable !== false && unitPrice >= 0,
+                    vendorCost: vendorCost,
+                    cost: vendorCost,
+                    markupPct: markupPct,
+                    tier: 'Basic'
+                };
+            });
+
+            const allowanceItems = (proposal.allowanceItems || []).map((item, idx) => {
+                const desc = item.description || (item as any).name || 'Allowance';
+                const notes = item.basis ? `Scope basis: ${item.basis}` : ((item as any).notes || '');
+                const amt = Number(item.amount ?? (item as any).cost ?? 0);
+                const cost = Number((item as any).cost ?? item.amount ?? 0) || undefined;
+
+                return {
+                    id: `prop-allowance-${item.id || idx}-${Date.now()}`,
+                    name: `Allowance: ${desc}`,
+                    description: notes,
+                    quantity: 1,
+                    unitPrice: amt,
+                    total: amt,
+                    type: 'Fee' as const,
+                    taxable: (item as any).taxable !== false,
+                    vendorCost: cost,
+                    cost: cost,
+                    tier: 'Basic'
+                };
+            });
 
             newItems = [...laborItems, ...partItems, ...allowanceItems];
         } else {
             let itemsToImport = proposal.items || [];
             if (proposal.selectedOption && proposal.selectedOption !== 'None') {
-                itemsToImport = itemsToImport.filter(item => !item.tier || item.tier === proposal.selectedOption);
+                itemsToImport = itemsToImport.filter(item => !item.tier || matchTier(item.tier, proposal.selectedOption));
             }
-            newItems = itemsToImport.map(pItem => ({
-                id: `prop-${pItem.id}-${Date.now()}`,
-                name: pItem.name || 'Proposal Item',
-                description: pItem.description || '',
-                quantity: pItem.quantity,
-                unitPrice: pItem.price,
-                total: pItem.total,
-                type: pItem.type as any,
-                taxable: true 
-            }));
+            newItems = itemsToImport.map(pItem => {
+                const unitPrice = Number(pItem.price ?? (pItem as any).unitPrice ?? 0);
+                const qty = Number(pItem.quantity || 1);
+                const lineTotal = Number(pItem.total !== undefined ? pItem.total : (unitPrice * qty));
+                const rawCost = pItem.vendorCost ?? pItem.cost ?? pItem.partCost;
+                const numericCost = rawCost !== undefined ? Number(rawCost) : undefined;
+                const numericMarkup = pItem.markupPct !== undefined ? Number(pItem.markupPct) : undefined;
+
+                return {
+                    id: `prop-${pItem.id}-${Date.now()}`,
+                    name: pItem.name || pItem.description || 'Proposal Item',
+                    description: pItem.description || pItem.name || '',
+                    quantity: qty,
+                    unitPrice: unitPrice,
+                    total: lineTotal,
+                    type: (pItem.type as any) || 'Part',
+                    taxable: pItem.taxable !== false,
+                    vendorCost: numericCost,
+                    cost: numericCost,
+                    markupPct: numericMarkup,
+                    tier: pItem.tier,
+                    isWarrantyWork: (pItem as any).isWarrantyWork,
+                    isPercentage: (pItem as any).isPercentage,
+                    percentageRate: (pItem as any).percentageRate,
+                    subItems: pItem.subItems ? pItem.subItems.map(sub => ({
+                        ...sub,
+                        id: sub.id || `sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+                    })) : undefined
+                };
+            });
         }
 
         setLineItems(prev => [...prev, ...newItems]);
         setImportedProposalId(proposalId);
 
-        // Defer writing proposal link in Firestore until actual save/pay action.
+        // Map all Proposal-level fields into invoice state:
+        if (proposal.additionalFeeName) {
+            setAdditionalFeeName(proposal.additionalFeeName);
+        }
+        if (proposal.additionalFeePercent !== undefined && proposal.additionalFeePercent !== null) {
+            setAdditionalFeePercent(Number(proposal.additionalFeePercent));
+        }
+        if (proposal.taxRate !== undefined && proposal.taxRate !== null) {
+            const parsedTaxRate = Number(proposal.taxRate);
+            setTaxRate(parsedTaxRate <= 1 ? parsedTaxRate * 100 : parsedTaxRate);
+        }
+        if ((proposal as any).paymentTerms) {
+            setPaymentTerms((proposal as any).paymentTerms);
+        }
+        if (proposal.recommendations) {
+            setRecommendations(prev => prev ? `${prev}\n\n${proposal.recommendations}` : proposal.recommendations);
+        }
+        if (proposal.warrantyTerms) {
+            setWarrantyNotes(prev => prev ? `${prev}\n\n${proposal.warrantyTerms}` : proposal.warrantyTerms);
+        }
+
+        const hasProposalDeposit = proposal.requireDeposit ?? ((proposal.depositValue && proposal.depositValue > 0) || (proposal.depositAmount && proposal.depositAmount > 0));
+        if (hasProposalDeposit) {
+            setRequireDeposit(true);
+            setDepositType(proposal.depositType === 'percentage' ? 'percentage' : 'flat');
+            setDepositValue(Number(proposal.depositValue || 0));
+            setDepositNotes(proposal.depositNotes || '');
+            setDepositPaid(!!proposal.depositPaid);
+        }
+
+        if (proposal.poNumber && currentJob && !currentJob.poNumber) {
+            setCurrentJob(prev => prev ? {
+                ...prev,
+                poNumber: proposal.poNumber,
+                workOrderNumber: prev.workOrderNumber || proposal.poNumber,
+                invoice: prev.invoice ? { ...prev.invoice, poNumber: proposal.poNumber } : prev.invoice
+            } : null);
+        }
+
+        showToast.success(`Imported ${newItems.length} items from Proposal #${proposal.proposalNumber || proposal.id}!`);
 
         setIsImportProposalModalOpen(false);
         setSelectedProposalId(null);
@@ -903,32 +1001,77 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         }
     };
 
+    const handleImportJobRecommendations = async () => {
+        if (!currentJob) {
+            showToast.warn("No active job record found.");
+            return;
+        }
+        const extracted = extractJobRecommendations(currentJob);
+        if (!extracted || !extracted.trim()) {
+            showToast.warn("No recommendations, unit inspection notes, or diagnostic findings found on this job record.");
+            return;
+        }
+
+        if (recommendations && recommendations.trim()) {
+            const shouldOverwrite = await globalConfirm(
+                "Would you like to overwrite the existing recommendations or append to them?",
+                "Import Job Recommendations",
+                "Overwrite",
+                "Append"
+            );
+            if (shouldOverwrite) {
+                setRecommendations(extracted);
+            } else {
+                setRecommendations(prev => `${prev}\n\n${extracted}`);
+            }
+        } else {
+            setRecommendations(extracted);
+        }
+        showToast.success("Recommendations successfully imported from job!");
+    };
+
     const saveJobAndSyncInvoice = async (updatedJob: Job) => {
         if (!currentJob) return;
+        isSavedRef.current = true;
         const cleanedPayload = cleanUndefinedFields(updatedJob);
         await db.collection('jobs').doc(currentJob.id).set(cleanUndefinedFields(cleanedPayload), { merge: true });
         dispatch({ type: 'UPDATE_JOB', payload: updatedJob });
         
-        // Save the proposal linking to Firestore and local state if we imported one
-        if (importedProposalId) {
-            const proposal = state.proposals.find(p => p.id === importedProposalId);
+        const draftKey = `draft_invoice_${jobId}`;
+        localStorage.removeItem(draftKey);
+        
+        // Maintain proposal linking and references without overwriting proposal items or quote scope
+        const targetPropId = importedProposalId || currentJob.proposalId || updatedJob.invoice?.proposalId;
+        if (targetPropId) {
+            const proposal = state.proposals.find(p => p.id === targetPropId);
             if (proposal) {
                 const invoiceId = updatedJob.invoice?.id || null;
-                const poNum = updatedJob.poNumber || null;
+                const poNum = updatedJob.poNumber || currentJob.poNumber || currentJob.workOrderNumber || null;
+                const updatedJobIds = Array.from(new Set([...(proposal.linkedJobIds || []), currentJob.id]));
+                
+                // Only associate primary jobId / invoiceId if this proposal doesn't already belong to a different job
+                const isPrimaryJob = !proposal.jobId || proposal.jobId === currentJob.id;
+                const propUpdates: any = {
+                    linkedJobIds: updatedJobIds,
+                    poNumber: poNum || proposal.poNumber || null,
+                    updatedAt: new Date().toISOString()
+                };
+
+                if (isPrimaryJob) {
+                    if (invoiceId) propUpdates.invoiceId = invoiceId;
+                    propUpdates.jobId = currentJob.id;
+                }
+
+                const updatedProp = {
+                    ...proposal,
+                    ...propUpdates
+                };
+
                 try {
-                    await db.collection('proposals').doc(importedProposalId).update(cleanUndefinedFields({
-                        invoiceId: invoiceId,
-                        jobId: currentJob.id || null,
-                        poNumber: poNum
-                    }));
+                    await db.collection('proposals').doc(targetPropId).update(cleanUndefinedFields(propUpdates));
                     dispatch({
                         type: 'UPDATE_PROPOSAL',
-                        payload: {
-                            ...proposal,
-                            invoiceId: invoiceId,
-                            jobId: currentJob.id || null,
-                            poNumber: poNum
-                        }
+                        payload: updatedProp
                     });
                 } catch (error) {
                     console.error("Error linking proposal to invoice/job in saveJobAndSyncInvoice:", error);
@@ -994,26 +1137,69 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         const additionalFeeAmount = additionalFeePercent ? (total * (additionalFeePercent / 100)) : 0;
         total += additionalFeeAmount;
 
-        const matchingLoc = customer?.serviceLocations?.find(l => formatServiceLocationAddress(l) === address);
-        const resolvedPoNumber = (matchingLoc as any)?.poNumber || currentJob.poNumber || null;
+        const matchingLoc = resolveServiceLocation({ address, locationId: currentJob.locationId, locationName: currentJob.locationName }, customer);
+        const resolvedPoNumber = currentJob.poNumber || currentJob.workOrderNumber || (currentJob.invoice as any)?.poNumber || null;
+
+        const canonical = computeCanonicalFinancials({
+            items: sanitized.items,
+            taxRate: taxRate / 100,
+            taxAmount: tax,
+            subtotal: subtotal,
+            additionalFeePercent: additionalFeePercent || 0,
+            additionalFeeName: additionalFeeName || '',
+            additionalFeeAmount: additionalFeeAmount,
+            retainagePercent: retainagePercent || 0,
+            requireDeposit,
+            depositType: requireDeposit ? depositType : 'none',
+            depositValue: requireDeposit ? depositValue : 0,
+            depositAmount: requireDeposit ? totals.depositAmount : 0,
+            depositPaid: requireDeposit ? depositPaid : false,
+            depositPaidAmount: (requireDeposit && depositPaid) ? (totals.depositAmount || Number(depositValue) || (currentJob.invoice as any)?.depositPaidAmount || 0) : ((currentJob.invoice as any)?.depositPaidAmount || 0),
+            depositNotes: requireDeposit ? depositNotes : '',
+            amountPaid: (requireDeposit && depositPaid) 
+                ? Math.max(Number(currentJob.invoice?.amountPaid || 0), totals.depositAmount || Number(depositValue) || 0)
+                : (currentJob.invoice?.status === 'Failed' ? 0 : (currentJob.invoice?.amountPaid ?? 0)),
+            paymentTerms: paymentTerms || 'net_30',
+        });
 
         const previewJob: Job = {
             ...currentJob,
-            customerName: customerName || currentJob.customerName || '',
+            customerName: (customer?.name && (customer.customerType === 'Commercial' || customer.customerType === 'Property Management' || (customer.serviceLocations && customer.serviceLocations.length > 0))) 
+                ? customer.name 
+                : (customerName || currentJob.customerName || ''),
             address: address || (currentJob.address ? formatAddress(currentJob.address) : ''),
+            city: matchingLoc?.city || currentJob.city || (currentJob as any)?.serviceLocationCity || null,
+            state: matchingLoc?.state || currentJob.state || (currentJob as any)?.serviceLocationState || null,
+            zip: matchingLoc?.zip || currentJob.zip || (currentJob as any)?.serviceLocationZip || null,
+            locationId: matchingLoc?.id || currentJob.locationId || null,
+            locationName: matchingLoc?.propertyName || matchingLoc?.name || currentJob.locationName || null,
+            serviceLocationCity: matchingLoc?.city || (currentJob as any)?.serviceLocationCity || currentJob.city || null,
+            serviceLocationState: matchingLoc?.state || (currentJob as any)?.serviceLocationState || currentJob.state || null,
+            serviceLocationZip: matchingLoc?.zip || (currentJob as any)?.serviceLocationZip || currentJob.zip || null,
+            serviceLocationAddress: address || (currentJob as any)?.serviceLocationAddress || currentJob.address || null,
+            billToName: sanitized.billToName || billToName || '',
+            billToAddress: billToAddress || '',
             poNumber: resolvedPoNumber,
+            workOrderNumber: currentJob.workOrderNumber || currentJob.poNumber || resolvedPoNumber || null,
             proposalId: importedProposalId || currentJob.proposalId || null,
+            depositType: (canonical.depositType === 'percentage' ? 'percentage' : 'flat') as 'flat' | 'percentage',
+            depositValue: canonical.depositValue,
+            depositAmount: canonical.depositRequired,
+            depositNotes: canonical.depositNotes,
+            depositPaid: canonical.depositPaid,
             invoice: {
                 ...currentJob.invoice,
+                id: currentJob.invoice?.id || resolveJobInvoiceNumber(currentJob, 0, state.jobs),
                 poNumber: resolvedPoNumber,
                 proposalId: importedProposalId || currentJob.invoice?.proposalId || currentJob.proposalId || null,
                 items: sanitized.items,
-                subtotal: parseFloat(subtotal.toFixed(2)),
-                taxRate: taxRate / 100,
-                taxAmount: parseFloat(tax.toFixed(2)),
-                totalAmount: parseFloat(total.toFixed(2)),
-                amount: parseFloat(total.toFixed(2)),
-                billToName: sanitized.billToName || '',
+                subtotal: canonical.subtotal,
+                taxRate: canonical.taxRate,
+                taxAmount: canonical.taxAmount,
+                totalAmount: canonical.grandTotal,
+                amount: canonical.grandTotal,
+                grandTotal: canonical.grandTotal,
+                billToName: sanitized.billToName || billToName || '',
                 billToAddress: billToAddress || '',
                 workmanshipWarrantyMonths: workmanshipWarrantyMonths || 0,
                 partsWarrantyMonths: partsWarrantyMonths || 0,
@@ -1022,16 +1208,33 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 warrantyIssuedDate: (currentJob.invoice as any)?.warrantyIssuedDate || (workmanshipWarrantyMonths > 0 || partsWarrantyMonths > 0 ? new Date().toISOString() : null),
                 membershipEnrollment: membershipEnrollment || null,
                 recommendations: recommendations || '',
-                additionalFeePercent: additionalFeePercent || 0,
-                additionalFeeName: additionalFeeName || '',
-                additionalFeeAmount: parseFloat((additionalFeeAmount || 0).toFixed(2)),
-                retainagePercent: retainagePercent || 0,
+                notes: recommendations || '',
+                additionalFeePercent: canonical.additionalFeePercent,
+                additionalFeeName: canonical.additionalFeeName,
+                additionalFeeAmount: canonical.additionalFeeAmount,
+                retainagePercent: canonical.retainagePercent,
+                retainageAmount: canonical.retainageAmount,
                 invoiceDate: invoiceDate || new Date().toISOString().split('T')[0],
                 date: invoiceDate || new Date().toISOString().split('T')[0],
                 dueDate: dueDate || '',
-                paymentTerms: paymentTerms || 'net_30',
-                amountPaid: currentJob.invoice?.status === 'Failed' ? 0 : (currentJob.invoice?.amountPaid ?? 0),
+                paymentTerms: canonical.paymentTerms,
+                paymentTermsLabel: canonical.paymentTermsLabel,
+                amountPaid: canonical.amountPaid,
+                balanceDue: canonical.balanceDue,
+                balanceRemaining: canonical.balanceRemaining,
+                amountDueToday: canonical.amountDueToday,
+                amountDueNet: canonical.amountDueNet,
+                financialStatus: canonical.financialStatus,
+                depositType: (canonical.depositType === 'percentage' ? 'percentage' : 'flat') as 'flat' | 'percentage',
+                depositValue: canonical.depositValue,
+                depositAmount: canonical.depositRequired,
+                depositRequired: canonical.depositRequired,
+                depositNotes: canonical.depositNotes,
+                depositPaid: canonical.depositPaid,
+                depositPaidAmount: canonical.depositPaidAmount,
+                displayFormat,
             },
+            techRecommendations: recommendations || '',
             updatedAt: new Date().toISOString(),
             updatedById: currentUser?.id || currentUser?.uid || null,
             updatedByName: currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Admin' : 'System Admin'
@@ -1070,7 +1273,11 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             await saveJobAndSyncInvoice(updatedJob);
             localStorage.removeItem(`draft_invoice_${jobId}`);
             showToast.success("Invoice saved successfully!");
-            onClose();
+            try {
+                onClose();
+            } catch (closeErr) {
+                console.warn("onClose execution warning:", closeErr);
+            }
         } catch (error: any) {
             console.error("Error saving invoice:", error);
             showToast.error(`Failed to save invoice: ${error?.message || "Unknown error"}`);
@@ -1218,10 +1425,26 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         try {
             const nowStr = new Date().toISOString();
             const signerName = currentUser ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || 'Client' : 'Client';
-            const sigPackage = await createSignaturePackage(signature, signerName, `Invoice #${currentJob.invoice?.id || currentJob.id}`, currentJob.id);
+
+            // 1. Upload signature image to Firebase Storage to eliminate Firestore 1MB document limit overflows
+            let finalSignatureUrl = signature;
+            if (signature && signature.startsWith('data:image')) {
+                try {
+                    const orgId = currentJob.organizationId || currentOrganization?.id || 'default';
+                    const path = `organizations/${orgId}/jobs/${currentJob.id}/signatures/invoice_${Date.now()}.png`;
+                    const storageUrl = await uploadFileToStorage(path, signature);
+                    if (storageUrl) {
+                        finalSignatureUrl = storageUrl;
+                    }
+                } catch (stErr) {
+                    console.warn("Storage upload for invoice signature fallback:", stErr);
+                }
+            }
+
+            const sigPackage = await createSignaturePackage(finalSignatureUrl, signerName, `Invoice #${currentJob.invoice?.id || currentJob.id}`, currentJob.id);
 
             const updatePayload: any = cleanUndefinedFields({
-                invoiceSignature: signature,
+                invoiceSignature: finalSignatureUrl,
                 invoiceSignedDate: nowStr,
                 signatureMetadata: sigPackage,
                 updatedAt: nowStr,
@@ -1231,16 +1454,26 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             if (currentJob.invoice) {
                 updatePayload.invoice = cleanUndefinedFields({
                     ...currentJob.invoice,
-                    signatureUrl: signature,
+                    signatureUrl: finalSignatureUrl,
                     signatureMetadata: sigPackage
                 });
             }
             await db.collection('jobs').doc(currentJob.id).update(cleanUndefinedFields(updatePayload));
             
+            // 2. Synchronize currentJob with AppContext state immediately
+            dispatch({
+                type: 'UPDATE_JOB',
+                payload: {
+                    ...currentJob,
+                    ...updatePayload,
+                    id: currentJob.id
+                }
+            });
+
             if (syncInvoiceWithLinked && currentJob.linkedJobIds && currentJob.linkedJobIds.length > 0) {
                 const batch = db.batch();
                 const linkedPayload = cleanUndefinedFields({
-                    invoiceSignature: signature,
+                    invoiceSignature: finalSignatureUrl,
                     invoiceSignedDate: nowStr,
                     signatureMetadata: sigPackage,
                     updatedAt: nowStr,
@@ -1257,16 +1490,25 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                         type: 'UPDATE_JOB',
                         payload: {
                             id,
-                            invoiceSignature: signature,
+                            invoiceSignature: finalSignatureUrl,
                             invoiceSignedDate: nowStr
                         }
                     });
                 }
             }
 
-            setCurrentJob(prev => prev ? { ...prev, invoiceSignature: signature, invoiceSignedDate: nowStr } : null);
+            setCurrentJob(prev => prev ? { 
+                ...prev, 
+                ...updatePayload, 
+                invoiceSignature: finalSignatureUrl, 
+                invoiceSignedDate: nowStr 
+            } : null);
             setIsSigningOpen(false);
-        } catch (e) { showToast.warn("Error saving signature."); }
+            showToast.success("Invoice signature saved successfully!");
+        } catch (e) { 
+            console.error("Error saving signature:", e);
+            showToast.warn("Error saving signature."); 
+        }
     };
 
     const handleSendInvoice = async (selectedEmails?: string[], attachPdf?: boolean) => {
@@ -1281,16 +1523,69 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                                  currentJob?.customerName === 'Best Choice Florida, LLC' ||
                                  billToName === 'Best Choice Florida, LLC';
 
+        const isImpactCust = isImpactCustomer(
+            { id: currentJob?.customerId, name: currentJob?.customerName },
+            billToName
+        );
+
         if (isTekAirOrg && isMcAlistersCust && !selectedEmails) {
             emails = ['Mcalistersflapsun@onepayinvoices.com'];
+        } else if (isImpactCust && !selectedEmails) {
+            const impactDefaults = getImpactDefaultRecipients({
+                locationName: currentJob?.locationName || (currentJob as any)?.serviceLocationName || (currentJob as any)?.siteLocationName || (currentJob as any)?.address,
+                storeNumber: (currentJob as any)?.storeNumber,
+                job: currentJob,
+                isInvoice: true
+            });
+            emails = impactDefaults.defaultEmails;
         } else if (!emails) {
-            let email = currentJob?.customerEmail;
-            if (!email && currentJob?.customerId) {
+            let custData: any = null;
+            if (currentJob?.customerId) {
                 const custDoc = await db.collection('customers').doc(currentJob.customerId).get();
-                if (custDoc.exists) email = custDoc.data()?.email;
+                if (custDoc.exists) custData = custDoc.data();
             }
-            if (!email) { showToast.warn("Customer email missing. Please update the customer profile with a valid email address."); return; }
-            emails = [email];
+
+            const resolvedEmails: string[] = [];
+            const activeLocId = currentJob?.locationId || (currentJob as any)?.serviceLocationId;
+
+            // 1. Linked store POCs for any customer
+            if (activeLocId && custData) {
+                if (Array.isArray(custData.contacts)) {
+                    custData.contacts.forEach((c: any) => {
+                        if (c.email && (c.allowedLocationIds?.includes(activeLocId) || c.assignedLocationIds?.includes(activeLocId))) {
+                            const em = c.email.toLowerCase();
+                            if (!resolvedEmails.includes(em)) resolvedEmails.push(em);
+                        }
+                    });
+                }
+                const sLoc = (custData.serviceLocations || []).find((l: any) => l.id === activeLocId);
+                if (sLoc) {
+                    if (Array.isArray(sLoc.contacts)) {
+                        sLoc.contacts.forEach((c: any) => {
+                            if (c.email) {
+                                const em = c.email.toLowerCase();
+                                if (!resolvedEmails.includes(em)) resolvedEmails.push(em);
+                            }
+                        });
+                    }
+                    if (sLoc.accountManager?.email) {
+                        const em = sLoc.accountManager.email.toLowerCase();
+                        if (!resolvedEmails.includes(em)) resolvedEmails.push(em);
+                    }
+                }
+            }
+
+            // 2. Billing POC / customer email
+            const billingEmail = custData?.billingContact?.email || custData?.email || currentJob?.customerEmail;
+            if (billingEmail && !resolvedEmails.includes(billingEmail.toLowerCase())) {
+                resolvedEmails.push(billingEmail.toLowerCase());
+            }
+
+            if (resolvedEmails.length === 0) {
+                showToast.warn("Customer email missing. Please update the customer profile with a valid email address.");
+                return;
+            }
+            emails = resolvedEmails;
         }
 
         if (!currentJob || (!selectedEmails && !await globalConfirm(`Send invoice #${currentJob.invoice.id} to ${emails.join(', ')}?`))) return;
@@ -1298,6 +1593,12 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         try {
             const updatedJob = getPreviewJob();
             if (!updatedJob) throw new Error("Could not prepare invoice for sending.");
+            
+            const sentAtDate = new Date().toISOString();
+            if (updatedJob.invoice) {
+                updatedJob.invoice.sentAt = sentAtDate;
+            }
+
             await saveJobAndSyncInvoice(updatedJob);
             const link = `${getBaseUrl()}/#/invoice/${currentJob.id}`;
             const orgName = currentOrganization?.name || 'Service Provider';
@@ -1309,29 +1610,26 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 pdfAttachments.push(invPdf);
             }
 
+            const fromDisplayName = `"${orgName.replace(/"/g, "'")}" <platform@tektrakker.com>`;
+            const orgReplyEmail = currentOrganization?.email || currentUser?.email || 'Operations@tekairinc.com';
+
             await db.collection('mail_queue').add(cleanUndefinedFields({
                 to: emails,
-                replyTo: currentOrganization?.email || currentUser?.email || 'noreply@tektrakker.com',
+                from: fromDisplayName,
+                replyTo: orgReplyEmail,
                 message: {
+                    from: fromDisplayName,
+                    fromName: orgName,
                     subject: `Invoice #${updatedJob.invoice.id} from ${orgName}`,
-                    html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #eee;border-radius:8px;"><h2 style="color:#0284c7;">Invoice Ready</h2><p>Hi ${customerName},</p><p>Your invoice <strong>#${updatedJob.invoice.id}</strong> for <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> is ready for review.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View, Sign &amp; Pay</a></div><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                    html: `<div style="font-family:sans-serif;padding:24px;border:1px solid #e2e8f0;border-radius:12px;max-width:600px;margin:0 auto;background-color:#ffffff;"><h2 style="color:#0f172a;margin-top:0;">Invoice Ready</h2><p style="font-size:15px;color:#334155;">Hi ${customerName},</p><p style="font-size:15px;color:#334155;">Your invoice <strong>#${updatedJob.invoice.id}</strong> for <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> from <strong>${orgName}</strong> is ready for review.</p>${createEmailButtonHtml('View, Sign &amp; Pay Invoice', link, '#2563eb')}<p style="font-size:13px;color:#64748b;margin-top:20px;">Thank you for your business!</p></div>`,
                     text: `Invoice #${updatedJob.invoice.id} for $${updatedJob.invoice.totalAmount?.toFixed(2)} is ready. Pay here: ${link}`,
-                    replyTo: currentOrganization?.email || currentUser?.email || 'noreply@tektrakker.com',
+                    replyTo: orgReplyEmail,
                     ...(pdfAttachments.length > 0 ? { attachments: pdfAttachments } : {})
                 },
                 organizationId: currentOrganization?.id || currentJob.organizationId || null,
                 type: 'Invoice',
                 createdAt: new Date().toISOString()
             }));
-            
-            // Record initial invoice sent date
-            const sentAtDate = new Date().toISOString();
-            await db.collection('jobs').doc(currentJob.id).update(cleanUndefinedFields({
-                'invoice.sentAt': sentAtDate
-            }));
-            if (currentJob.invoice) {
-                currentJob.invoice.sentAt = sentAtDate;
-            }
 
             showToast.warn(`Invoice sent to ${emails.join(', ')}!`);
             onClose();
@@ -1351,8 +1649,21 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                                  currentJob?.customerName === 'Best Choice Florida, LLC' ||
                                  billToName === 'Best Choice Florida, LLC';
 
+        const isImpactCust = isImpactCustomer(
+            { id: currentJob?.customerId, name: currentJob?.customerName },
+            billToName
+        );
+
         if (isTekAirOrg && isMcAlistersCust && !selectedEmails) {
             emails = ['Mcalistersflapsun@onepayinvoices.com'];
+        } else if (isImpactCust && !selectedEmails) {
+            const impactDefaults = getImpactDefaultRecipients({
+                locationName: currentJob?.locationName || (currentJob as any)?.serviceLocationName || (currentJob as any)?.siteLocationName || (currentJob as any)?.address,
+                storeNumber: (currentJob as any)?.storeNumber,
+                job: currentJob,
+                isInvoice: true
+            });
+            emails = impactDefaults.defaultEmails;
         } else if (!emails) {
             let email = currentJob?.customerEmail;
             if (!email && currentJob?.customerId) {
@@ -1370,14 +1681,20 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             if (!updatedJob) throw new Error("Could not prepare receipt for sending.");
             await saveJobAndSyncInvoice(updatedJob);
             const orgName = currentOrganization?.name || 'Service Provider';
+            const fromDisplayName = `"${orgName.replace(/"/g, "'")}" <platform@tektrakker.com>`;
+            const orgReplyEmail = currentOrganization?.email || currentUser?.email || 'Operations@tekairinc.com';
+
             await db.collection('mail_queue').add(cleanUndefinedFields({
                 to: emails,
-                replyTo: currentOrganization?.email || currentUser?.email || 'noreply@tektrakker.com',
+                from: fromDisplayName,
+                replyTo: orgReplyEmail,
                 message: {
+                    from: fromDisplayName,
+                    fromName: orgName,
                     subject: `Payment Receipt: Invoice #${updatedJob.invoice.id}`,
-                    html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #eee;border-radius:8px;"><h2 style="color:#059669;">Payment Receipt</h2><p>Hi ${customerName},</p><p>Thank you for your payment of <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> to <strong>${orgName}</strong>.</p><div style="margin:20px 0;"><p style="margin:5px 0;"><strong>Invoice:</strong> #${updatedJob.invoice.id}</p><p style="margin:5px 0;"><strong>Amount Paid:</strong> $${updatedJob.invoice.totalAmount?.toFixed(2)}</p><p style="margin:5px 0;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p><p style="margin:5px 0;"><strong>Status:</strong> PAID</p></div><p style="font-size:12px;color:#666;">This email serves as your official receipt. Please retain it for your records.</p></div>`,
+                    html: `<div style="font-family:sans-serif;padding:24px;border:1px solid #e2e8f0;border-radius:12px;max-width:600px;margin:0 auto;background-color:#ffffff;"><h2 style="color:#059669;margin-top:0;">Payment Receipt</h2><p style="font-size:15px;color:#334155;">Hi ${customerName},</p><p style="font-size:15px;color:#334155;">Thank you for your payment of <strong>$${updatedJob.invoice.totalAmount?.toFixed(2)}</strong> to <strong>${orgName}</strong>.</p><div style="margin:20px 0;padding:16px;background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;"><p style="margin:4px 0;font-size:14px;color:#166534;"><strong>Invoice:</strong> #${updatedJob.invoice.id}</p><p style="margin:4px 0;font-size:14px;color:#166534;"><strong>Amount Paid:</strong> $${updatedJob.invoice.totalAmount?.toFixed(2)}</p><p style="margin:4px 0;font-size:14px;color:#166534;"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p><p style="margin:4px 0;font-size:14px;color:#166534;"><strong>Status:</strong> PAID</p></div><p style="font-size:12px;color:#64748b;">This email serves as your official receipt. Please retain it for your records.</p></div>`,
                     text: `Payment Receipt for Invoice #${updatedJob.invoice.id}. Amount: $${updatedJob.invoice.totalAmount?.toFixed(2)}. Status: PAID.`,
-                    replyTo: currentOrganization?.email || currentUser?.email || 'noreply@tektrakker.com'
+                    replyTo: orgReplyEmail
                 },
                 organizationId: currentOrganization?.id || currentJob.organizationId || null,
                 type: 'Receipt',
@@ -1401,8 +1718,21 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                                  currentJob?.customerName === 'Best Choice Florida, LLC' ||
                                  billToName === 'Best Choice Florida, LLC';
 
+        const isImpactCust = isImpactCustomer(
+            { id: currentJob?.customerId, name: currentJob?.customerName },
+            billToName
+        );
+
         if (isTekAirOrg && isMcAlistersCust && !selectedEmails) {
             emails = ['Mcalistersflapsun@onepayinvoices.com'];
+        } else if (isImpactCust && !selectedEmails) {
+            const impactDefaults = getImpactDefaultRecipients({
+                locationName: currentJob?.locationName || (currentJob as any)?.serviceLocationName || (currentJob as any)?.siteLocationName || (currentJob as any)?.address,
+                storeNumber: (currentJob as any)?.storeNumber,
+                job: currentJob,
+                isInvoice: true
+            });
+            emails = impactDefaults.defaultEmails;
         } else if (!emails) {
             let email = currentJob?.customerEmail;
             if (!email && currentJob?.customerId) {
@@ -1453,15 +1783,21 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
 
             const pastDueBanner = isLate ? `<div style="color:#dc2626;font-size:32px;font-weight:bold;margin-bottom:10px;text-align:left;border-bottom:2px solid #dc2626;padding-bottom:10px;">PAST DUE</div>` : '';
 
+            const fromDisplayName = `"${orgName.replace(/"/g, "'")}" <platform@tektrakker.com>`;
+            const orgReplyEmail = currentOrganization?.email || currentUser?.email || 'Operations@tekairinc.com';
+
             if (emails.length > 0) {
                 await db.collection('mail_queue').add(cleanUndefinedFields({
                     to: emails,
-                    replyTo: currentOrganization?.email || currentUser?.email || 'noreply@tektrakker.com',
+                    from: fromDisplayName,
+                    replyTo: orgReplyEmail,
                     message: {
+                        from: fromDisplayName,
+                        fromName: orgName,
                         subject: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${updatedJob.invoice.id} from ${orgName}`,
-                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;">${pastDueBanner}<h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${customerName},</p><p>This is a friendly reminder that your invoice <strong>#${updatedJob.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                        html: `<div style="font-family:sans-serif;padding:24px;border:1px solid #fee2e2;border-radius:12px;max-width:600px;margin:0 auto;background-color:#ffffff;">${pastDueBanner}<h2 style="color:#dc2626;margin-top:0;">Payment Reminder</h2><p style="font-size:15px;color:#334155;">Hi ${customerName},</p><p style="font-size:15px;color:#334155;">This is a friendly reminder that your invoice <strong>#${updatedJob.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> from <strong>${orgName}</strong> is currently outstanding.</p>${createEmailButtonHtml('View &amp; Pay Invoice', link, '#dc2626')}<p style="font-size:13px;color:#64748b;margin-top:20px;">If you have already submitted payment, please disregard this notice.</p></div>`,
                         text: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${updatedJob.invoice.id} for $${invTotal.toFixed(2)} is outstanding. Pay here: ${link}`,
-                        replyTo: currentOrganization?.email || currentUser?.email || 'noreply@tektrakker.com'
+                        replyTo: orgReplyEmail
                     },
                     organizationId: currentOrganization?.id || currentJob.organizationId || null,
                     type: 'InvoiceReminder',
@@ -1561,11 +1897,15 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
             invoiceDate !== (originalInvoice?.invoiceDate || '') ||
             dueDate !== (originalInvoice?.dueDate || '') ||
             paymentTerms !== (originalInvoice?.paymentTerms || 'net_30') ||
+            depositType !== ((originalInvoice as any)?.depositType || (currentJob as any)?.depositType || 'flat') ||
+            depositValue !== Number((originalInvoice as any)?.depositValue || (currentJob as any)?.depositValue || 0) ||
+            depositNotes !== ((originalInvoice as any)?.depositNotes || (currentJob as any)?.depositNotes || '') ||
+            depositPaid !== !!((originalInvoice as any)?.depositPaid || (currentJob as any)?.depositPaid) ||
             syncInvoiceWithLinked !== false
         );
 
         const draftKey = `draft_invoice_${jobId}`;
-        if (hasChanges) {
+        if (hasChanges && !isSaving && !isSavedRef.current) {
             const draftData = {
                 lineItems,
                 customerName,
@@ -1584,7 +1924,11 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
                 invoiceDate,
                 dueDate,
                 paymentTerms,
-                syncInvoiceWithLinked
+                syncInvoiceWithLinked,
+                depositType,
+                depositValue,
+                depositNotes,
+                depositPaid
             };
             localStorage.setItem(draftKey, JSON.stringify(draftData));
         } else {
@@ -1635,7 +1979,9 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         billToAddress, setBillToAddress,
         lineItems, setLineItems,
         handleAddItem, handleUpdateItem, handleDeleteItem, handleMoveItem,
+        handleAddSubItem, handleUpdateSubItem, handleDeleteSubItem,
         totals,
+        taxRate, setTaxRate,
         isSaving, setIsSaving,
         handleSave,
         handleMarkPaid,
@@ -1666,14 +2012,22 @@ export const useInvoiceLogic = (jobId: string, isOpen: boolean, onClose: () => v
         warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed,
         membershipEnrollment, setMembershipEnrollment,
         recommendations, setRecommendations,
+        handleImportJobRecommendations,
         additionalFeePercent, setAdditionalFeePercent,
         additionalFeeName, setAdditionalFeeName,
         retainagePercent, setRetainagePercent,
         invoiceDate, setInvoiceDate,
         dueDate, setDueDate,
         paymentTerms, setPaymentTerms,
+        displayFormat, setDisplayFormat,
         linkedJobs,
         syncInvoiceWithLinked, setSyncInvoiceWithLinked,
         handleImportFromLinkedJobs,
+        requireDeposit, setRequireDeposit,
+        depositType, setDepositType,
+        depositValue, setDepositValue,
+        depositNotes, setDepositNotes,
+        depositPaid, setDepositPaid,
+        depositAmount: totals.depositAmount
     };
 };

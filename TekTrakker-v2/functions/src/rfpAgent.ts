@@ -36,7 +36,7 @@ export const analyzeRFPWithAI = functions.runWith({ secrets: ["GEMINI_API_KEY"] 
         const apiKey = await getGeminiApiKey(organizationId);
         
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
 
         const parts: any /* eslint-disable-line @typescript-eslint/no-explicit-any */[] = [{
     text: `You are an expert construction estimator. Analyze the provided RFP document(s). 
@@ -54,6 +54,36 @@ Only return the raw JSON object, no markdown blocks.`
         }
 
         const result = await executeWithRetry(() => model.generateContent(parts));
+
+        // Track live AI token usage
+        const rfpRes = await result.response;
+        const tokens = rfpRes.usageMetadata?.totalTokenCount || 0;
+        const promptTokens = rfpRes.usageMetadata?.promptTokenCount || 0;
+        const candidatesTokens = rfpRes.usageMetadata?.candidatesTokenCount || 0;
+        if (tokens > 0 && organizationId) {
+            const now = new Date();
+            const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            try {
+                await admin.firestore().collection('aiUsage').doc(organizationId).set({
+                    organizationId: organizationId,
+                    totalTokensUsed: admin.firestore.FieldValue.increment(tokens),
+                    promptTokensUsed: admin.firestore.FieldValue.increment(promptTokens),
+                    candidatesTokensUsed: admin.firestore.FieldValue.increment(candidatesTokens),
+                    [`tasks.Analyze RFP`]: admin.firestore.FieldValue.increment(tokens),
+                    [`models.gemini-3_7-flash`]: admin.firestore.FieldValue.increment(tokens),
+                    [`monthlyUsage.${monthKey}.totalTokensUsed`]: admin.firestore.FieldValue.increment(tokens),
+                    [`monthlyUsage.${monthKey}.promptTokensUsed`]: admin.firestore.FieldValue.increment(promptTokens),
+                    [`monthlyUsage.${monthKey}.candidatesTokensUsed`]: admin.firestore.FieldValue.increment(candidatesTokens),
+                    [`monthlyUsage.${monthKey}.tasks.Analyze RFP`]: admin.firestore.FieldValue.increment(tokens),
+                    [`monthlyUsage.${monthKey}.models.gemini-3_7-flash`]: admin.firestore.FieldValue.increment(tokens),
+                    [`monthlyUsage.${monthKey}.lastUpdated`]: admin.firestore.FieldValue.serverTimestamp(),
+                    lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            } catch (e) {
+                console.error("Failed to track RFP AI usage:", e);
+            }
+        }
+
         let responseText = result.response.text().trim();
         if (responseText.startsWith('```json')) {
             responseText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();

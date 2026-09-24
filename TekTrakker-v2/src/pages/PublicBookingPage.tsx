@@ -1,4 +1,4 @@
-import { cleanUndefinedFields } from '../lib/utils';
+import { cleanUndefinedFields, formatPhoneNumber, formatPhoneNumberInput, parseAddressComponents } from '../lib/utils';
 import showToast from "lib/toast";
 
 import React, { useState, useEffect } from 'react';
@@ -23,6 +23,11 @@ const PublicBookingPage: React.FC = () => {
     // Customer Type Selection
     const [customerType, setCustomerType] = useState<'Homeowner' | 'Renter / Tenant' | 'Business / Commercial' | 'Property Manager' | 'General Contractor'>('Homeowner');
     
+    // Shared City, State, Zip for Address
+    const [city, setCity] = useState('');
+    const [state, setState] = useState('');
+    const [zip, setZip] = useState('');
+
     // Contact & Address Details by customer type
     // Homeowner
     const [name, setName] = useState('');
@@ -81,7 +86,7 @@ const PublicBookingPage: React.FC = () => {
     const [photoFile, setPhotoFile] = useState<File | null>(null);
     const [taxExemptFile, setTaxExemptFile] = useState<File | null>(null);
 
-    const serviceCategories = ['HVAC', 'Plumbing', 'Electrical', 'Other'];
+    const serviceCategories = ['HVAC', 'Plumbing', 'Electrical', 'Landscaping', 'General / Handyman', 'Cleaning', 'Painting', 'Roofing', 'Contracting', 'Masonry', 'Telecommunications', 'Solar', 'Security', 'Pet Grooming', 'Other'];
     const jobTypes = ['Emergency Repair', 'Maintenance / Tune-up', 'New Installation', 'Quote / Estimate'];
     const arrivalWindows = ['8am - 11am', '11am - 2pm', '2pm - 5pm', '5pm - 8pm (After Hours)'];
 
@@ -142,6 +147,9 @@ const PublicBookingPage: React.FC = () => {
             let finalPhone = '';
             let finalEmail = '';
             let finalAddress = '';
+            let finalCity = city.trim();
+            let finalState = state.trim();
+            let finalZip = zip.trim();
             const specialInstructionsParts: string[] = [];
 
             if (customerType === 'Business / Commercial') {
@@ -200,6 +208,18 @@ const PublicBookingPage: React.FC = () => {
                 }
             }
 
+            // Auto-parse address components if address has commas and city/state/zip were not filled separately
+            if ((!finalCity || !finalState || !finalZip) && finalAddress.includes(',')) {
+                const parsed = parseAddressComponents(finalAddress);
+                if (!finalCity && parsed.city) finalCity = parsed.city;
+                if (!finalState && parsed.state) finalState = parsed.state;
+                if (!finalZip && parsed.zip) finalZip = parsed.zip;
+                if (parsed.street && parsed.city) finalAddress = parsed.street;
+            }
+
+            // Ensure standard dash formatting on phone number
+            finalPhone = formatPhoneNumber(finalPhone);
+
             if (issueSummary) {
                 specialInstructionsParts.push(`Issue Summary: ${issueSummary}`);
             }
@@ -210,6 +230,10 @@ const PublicBookingPage: React.FC = () => {
                 customerPhone: finalPhone,
                 customerEmail: finalEmail,
                 address: finalAddress,
+                city: finalCity || null,
+                state: finalState || null,
+                zip: finalZip || null,
+                customerType: customerType,
                 tasks: [serviceCategory, jobType].filter(Boolean),
                 appointmentTime: preferredDate ? new Date(preferredDate).toISOString() : new Date().toISOString(),
                 status: 'Pending',
@@ -384,10 +408,15 @@ const PublicBookingPage: React.FC = () => {
                                 <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider border-b border-slate-100 pb-2">Homeowner Details</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <Input label="Full Name" value={name} onChange={e => setName(e.target.value)} required />
-                                    <Input label="Phone" type="tel" placeholder="(210) 555-1234" value={phone} onChange={e => setPhone(e.target.value)} required />
+                                    <Input label="Phone" type="tel" placeholder="(210) 555-1234" value={phone} onChange={e => setPhone(formatPhoneNumberInput(e.target.value))} required />
                                 </div>
                                 <Input label="Email" type="email" placeholder="name@domain.com" value={email} onChange={e => setEmail(e.target.value)} required />
-                                <Input label="Service Address" placeholder="Start typing your address..." value={address} onChange={e => setAddress(e.target.value)} required />
+                                <Input label="Service Address" placeholder="Street Address (e.g. 123 Main St)" value={address} onChange={e => setAddress(e.target.value)} required />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <Input label="City" placeholder="San Antonio" value={city} onChange={e => setCity(e.target.value)} required />
+                                    <Input label="State" placeholder="TX" value={state} onChange={e => setState(e.target.value)} required />
+                                    <Input label="Zip Code" placeholder="78201" value={zip} onChange={e => setZip(e.target.value)} required />
+                                </div>
                                 
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Are you the property owner?</label>
@@ -406,7 +435,7 @@ const PublicBookingPage: React.FC = () => {
                                 {isOwner === 'No' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100 animate-fade-in">
                                         <Input label="Owner's Name" value={ownerName} onChange={e => setOwnerName(e.target.value)} required />
-                                        <Input label="Owner's Phone" type="tel" placeholder="(210) 555-1234" value={ownerPhone} onChange={e => setOwnerPhone(e.target.value)} required />
+                                        <Input label="Owner's Phone" type="tel" placeholder="(210) 555-1234" value={ownerPhone} onChange={e => setOwnerPhone(formatPhoneNumberInput(e.target.value))} required />
                                     </div>
                                 )}
                             </div>
@@ -417,14 +446,19 @@ const PublicBookingPage: React.FC = () => {
                                 <h4 className="text-xs font-bold text-blue-600 uppercase tracking-wider border-b border-slate-100 pb-2">Renter / Tenant Details</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <Input label="Tenant Name" value={tenantName} onChange={e => setTenantName(e.target.value)} required />
-                                    <Input label="Tenant Phone" type="tel" placeholder="(210) 555-1234" value={tenantPhone} onChange={e => setTenantPhone(e.target.value)} required />
+                                    <Input label="Tenant Phone" type="tel" placeholder="(210) 555-1234" value={tenantPhone} onChange={e => setTenantPhone(formatPhoneNumberInput(e.target.value))} required />
                                 </div>
                                 <Input label="Tenant Email" type="email" placeholder="tenant@domain.com" value={tenantEmail} onChange={e => setTenantEmail(e.target.value)} required />
-                                <Input label="Service Address" placeholder="Start typing your address..." value={tenantAddress} onChange={e => setTenantAddress(e.target.value)} required />
+                                <Input label="Service Address" placeholder="Street Address (e.g. 123 Main St)" value={tenantAddress} onChange={e => setTenantAddress(e.target.value)} required />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <Input label="City" placeholder="San Antonio" value={city} onChange={e => setCity(e.target.value)} required />
+                                    <Input label="State" placeholder="TX" value={state} onChange={e => setState(e.target.value)} required />
+                                    <Input label="Zip Code" placeholder="78201" value={zip} onChange={e => setZip(e.target.value)} required />
+                                </div>
                                 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-100">
                                     <Input label="Landlord / Owner Name" value={landlordName} onChange={e => setLandlordName(e.target.value)} />
-                                    <Input label="Landlord / Owner Phone" type="tel" placeholder="Owner or PM phone" value={landlordPhone} onChange={e => setLandlordPhone(e.target.value)} />
+                                    <Input label="Landlord / Owner Phone" type="tel" placeholder="Owner or PM phone" value={landlordPhone} onChange={e => setLandlordPhone(formatPhoneNumberInput(e.target.value))} />
                                 </div>
                             </div>
                         )}
@@ -438,10 +472,15 @@ const PublicBookingPage: React.FC = () => {
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <Input label="On-Site Contact Name" value={onSiteContactName} onChange={e => setOnSiteContactName(e.target.value)} required />
-                                    <Input label="Phone" type="tel" placeholder="(210) 555-1234" value={commercialPhone} onChange={e => setCommercialPhone(e.target.value)} required />
+                                    <Input label="Phone" type="tel" placeholder="(210) 555-1234" value={commercialPhone} onChange={e => setCommercialPhone(formatPhoneNumberInput(e.target.value))} required />
                                     <Input label="Email" type="email" placeholder="name@company.com" value={commercialEmail} onChange={e => setCommercialEmail(e.target.value)} required />
                                 </div>
-                                <Input label="Service Address" placeholder="Start typing your address..." value={commercialAddress} onChange={e => setCommercialAddress(e.target.value)} required />
+                                <Input label="Service Address" placeholder="Street Address (e.g. 123 Main St)" value={commercialAddress} onChange={e => setCommercialAddress(e.target.value)} required />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <Input label="City" placeholder="San Antonio" value={city} onChange={e => setCity(e.target.value)} required />
+                                    <Input label="State" placeholder="TX" value={state} onChange={e => setState(e.target.value)} required />
+                                    <Input label="Zip Code" placeholder="78201" value={zip} onChange={e => setZip(e.target.value)} required />
+                                </div>
                                 
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Are you authorized to request and approve service at this location?</label>
@@ -506,10 +545,15 @@ const PublicBookingPage: React.FC = () => {
                                     <Input label="Contact Person Name" value={pmContactName} onChange={e => setPmContactName(e.target.value)} required />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Input label="Phone" type="tel" placeholder="(210) 555-1234" value={pmPhone} onChange={e => setPmPhone(e.target.value)} required />
+                                    <Input label="Phone" type="tel" placeholder="(210) 555-1234" value={pmPhone} onChange={e => setPmPhone(formatPhoneNumberInput(e.target.value))} required />
                                     <Input label="Email" type="email" placeholder="pm@domain.com" value={pmEmail} onChange={e => setPmEmail(e.target.value)} required />
                                 </div>
-                                <Input label="Service Address" placeholder="Start typing your address..." value={pmAddress} onChange={e => setPmAddress(e.target.value)} required />
+                                <Input label="Service Address" placeholder="Street Address (e.g. 123 Main St)" value={pmAddress} onChange={e => setPmAddress(e.target.value)} required />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <Input label="City" placeholder="San Antonio" value={city} onChange={e => setCity(e.target.value)} required />
+                                    <Input label="State" placeholder="TX" value={state} onChange={e => setState(e.target.value)} required />
+                                    <Input label="Zip Code" placeholder="78201" value={zip} onChange={e => setZip(e.target.value)} required />
+                                </div>
                                 
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Is Owner Approval Required?</label>
@@ -551,10 +595,15 @@ const PublicBookingPage: React.FC = () => {
                                     <Input label="Project Manager Name" value={gcContactName} onChange={e => setGcContactName(e.target.value)} required />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Input label="Phone" type="tel" placeholder="(210) 555-1234" value={gcPhone} onChange={e => setGcPhone(e.target.value)} required />
+                                    <Input label="Phone" type="tel" placeholder="(210) 555-1234" value={gcPhone} onChange={e => setGcPhone(formatPhoneNumberInput(e.target.value))} required />
                                     <Input label="Email" type="email" placeholder="pm@gc-firm.com" value={gcEmail} onChange={e => setGcEmail(e.target.value)} required />
                                 </div>
-                                <Input label="Service Address" placeholder="Start typing your address..." value={gcAddress} onChange={e => setGcAddress(e.target.value)} required />
+                                <Input label="Service Address" placeholder="Street Address (e.g. 123 Main St)" value={gcAddress} onChange={e => setGcAddress(e.target.value)} required />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <Input label="City" placeholder="San Antonio" value={city} onChange={e => setCity(e.target.value)} required />
+                                    <Input label="State" placeholder="TX" value={state} onChange={e => setState(e.target.value)} required />
+                                    <Input label="Zip Code" placeholder="78201" value={zip} onChange={e => setZip(e.target.value)} required />
+                                </div>
                                 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <Input label="Job Name / Reference #" value={gcJobName} onChange={e => setGcJobName(e.target.value)} />

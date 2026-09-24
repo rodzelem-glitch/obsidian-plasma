@@ -2,29 +2,22 @@ import { cleanUndefinedFields } from '../../../../lib/utils';
 import showToast from "lib/toast";
 // import { getFunctions, httpsCallable } from "firebase/functions";
 import { db, functions } from "lib/firebase";
-import React, { useState } from 'react';
+import { globalConfirm } from "lib/globalConfirm";
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from 'context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import Input from 'components/ui/Input';
 import Button from 'components/ui/Button';
 import Toggle from 'components/ui/Toggle';
-import { CreditCard, Mail, Users, Handshake, Code, Copy, ChevronDown, MonitorUp, Thermometer, Wrench, Package, Square, Coins, Workflow, MessageSquare, Cpu, Home, Leaf, Truck, DollarSign, Fingerprint, PhoneCall, Database, FileText, CloudSun, CheckCircle, RefreshCw, ArrowRight, Sparkles, AlertCircle, Shield, ExternalLink } from 'lucide-react';
+import { CreditCard, Mail, Users, Handshake, Code, Copy, ChevronDown, MonitorUp, Thermometer, Wrench, Package, Square, Coins, Workflow, MessageSquare, Cpu, Home, Leaf, Truck, DollarSign, Fingerprint, PhoneCall, Database, FileText, CloudSun, CheckCircle, RefreshCw, ArrowRight, Sparkles, AlertCircle, Shield, ExternalLink, ShieldCheck, Zap } from 'lucide-react';
+import SiteSealEmbed from 'components/payment/SiteSealEmbed';
 
 
 interface IntegrationsTabProps {
-
-    stripePublicKey: string;
-    setStripePublicKey: (val: string) => void;
-    squareAppId: string;
-    setSquareAppId: (val: string) => void;
-    squareLocId: string;
-    setSquareLocId: (val: string) => void;
-    squareToken: string;
-    setSquareToken: (val: string) => void;
     kortAccountId: string;
     setKortAccountId: (val: string) => void;
-    defaultPaymentGateway: 'stripe' | 'square' | 'kort';
-    setDefaultPaymentGateway: (val: 'stripe' | 'square' | 'kort') => void;
+    pciComplianceSealHtml?: string;
+    setPciComplianceSealHtml?: (val: string) => void;
     smtpHost: string;
     setSmtpHost: (val: string) => void;
     smtpPort: number;
@@ -175,10 +168,8 @@ const IntegrationModule = ({
 };
 
 const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
-    stripePublicKey, setStripePublicKey,
-    squareAppId, setSquareAppId, squareLocId, setSquareLocId, squareToken, setSquareToken,
     kortAccountId, setKortAccountId,
-    defaultPaymentGateway, setDefaultPaymentGateway,
+    pciComplianceSealHtml, setPciComplianceSealHtml,
     smtpHost, setSmtpHost, smtpPort, setSmtpPort, smtpUser, setSmtpUser, smtpPass, setSmtpPass, handleSendTestEmail, isSendingTest,
     twilioSid, setTwilioSid, twilioToken, setTwilioToken, twilioNumber, setTwilioNumber,
     bookingWidgetMode, setBookingWidgetMode, hiringWidgetMode, setHiringWidgetMode, copyWidgetCode,
@@ -205,6 +196,17 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
     const { state, dispatch } = useAppContext();
     const mqWebhookUrl = `https://us-central1-tektrakker.cloudfunctions.net/measureQuickWebhook?orgId=${orgId || 'ERROR_NO_ORG'}`;
     const [generatingOnboardingUrl, setGeneratingOnboardingUrl] = useState(false);
+    const [inboundEmailSettings, setInboundEmailSettings] = useState<any>(null);
+
+    useEffect(() => {
+        if (!orgId) return;
+        const unsub = db.collection('organizations').doc(orgId).collection('settings').doc('inboundEmail').onSnapshot(doc => {
+            if (doc.exists) {
+                setInboundEmailSettings(doc.data());
+            }
+        }, () => {});
+        return () => unsub();
+    }, [orgId]);
 
     const handleGenerateOnboardingLink = async () => {
         try {
@@ -239,6 +241,40 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
         }
     };
 
+    const [isProvisioningTwilio, setIsProvisioningTwilio] = useState(false);
+    const handleAutoProvisionTwilio = async () => {
+        if (!orgId) return;
+        setIsProvisioningTwilio(true);
+        try {
+            const provisionFn = functions.httpsCallable('provisionOrgTwilioSubaccount');
+            const res: any = await provisionFn({
+                organizationId: orgId,
+                friendlyName: state.currentOrganization?.name || 'TekTrakker Organization'
+            });
+            const subSid = res?.data?.subaccountSid;
+            const phoneNum = res?.data?.phoneNumber;
+            if (subSid) setTwilioSid(subSid);
+            if (phoneNum) setTwilioNumber(phoneNum);
+
+            // Also reload secrets from Firestore
+            const secDoc = await db.collection('organizations').doc(orgId).collection('secrets').doc('config').get();
+            if (secDoc.exists) {
+                const cfg = secDoc.data()?.twilioConfig;
+                if (cfg) {
+                    if (cfg.accountSid || cfg.subaccountSid) setTwilioSid(cfg.subaccountSid || cfg.accountSid);
+                    if (cfg.authToken) setTwilioToken(cfg.authToken);
+                    if (cfg.phoneNumber) setTwilioNumber(cfg.phoneNumber);
+                }
+            }
+            showToast.success(`Dedicated Twilio Subaccount successfully provisioned! ${phoneNum ? `Assigned Line: ${phoneNum}` : ''}`);
+        } catch (err: any) {
+            console.error('Provision subaccount error:', err);
+            showToast.error(`Could not auto-provision Twilio subaccount: ${err.message}`);
+        } finally {
+            setIsProvisioningTwilio(false);
+        }
+    };
+
     return (
         <form onSubmit={e => e.preventDefault()} className="space-y-8">
             {/* Marketplace CTA Banner */}
@@ -260,6 +296,93 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                     <ArrowRight size={20} className="text-primary-400 group-hover:translate-x-1 transition-transform flex-shrink-0" />
                 </div>
             </button>
+
+            {/* Inbound Email Inbox & Forwarding Section */}
+            <div>
+                <h3 className="text-lg font-black mb-4 flex items-center gap-2 text-slate-800 dark:text-white"><Mail size={20} className="text-blue-500"/> Inbound Email & Domain Forwarding</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+                    <IntegrationModule 
+                        id="inboundemail" 
+                        title="Inbound Email Inbox & Forwarding" 
+                        category="Communications" 
+                        icon={Mail}
+                        iconColor="text-blue-500"
+                        isConnected={true}
+                        expandedId={expandedGridId} setExpandedId={setExpandedGridId}
+                    >
+                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">
+                            Have incoming customer emails and service requests delivered directly into TekTrakker by auto-forwarding your domain email.
+                        </p>
+                        
+                        <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-xl space-y-4 mb-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                    Your Organization's Dedicated Inbound Email Address
+                                </label>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text"
+                                        readOnly
+                                        value={`${(state.currentOrganization?.slug || state.currentOrganization?.id || 'your-org-slug').toLowerCase()}@inbound.mail.tektrakker.com`}
+                                        className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2 text-xs font-mono text-blue-600 dark:text-blue-400 font-bold"
+                                    />
+                                    <Button 
+                                        type="button"
+                                        variant="secondary"
+                                        className="text-xs font-bold shrink-0"
+                                        onClick={() => {
+                                            const emailAddr = `${(state.currentOrganization?.slug || state.currentOrganization?.id || 'your-org-slug').toLowerCase()}@inbound.mail.tektrakker.com`;
+                                            navigator.clipboard.writeText(emailAddr);
+                                            showToast.success("Inbound email address copied to clipboard!");
+                                        }}
+                                    >
+                                        <Copy size={14} className="mr-1 inline" /> Copy
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {inboundEmailSettings?.verificationCode && (
+                                <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 p-3 rounded-lg text-emerald-800 dark:text-emerald-300 animate-pulse">
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                                        <div>
+                                            <span className="font-bold text-xs block flex items-center gap-1">
+                                                <CheckCircle size={14} className="text-emerald-600" /> Forwarding Verification Code Received!
+                                            </span>
+                                            <span className="text-[11px]">Copy code to complete setup in Google Workspace / Outlook:</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <code className="bg-white dark:bg-slate-900 px-2 py-1 rounded border font-mono font-bold text-sm text-emerald-700 dark:text-emerald-400">
+                                                {inboundEmailSettings.verificationCode}
+                                            </code>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(inboundEmailSettings.verificationCode);
+                                                    showToast.success("Verification code copied!");
+                                                }}
+                                            >
+                                                Copy Code
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="text-xs text-slate-600 dark:text-slate-400 space-y-2 border-t border-slate-200 dark:border-slate-800 pt-3">
+                                <span className="font-bold text-slate-800 dark:text-slate-200 block">Fast Setup Instructions:</span>
+                                <ol className="list-decimal pl-4 space-y-1 text-[11px]">
+                                    <li>Log into your business email manager (Gmail, Google Workspace, or Microsoft 365).</li>
+                                    <li>Navigate to <strong>Settings &gt; Forwarding</strong> and add a new forwarding rule for <code>service@yourdomain.com</code>.</li>
+                                    <li>Set the destination forwarding address to: <code className="font-bold text-blue-600 dark:text-blue-400 font-mono">{(state.currentOrganization?.slug || state.currentOrganization?.id || 'your-org-slug').toLowerCase()}@inbound.mail.tektrakker.com</code>.</li>
+                                    <li>If Gmail requests a verification code, check this box to copy your code automatically!</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </IntegrationModule>
+                </div>
+            </div>
 
             {/* Insurance Banner / Module */}
             <div>
@@ -286,36 +409,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                     <h3 className="text-lg font-black flex items-center gap-2 text-slate-800 dark:text-white"><CreditCard size={20}/> Payment Gateways</h3>
                     <div className="flex items-center gap-3">
                         <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Default Gateway:</span>
-                        <select 
-                            aria-label="Default Payment Gateway"
-                            title="Default Payment Gateway"
-                            value={defaultPaymentGateway} 
-                            onChange={async (e) => {
-                                const val = e.target.value as 'stripe' | 'square' | 'kort';
-                                setDefaultPaymentGateway(val);
-                                if (orgId) {
-                                    try {
-                                        await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({ defaultPaymentGateway: val }));
-                                        if (state.currentOrganization) {
-                                            dispatch({
-                                                type: 'UPDATE_ORGANIZATION',
-                                                payload: { ...state.currentOrganization, defaultPaymentGateway: val }
-                                            });
-                                        }
-                                        showToast.success('Default payment gateway updated.');
-                                    } catch (err) {
-                                        console.error('Failed to update default gateway', err);
-                                        showToast.error('Failed to update default payment gateway.');
-                                    }
-                                }
-                            }}
-                            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary-500"
-                        >
-                            <option value="stripe" disabled={defaultPaymentGateway !== 'stripe'}>Stripe (Activation required)</option>
-                            <option value="square" disabled={defaultPaymentGateway !== 'square'}>Square (Activation required)</option>
-
-                            <option value="kort">TekTrakker Payments (Recommended)</option>
-                        </select>
+                        <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold rounded-lg border border-emerald-200 dark:border-emerald-800">TekTrakker Payments (Default & Standard)</span>
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
@@ -402,7 +496,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                                     <Button 
                                         variant="secondary" 
                                         onClick={async () => {
-                                            if (!window.confirm("Are you sure you want to disconnect this merchant account? This will stop native payment processing.")) return;
+                                            if (!(await globalConfirm("Are you sure you want to disconnect this merchant account? This will stop native payment processing.", "Disconnect Merchant Account", "Disconnect", "Cancel"))) return;
                                             try {
                                                 setKortAccountId('');
                                                 await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({ kortAccountId: null }));
@@ -426,42 +520,49 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                         )}
                     </IntegrationModule>
 
-                    {!!stripePublicKey && (
                     <IntegrationModule 
-                        id="stripe" 
-                        title="Stripe" 
-                        category="Credit Cards" 
-                        icon={CreditCard}
-                        iconColor="text-indigo-500"
-                        isConnected={!!stripePublicKey}
+                        id="pciseal" 
+                        title="PCI DSS Compliance & Security Seal" 
+                        category="Security & Trust" 
+                        icon={ShieldCheck}
+                        iconColor="text-blue-600"
+                        isConnected={!!pciComplianceSealHtml}
                         expandedId={expandedGridId} setExpandedId={setExpandedGridId}
                     >
-                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Connect Stripe to process credit card payments natively inside invoices. Accept all major credit cards securely.</p>
-                        <Input label="Publishable Key" value={stripePublicKey} onChange={e => setStripePublicKey(e.target.value)} placeholder="pk_live_..." />
-                    </IntegrationModule>
-                    )}
+                        <p className="text-xs text-slate-500 mb-3 block leading-relaxed">
+                            Embed your verified Third-Party PCI DSS Compliance Seal (e.g. RapidScanSecure / CompliAssure, SecurityMetrics, or Trustwave). This badge displays on all checkout portals and customer payment screens to assure clients of safe payment data handling.
+                        </p>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                                    Site Seal Script or HTML Snippet
+                                </label>
+                                <textarea
+                                    value={pciComplianceSealHtml || ''}
+                                    onChange={e => setPciComplianceSealHtml?.(e.target.value)}
+                                    rows={4}
+                                    placeholder="<script type='text/javascript' src='https://rapidscansecure.com/siteseal/siteseal.js?code=...'></script>"
+                                    className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs font-mono dark:bg-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1">
+                                    Paste the complete &lt;script&gt; tag or HTML embed provided by your PCI Compliance scanning vendor.
+                                </p>
+                            </div>
 
-                    {(!!squareAppId && !!squareLocId) && (
-                    <IntegrationModule 
-                        id="square" 
-                        title="Square" 
-                        category="Credit Cards & POS" 
-                        icon={Square}
-                        iconColor="text-slate-800 dark:text-slate-200"
-                        isConnected={!!squareAppId && !!squareLocId}
-                        expandedId={expandedGridId} setExpandedId={setExpandedGridId}
-                    >
-                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Connect Square to process card payments or sync transactions.</p>
-                        <div className="grid grid-cols-1 gap-4">
-                            <Input label="Application ID" value={squareAppId} onChange={e => setSquareAppId(e.target.value)} placeholder="sq0idp-..." />
-                            <Input label="Location ID" value={squareLocId} onChange={e => setSquareLocId(e.target.value)} placeholder="L..." />
-                        </div>
-                        <div className="mt-4">
-                             <Input label="Square Personal Access Token" type="password" value={squareToken} onChange={e => setSquareToken(e.target.value)} placeholder={squareToken ? "••••••••••••..." : "EAAAE..."} />
-                             {squareToken && <p className="text-[10px] font-bold text-blue-600 uppercase mt-2 text-center">Token securely loaded</p>}
+                            {pciComplianceSealHtml && (
+                                <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+                                    <h5 className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-1.5">
+                                        <ShieldCheck size={14} className="text-emerald-500" />
+                                        Live Badge Preview
+                                    </h5>
+                                    <div className="p-4 bg-white dark:bg-slate-800 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 flex justify-center">
+                                        <SiteSealEmbed sealHtml={pciComplianceSealHtml} />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </IntegrationModule>
-                    )}
 
                 </div>
             </div>
@@ -487,7 +588,7 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                             </div>
                             <Button 
                                 onClick={async () => {
-                                    if (!window.confirm("Disconnect Gusto? Syncing will stop.")) return;
+                                    if (!(await globalConfirm("Disconnect Gusto? Syncing will stop.", "Disconnect Gusto", "Disconnect", "Cancel"))) return;
                                     try {
                                         await db.collection('organizations').doc(orgId).update(cleanUndefinedFields({ gustoCompanyUuid: null, gustoOnboardingUrl: null }));
                                         dispatch({ type: 'UPDATE_ORGANIZATION', payload: { ...state.currentOrganization, gustoCompanyUuid: undefined, gustoOnboardingUrl: undefined } });
@@ -645,49 +746,104 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
             </div>
             )}
 
-            {!!twilioSid && (
             <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
-                <h3 className="text-lg font-black mb-4 flex items-center gap-2 text-slate-800 dark:text-white"><MessageSquare size={20}/> SMS Delivery</h3>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-black flex items-center gap-2 text-slate-800 dark:text-white">
+                        <MessageSquare size={20} className="text-red-500" /> Twilio Telephony & Subaccounts
+                    </h3>
+                    {!!twilioSid ? (
+                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Dedicated Subaccount Active
+                        </span>
+                    ) : (
+                        <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                            Not Configured
+                        </span>
+                    )}
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
                     <IntegrationModule 
                         id="twilio" 
-                        title="Twilio" 
-                        category="SMS Messaging" 
+                        title="Twilio Subaccount & Line" 
+                        category="SMS & Telephony" 
                         icon={MessageSquare}
                         iconColor="text-red-500"
                         isConnected={!!twilioSid}
                         expandedId={expandedGridId} setExpandedId={setExpandedGridId}
                     >
-                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">Provide Twilio credentials to send "On My Way" texts and appointment reminders.</p>
-                        <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-200 dark:border-slate-800 mb-4 space-y-2">
-                            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">BYOK Webhook Setup (Required):</h4>
+                        <p className="text-xs text-slate-500 mb-4 block leading-relaxed">
+                            Configure or auto-provision your organization's isolated Twilio subaccount for two-way SMS, automated appointment reminders, dispatch notifications, and dedicated outbound calling.
+                        </p>
+
+                        {/* 1-Click Auto-Provisioning Action */}
+                        <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/20 p-4 rounded-2xl border border-red-200 dark:border-red-800/60 space-y-3 mb-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5">
+                                        <Sparkles size={14} className="text-red-600" />
+                                        1-Click Subaccount Auto-Provisioning
+                                    </h4>
+                                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                                        Instantly generate a dedicated, isolated Twilio subaccount and local business phone number.
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="primary"
+                                size="sm"
+                                disabled={isProvisioningTwilio}
+                                onClick={handleAutoProvisionTwilio}
+                                className="w-full text-xs font-black uppercase tracking-wider bg-red-600 hover:bg-red-700 text-white flex items-center justify-center gap-2 shadow-md shadow-red-600/20"
+                            >
+                                {isProvisioningTwilio ? (
+                                    <>
+                                        <RefreshCw size={14} className="animate-spin" />
+                                        <span>Provisioning Dedicated Twilio Subaccount...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Zap size={14} />
+                                        <span>{!!twilioSid ? 'Re-Provision / Refresh Subaccount' : '⚡ Auto-Provision Subaccount & Local Number'}</span>
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+
+                        {/* Manual BYOK Credentials */}
+                        <div className="space-y-3">
+                            <h4 className="text-xs font-black text-slate-700 dark:text-slate-300">Direct Twilio Subaccount Credentials (BYOC):</h4>
+                            <Input label="Subaccount SID / Account SID" value={twilioSid} onChange={e => setTwilioSid(e.target.value)} placeholder="AC..." />
+                            <Input label="Auth Token" type="password" value={twilioToken} onChange={e => setTwilioToken(e.target.value)} placeholder="••••••••••••" />
+                            <Input label="Assigned Origin Phone Number" value={twilioNumber} onChange={e => setTwilioNumber(e.target.value)} placeholder="+15551234567" />
+                        </div>
+
+                        <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-200 dark:border-slate-800 mt-4 space-y-2">
+                            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300">BYOK Webhook Setup (Optional if manually configured):</h4>
                             <p className="text-[10px] text-slate-500 leading-relaxed">
-                                In your Twilio Console, configure your Phone Number's webhooks (HTTP POST) to the following:
+                                If using your own Twilio console number, configure your Phone Number's webhooks (HTTP POST) to the following:
                             </p>
                             <div className="space-y-1.5 font-mono text-[10px]">
                                 <div>
                                     <span className="text-slate-400 block font-sans font-semibold">Incoming Messages Webhook:</span>
                                     <code className="bg-slate-100 dark:bg-slate-800 p-1 rounded block select-all text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                                        https://us-central1-tektrakker.cloudfunctions.net/twilioInboundSms
+                                        https://us-central1-tektrakker.cloudfunctions.net/twilioInboundSms?orgId={orgId}
                                     </code>
                                 </div>
                                 <div>
                                     <span className="text-slate-400 block font-sans font-semibold">Incoming Voice Webhook:</span>
                                     <code className="bg-slate-100 dark:bg-slate-800 p-1 rounded block select-all text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                                        https://us-central1-tektrakker.cloudfunctions.net/twilioInboundVoice
+                                        https://us-central1-tektrakker.cloudfunctions.net/twilioInboundVoice?orgId={orgId}
                                     </code>
                                 </div>
                             </div>
                         </div>
-                        <div className="space-y-4">
-                            <Input label="Account SID" value={twilioSid} onChange={e => setTwilioSid(e.target.value)} />
-                            <Input label="Auth Token" type="password" value={twilioToken} onChange={e => setTwilioToken(e.target.value)} />
-                            <Input label="Origin Phone Number" value={twilioNumber} onChange={e => setTwilioNumber(e.target.value)} placeholder="+15551234567" />
-                        </div>
                     </IntegrationModule>
                 </div>
             </div>
-            )}
 
             {(!!seamApiKey || !!nestProjectId || !!ecobeeApiKey || !!honeywellApiKey || !!measureQuickApiKey) && (
             <div className="border-t border-slate-200 dark:border-slate-800 pt-8">
@@ -1023,6 +1179,8 @@ const IntegrationsTab: React.FC<IntegrationsTabProps> = ({
                         <Input label="Shovels.ai API Key" value={shovelsApiKey} onChange={e => setShovelsApiKey(e.target.value)} placeholder="Enter your sandbox API key" type="password" />
                     </IntegrationModule>
                     )}
+
+
 
                     <IntegrationModule 
                         id="bookingwidget" 

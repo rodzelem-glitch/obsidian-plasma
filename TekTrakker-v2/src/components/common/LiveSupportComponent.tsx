@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Video, PhoneOff } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import Draggable from 'react-draggable';
+import { globalConfirm } from 'lib/globalConfirm';
 
 interface LiveSupportFloatingButtonProps {
     variant?: 'nav' | 'floating';
@@ -30,8 +31,8 @@ export const LiveSupportFloatingButton: React.FC<LiveSupportFloatingButtonProps>
         }
     }, []);
 
-    const handleHide = () => {
-        if (window.confirm("Hide the Live Support widget? You can unhide it anytime from your Profile (click your avatar at the top right) under the Security tab.")) {
+    const handleHide = async () => {
+        if (await globalConfirm("Hide the Live Support widget? You can unhide it anytime from your Profile (click your avatar at the top right) under the Security tab.", "Hide Live Support", "Hide Widget", "Keep Visible")) {
             setIsHidden(true);
             localStorage.setItem('live-support-hidden', 'true');
         }

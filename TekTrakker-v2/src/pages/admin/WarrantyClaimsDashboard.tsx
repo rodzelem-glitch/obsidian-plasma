@@ -71,7 +71,9 @@ const WarrantyClaimsDashboard: React.FC = () => {
           const customer = state.customers.find(c => c.id === customerId);
           if (customer) {
               const updatedFiles = [...(customer.files || []), newFile];
-              await db.collection('customers').doc(customerId).update(cleanUndefinedFields({ files: updatedFiles }));
+              if (!state.isDemoMode) {
+                  await db.collection('customers').doc(customerId).update(cleanUndefinedFields({ files: updatedFiles }));
+              }
               dispatch({ type: 'UPDATE_CUSTOMER', payload: { ...customer, files: updatedFiles } });
               showToast.success('File uploaded to claim');
           }
@@ -85,7 +87,9 @@ const WarrantyClaimsDashboard: React.FC = () => {
       if (!editingClaim) return;
       setIsSubmitting(true);
       try {
-          await db.collection('organizations').doc(state.currentOrganization?.id || '').collection('warrantyClaims').doc(editingClaim.id).update(cleanUndefinedFields(editingClaim));
+          if (!state.isDemoMode) {
+              await db.collection('organizations').doc(state.currentOrganization?.id || '').collection('warrantyClaims').doc(editingClaim.id).update(cleanUndefinedFields(editingClaim));
+          }
           dispatch({ type: 'UPDATE_WARRANTY_CLAIM', payload: editingClaim });
           showToast.success('Claim updated.');
           setEditingClaim(null);
@@ -113,7 +117,9 @@ const WarrantyClaimsDashboard: React.FC = () => {
             createdAt: new Date().toISOString(),
         } as WarrantyClaim;
 
-        await db.collection('organizations').doc(state.currentOrganization?.id || '').collection('warrantyClaims').doc(claimId).set(cleanUndefinedFields(claimData));
+        if (!state.isDemoMode) {
+            await db.collection('organizations').doc(state.currentOrganization?.id || '').collection('warrantyClaims').doc(claimId).set(cleanUndefinedFields(claimData));
+        }
         dispatch({ type: 'ADD_WARRANTY_CLAIM', payload: claimData });
         
         showToast.success("Warranty claim created successfully.");

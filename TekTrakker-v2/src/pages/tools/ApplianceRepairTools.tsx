@@ -62,7 +62,8 @@ const ApplianceRepairTools: React.FC = () => {
             };
             const job = state.jobs.find(j => j.id === selectedJobId);
             if (job) {
-                const updatedReadings = [...(job.toolReadings || []), reading];
+                const currentReadings = Array.isArray(job.toolReadings) ? job.toolReadings : (job.toolReadings ? [job.toolReadings] : []);
+                const updatedReadings = [...currentReadings, reading];
                 await db.collection('jobs').doc(selectedJobId).update(cleanUndefinedFields({ toolReadings: updatedReadings }));
                 dispatch({ type: 'UPDATE_JOB', payload: { ...job, toolReadings: updatedReadings } });
             }

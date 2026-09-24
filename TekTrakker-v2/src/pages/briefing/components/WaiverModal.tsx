@@ -98,11 +98,39 @@ const WaiverModal = ({ isOpen, onClose, onSign, job }: { isOpen: boolean, onClos
                         uploadedBy: state.currentUser?.id || 'tech',
                         metadata: { label: 'Legal Waiver' }
                     };
+
+                    const sigFile: StoredFile = {
+                        id: `sig-waiver-${Date.now()}`,
+                        organizationId: job.organizationId,
+                        parentId: job.id,
+                        parentType: 'job',
+                        fileName: 'Customer_Waiver_Signature.png',
+                        fileType: 'image/png',
+                        dataUrl: signature,
+                        url: signature,
+                        createdAt: new Date().toISOString(),
+                        uploadedBy: state.currentUser?.id || 'tech',
+                        label: 'Pre-Work Waiver Signature',
+                        metadata: {
+                            category: 'signature',
+                            phase: 'waiver',
+                            signerName: job.customerName || 'Customer',
+                            timestamp: new Date().toISOString()
+                        }
+                    };
                     
-                    const currentFiles = job.files || [];
-                    db.collection('jobs').doc(job.id).update(cleanUndefinedFields({
-                        files: [...currentFiles, waiverFile]
-                    })).catch(console.error);
+                    const currentFiles = Array.isArray(job.files) ? job.files : [];
+                    const updatedFiles = [...currentFiles.filter(f => f.id !== waiverFile.id && f.fileName !== 'Customer_Waiver_Signature.png'), waiverFile, sigFile];
+                    const waiverUpdates = {
+                        files: updatedFiles,
+                        preWorkWaiverSignature: signature,
+                        preWorkWaiverSignedAt: new Date().toISOString(),
+                        preWorkWaiverTitle: 'Waiver Agreement',
+                        updatedAt: new Date().toISOString()
+                    };
+
+                    db.collection('jobs').doc(job.id).update(cleanUndefinedFields(waiverUpdates)).catch(console.error);
+                    dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...waiverUpdates } });
                 } catch (e) {
                     console.error("Error creating waiver file:", e);
                     showToast.warn(t("Error saving waiver document. Please try again."));

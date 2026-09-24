@@ -70,6 +70,29 @@ const PublicUploadPortal: React.FC = () => {
                 const tokenDoc = await db.collection('magic_links').doc(token).get();
                 
                 if (!tokenDoc.exists) {
+                    // Check if token is a direct job ID
+                    const directJobDoc = await db.collection('jobs').doc(token).get();
+                    if (directJobDoc.exists) {
+                        const jData = directJobDoc.data();
+                        const orgId = jData?.organizationId;
+                        let oData = null;
+                        if (orgId) {
+                            const oDoc = await db.collection('organizations').doc(orgId).get();
+                            if (oDoc.exists) oData = oDoc.data();
+                        }
+                        setJobData(jData);
+                        setOrgData(oData);
+                        setTokenData({
+                            jobId: token,
+                            organizationId: orgId,
+                            title: `Work Order #${jData?.workOrderNumber || jData?.poNumber || token.slice(0, 8)} Document Upload`,
+                            description: 'Upload proposals, invoices, parts receipts, or NTE increase requests for this job.',
+                            active: true
+                        });
+                        setTokenLoading(false);
+                        return;
+                    }
+
                     setTokenError('The upload link is invalid or has expired.');
                     setTokenLoading(false);
                     return;
@@ -166,7 +189,9 @@ const PublicUploadPortal: React.FC = () => {
 
             try {
                 // Storage file destination path
-                const storagePath = `organizations/${tokenData.organizationId}/public_uploads/${tokenData.jobId}/${Date.now()}_${item.file.name}`;
+                const safeName = item.file.name ? item.file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'upload.jpg';
+                const uniqueNonce = Math.random().toString(36).substring(2, 9);
+                const storagePath = `organizations/${tokenData.organizationId}/public_uploads/${tokenData.jobId}/${Date.now()}_${i}_${uniqueNonce}_${safeName}`;
                 
                 // Upload file to storage
                 const downloadUrl = await uploadFileToStorage(storagePath, item.file);

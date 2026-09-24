@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import showToast from "lib/toast";
-import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
+import { getBaseUrl, cleanUndefinedFields, formatAddress, createEmailButtonHtml } from "lib/utils";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
-import { Trash2, Share2, Copy, Bell, Calculator, Download, UserPlus, Search, ExternalLink, CreditCard, RefreshCw, Eye, Settings, FileText, Briefcase, ShieldCheck, DollarSign, Send } from 'lucide-react';
+import { Trash2, Share2, Copy, Bell, Calculator, Download, UserPlus, Search, ExternalLink, CreditCard, RefreshCw, Eye, Settings, FileText, Briefcase, ShieldCheck, DollarSign, Send, MessageSquare, Clock } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import Select from 'components/ui/Select';
 import Modal from 'components/ui/Modal';
@@ -18,8 +18,12 @@ import JobDetailModal from 'components/modals/JobDetailModal';
 import { useLanguage } from 'context/LanguageContext';
 import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
 import SendEmailModal from 'components/modals/SendEmailModal';
+import SendSMSModal from 'components/modals/SendSMSModal';
+import CreatePaymentLinkModal from 'components/modals/CreatePaymentLinkModal';
 import SignOffModal from 'pages/briefing/components/SignOffModal';
 import SubcontractorWorkOrderModal from 'components/modals/SubcontractorWorkOrderModal';
+import { LogReceivedPaymentModal } from 'components/modals/LogReceivedPaymentModal';
+import CustomerMasterModal from 'components/modals/CustomerMasterModal';
 import { generateInvoicePdfAttachment } from 'lib/pdfHelper';
 
 interface InvoicesTabProps {
@@ -48,12 +52,43 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
     const [newInvoiceCustomerId, setNewInvoiceCustomerId] = useState('');
 
     const [sortBy, setSortBy] = useState('date_desc');
+    const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
     
 
     const [searchTerm, setSearchTerm] = useState('');
     const [isReconciling, setIsReconciling] = useState(false);
     const [recipientModalConfig, setRecipientModalConfig] = useState<{ isOpen: boolean; job: any | null }>({ isOpen: false, job: null });
     const [sendInvoiceModalConfig, setSendInvoiceModalConfig] = useState<{ isOpen: boolean; job: any | null }>({ isOpen: false, job: null });
+    const [createPaymentLinkOpen, setCreatePaymentLinkOpen] = useState(false);
+    const [isLogPaymentModalOpen, setIsLogPaymentModalOpen] = useState(false);
+    const [smsModalJob, setSmsModalJob] = useState<any | null>(null);
+
+    useEffect(() => {
+        if (viewingJob?.id) {
+            const latestJob = (state.jobs || []).find((j: any) => j.id === viewingJob.id);
+            if (latestJob && latestJob !== viewingJob) {
+                setViewingJob(latestJob);
+            }
+        }
+    }, [state.jobs, viewingJob?.id]);
+
+    useEffect(() => {
+        if (viewingInvoiceJob?.id) {
+            const latestJob = (state.jobs || []).find((j: any) => j.id === viewingInvoiceJob.id);
+            if (latestJob && latestJob !== viewingInvoiceJob) {
+                setViewingInvoiceJob(latestJob);
+            }
+        }
+    }, [state.jobs, viewingInvoiceJob?.id]);
+
+    useEffect(() => {
+        if (viewingProposal?.id) {
+            const latestProp = (state.proposals || []).find((p: any) => p.id === viewingProposal.id);
+            if (latestProp && latestProp !== viewingProposal) {
+                setViewingProposal(latestProp);
+            }
+        }
+    }, [state.proposals, viewingProposal?.id]);
 
     const handleReconcilePayments = async () => {
         if (!state.currentOrganization?.id) return;
@@ -206,7 +241,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
                     message: {
                         subject: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${job.invoice.id} from ${orgName}`,
-                        html: `<div style="font-family:sans-serif;padding:20px;border:1px solid #fee2e2;border-radius:8px;">${pastDueBanner}<h2 style="color:#dc2626;">Payment Reminder</h2><p>Hi ${job.customerName},</p><p>This is a friendly reminder that your invoice <strong>#${job.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> is currently outstanding.</p><div style="margin:20px 0;"><a href="${link}" style="background-color:#0284c7;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">View &amp; Pay Invoice</a></div><p>If you have already submitted payment, please disregard this notice.</p><p style="font-size:12px;color:#666;">Link: ${link}</p></div>`,
+                        html: `<div style="font-family:sans-serif;padding:24px;border:1px solid #fee2e2;border-radius:12px;max-width:600px;margin:0 auto;background-color:#ffffff;">${pastDueBanner}<h2 style="color:#dc2626;margin-top:0;">Payment Reminder</h2><p style="font-size:15px;color:#334155;">Hi ${job.customerName},</p><p style="font-size:15px;color:#334155;">This is a friendly reminder that your invoice <strong>#${job.invoice.id}</strong> for <strong>$${invTotal.toFixed(2)}</strong> from <strong>${orgName}</strong> is currently outstanding.</p>${createEmailButtonHtml('View &amp; Pay Invoice', link, '#dc2626')}<p style="font-size:13px;color:#64748b;margin-top:20px;">If you have already submitted payment, please disregard this notice.</p></div>`,
                         text: `${isLate ? 'PAST DUE: ' : ''}Reminder: Invoice #${job.invoice.id} for $${invTotal.toFixed(2)} is outstanding. Pay here: ${link}`,
                         replyTo: state.currentOrganization?.email || state.currentUser?.email || 'noreply@tektrakker.com',
                         ...(pdfAttachments.length > 0 ? { attachments: pdfAttachments } : {})
@@ -253,7 +288,31 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
         return cust ? cust.name : (job.customerName || '');
     };
 
-    const sortedInvoices = [...jobs.filter((j: any) => j.invoice)]
+    const isRealInvoice = (inv: any) => {
+        if (!inv || !inv.id) return false;
+        const hasItems = Array.isArray(inv.items) && inv.items.length > 0;
+        const hasTotal = (Number(inv.totalAmount) || Number(inv.amount) || Number(inv.subtotal) || 0) > 0;
+        const isPaidOrSent = inv.status === 'Paid' || inv.status === 'Sent' || inv.status === 'Partially Paid';
+        return hasItems || hasTotal || isPaidOrSent;
+    };
+
+    const validInvoiceJobs = React.useMemo(() => {
+        const result: any[] = [];
+        const seenInvoiceIds = new Set<string>();
+        
+        for (const j of jobs) {
+            if (j && j.invoice && isRealInvoice(j.invoice)) {
+                const invId = j.invoice.id;
+                if (!seenInvoiceIds.has(invId)) {
+                    seenInvoiceIds.add(invId);
+                    result.push(j);
+                }
+            }
+        }
+        return result;
+    }, [jobs]);
+
+    const sortedInvoices = [...validInvoiceJobs]
         .filter((j: any) => {
             if (!searchTerm) return true;
             const q = searchTerm.toLowerCase();
@@ -300,7 +359,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
             'Returns & Allowances': 0,
         };
 
-        jobs.filter(j => j?.invoice?.status === 'Paid').forEach(j => {
+        validInvoiceJobs.filter(j => j?.invoice?.status === 'Paid').forEach(j => {
             const amt = Number(j.invoice.totalAmount) || Number(j.invoice.amount) || 0;
             if (amt > 0) {
                 summary['Gross Receipts or Sales'] += amt;
@@ -343,6 +402,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 <DocumentPreview
                     type="Invoice"
                     data={viewingInvoiceJob}
+                    organization={state.currentOrganization}
                     onClose={() => setViewingInvoiceJob(null)}
                     isInternal={true}
                 />
@@ -430,22 +490,40 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                             <option value="status_desc">{t("Status (Z-A)")}</option>
                         </select>
                     </div>
-                    {isAdmin && (
-                        <div className="flex gap-2">
-                            <Button 
-                                variant="secondary"
-                                onClick={handleReconcilePayments} 
-                                disabled={isReconciling}
-                                className="w-auto text-xs flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all shrink-0"
-                            >
-                                <RefreshCw size={14} className={isReconciling ? "animate-spin" : ""} />
-                                {isReconciling ? t("Syncing...") : t("Sync Kort Payments")}
-                            </Button>
-                            <Button variant={taxMode ? "primary" : "secondary"} onClick={() => setTaxMode(!taxMode)} className="w-auto text-xs flex items-center gap-2">
-                                <Calculator size={14} /> {taxMode ? t("Exit Tax Prep") : t("Tax Prep Mode")}
-                            </Button>
-                        </div>
-                    )}
+                    <div className="flex gap-2">
+                        <Button 
+                            variant="primary"
+                            onClick={() => setCreatePaymentLinkOpen(true)}
+                            className="w-auto text-xs flex items-center gap-2 !bg-emerald-600 hover:!bg-emerald-700 !text-white font-bold transition-all shrink-0 shadow-sm border-0"
+                        >
+                            <DollarSign size={14} />
+                            {t("Request Deposit / Payment Link")}
+                        </Button>
+                        {isAdmin && (
+                            <>
+                                <Button 
+                                    variant="primary"
+                                    onClick={() => setIsLogPaymentModalOpen(true)}
+                                    className="w-auto text-xs flex items-center gap-1.5 !bg-teal-600 hover:!bg-teal-700 !text-white font-bold transition-all shrink-0 shadow-sm border-0"
+                                >
+                                    <DollarSign size={14} />
+                                    {t("Log Received Payment")}
+                                </Button>
+                                <Button 
+                                    variant="primary"
+                                    onClick={handleReconcilePayments} 
+                                    disabled={isReconciling}
+                                    className="w-auto text-xs flex items-center gap-2 !bg-indigo-600 hover:!bg-indigo-700 !text-white font-bold transition-all shrink-0 shadow-sm border-0"
+                                >
+                                    <RefreshCw size={14} className={isReconciling ? "animate-spin" : ""} />
+                                    {isReconciling ? t("Syncing...") : t("Sync Kort Payments")}
+                                </Button>
+                                <Button variant={taxMode ? "primary" : "secondary"} onClick={() => setTaxMode(!taxMode)} className="w-auto text-xs flex items-center gap-2 font-bold">
+                                    <Calculator size={14} /> {taxMode ? t("Exit Tax Prep") : t("Tax Prep Mode")}
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 </div>
                 </div>
             </div>
@@ -481,12 +559,28 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 t('Amount'),
                 t('Linked Documents'),
                 t('Status'),
-                t('Reminders Sent')
+                t('Sent & Tracking')
             ]}>
                 {sortedInvoices.map((job: any) => {
                     const linkedProposal = (state.proposals || []).find((p: any) => p.id === job.proposalId || p.jobId === job.id || (job.invoice?.id && p.invoiceId === job.invoice.id));
+                    const linkedFollowUpJob = (jobs || []).find((other: any) => 
+                        other.id !== job.id && (other.parentJobId === job.id || (job.linkedJobIds || []).includes(other.id) || (other.linkedJobIds || []).includes(job.id)) && other.invoice
+                    );
                     const hasInvoice = job.invoice?.id;
-                    const signOffFile = (job.files || []).find((f: any) => f.fileName === 'SignOff_Sheet.html' || f.metadata?.label === 'Sign-Off Sheet' || f.id?.startsWith('signoff-doc'));
+                    const signOffFile = (job.files || []).find((f: any) => 
+                        f.fileName === 'SignOff_Sheet.html' || 
+                        f.fileName?.toLowerCase().includes('signoff') ||
+                        f.fileName?.toLowerCase().includes('sign-off') ||
+                        f.fileName?.toLowerCase().includes('sign_off') ||
+                        f.metadata?.label === 'Sign-Off Sheet' || 
+                        f.metadata?.label?.toLowerCase().includes('sign-off') ||
+                        f.metadata?.label?.toLowerCase().includes('signoff') ||
+                        f.label?.toLowerCase().includes('sign-off') ||
+                        f.label?.toLowerCase().includes('signoff') ||
+                        f.category === 'signoff' ||
+                        f.metadata?.category === 'signoff' ||
+                        f.id?.startsWith('signoff-doc')
+                    );
                     const subBillFile = (job.files || []).find((f: any) => f.fileName === 'Subcontractor_Bill.html' || f.metadata?.label === 'Subcontractor Bill' || f.id?.startsWith('subcontractorbill-doc') || f.fileName?.startsWith('Subcontractor_Bill_'));
                     const isSubassigned = !!(job.assignedSubcontractorId || job.subcontractorId || job.subcontractorName || job.subcontractor || job.subcontractorCompany || job.subcontractorEmail);
                     const poNumber = job.poNumber || job.invoice?.poNumber || linkedProposal?.poNumber;
@@ -496,19 +590,79 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     const formattedIn = checkIn ? new Date(checkIn).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
                     const formattedOut = checkOut ? new Date(checkOut).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
 
+                    const totalAmount = Number(job.invoice?.totalAmount) || Number(job.invoice?.amount) || 0;
+                    const rawAmountPaid = Number(job.invoice?.amountPaid || job.invoice?.depositPaidAmount || (job.invoice?.depositPaid ? (job.invoice?.depositAmount || 0) : 0) || 0);
+                    const amountPaid = Math.min(totalAmount, Math.max(0, job.invoice?.status === 'Paid' ? (rawAmountPaid > 0 ? rawAmountPaid : totalAmount) : rawAmountPaid));
+                    const balanceRemaining = Math.max(0, totalAmount - amountPaid);
+                    const isPartiallyPaid = (job.invoice?.status === 'Partially Paid') || (amountPaid > 0 && balanceRemaining > 0);
+                    const effectiveStatus = job.invoice?.status === 'Paid' 
+                        ? 'Paid' 
+                        : isPartiallyPaid 
+                        ? 'Partially Paid' 
+                        : (job.invoice?.status || 'Unpaid');
+
+                    const invIdRaw = job.invoice?.id != null ? String(job.invoice.id) : '';
+                    const displayInvoiceId = invIdRaw 
+                        ? (invIdRaw.startsWith('INV-') ? invIdRaw : `INV-${invIdRaw}`) 
+                        : `INV-${job.id}`;
+
+                    const linkedCust = (state.customers || []).find((c: any) => c.id === job.customerId || c.name?.trim().toLowerCase() === job.customerName?.trim().toLowerCase());
+
                     return (
                         <tbody key={job.id} className="border-b border-slate-200 dark:border-slate-700 last:border-b-0">
                             <tr>
-                                <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">{job.invoice.id}</td>
-                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{getCustomerDisplayName(job)}</td>
-                                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                    <div>{job.locationName || <span className="italic text-slate-400">--</span>}</div>
-                                    {job.address && (
-                                        <div className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate max-w-[200px]" title={job.address}>
-                                            {job.address}
-                                        </div>
-                                    )}
+                                <td className="px-6 py-4 font-mono text-xs text-gray-500 dark:text-gray-400">{displayInvoiceId}</td>
+                                <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                                    <div
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const targetCustId = job.customerId || linkedCust?.id;
+                                            if (targetCustId) {
+                                                setSelectedCustomerId(targetCustId);
+                                            } else {
+                                                showToast.info("No customer profile found for this record.");
+                                            }
+                                        }}
+                                        className="cursor-pointer group/cust hover:text-primary-600 dark:hover:text-primary-400 inline-flex items-center gap-1 transition-colors"
+                                        title="Click to open customer profile"
+                                    >
+                                        <span className="font-semibold group-hover/cust:underline">{getCustomerDisplayName(job)}</span>
+                                        <span className="text-xs text-slate-400 group-hover/cust:text-primary-600 dark:group-hover/cust:text-primary-400">↗</span>
+                                    </div>
                                 </td>
+                                {(() => {
+                                    let rawLocName = job.locationName || job.serviceLocationName || '';
+                                    let rawLocAddr = job.address || job.serviceAddress || job.locationAddress || '';
+
+                                    let locName = typeof rawLocName === 'string' ? rawLocName : formatAddress(rawLocName);
+                                    let locAddr = formatAddress(rawLocAddr);
+
+                                    if (linkedCust?.serviceLocations?.length) {
+                                        const matchedLoc = linkedCust.serviceLocations.find((l: any) =>
+                                            (job.locationId && l.id === job.locationId) ||
+                                            (locName && (l.name?.trim().toLowerCase() === locName.trim().toLowerCase() || l.propertyName?.trim().toLowerCase() === locName.trim().toLowerCase())) ||
+                                            (locAddr && l.address && locAddr.toLowerCase().includes(formatAddress(l.address).toLowerCase()))
+                                        ) || (linkedCust.serviceLocations.length === 1 ? linkedCust.serviceLocations[0] : null);
+
+                                        if (matchedLoc) {
+                                            if (!locName || locName === getCustomerDisplayName(job)) {
+                                                locName = matchedLoc.propertyName || matchedLoc.name || formatAddress(matchedLoc.address) || locName;
+                                            }
+                                            if (!locAddr) locAddr = formatAddress(matchedLoc.address);
+                                        }
+                                    }
+
+                                    return (
+                                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
+                                            <div className="font-semibold text-slate-800 dark:text-slate-200">{locName || <span className="italic text-slate-400">--</span>}</div>
+                                            {locAddr && (
+                                                <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5 truncate max-w-[200px]" title={locAddr}>
+                                                    {locAddr}
+                                                </div>
+                                            )}
+                                        </td>
+                                    );
+                                })()}
                                 <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400">
                                     {job.appointmentTime ? (
                                         <div>
@@ -526,21 +680,62 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                         <span className="italic text-slate-400">Not scheduled</span>
                                     )}
                                 </td>
-                                <td className="px-6 py-4 font-mono text-xs font-bold text-gray-900 dark:text-white">
-                                    ${(Number(job.invoice.totalAmount) || Number(job.invoice.amount) || 0).toFixed(2)}
+                                <td className="px-6 py-4 font-sans">
+                                    <div className="font-bold text-slate-900 dark:text-white text-sm font-mono">
+                                        ${totalAmount.toFixed(2)}
+                                    </div>
+                                    {amountPaid > 0 && balanceRemaining > 0 && (
+                                        <div className="text-[11px] font-semibold mt-1 space-y-0.5">
+                                            <div className="text-emerald-600 dark:text-emerald-400">
+                                                {t("Paid")}: ${amountPaid.toFixed(2)}
+                                            </div>
+                                            <div className="text-blue-700 dark:text-blue-400 font-bold">
+                                                {t("Remaining")}: ${balanceRemaining.toFixed(2)}
+                                            </div>
+                                        </div>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex flex-wrap gap-1.5 items-center">
-                                        <a 
-                                            href={`/#/invoice/${job.id}`} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer" 
-                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shadow-sm no-underline font-sans"
-                                            title={t("View Invoice")}
+                                        <span 
+                                            onClick={() => setEditingInvoiceId(job.id)} 
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shadow-sm font-sans"
+                                            title={t("Edit / View Invoice")}
                                         >
                                             <FileText size={10} />
-                                            {`INV-${job.invoice.id}`}
-                                        </a>
+                                            {displayInvoiceId}
+                                        </span>
+
+                                        {(() => {
+                                            const deadlineDays = linkedCust?.submissionRules?.submissionDeadlineDays || (job.customerId === 'cust-1787187506048' ? 20 : null);
+                                            if (!deadlineDays) return null;
+                                            
+                                            const isSettled = effectiveStatus === 'Paid' || job.invoice?.status === 'Paid';
+                                            if (isSettled) return null;
+
+                                            const workDateStr = job.checkOutTime || job.appointmentTime || (job as any).completedDate || job.invoice?.invoiceDate || job.createdAt;
+                                            const workDate = workDateStr ? new Date(workDateStr) : new Date();
+                                            const elapsed = Math.max(0, Math.floor((Date.now() - workDate.getTime()) / (1000 * 60 * 60 * 24)));
+                                            const left = deadlineDays - elapsed;
+
+                                            return (
+                                                <span 
+                                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border shadow-xs font-sans ${
+                                                        left < 0 
+                                                            ? 'bg-rose-950 text-rose-200 border-rose-600 animate-pulse font-black' 
+                                                            : left <= 5 
+                                                            ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700 animate-pulse font-black' 
+                                                            : left <= 10 
+                                                            ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700' 
+                                                            : 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                                                    }`}
+                                                    title={`Impact 20-Day Cutoff: ${left < 0 ? `${Math.abs(left)} days past deadline!` : `${left} days left to submit raw PDF invoice`}`}
+                                                >
+                                                    <Clock size={10} />
+                                                    {left < 0 ? `🛑 Past 20d Cutoff (${Math.abs(left)}d)` : `⏱️ ${left}d Cutoff`}
+                                                </span>
+                                            );
+                                        })()}
 
                                         <span 
                                             onClick={() => setViewingJob(job)} 
@@ -548,17 +743,39 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                             title={t("View Job Details")}
                                         >
                                             <Briefcase size={10} />
-                                            {`JOB-${job.id.slice(-6).toUpperCase()}`}
+                                            {job.jobNumber || (job.id.startsWith('Job-') || job.id.startsWith('JOB-') ? job.id : `Job-${job.id.replace(/^job-/, '')}`)}
                                         </span>
 
                                         {linkedProposal && (
                                             <span 
                                                 onClick={() => setViewingProposal(linkedProposal)}
-                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors shadow-sm font-sans"
-                                                title={t("View Proposal")}
+                                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition-colors shadow-sm font-sans ${
+                                                    linkedProposal.status === 'Accepted'
+                                                    ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                                                    : linkedProposal.status === 'Opened'
+                                                    ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/40'
+                                                    : 'bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 hover:bg-purple-100 dark:hover:bg-purple-900/40'
+                                                }`}
+                                                title={`${t("View Proposal")}${linkedProposal.status ? ` (${t(linkedProposal.status)})` : ''}`}
                                             >
                                                 <FileText size={10} />
-                                                {`PROP-${linkedProposal.id.slice(-6).toUpperCase()}`}
+                                                {linkedProposal.proposalNumber || (linkedProposal.id.startsWith('PROP-') ? linkedProposal.id : `PROP-${linkedProposal.id.replace(/^prop-/, '')}`)}
+                                                {linkedProposal.status && (
+                                                    <span className="text-[9px] font-medium opacity-85">
+                                                        • {t(linkedProposal.status)}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        )}
+
+                                        {linkedFollowUpJob && (
+                                            <span 
+                                                onClick={() => setEditingInvoiceId(linkedFollowUpJob.id)} 
+                                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800/50 cursor-pointer hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors shadow-sm font-sans"
+                                                title={t("Rolled into linked repair job - click to view")}
+                                            >
+                                                <FileText size={10} />
+                                                {`Rolled Into ${linkedFollowUpJob.invoice?.id || 'Job #' + linkedFollowUpJob.id.slice(-6)}`}
                                             </span>
                                         )}
 
@@ -619,15 +836,20 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                 <td className="px-6 py-4">
                                     <div className="flex flex-col gap-1 items-start">
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                            job.invoice.status === 'Paid' 
+                                            effectiveStatus === 'Paid' 
                                             ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
-                                            : job.invoice.status === 'Partially Paid' 
-                                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+                                            : effectiveStatus === 'Partially Paid' 
+                                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
                                             : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
                                         }`}>
-                                            {t(job.invoice.status)}
+                                            {t(effectiveStatus)}
                                         </span>
-                                        {(job.invoice.opened || job.invoice.status === 'Opened') && job.invoice.status !== 'Paid' && (
+                                        {isPartiallyPaid && balanceRemaining > 0 && (
+                                            <span className="text-[11px] font-extrabold text-blue-700 dark:text-blue-300 mt-0.5">
+                                                ${balanceRemaining.toFixed(2)} {t("Remaining")}
+                                            </span>
+                                        )}
+                                        {(job.invoice.opened || job.invoice.status === 'Opened') && effectiveStatus !== 'Paid' && (
                                             <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold mt-1 flex items-center gap-1">
                                                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
                                                 {t("Opened")}
@@ -661,17 +883,81 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400">
-                                    {job.invoice.remindersSent && job.invoice.remindersSent.length > 0 ? (
-                                        <div className="flex flex-wrap gap-1 max-w-[150px]">
-                                            {job.invoice.remindersSent.map((dateStr: string, idx: number) => (
-                                                <span key={idx} className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 px-1.5 py-0.5 rounded text-[9px] font-bold">
-                                                    {new Date(dateStr).toLocaleDateString()}
+                                    {(() => {
+                                        const sentTime = job.invoice?.sentAt || (job as any).invoiceSentAt || (job.invoice as any)?.emailSentAt;
+                                        const isOpened = Boolean(job.invoice?.opened || job.invoice?.status === 'Opened');
+                                        const openedAt = job.invoice?.openedAt;
+                                        const reminders: string[] = job.invoice?.remindersSent || [];
+
+                                        if (!sentTime && reminders.length === 0) {
+                                            return (
+                                                <span className="italic text-slate-400 flex items-center gap-1">
+                                                    <Clock size={11} className="shrink-0 text-slate-400" />
+                                                    {t("Draft (Not Sent)")}
                                                 </span>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <span className="italic text-slate-400">{t("None")}</span>
-                                    )}
+                                            );
+                                        }
+
+                                        return (
+                                            <div className="flex flex-col gap-1 items-start max-w-[170px]">
+                                                {sentTime ? (
+                                                    <div className="flex flex-col" title={`Sent: ${new Date(sentTime).toLocaleString()}`}>
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                                                            <Send size={11} className="text-blue-500 shrink-0" />
+                                                            <span>{t("Sent")}: {new Date(sentTime).toLocaleDateString([], { month: 'numeric', day: 'numeric', year: '2-digit' })}</span>
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-3.5">
+                                                            {new Date(sentTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="italic text-slate-400 text-[10px]">{t("Initial send date n/a")}</span>
+                                                )}
+
+                                                {/* Delivery Tracking / Opened State */}
+                                                {isOpened ? (
+                                                    <span 
+                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60"
+                                                        title={openedAt ? `Opened on ${new Date(openedAt).toLocaleString()}` : t("Opened by recipient")}
+                                                    >
+                                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                                                        <span>{t("Opened")}</span>
+                                                        {openedAt && (
+                                                            <span className="text-[9px] font-normal opacity-80">
+                                                                {new Date(openedAt).toLocaleDateString([], { month: 'numeric', day: 'numeric' })}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                ) : sentTime ? (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                                        <span>{t("Unopened")}</span>
+                                                    </span>
+                                                ) : null}
+
+                                                {/* Reminders Sent */}
+                                                {reminders.length > 0 && (
+                                                    <div className="flex flex-col gap-0.5 mt-0.5 pt-0.5 border-t border-slate-100 dark:border-slate-800 w-full">
+                                                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                                                            <Bell size={9} />
+                                                            {t("Reminders")} ({reminders.length}):
+                                                        </span>
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {reminders.map((dateStr: string, idx: number) => (
+                                                                <span 
+                                                                    key={idx} 
+                                                                    className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 px-1.5 py-0.2 rounded text-[9px] font-bold"
+                                                                    title={`Reminder sent ${new Date(dateStr).toLocaleString()}`}
+                                                                >
+                                                                    {new Date(dateStr).toLocaleDateString([], { month: 'numeric', day: 'numeric' })}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </td>
                             </tr>
                             <tr className="bg-slate-50/40 dark:bg-slate-900/10 border-t-0">
@@ -699,7 +985,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
 
                                     <button 
                                         title={t("View Job")} 
-                                        onClick={() => navigate(`/admin/history?histId=${job.id}`)} 
+                                        onClick={() => navigate(`/admin/records?tab=history&histId=${job.id}`)} 
                                         className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-md text-blue-700 dark:text-blue-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/40 transition-colors font-bold shadow-sm"
                                     >
                                         <FileText size={14} />
@@ -713,7 +999,17 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                                         className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white transition-colors font-bold rounded-md shadow-sm"
                                     >
                                         <Send size={14} />
-                                        {t("Send Invoice")}
+                                        {t("Send")}
+                                    </button>
+
+                                    <button 
+                                        aria-label={t("Send via SMS")} 
+                                        title={t("Send Invoice Link via SMS Text")} 
+                                        onClick={(e) => { e.stopPropagation(); setSmsModalJob(job); }} 
+                                        className="flex items-center gap-1.5 px-2.5 py-1 bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/40 rounded-md text-teal-700 dark:text-teal-300 hover:bg-teal-100/80 dark:hover:bg-teal-900/40 transition-colors font-bold shadow-sm"
+                                    >
+                                        <MessageSquare size={14} />
+                                        {t("SMS")}
                                     </button>
 
                                     {job.invoice.status !== 'Paid' && (
@@ -806,7 +1102,9 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     isOpen={recipientModalConfig.isOpen}
                     onClose={() => setRecipientModalConfig({ isOpen: false, job: null })}
                     customerId={recipientModalConfig.job.customerId}
-                    locationId={recipientModalConfig.job.locationId}
+                    locationId={recipientModalConfig.job.locationId || (recipientModalConfig.job as any).serviceLocationId}
+                    locationName={recipientModalConfig.job.locationName || (recipientModalConfig.job as any).siteLocationName || (recipientModalConfig.job as any).address}
+                    documentType="invoice"
                     title={t("Select Reminder Recipients")}
                     onConfirm={(emails, attachPdf) => {
                         handleSendInvoiceReminder(recipientModalConfig.job, emails, attachPdf);
@@ -846,11 +1144,29 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     isOpen={!!activeSignOffJob} 
                     onClose={() => setActiveSignOffJob(null)} 
                     job={activeSignOffJob}
-                    onSave={async (file: any) => {
+                    onSave={async (file: any, updatedFields?: any) => {
                         try {
-                            const existingFiles = activeSignOffJob.files || [];
-                            const updatedFiles = [...existingFiles, file];
-                            await db.collection('jobs').doc(activeSignOffJob.id).update(cleanUndefinedFields({ files: updatedFiles }));
+                            const updatedFiles = updatedFields?.files || [...(activeSignOffJob.files || []), file];
+                            const sheetUrl = file.url || file.dataUrl;
+                            const signOffData = updatedFields?.signOff || {
+                                managerName: file.metadata?.managerName || null,
+                                technicianName: file.metadata?.technicianName || activeSignOffJob.assignedTechnicianName || null,
+                                dateOfService: file.metadata?.dateOfService || new Date().toISOString().split('T')[0],
+                                sheetUrl: sheetUrl,
+                                timestamp: new Date().toISOString(),
+                                status: 'COMPLETED'
+                            };
+                            const updates = {
+                                files: updatedFiles,
+                                signOffSheetUrl: sheetUrl,
+                                signoffSheetUrl: sheetUrl,
+                                customWorkOrderFormUrl: sheetUrl,
+                                signOff: signOffData,
+                                signOffSignature: sheetUrl || 'SIGNED_ON_FILE',
+                                ...(updatedFields || {})
+                            };
+                            await db.collection('jobs').doc(activeSignOffJob.id).update(cleanUndefinedFields(updates));
+                            dispatch({ type: 'UPDATE_JOB', payload: { ...activeSignOffJob, ...updates } });
                             activeSignOffJob.files = updatedFiles;
                             showToast.success(t("Sign-off sheet saved successfully!"));
                         } catch (err) {
@@ -866,6 +1182,43 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     isOpen={!!activeSubBillJob} 
                     onClose={() => setActiveSubBillJob(null)} 
                     job={activeSubBillJob} 
+                />
+            )}
+
+            {/* Standalone Payment / Deposit Link Modal */}
+            {createPaymentLinkOpen && (
+                <CreatePaymentLinkModal
+                    isOpen={createPaymentLinkOpen}
+                    onClose={() => setCreatePaymentLinkOpen(false)}
+                />
+            )}
+
+            {/* Outbound SMS Modal */}
+            {smsModalJob && (
+                <SendSMSModal
+                    isOpen={!!smsModalJob}
+                    onClose={() => setSmsModalJob(null)}
+                    job={smsModalJob}
+                    invoice={smsModalJob?.invoice}
+                    customerId={smsModalJob?.customerId}
+                    recipientName={smsModalJob?.customerName}
+                    recipientPhone={smsModalJob?.customerPhone}
+                />
+            )}
+
+            {isLogPaymentModalOpen && (
+                <LogReceivedPaymentModal
+                    isOpen={isLogPaymentModalOpen}
+                    onClose={() => setIsLogPaymentModalOpen(false)}
+                    jobs={jobs || state.jobs}
+                />
+            )}
+
+            {selectedCustomerId && (
+                <CustomerMasterModal
+                    isOpen={true}
+                    onClose={() => setSelectedCustomerId(null)}
+                    customerId={selectedCustomerId}
                 />
             )}
         </Card>

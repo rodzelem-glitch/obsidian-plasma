@@ -44,14 +44,14 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ customers, onSelectCust
                 <label htmlFor="customer-search-input" className="block text-sm font-medium text-gray-750 dark:text-gray-300">{t("Customer")}</label>
                 
                 {/* Customer Type Filter Buttons */}
-                <div className="flex gap-1">
+                <div className="flex gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-lg border border-slate-200 dark:border-slate-700">
                     <button
                         type="button"
                         onClick={() => setCustomerTypeFilter('All')}
-                        className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all border cursor-pointer ${
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                             customerTypeFilter === 'All'
-                                ? 'bg-indigo-650 text-white border-indigo-650 shadow-sm'
-                                : 'bg-white dark:bg-gray-800 hover:bg-slate-50 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+                                ? 'bg-indigo-600 dark:bg-indigo-500 text-white shadow-sm ring-1 ring-indigo-600'
+                                : 'bg-transparent hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
                         }`}
                     >
                         {t("All")}
@@ -59,10 +59,10 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ customers, onSelectCust
                     <button
                         type="button"
                         onClick={() => setCustomerTypeFilter('Residential')}
-                        className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all border cursor-pointer ${
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                             customerTypeFilter === 'Residential'
-                                ? 'bg-indigo-650 text-white border-indigo-650 shadow-sm'
-                                : 'bg-white dark:bg-gray-800 hover:bg-slate-50 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+                                ? 'bg-indigo-600 dark:bg-indigo-500 text-white shadow-sm ring-1 ring-indigo-600'
+                                : 'bg-transparent hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
                         }`}
                     >
                         {t("Residential")}
@@ -70,10 +70,10 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ customers, onSelectCust
                     <button
                         type="button"
                         onClick={() => setCustomerTypeFilter('Commercial')}
-                        className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all border cursor-pointer ${
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                             customerTypeFilter === 'Commercial'
-                                ? 'bg-indigo-650 text-white border-indigo-650 shadow-sm'
-                                : 'bg-white dark:bg-gray-800 hover:bg-slate-50 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+                                ? 'bg-indigo-600 dark:bg-indigo-500 text-white shadow-sm ring-1 ring-indigo-600'
+                                : 'bg-transparent hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300'
                         }`}
                     >
                         {t("Commercial")}

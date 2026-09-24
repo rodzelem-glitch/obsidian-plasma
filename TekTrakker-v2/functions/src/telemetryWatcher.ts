@@ -132,7 +132,10 @@ export const telemetryWatcherHandler = async (snap: any, context: any) => {
         // Step 2: Retrieve Gemini API key and call Gemini to formulate patch
         const apiKey = await retrieveGeminiApiKey(eventData);
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-3.6-flash' });
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-3.8-flash',
+            generationConfig: { thinkingConfig: { thinkingBudget: 0 } } as any
+        });
 
         const fileContent = findFileContent(affectedFile);
         let prompt = `You are an autonomic self-healing AI coding assistant.

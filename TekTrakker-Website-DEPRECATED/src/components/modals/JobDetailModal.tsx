@@ -510,6 +510,19 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                         ))}
                                     </div>
                                 )}
+                                
+                                {job.invoice && (
+                                    <div className="mt-3 pt-3 border-t border-emerald-200/50 dark:border-emerald-900/30 text-xs space-y-1 text-right">
+                                        <div className="flex justify-between text-emerald-900 dark:text-emerald-200">
+                                            <span className="font-bold uppercase text-[10px]">Subtotal</span>
+                                            <span className="font-black">${((job.invoice.subtotal !== undefined && job.invoice.subtotal !== null) ? job.invoice.subtotal : (job.invoice.items || []).reduce((s, i) => s + (i.quantity * i.unitPrice), 0)).toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex justify-between text-emerald-900 dark:text-emerald-200">
+                                            <span className="font-bold uppercase text-[10px]">Sales Tax ({((job.invoice.taxRate || 0.0825) * 100).toFixed(2).replace(/\.00$/, '')}%)</span>
+                                            <span className="font-black">${((job.invoice.taxAmount !== undefined && job.invoice.taxAmount !== null) ? job.invoice.taxAmount : 0).toFixed(2)}</span>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Customer Signature for Invoice */}
                                 {job.invoiceSignature && (

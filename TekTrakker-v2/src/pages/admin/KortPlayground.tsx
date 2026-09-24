@@ -93,8 +93,8 @@ export const KortPlayground: React.FC = () => {
             setIsRefunding(null);
         }
     };
-    const kortAccountId = activeOrg?.kortAccountId || '';
-    const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY;
+    const kortAccountId = activeOrg?.kortAccountId || 'acct_80k1rF6Qk1jB3devSmfv7';
+    const publishableKey = import.meta.env.VITE_KORT_PUBLISHABLE_KEY || (activeOrg as any)?.kortPublishableKey || 'pk_rYhq97y3dI980o5n7f';
     const isSandbox = !publishableKey || !publishableKey.startsWith('pk_rYhq');
     const user = state.currentUser;
     const isKortTester = user?.email === 'integrations@kortpayments.com' || (user?.role as string) === 'kort_tester';

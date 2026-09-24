@@ -33,6 +33,10 @@ export const TELECOMMUNICATIONS_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organi
 
     // --- 4. NETWORKING EQUIPMENT ---
     { name: 'Network Switch Installation (Mount & Patch)', description: 'Rack mount switch, patch cables, and basic power up (Config separate).', baseCost: 15, avgLabor: 1.0, category: 'Networking' },
+    { name: 'Firewall / Router Configuration', description: 'Configure WAN, VLANs, NAT rules, and firewall security policies.', baseCost: 0, avgLabor: 2.5, category: 'Networking' },
+    { name: 'Managed Switch Configuration', description: 'Configure VLANs, QoS, LACP, and port security on managed switch.', baseCost: 0, avgLabor: 2.0, category: 'Networking' },
+    { name: 'Wireless Point-to-Point Bridge (Pair)', description: 'Mount, align, and configure outdoor wireless PTP bridge for building-to-building connectivity.', baseCost: 350, avgLabor: 4.0, category: 'Networking' },
+    { name: '10G SFP+ Optical Transceiver (Pair)', description: 'Supply and install 10G LC fiber transceiver modules for switch uplinks.', baseCost: 120, avgLabor: 0.25, category: 'Networking' },
     { name: 'Wireless Access Point (WAP) - Installation', description: 'Mount and connect AP to ceiling grid or wall.', baseCost: 25, avgLabor: 1.0, category: 'Networking' },
     { name: 'Network Rack / Cabinet - Wall Mount (12U)', description: 'Assemble and mount wall cabinet for small office.', baseCost: 350, avgLabor: 3.0, category: 'Infrastructure' },
     { name: 'Network Rack - 2 Post Floor (45U)', description: 'Assemble and bolt down standard relay rack.', baseCost: 280, avgLabor: 3.5, category: 'Infrastructure' },
@@ -40,6 +44,9 @@ export const TELECOMMUNICATIONS_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organi
     { name: 'UPS Battery Backup - 1500VA', description: 'Install rack mount UPS.', baseCost: 550, avgLabor: 0.5, category: 'Infrastructure' },
     { name: 'PDU - Vertical Metered', description: 'Install zero-U power strip in cabinet.', baseCost: 180, avgLabor: 0.75, category: 'Infrastructure' },
     { name: 'Ladder Rack / Cable Tray (Per 5ft)', description: 'Install overhead cable conveyance system.', baseCost: 65, avgLabor: 1.5, category: 'Infrastructure' },
+    { name: 'Server Rack Grounding Kit', description: 'Install copper busbar and bond server rack to building grounding electrode system.', baseCost: 65, avgLabor: 1.0, category: 'Infrastructure' },
+    { name: 'In-Building Cellular DAS Amplifier', description: 'Install commercial cell signal booster, donor antenna, and interior distribution antennas.', baseCost: 1200, avgLabor: 8.0, category: 'Infrastructure' },
+    { name: 'Outdoor Fiber Splice Enclosure (NEMA 4X)', description: 'Mount weatherproof fiber optic splice enclosure for exterior/underground transition.', baseCost: 250, avgLabor: 3.0, category: 'Fiber' },
 
     // --- 5. SECURITY & SURVEILLANCE ---
     { name: 'IP Camera Installation - Dome/Bullet', description: 'Mount and aim PoE camera.', baseCost: 15, avgLabor: 1.5, category: 'Security' },
@@ -51,25 +58,25 @@ export const TELECOMMUNICATIONS_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organi
     { name: 'Request to Exit (REX) Sensor', description: 'Install motion sensor for door egress.', baseCost: 65, avgLabor: 1.0, category: 'Security' },
 
     // --- 6. AUDIO / VISUAL ---
-    { name: 'TV / Display Mounting - Up to 55"', description: 'Install bracket and mount display.', baseCost: 45, avgLabor: 1.5, category: 'AV' },
-    { name: 'TV / Display Mounting - 65"-85"', description: 'Heavy duty mounting (2 Man Crew).', baseCost: 85, avgLabor: 2.5, category: 'AV' },
-    { name: 'Projector Ceiling Mount', description: 'Install projector and align image.', baseCost: 120, avgLabor: 2.5, category: 'AV' },
-    { name: 'Projector Screen - Manual Pull', description: 'Mount wall/ceiling screen.', baseCost: 85, avgLabor: 1.5, category: 'AV' },
-    { name: 'Projector Screen - Motorized', description: 'Mount electric screen and wire low voltage trigger.', baseCost: 150, avgLabor: 3.0, category: 'AV' },
-    { name: 'Ceiling Speaker Installation (70V)', description: 'Cut tile and install drop ceiling speaker.', baseCost: 45, avgLabor: 1.0, category: 'AV' },
-    { name: 'Volume Control Installation', description: 'Install wall-mounted attenuation dial.', baseCost: 35, avgLabor: 0.75, category: 'AV' },
-    { name: 'Sound Masking Emitter', description: 'Install white noise emitter in plenum space.', baseCost: 65, avgLabor: 0.75, category: 'AV' },
+    { name: 'TV / Display Mounting - Up to 55"', description: 'Install bracket and mount display.', baseCost: 45, avgLabor: 1.5, category: 'Audio/Visual' },
+    { name: 'TV / Display Mounting - 65"-85"', description: 'Heavy duty mounting (2 Man Crew).', baseCost: 85, avgLabor: 2.5, category: 'Audio/Visual' },
+    { name: 'Projector Ceiling Mount', description: 'Install projector and align image.', baseCost: 120, avgLabor: 2.5, category: 'Audio/Visual' },
+    { name: 'Projector Screen - Manual Pull', description: 'Mount wall/ceiling screen.', baseCost: 85, avgLabor: 1.5, category: 'Audio/Visual' },
+    { name: 'Projector Screen - Motorized', description: 'Mount electric screen and wire low voltage trigger.', baseCost: 150, avgLabor: 3.0, category: 'Audio/Visual' },
+    { name: 'Ceiling Speaker Installation (70V)', description: 'Cut tile and install drop ceiling speaker.', baseCost: 45, avgLabor: 1.0, category: 'Audio/Visual' },
+    { name: 'Volume Control Installation', description: 'Install wall-mounted attenuation dial.', baseCost: 35, avgLabor: 0.75, category: 'Audio/Visual' },
+    { name: 'Sound Masking Emitter', description: 'Install white noise emitter in plenum space.', baseCost: 65, avgLabor: 0.75, category: 'Audio/Visual' },
 
     // --- 7. TELEPHONY / VOIP ---
-    { name: 'VoIP Phone Deployment (Desk)', description: 'Unbox, connect, and verify registration.', baseCost: 0, avgLabor: 0.25, category: 'Voice' },
-    { name: 'Conference Phone Setup', description: 'Install conference room unit and extension mics.', baseCost: 0, avgLabor: 0.75, category: 'Voice' },
-    { name: 'Cross Connect - Voice Block (66/110)', description: 'Punch down cross connect for analog lines.', baseCost: 5, avgLabor: 0.5, category: 'Voice' },
-    { name: 'Analog Gateway (ATA) Config', description: 'Install adapter for fax/legacy devices.', baseCost: 45, avgLabor: 1.0, category: 'Voice' },
+    { name: 'VoIP Phone Deployment (Desk)', description: 'Unbox, connect, and verify registration.', baseCost: 0, avgLabor: 0.25, category: 'Telephony' },
+    { name: 'Conference Phone Setup', description: 'Install conference room unit and extension mics.', baseCost: 0, avgLabor: 0.75, category: 'Telephony' },
+    { name: 'Cross Connect - Voice Block (66/110)', description: 'Punch down cross connect for analog lines.', baseCost: 5, avgLabor: 0.5, category: 'Telephony' },
+    { name: 'Analog Gateway (ATA) Config', description: 'Install adapter for fax/legacy devices.', baseCost: 45, avgLabor: 1.0, category: 'Telephony' },
 
     // --- 8. MISC / LABOR ---
     { name: 'Conduit Installation - EMT 3/4" (Per 10ft)', description: 'Bend and install surface mount conduit.', baseCost: 12, avgLabor: 1.0, category: 'Infrastructure' },
     { name: 'Conduit Installation - PVC 1" (Per 10ft)', description: 'Install underground or exterior conduit.', baseCost: 8, avgLabor: 0.75, category: 'Infrastructure' },
     { name: 'Firestop Penetration', description: 'Seal cable penetration with intumescent fire caulk/putty.', baseCost: 15, avgLabor: 0.5, category: 'Infrastructure' },
-    { name: 'Old Cable Removal (Demo)', description: 'Remove abandoned cabling from ceiling plenum (Per Hour).', baseCost: 0, avgLabor: 1.0, category: 'Demo' },
-    { name: 'Labeling & Documentation', description: 'Professional labeling of faceplates and patch panels.', baseCost: 5, avgLabor: 0.1, category: 'Admin' },
+    { name: 'Old Cable Removal (Demo)', description: 'Remove abandoned cabling from ceiling plenum (Per Hour).', baseCost: 0, avgLabor: 1.0, category: 'Cabling' },
+    { name: 'Labeling & Documentation', description: 'Professional labeling of faceplates and patch panels.', baseCost: 5, avgLabor: 0.1, category: 'Documentation' },
 ];

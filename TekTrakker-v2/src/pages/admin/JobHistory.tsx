@@ -15,10 +15,15 @@ import InvoiceEditorModal from 'components/modals/InvoiceEditorModal';
 import JobDetailModal from 'components/modals/JobDetailModal';
 import JobLinkingModal from 'components/modals/JobLinkingModal';
 import SendEmailModal from 'components/modals/SendEmailModal';
-import { Printer, FileText, Edit, Trash2, CheckCircle, Clock, MapPin, Wrench, Share2, Copy, Search, X, Users, Link2, Send } from 'lucide-react';
+import { UploadPaperFormModal } from 'components/modals/UploadPaperFormModal';
+import { PrintableFormPreviewModal } from 'components/modals/PrintableFormPreviewModal';
+import LocationAuditModal from 'components/modals/LocationAuditModal';
+import CustomerMasterModal from 'components/modals/CustomerMasterModal';
+import { Printer, FileText, Edit, Trash2, CheckCircle, Clock, MapPin, Wrench, Share2, Copy, Search, X, Users, Link2, Send, Upload, User as UserIcon } from 'lucide-react';
 import Textarea from 'components/ui/Textarea';
-import { formatAddress , cleanUndefinedFields } from 'lib/utils';
+import { formatAddress , cleanUndefinedFields, resolveSiteLocationName } from 'lib/utils';
 import { useSearchParams } from 'react-router-dom';
+import { getJobTimeSummary, formatDateTimeForInput } from '../../lib/jobTimeHelper';
 
 const isPhoto = (file: any) => {
     return file.type === 'Photo' || 
@@ -37,6 +42,8 @@ const JobHistory: React.FC = () => {
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     const [linkingJob, setLinkingJob] = useState<Job | null>(null);
     const [sendInvoiceModalConfig, setSendInvoiceModalConfig] = useState<{ isOpen: boolean; job: any | null }>({ isOpen: false, job: null });
+    const [isUploadPaperModalOpen, setIsUploadPaperModalOpen] = useState(false);
+    const [isPrintingBlankStack, setIsPrintingBlankStack] = useState(false);
     
     // Edit State for View Modal
     const [isEditing, setIsEditing] = useState(false);
@@ -46,6 +53,8 @@ const JobHistory: React.FC = () => {
     const [editCheckOut, setEditCheckOut] = useState('');
     const [editTimeOnSite, setEditTimeOnSite] = useState<number | ''>('');
     const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
+    const [auditLocationTarget, setAuditLocationTarget] = useState<{ customerId?: string; locationId?: string } | null>(null);
+    const [selectedCustomerMasterId, setSelectedCustomerMasterId] = useState<string | null>(null);
 
     const toggleJobDetails = (jobId: string) => {
         const next = new Set(expandedJobs);
@@ -142,11 +151,12 @@ const JobHistory: React.FC = () => {
 
     const handleViewJob = (job: Job) => {
         setViewJob(job);
+        const tSummary = getJobTimeSummary(job);
         setEditNotes(job.notes?.internalNotes || '');
         setEditStatus(job.jobStatus);
-        setEditCheckIn(formatDateTimeForInput(job.checkInTime));
-        setEditCheckOut(formatDateTimeForInput(job.checkOutTime));
-        setEditTimeOnSite(job.timeOnSiteMinutes ?? '');
+        setEditCheckIn(tSummary.checkInTime ? formatDateTimeForInput(tSummary.checkInTime) : '');
+        setEditCheckOut(tSummary.checkOutTime ? formatDateTimeForInput(tSummary.checkOutTime) : '');
+        setEditTimeOnSite(tSummary.timeOnSiteMinutes ?? '');
         setIsEditing(false);
     };
 
@@ -435,6 +445,50 @@ const JobHistory: React.FC = () => {
 
             
 
+             {/* PAPER TECH FORM ACTION BANNER */}
+             <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 rounded-3xl shadow-xl border border-indigo-500/20 mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                 <div>
+                     <h3 className="text-lg font-black tracking-tight flex items-center gap-2">
+                         <FileText className="text-indigo-400 w-5 h-5" /> Paper Tech Form & OCR Workflow
+                     </h3>
+                     <p className="text-xs text-slate-300 font-medium mt-1">
+                         Print stacks of blank tech forms for field technicians or upload completed handwritten paper forms for instant OCR parsing.
+                     </p>
+                 </div>
+
+                 <div className="flex items-center gap-3 shrink-0">
+                     <button
+                         type="button"
+                         onClick={() => setIsUploadPaperModalOpen(true)}
+                         className="bg-indigo-600 hover:bg-indigo-500 text-white font-black px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-indigo-500/30 hover:scale-105 active:scale-95 transition-all"
+                     >
+                         <Upload size={14} /> Upload Paper Tech Form
+                     </button>
+                     <button
+                         type="button"
+                         onClick={() => setIsPrintingBlankStack(true)}
+                         className="bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold px-4 py-2.5 rounded-2xl text-xs flex items-center gap-2 hover:scale-105 active:scale-95 transition-all"
+                     >
+                         <Printer size={14} /> Print Blank Forms Stack
+                     </button>
+                 </div>
+             </div>
+
+             <UploadPaperFormModal
+                 isOpen={isUploadPaperModalOpen}
+                 onClose={() => setIsUploadPaperModalOpen(false)}
+                 existingJobs={state.jobs || []}
+                 customers={state.customers || []}
+                 organizationId={state.currentOrganization?.id || ''}
+             />
+
+             <PrintableFormPreviewModal
+                 isOpen={isPrintingBlankStack}
+                 onClose={() => setIsPrintingBlankStack(false)}
+                 organization={state.currentOrganization}
+                 defaultCopies={5}
+             />
+
             <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2 mb-2">
                     <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-1">
@@ -479,8 +533,8 @@ const JobHistory: React.FC = () => {
                         const cust = (state.customers || []).find((c: any) => c.id === job.customerId || c.name === job.customerName);
                         const loc = cust?.serviceLocations?.find((l: any) => l.id === job.locationId || l.address === job.address || l.name === job.locationName || l.propertyName === job.locationName);
 
-                        const payingCustomer = cust?.name || (cust as any)?.companyName || job.customerName || 'Customer';
-                        const siteLocationName = job.locationName || loc?.name || loc?.propertyName || '';
+                        const payingCustomer = job.customerName || cust?.name || (cust as any)?.companyName || 'Customer';
+                        const siteLocationName = resolveSiteLocationName(job, loc);
                         const siteAddress = formatAddress(job.address || loc?.address || '');
 
                         const apptDate = job.appointmentTime ? new Date(job.appointmentTime) : null;
@@ -491,19 +545,10 @@ const JobHistory: React.FC = () => {
                             ? apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
                             : '';
 
-                        const checkIn = job.checkInTime || (job.timeEntries && job.timeEntries[0]?.checkInTime);
-                        const checkOut = job.checkOutTime || (job.timeEntries && job.timeEntries[0]?.checkOutTime);
-
-                        const formattedIn = checkIn ? new Date(checkIn).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
-                        const formattedOut = checkOut ? new Date(checkOut).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
-
-                        const totalMinutes = job.timeOnSiteMinutes !== undefined && job.timeOnSiteMinutes > 0 
-                            ? job.timeOnSiteMinutes 
-                            : (checkIn && checkOut ? Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 60000) : 0);
-
-                        const formattedDuration = totalMinutes > 0 
-                            ? (totalMinutes >= 60 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : `${totalMinutes}m`)
-                            : null;
+                        const timeSummary = getJobTimeSummary(job);
+                        const formattedIn = timeSummary.formattedInTime;
+                        const formattedOut = timeSummary.formattedOutTime;
+                        const formattedDuration = timeSummary.formattedDuration;
 
                         return (
                             <tr key={job.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all cursor-pointer border-b border-slate-100 dark:border-slate-700/50" onClick={() => handleViewJob(job)}>
@@ -516,7 +561,7 @@ const JobHistory: React.FC = () => {
                                             </span>
                                         </div>
 
-                                        {(formattedIn || formattedOut || formattedDuration) ? (
+                                        {timeSummary.hasTimeRecorded ? (
                                             <div className="pt-1 border-t border-slate-100 dark:border-slate-700/60 space-y-0.5">
                                                 <span className="text-[9px] font-extrabold uppercase text-emerald-600 dark:text-emerald-400 tracking-wider flex items-center gap-1">
                                                     <Clock size={9} /> Site Visit
@@ -524,7 +569,7 @@ const JobHistory: React.FC = () => {
                                                 <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-300">
                                                     {formattedIn && <span className="text-emerald-700 dark:text-emerald-400">In: {formattedIn}</span>}
                                                     {formattedOut && <span className="text-slate-600 dark:text-slate-400">Out: {formattedOut}</span>}
-                                                    {formattedIn && !formattedOut && <span className="text-amber-600 dark:text-amber-400 font-black text-[9px] uppercase animate-pulse">In Progress</span>}
+                                                    {timeSummary.status === 'in_progress' && <span className="text-amber-600 dark:text-amber-400 font-black text-[9px] uppercase animate-pulse">In Progress</span>}
                                                 </div>
                                                 {formattedDuration && (
                                                     <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 block">
@@ -533,18 +578,33 @@ const JobHistory: React.FC = () => {
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="pt-0.5 text-[10px] text-slate-400 dark:text-slate-500 italic">
-                                                No check-in recorded
+                                            <div className="pt-0.5 text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                                <Clock size={10} className="text-slate-400" />
+                                                <span>In/Out: <em className="not-italic text-slate-500 font-semibold">Not Logged</em></span>
                                             </div>
                                         )}
                                     </div>
                                 </td>
                                 <td className="px-6 py-4" data-sort-value={payingCustomer}>
                                     <div className="space-y-1.5 max-w-[220px]">
-                                        <div>
-                                            <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Customer</span>
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="text-slate-900 dark:text-white font-black text-sm tracking-tight truncate block max-w-[160px]" title={payingCustomer}>
+                                        <div 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const targetCustId = job.customerId || (loc as any)?.customerId || (state.customers || []).find((c: any) => c.name?.toLowerCase().trim() === payingCustomer.toLowerCase().trim())?.id;
+                                                if (targetCustId) {
+                                                    setSelectedCustomerMasterId(targetCustId);
+                                                } else {
+                                                    showToast.info("No customer profile found for this record.");
+                                                }
+                                            }}
+                                            className="cursor-pointer group/cust hover:bg-blue-50/70 dark:hover:bg-blue-950/50 p-1 -mx-1 rounded-lg transition-colors"
+                                            title="Click to open customer profile and details"
+                                        >
+                                            <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider flex items-center gap-1 group-hover/cust:text-primary-600 dark:group-hover/cust:text-primary-400">
+                                                <UserIcon size={9} /> Customer ↗
+                                            </span>
+                                            <div className="flex items-center gap-1.5 justify-between">
+                                                <span className="text-slate-900 dark:text-white font-black text-sm tracking-tight truncate block max-w-[160px] group-hover/cust:text-primary-600 dark:group-hover/cust:text-primary-400 group-hover/cust:underline" title={payingCustomer}>
                                                     {payingCustomer}
                                                 </span>
                                                 <button 
@@ -557,17 +617,27 @@ const JobHistory: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="pt-1 border-t border-slate-100 dark:border-slate-700/60">
-                                            <span className="text-[9px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400 tracking-wider flex items-center gap-1">
-                                                <MapPin size={9} /> Site Location
+                                        <div 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setAuditLocationTarget({
+                                                    customerId: job.customerId,
+                                                    locationId: job.locationId || loc?.id || 'default'
+                                                });
+                                            }}
+                                            className="pt-1 border-t border-slate-100 dark:border-slate-700/60 cursor-pointer group/loc hover:bg-indigo-50/70 dark:hover:bg-indigo-950/50 p-1 -mx-1 rounded-lg transition-colors"
+                                            title="Click to view all work history, jobs & documents for this site location"
+                                        >
+                                            <span className="text-[9px] font-extrabold uppercase text-indigo-600 dark:text-indigo-400 tracking-wider flex items-center gap-1 group-hover/loc:underline">
+                                                <MapPin size={9} /> Site Location ↗
                                             </span>
                                             {siteLocationName && siteLocationName !== payingCustomer && (
-                                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate" title={siteLocationName}>
+                                                <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 block truncate group-hover/loc:text-indigo-600" title={siteLocationName}>
                                                     {siteLocationName}
                                                 </span>
                                             )}
                                             {siteAddress && (
-                                                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block truncate" title={siteAddress}>
+                                                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block truncate group-hover/loc:text-indigo-600" title={siteAddress}>
                                                     {siteAddress}
                                                 </span>
                                             )}
@@ -584,20 +654,54 @@ const JobHistory: React.FC = () => {
                                         {expandedJobs.has(job.id) && (
                                             <div className="mt-3 p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5 max-w-sm text-xs text-slate-600 dark:text-slate-300 shadow-inner" onClick={(e) => e.stopPropagation()}>
                                                 <div className="grid grid-cols-2 gap-2 text-[11px]">
+                                                    <div className="col-span-2 p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                                        <span className="text-slate-400 font-extrabold uppercase block text-[9px] tracking-wider mb-1 flex items-center gap-1">
+                                                            <Clock size={10} className="text-indigo-600 dark:text-indigo-400" /> Site Visit Time Audit
+                                                        </span>
+                                                        <div className="flex flex-wrap items-center justify-between text-[11px] gap-2">
+                                                            <span>In: <strong className="text-emerald-600 dark:text-emerald-400">{timeSummary.formattedInTime || 'Not Logged'}</strong></span>
+                                                            <span>Out: <strong className="text-rose-600 dark:text-rose-400">{timeSummary.formattedOutTime || (timeSummary.status === 'in_progress' ? 'Active' : 'Not Logged')}</strong></span>
+                                                            {timeSummary.formattedDuration && (
+                                                                <span className="font-extrabold text-indigo-600 dark:text-indigo-400">Duration: {timeSummary.formattedDuration}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                             {(job.poNumber || (job.invoice as any)?.poNumber) && (
                                                 <div>
                                                     <span className="text-slate-400 font-medium uppercase block text-[9px] tracking-wider">PO Number</span>
                                                     <span className="font-mono font-bold">{job.poNumber || (job.invoice as any)?.poNumber}</span>
                                                 </div>
                                             )}
-                                            {job.proposalId && (
-                                                <div>
-                                                    <span className="text-slate-400 font-medium uppercase block text-[9px] tracking-wider">Proposal</span>
-                                                    <a href={`/#/proposal-view/${job.proposalId}`} target="_blank" rel="noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline font-bold flex items-center gap-1">
-                                                        <FileText size={10} /> #{job.proposalId.substring(0, 8)}
-                                                    </a>
-                                                </div>
-                                            )}
+                                            {(() => {
+                                                const relatedProps = (state.proposals || []).filter((p: any) => 
+                                                    p.id === job.proposalId || 
+                                                    p.id === job.projectId || 
+                                                    p.jobId === job.id || 
+                                                    job.linkedProposalIds?.includes(p.id) || 
+                                                    p.linkedJobIds?.includes(job.id)
+                                                );
+                                                if (relatedProps.length === 0 && !job.proposalId) return null;
+                                                return (
+                                                    <div>
+                                                        <span className="text-slate-400 font-medium uppercase block text-[9px] tracking-wider">
+                                                            {relatedProps.length > 1 ? `Proposals (${relatedProps.length})` : 'Proposal'}
+                                                        </span>
+                                                        <div className="flex flex-wrap gap-1.5 mt-0.5">
+                                                            {relatedProps.length > 0 ? (
+                                                                relatedProps.map((p: any) => (
+                                                                    <a key={`hist-prop-${p.id}`} href={`/#/proposal-view/${p.id}`} target="_blank" rel="noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline font-bold flex items-center gap-1">
+                                                                        <FileText size={10} /> #{p.id}
+                                                                    </a>
+                                                                ))
+                                                            ) : (
+                                                                <a href={`/#/proposal-view/${job.proposalId}`} target="_blank" rel="noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline font-bold flex items-center gap-1">
+                                                                    <FileText size={10} /> #{job.proposalId.substring(0, 8)}
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                             {job.customerPhone && (
                                                 <div>
                                                     <span className="text-slate-400 font-medium uppercase block text-[9px] tracking-wider">Phone</span>
@@ -683,28 +787,50 @@ const JobHistory: React.FC = () => {
                             <td className="px-6 py-4">
                                 <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full ${
                                     job.jobStatus === 'Completed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' : 
+                                    (job.jobStatus === 'Needs Review' || job.needsAdminVerification) ? 'bg-amber-400 text-slate-950 font-black animate-pulse border border-amber-500 shadow-sm' :
                                     job.jobStatus === 'In Progress' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' : 
                                     job.jobStatus === 'Needs Follow-up' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : 
                                     'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-400'
                                 }`}>
-                                    {job.jobStatus}
+                                    {job.jobStatus === 'Needs Review' ? '⚠️ Needs Review' : job.jobStatus}
                                 </span>
                             </td>
                             <td className="px-6 py-4" data-sort-value={job.invoice ? (job.invoice.totalAmount || job.invoice.amount || 0) : 0}>
-                                {job.invoice ? (
-                                    <div className="flex flex-col gap-1 items-start">
-                                        <span className="font-extrabold text-slate-800 dark:text-slate-200 text-sm tracking-tight">
-                                            ${(job.invoice.totalAmount || job.invoice.amount || 0).toFixed(2)}
-                                        </span>
-                                        <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest rounded-full border ${
-                                            job.invoice?.status === 'Paid' 
-                                                ? 'bg-emerald-50 text-emerald-700 border-emerald-250/20 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30' 
-                                                : 'bg-amber-50 text-amber-700 border-amber-250/20 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30'
-                                        }`}>
-                                            {job.invoice?.status || 'Draft'}
-                                        </span>
-                                    </div>
-                                ) : (
+                                {job.invoice ? (() => {
+                                    const invTotal = job.invoice.totalAmount || job.invoice.amount || 0;
+                                    const rawInvPaid = Number(job.invoice.amountPaid || job.invoice.depositPaidAmount || (job.invoice.depositPaid ? (job.invoice.depositAmount || 0) : 0) || 0);
+                                    const invPaid = job.invoice.status === 'Paid' ? (rawInvPaid > 0 ? rawInvPaid : invTotal) : rawInvPaid;
+                                    const invPaidClamped = Math.min(invTotal, Math.max(0, invPaid));
+                                    const invRemaining = Math.max(0, invTotal - invPaidClamped);
+                                    const isPartiallyPaid = (job.invoice.status === 'Partially Paid') || (invPaidClamped > 0 && invRemaining > 0);
+                                    const effectiveInvStatus = job.invoice.status === 'Paid'
+                                        ? 'Paid'
+                                        : isPartiallyPaid
+                                        ? 'Partially Paid'
+                                        : (job.invoice.status || 'Draft');
+
+                                    return (
+                                        <div className="flex flex-col gap-1 items-start">
+                                            <span className="font-extrabold text-slate-800 dark:text-slate-200 text-sm tracking-tight">
+                                                ${invTotal.toFixed(2)}
+                                            </span>
+                                            {invPaidClamped > 0 && invRemaining > 0 && (
+                                                <div className="text-[10px] font-semibold text-blue-700 dark:text-blue-400">
+                                                    Rem: ${invRemaining.toFixed(2)}
+                                                </div>
+                                            )}
+                                            <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest rounded-full border ${
+                                                effectiveInvStatus === 'Paid' 
+                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-250/20 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30' 
+                                                    : effectiveInvStatus === 'Partially Paid'
+                                                    ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/30'
+                                                    : 'bg-amber-50 text-amber-700 border-amber-250/20 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30'
+                                            }`}>
+                                                {effectiveInvStatus}
+                                            </span>
+                                        </div>
+                                    );
+                                })() : (
                                     <span className="text-slate-400 text-xs italic">No Invoice</span>
                                 )}
                             </td>
@@ -841,6 +967,21 @@ const JobHistory: React.FC = () => {
                     isOpen={!!linkingJob} 
                     onClose={() => setLinkingJob(null)} 
                     job={linkingJob} 
+                />
+            )}
+
+            <LocationAuditModal
+                isOpen={!!auditLocationTarget}
+                onClose={() => setAuditLocationTarget(null)}
+                customerId={auditLocationTarget?.customerId}
+                locationId={auditLocationTarget?.locationId}
+            />
+
+            {selectedCustomerMasterId && (
+                <CustomerMasterModal
+                    isOpen={true}
+                    onClose={() => setSelectedCustomerMasterId(null)}
+                    customerId={selectedCustomerMasterId}
                 />
             )}
         </div>

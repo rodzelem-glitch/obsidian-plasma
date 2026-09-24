@@ -1,20 +1,22 @@
 import showToast from "lib/toast";
-import { matchTier, displayTierName , cleanUndefinedFields } from 'lib/utils';
-import React, { useEffect, useState, useRef } from 'react';
+import { matchTier, displayTierName, cleanUndefinedFields, getAvailableProposalTiers, getProposalTierLabel } from 'lib/utils';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Shield } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from 'lib/firebase';
-import type { Proposal, Organization } from 'types';
+import type { Proposal, Organization, Customer } from 'types';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
 import SignaturePad, { SignaturePadHandle } from 'components/ui/SignaturePad';
+import { computeCanonicalFinancials } from 'lib/financialCalculator';
 
 const PublicProposal: React.FC = () => {
     const { proposalId } = useParams<{ proposalId: string }>();
     const navigate = useNavigate();
     const [proposal, setProposal] = useState<Proposal | null>(null);
+    const [customer, setCustomer] = useState<Customer | null>(null);
     const [organization, setOrganization] = useState<Organization | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -33,14 +35,6 @@ const PublicProposal: React.FC = () => {
         const fetchProposal = async () => {
             if (!proposalId) { setError("Invalid Link"); setLoading(false); return; }
             try {
-                if (!auth.currentUser) {
-                    try {
-                        await auth.signInAnonymously();
-                    } catch (e: any) {
-                        console.warn("Anonymous sign-in not available, proceeding unauthenticated:", e.message || e);
-                    }
-                }
-
                 const doc = await db.collection('proposals').doc(proposalId).get();
                 if (!doc.exists) throw new Error("Proposal not found.");
                 
@@ -50,6 +44,18 @@ const PublicProposal: React.FC = () => {
                 }
                 setProposal(data);
                 if (data.selectedOption) setSelectedOption(data.selectedOption);
+
+                if (data.customerId) {
+                    try {
+                        const custDoc = await db.collection('customers').doc(data.customerId).get();
+                        if (custDoc.exists) {
+                            const custData = { ...custDoc.data(), id: custDoc.id } as Customer;
+                            setCustomer(custData);
+                        }
+                    } catch (err) {
+                        console.warn("Could not fetch customer for proposal:", err);
+                    }
+                }
 
                 if (data.organizationId) {
                     const orgDoc = await db.collection('organizations').doc(data.organizationId).get();
@@ -91,7 +97,13 @@ const PublicProposal: React.FC = () => {
                                         await sendNotification(recipientId, {
                                             title: 'Potential Proposal Share!',
                                             body: notificationContent,
-                                            type: 'proposal_share_warning'
+                                            type: 'proposal_share_warning',
+                                            link: `/proposal-view/${data.id}`,
+                                            data: {
+                                                proposalId: data.id,
+                                                customerId: data.customerId,
+                                                type: 'proposal_share_warning'
+                                            }
                                         }, data.organizationId);
 
                                         await db.collection('messages').add(cleanUndefinedFields({
@@ -155,7 +167,14 @@ const PublicProposal: React.FC = () => {
         return { subtotal, taxAmount, total: subtotal + taxAmount, items: tierItems };
     };
 
-    const availableTiers = ['Basic', 'Premium', 'Platinum'].filter(t => calculateTierTotal(t).items.length > 0);
+    const availableTiers = useMemo(() => {
+        if (!proposal) return [];
+        return getAvailableProposalTiers(proposal);
+    }, [proposal]);
+
+    const getTierLabel = (tierName: string) => {
+        return getProposalTierLabel(proposal, tierName);
+    };
 
     const handleAcceptProposal = async () => {
         if (!proposal || !sigPadRef.current || sigPadRef.current.isEmpty()) {
@@ -166,44 +185,115 @@ const PublicProposal: React.FC = () => {
         const signatureDataUrl = sigPadRef.current.toDataURL();
         try {
             const finalTier = selectedOption || (availableTiers[0] || 'Basic');
-            const { subtotal, taxAmount, total, items: tierItems } = calculateTierTotal(finalTier);
+            const tierCalc = calculateTierTotal(finalTier);
+            const rawSubtotal = tierCalc.subtotal > 0 ? tierCalc.subtotal : (proposal.subtotal || proposal.total || 0);
+            const rawTaxAmount = tierCalc.taxAmount;
+            const rawTotal = tierCalc.total > 0 ? tierCalc.total : (proposal.total || rawSubtotal);
+            const tierItems = tierCalc.items.length > 0 ? tierCalc.items : (proposal.items || []);
+
+            const invoiceItems = tierItems.map((pItem: any) => ({
+                id: pItem.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                name: pItem.name || pItem.description || 'Proposal Item',
+                description: pItem.description || pItem.name || 'Proposal Item',
+                details: pItem.details || pItem.description || '',
+                notes: pItem.notes || '',
+                scopeOfWork: pItem.scopeOfWork || '',
+                subItems: Array.isArray(pItem.subItems) ? pItem.subItems : [],
+                quantity: Number(pItem.quantity || 1),
+                unitPrice: Number(pItem.price || pItem.unitPrice || 0),
+                price: Number(pItem.price || pItem.unitPrice || 0),
+                total: Number(pItem.total || ((pItem.price || pItem.unitPrice || 0) * (pItem.quantity || 1))),
+                type: (pItem.type as any) || 'Part',
+                partCost: pItem.partCost,
+                laborHours: pItem.laborHours,
+                hourlyRate: pItem.hourlyRate,
+                margin: pItem.margin,
+                taxable: pItem.taxable !== false
+            }));
+
+            const canonical = computeCanonicalFinancials({
+                items: invoiceItems,
+                subtotal: rawSubtotal,
+                taxAmount: rawTaxAmount,
+                depositType: (proposal as any).depositType,
+                depositValue: (proposal as any).depositValue,
+                depositAmount: (proposal as any).depositAmount,
+                depositPaid: (proposal as any).depositPaid,
+                depositPaidAmount: (proposal as any).depositPaidAmount,
+                depositNotes: (proposal as any).depositNotes,
+                paymentTerms: (proposal as any).paymentTerms || 'net_30',
+                amountPaid: (proposal as any).amountPaid || 0,
+                additionalFeePercent: (proposal as any).additionalFeePercent || 0,
+                additionalFeeName: (proposal as any).additionalFeeName || '',
+                additionalFeeAmount: (proposal as any).additionalFeeAmount || 0,
+            });
 
             let invoiceId = proposal.invoiceId || null;
 
-            // If jobId is set on proposal, update the associated job's invoice
+            // If jobId is set on proposal, update the associated job's invoice (unless job is completed/paid)
             if (proposal.jobId) {
                 try {
                     const jobDoc = await db.collection('jobs').doc(proposal.jobId).get();
                     if (jobDoc.exists) {
                         const jobData = jobDoc.data();
                         const existingInvoice = jobData?.invoice || {};
-                        invoiceId = existingInvoice.id || null;
-                        
-                        const invoiceItems = tierItems.map((pItem: any) => ({
-                            id: pItem.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                            description: pItem.name || pItem.description || 'Proposal Item',
-                            quantity: pItem.quantity || 1,
-                            unitPrice: pItem.price || 0,
-                            total: pItem.total || ((pItem.price || 0) * (pItem.quantity || 1)),
-                            type: (pItem.type as any) || 'Part'
-                        }));
+                        const isJobCompletedOrPaid = jobData?.jobStatus === 'Completed' || jobData?.jobStatus === 'Archived' || existingInvoice?.status === 'Paid';
 
-                        const updatedInvoice = {
-                            ...existingInvoice,
-                            proposalId: proposal.id,
-                            items: invoiceItems,
-                            subtotal,
-                            taxAmount,
-                            totalAmount: total,
-                            amount: total,
-                            status: existingInvoice.status || 'Unpaid'
-                        };
+                        if (isJobCompletedOrPaid) {
+                            // Do not overwrite completed/paid diagnostic visit invoice; link proposal to job
+                            const existingLinked = Array.isArray(jobData?.linkedProposalIds) ? jobData.linkedProposalIds : [];
+                            if (!existingLinked.includes(proposal.id)) {
+                                await db.collection('jobs').doc(proposal.jobId).update(cleanUndefinedFields({
+                                    linkedProposalIds: [...existingLinked, proposal.id],
+                                    updatedAt: new Date().toISOString()
+                                }));
+                            }
+                        } else {
+                            const targetJobId = proposal.jobId || jobDoc.id || 'JOB';
+                            const cleanJobSuffix = targetJobId.replace(/^JOB-?/i, '');
+                            invoiceId = existingInvoice.id || `INV-${cleanJobSuffix}`;
+                            const invoiceNumber = existingInvoice.invoiceNumber || existingInvoice.number || cleanJobSuffix;
 
-                        await db.collection('jobs').doc(proposal.jobId).update(cleanUndefinedFields({
-                            proposalId: proposal.id,
-                            invoice: updatedInvoice,
-                            updatedAt: new Date().toISOString()
-                        }));
+                            const updatedInvoice = {
+                                ...existingInvoice,
+                                id: invoiceId,
+                                invoiceNumber: invoiceNumber,
+                                number: invoiceNumber,
+                                proposalId: proposal.id,
+                                proposalNumber: proposal.proposalNumber || proposal.id,
+                                poNumber: proposal.poNumber || existingInvoice.poNumber || jobData?.poNumber || jobData?.workOrderNumber || '',
+                                recommendations: proposal.recommendations || existingInvoice.recommendations || '',
+                                items: invoiceItems,
+                                subtotal: canonical.subtotal,
+                                taxRate: canonical.taxRate,
+                                taxAmount: canonical.taxAmount,
+                                totalAmount: canonical.grandTotal,
+                                grandTotal: canonical.grandTotal,
+                                amount: canonical.grandTotal,
+                                depositType: canonical.depositType,
+                                depositValue: canonical.depositValue,
+                                depositAmount: canonical.depositRequired,
+                                depositRequired: canonical.depositRequired,
+                                depositPaid: canonical.depositPaid,
+                                depositPaidAmount: canonical.depositPaidAmount,
+                                depositNotes: canonical.depositNotes,
+                                amountPaid: canonical.amountPaid,
+                                balanceDue: canonical.balanceDue,
+                                balanceRemaining: canonical.balanceRemaining,
+                                amountDueToday: canonical.amountDueToday,
+                                amountDueNet: canonical.amountDueNet,
+                                paymentTerms: canonical.paymentTerms,
+                                paymentTermsLabel: canonical.paymentTermsLabel,
+                                financialStatus: canonical.financialStatus,
+                                status: existingInvoice.status || 'Unpaid'
+                            };
+
+                            await db.collection('jobs').doc(proposal.jobId).update(cleanUndefinedFields({
+                                proposalId: proposal.id,
+                                invoice: updatedInvoice,
+                                updatedAt: new Date().toISOString()
+                            }));
+                        }
                     }
                 } catch (jobErr) {
                     console.error("Error updating associated job's invoice:", jobErr);
@@ -214,35 +304,52 @@ const PublicProposal: React.FC = () => {
                 status: 'Accepted',
                 signatureDataUrl,
                 selectedOption: finalTier,
-                subtotal,
-                taxAmount,
-                total,
+                subtotal: canonical.subtotal,
+                taxRate: canonical.taxRate,
+                taxAmount: canonical.taxAmount,
+                total: canonical.grandTotal,
+                totalAmount: canonical.grandTotal,
+                grandTotal: canonical.grandTotal,
+                amount: canonical.grandTotal,
+                depositRequired: canonical.depositRequired,
+                depositPaid: canonical.depositPaid,
+                depositPaidAmount: canonical.depositPaidAmount,
+                amountPaid: canonical.amountPaid,
+                balanceDue: canonical.balanceDue,
+                amountDueToday: canonical.amountDueToday,
+                amountDueNet: canonical.amountDueNet,
+                paymentTermsLabel: canonical.paymentTermsLabel,
+                financialStatus: canonical.financialStatus,
                 invoiceId
             }));
 
             // --- NOTIFY FIELD TECHNICIAN IMMEDIATELY ---
             const recipientId = proposal.technicianId || proposal.createdById;
-            const notificationContent = `🎉 ${proposal.customerName || 'Your customer'} just signed and accepted the "${finalTier}" option of Proposal ${proposal.id} for $${total.toFixed(2)}!`;
+            const notificationContent = `🎉 ${proposal.customerName || 'Your customer'} just signed and accepted the "${finalTier}" option of Proposal ${proposal.id} for $${canonical.grandTotal.toFixed(2)}!`;
 
             try {
                 const { sendNotification, notifyAdmins } = await import('lib/notificationService');
                 
+                const notifPayload = {
+                    title: 'Proposal Accepted!',
+                    body: notificationContent,
+                    type: 'proposal_accepted',
+                    link: `/proposal-view/${proposal.id}`,
+                    data: {
+                        proposalId: proposal.id,
+                        customerId: proposal.customerId,
+                        type: 'proposal_accepted'
+                    }
+                };
+
                 // Notify the technician via Push Notification
                 if (recipientId) {
-                    await sendNotification(recipientId, {
-                        title: 'Proposal Accepted!',
-                        body: notificationContent,
-                        type: 'proposal_accepted'
-                    }, proposal.organizationId || organization?.id);
+                    await sendNotification(recipientId, notifPayload, proposal.organizationId || organization?.id);
                 }
                 
                 // Notify Admins via Push Notification
                 if (proposal.organizationId || organization?.id) {
-                    await notifyAdmins(proposal.organizationId || organization?.id || '', {
-                        title: 'Proposal Accepted!',
-                        body: notificationContent,
-                        type: 'proposal_accepted'
-                    });
+                    await notifyAdmins(proposal.organizationId || organization?.id || '', notifPayload);
                 }
                 
                 // Keep the old messages alert system for fallback
@@ -264,7 +371,18 @@ const PublicProposal: React.FC = () => {
             const firstDeviceToken = `dev-prop-share-${proposal.id}-${Date.now()}-${Math.floor(Math.random()*10000)}`;
             localStorage.setItem(`tektrakker_proposal_device_${proposal.id}`, firstDeviceToken);
 
-            setProposal({ ...proposal, status: 'Accepted', selectedOption: finalTier, signatureDataUrl, subtotal, taxAmount, total, invoiceId });
+            setProposal({ 
+                ...proposal, 
+                status: 'Accepted', 
+                selectedOption: finalTier, 
+                signatureDataUrl, 
+                subtotal: canonical.subtotal, 
+                taxAmount: canonical.taxAmount, 
+                total: canonical.grandTotal, 
+                totalAmount: canonical.grandTotal,
+                grandTotal: canonical.grandTotal,
+                invoiceId 
+            });
             setIsSigningOpen(false);
         } catch (e: any) {
             showToast.warn('Failed to accept: ' + e.message);
@@ -273,11 +391,27 @@ const PublicProposal: React.FC = () => {
         }
     };
 
+    const previewProposal = useMemo(() => {
+        if (!proposal) return null;
+        const pAny = proposal as any;
+        const matchingLoc = (customer?.serviceLocations || []).find((l: any) => 
+            (proposal.locationId && l.id === proposal.locationId) ||
+            (pAny.serviceLocationName && (l.name?.toLowerCase() === pAny.serviceLocationName.toLowerCase() || l.propertyName?.toLowerCase() === pAny.serviceLocationName.toLowerCase()))
+        );
+
+        return { 
+            ...proposal, 
+            selectedOption: selectedOption || proposal.selectedOption,
+            customerAddress: pAny.customerAddress || customer?.address,
+            billToAddress: pAny.billToAddress || (matchingLoc?.billToSameAsSite ? (matchingLoc.billToAddress || matchingLoc.address) : null) || (customer as any)?.billingAddress || customer?.address,
+            billToName: pAny.billToName || (matchingLoc?.billToSameAsSite ? (matchingLoc.billToName || matchingLoc.propertyName || matchingLoc.name) : null) || (customer as any)?.billingCompany || customer?.name,
+            serviceLocationName: pAny.serviceLocationName || pAny.locationName || pAny.siteName || matchingLoc?.propertyName || matchingLoc?.name || proposal.customerName,
+            serviceLocationAddress: pAny.serviceLocationAddress || pAny.locationAddress || pAny.siteAddress || matchingLoc?.address || customer?.address
+        };
+    }, [proposal, selectedOption, customer]);
+
     if (loading) return <div className="p-4 md:p-10 text-center">Loading Proposal...</div>;
     if (error) return <div className="p-4 md:p-10 text-center text-red-500">{error}</div>;
-    if (!proposal) return null;
-
-    const previewProposal = { ...proposal, selectedOption: selectedOption || proposal.selectedOption };
     const needsTierSelection = proposal?.status !== 'Accepted' && !selectedOption && availableTiers.length > 1;
 
     const showProposalNdaGate = false; // Disable NDA Gate on standard B2C/residential proposals to avoid sales friction
@@ -521,15 +655,28 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                 onSelectTier={proposal.status !== 'Accepted' ? setSelectedOption : undefined}
             />
             
-            {proposal.status !== 'Accepted' && !needsTierSelection && (
-                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t flex justify-center gap-4 z-50 shadow-lg animate-fade-in-up">
+            {proposal.status !== 'Accepted' && (
+                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/95 backdrop-blur border-t flex flex-wrap items-center justify-center gap-4 z-50 shadow-xl animate-fade-in-up">
                     {availableTiers.length > 1 && (
-                        <Button variant="secondary" onClick={() => setSelectedOption(null)} className="h-12 px-6 font-bold">
-                            &larr; Change Package
-                        </Button>
+                        <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+                            {availableTiers.map(tName => (
+                                <button
+                                    key={tName}
+                                    type="button"
+                                    onClick={() => setSelectedOption(tName)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                                        matchTier(tName, selectedOption || availableTiers[0])
+                                            ? 'bg-primary-600 text-white shadow-sm'
+                                            : 'text-slate-600 hover:bg-white'
+                                    }`}
+                                >
+                                    {getTierLabel(tName)} (${(calculateTierTotal(tName).total || proposal.total || 0).toLocaleString(undefined, {maximumFractionDigits: 0})})
+                                </button>
+                            ))}
+                        </div>
                     )}
-                    <Button onClick={() => setIsSigningOpen(true)} className="bg-[#1D4ED8] hover:bg-[#1e40af] font-black h-12 px-4 md:px-8 text-lg shadow-xl">
-                        Accept "{selectedOption || availableTiers[0]}" Proposal
+                    <Button onClick={() => setIsSigningOpen(true)} className="bg-[#1D4ED8] hover:bg-[#1e40af] font-black h-12 px-4 md:px-8 text-base shadow-xl">
+                        Accept "{getTierLabel(selectedOption || availableTiers[0])}" Proposal (${(calculateTierTotal(selectedOption || availableTiers[0]).total || proposal.total || 0).toFixed(2)})
                     </Button>
                 </div>
             )}

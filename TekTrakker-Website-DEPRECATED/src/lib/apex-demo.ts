@@ -18,6 +18,7 @@ export const APEX_MOCK_ORG: Organization = {
     website: 'www.apex-solutions.demo',
     logoUrl: '/apex-logo.png',
     subscriptionStatus: 'active',
+    isFreeAccess: true,
     plan: 'enterprise',
     primaryColor: '#4f46e5', // Indigo
     taxRate: 0.0825,

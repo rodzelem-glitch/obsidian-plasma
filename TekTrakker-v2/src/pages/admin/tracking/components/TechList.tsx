@@ -10,6 +10,18 @@ interface TechListProps {
     onTechSelect: (tech: any) => void;
 }
 
+const formatRelativeTime = (diffMins: number, hasLocation: boolean) => {
+    if (!hasLocation) return 'Location Unknown';
+    const m = Math.max(0, Math.floor(diffMins || 0));
+    if (m < 2) return 'Updated Just now';
+    if (m < 60) return `Updated ${m}m ago`;
+    const hours = Math.floor(m / 60);
+    if (hours < 24) return `Updated ${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days === 1) return 'Updated Yesterday';
+    return `Updated ${days}d ago`;
+};
+
 const TechList: React.FC<TechListProps> = ({ 
     internalTechs, 
     subcontractorCrews, 
@@ -30,12 +42,18 @@ const TechList: React.FC<TechListProps> = ({
                     </div>
                     <div>
                         <h3 className="font-black text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
-                            {tech.firstName} {tech.lastName}
+                            {`${tech.firstName || ''} ${tech.lastName || ''}`.trim() || tech.displayName || tech.name || tech.email || `Tech #${tech.id?.slice(-5) || ''}`}
                             {tech.isFleet && <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black">Fleet</span>}
                             {tech.companyLabel && <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-md uppercase tracking-widest font-black">{tech.companyLabel}</span>}
                         </h3>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1.5 mt-0.5">
-                            <Clock size={10}/> {tech.hasLocation ? `Updated ${Math.floor(tech.diffMins || 0)}m ago` : 'Location Unknown'}
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <Clock size={10}/> 
+                            <span>{formatRelativeTime(tech.diffMins, tech.hasLocation)}</span>
+                            {tech.hasLocation && !tech.isOnline && (
+                                <span className="text-[9px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.2 rounded font-semibold normal-case tracking-normal">
+                                    offline
+                                </span>
+                            )}
                         </p>
                         {tech.location && (
                             <div className="mt-1 text-[10px] text-slate-500 dark:text-slate-400 font-medium">

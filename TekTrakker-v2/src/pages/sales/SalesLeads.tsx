@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppContext } from 'context/AppContext';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
-import Input from 'components/ui/Input';
+import Input, { NumberInput } from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import Modal from 'components/ui/Modal';
 import { db } from 'lib/firebase';
@@ -25,6 +25,7 @@ const DEFAULT_PLATFORM_SETTINGS: PlatformSettings = {
     plans: {
         starter: { monthly: 49, annual: 550, maxUsers: 1 },
         growth: { monthly: 149, annual: 1500, maxUsers: 5 },
+        business: { monthly: 349, annual: 3490, maxUsers: 15 },
         enterprise: { monthly: 350, annual: 3500, maxUsers: 0, unlimitedUsers: true },
         payments_only: { monthly: 10, annual: 100, maxUsers: 999999, unlimitedUsers: true, features: ['proposals', 'paymentProcessing'] }
     },
@@ -65,7 +66,11 @@ const SalesLeads: React.FC = () => {
 
     // Conversion State
     const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
-    const [convertPlan, setConvertPlan] = useState<'starter'|'growth'|'enterprise'>('starter');
+    const [convertPlan, setConvertPlan] = useState<'starter' | 'growth' | 'business' | 'enterprise' | 'payments_only'>('starter');
+    const [convertBillingCycle, setConvertBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+    const [convertVirtualWorker, setConvertVirtualWorker] = useState(false);
+    const [convertAiVoiceAssistant, setConvertAiVoiceAssistant] = useState(false);
+    const [convertDivisionSlots, setConvertDivisionSlots] = useState(0);
     const [additionalUsers, setAdditionalUsers] = useState(0);
     const [customDiscount, setCustomDiscount] = useState(0);
     const [isConverting, setIsConverting] = useState(false);
@@ -146,22 +151,29 @@ const SalesLeads: React.FC = () => {
         }
     }, [selectedLead]);
     
-    // Calculated Pricing
+    // Calculated Pricing for Lead Conversion
     const pricing = useMemo(() => {
         const planConfig = settings.plans[convertPlan] || settings.plans.starter;
-        const basePrice = planConfig.monthly;
-        const userFee = settings.excessUserFee || 10;
+        const isAnnual = convertBillingCycle === 'annual';
+        const basePrice = isAnnual 
+            ? (planConfig.annual || planConfig.monthly * 12 * 0.8) 
+            : planConfig.monthly;
         
-        // Ensure user count isn't negative
+        const vwPrice = convertVirtualWorker ? (isAnnual ? 49.99 * 12 : 49.99) : 0;
+        const voicePrice = convertAiVoiceAssistant ? (isAnnual ? 5.00 * 12 : 5.00) : 0;
+        const divUnitFee = settings.divisionFee || 19.99;
+        const divPrice = Math.max(0, convertDivisionSlots) * divUnitFee * (isAnnual ? 12 : 1);
+        
         const extraUsers = Math.max(0, additionalUsers);
-        const extraUserCost = extraUsers * userFee;
+        const userFee = settings.excessUserFee || 25;
+        const extraUserCost = extraUsers * userFee * (isAnnual ? 12 : 1);
         
-        const subtotal = basePrice + extraUserCost;
+        const subtotal = basePrice + vwPrice + voicePrice + divPrice + extraUserCost;
         const discountAmount = subtotal * (Math.min(100, Math.max(0, customDiscount)) / 100);
-        const total = subtotal - discountAmount;
+        const total = Math.max(0, subtotal - discountAmount);
         
-        return { basePrice, extraUserCost, subtotal, discountAmount, total };
-    }, [convertPlan, additionalUsers, customDiscount, settings]);
+        return { basePrice, vwPrice, voicePrice, divPrice, extraUserCost, subtotal, discountAmount, total, isAnnual };
+    }, [convertPlan, convertBillingCycle, convertVirtualWorker, convertAiVoiceAssistant, convertDivisionSlots, additionalUsers, customDiscount, settings]);
 
     // Interactive Calculator Pricing
     const calcPricing = useMemo(() => {
@@ -182,10 +194,12 @@ const SalesLeads: React.FC = () => {
         const monthlyBaseEquivalent = planConfig.monthly * 12 + (extraUsers * userFee * 12);
         const savings = Math.max(0, monthlyBaseEquivalent - total);
 
-        const rate = calcCommissionRules?.baseRate || 0.25;
-        const projectedCommission = total * rate;
+        const baseRate = calcCommissionRules?.baseRate ?? 0.25;
+        const annualKicker = calcBillingCycle === 'annual' ? (calcCommissionRules?.annualPrepaidKickerRate ?? 0.05) : 0;
+        const effectiveRate = baseRate + annualKicker;
+        const projectedCommission = total * effectiveRate;
         
-        return { basePrice, basePriceTotal, extraUserCostTotal, subtotal, discountAmount, total, savings, projectedCommission };
+        return { basePrice, basePriceTotal, extraUserCostTotal, subtotal, discountAmount, total, savings, projectedCommission, baseRate, annualKicker, effectiveRate };
     }, [calcPlan, calcBillingCycle, calcAdditionalUsers, calcDiscount, settings, calcCommissionRules]);
 
     // --- HANDLERS ---
@@ -314,19 +328,27 @@ const SalesLeads: React.FC = () => {
             const userId = selectedLead.email.toLowerCase().trim();
             
             // 1. Create Organization
+            const cycleDays = convertBillingCycle === 'annual' ? 365 : 30;
+            const nextCycleDate = new Date(Date.now() + cycleDays * 24 * 60 * 60 * 1000);
+
             const newOrg: Organization = {
                 id: orgId,
                 name: selectedLead.companyName,
                 email: selectedLead.email,
                 phone: selectedLead.phone || '',
                 plan: convertPlan,
-                subscriptionStatus: 'active', // Will be active immediately to allow setup, invoicing handled separately
-                subscriptionExpiryDate: new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0],
+                billingCycle: convertBillingCycle,
+                subscriptionStatus: 'active', // Active immediately to allow onboarding, invoice link sent for payment
+                subscriptionExpiryDate: nextCycleDate.toISOString().split('T')[0],
+                nextBillingDate: nextCycleDate.toISOString(),
                 createdAt: new Date().toISOString(),
                 salesRepId: currentUser.id, // Tag commission owner
-                enabledPanels: { inventory: true, marketing: true, memberships: true, documents: true, time_tracking: true },
+                virtualWorkerEnabled: convertVirtualWorker,
+                aiVoiceAssistantEnabled: convertAiVoiceAssistant,
+                additionalDivisionsSlots: convertDivisionSlots,
                 additionalUserSlots: additionalUsers,
                 customDiscountPct: customDiscount,
+                enabledPanels: { inventory: true, marketing: true, memberships: true, documents: true, time_tracking: true },
                 ...(currentUser.franchiseId ? { franchiseId: currentUser.franchiseId } : {})
             };
             
@@ -353,20 +375,53 @@ const SalesLeads: React.FC = () => {
             const invoiceItems: InvoiceLineItem[] = [
                 {
                     id: 'item-1',
-                    description: `${convertPlan.toUpperCase()} Plan Subscription`,
+                    description: `${convertPlan.toUpperCase()} Plan Subscription (${convertBillingCycle.toUpperCase()})`,
                     quantity: 1,
                     unitPrice: pricing.basePrice,
                     total: pricing.basePrice,
                     type: 'Fee'
                 }
             ];
+
+            if (pricing.vwPrice > 0) {
+                invoiceItems.push({
+                    id: 'item-vw',
+                    description: `Virtual AI Worker Automation Suite (${convertBillingCycle.toUpperCase()})`,
+                    quantity: 1,
+                    unitPrice: pricing.vwPrice,
+                    total: pricing.vwPrice,
+                    type: 'Fee'
+                });
+            }
+
+            if (pricing.voicePrice > 0) {
+                invoiceItems.push({
+                    id: 'item-voice',
+                    description: `24/7 AI Voice Receptionist Add-On (${convertBillingCycle.toUpperCase()})`,
+                    quantity: 1,
+                    unitPrice: pricing.voicePrice,
+                    total: pricing.voicePrice,
+                    type: 'Fee'
+                });
+            }
+
+            if (pricing.divPrice > 0) {
+                invoiceItems.push({
+                    id: 'item-div',
+                    description: `Additional Division Slots (${convertDivisionSlots}) (${convertBillingCycle.toUpperCase()})`,
+                    quantity: convertDivisionSlots,
+                    unitPrice: (settings.divisionFee || 19.99) * (convertBillingCycle === 'annual' ? 12 : 1),
+                    total: pricing.divPrice,
+                    type: 'Fee'
+                });
+            }
             
             if (pricing.extraUserCost > 0) {
                  invoiceItems.push({
-                    id: 'item-2',
-                    description: `Additional Users (${additionalUsers})`,
+                    id: 'item-users',
+                    description: `Additional Users (${additionalUsers}) (${convertBillingCycle.toUpperCase()})`,
                     quantity: additionalUsers,
-                    unitPrice: settings.excessUserFee,
+                    unitPrice: (settings.excessUserFee || 25) * (convertBillingCycle === 'annual' ? 12 : 1),
                     total: pricing.extraUserCost,
                     type: 'Fee'
                 });
@@ -374,7 +429,7 @@ const SalesLeads: React.FC = () => {
 
             if (pricing.discountAmount > 0) {
                 invoiceItems.push({
-                    id: 'item-3',
+                    id: 'item-discount',
                     description: `Sales Discount (${customDiscount}%)`,
                     quantity: 1,
                     unitPrice: -pricing.discountAmount,
@@ -389,7 +444,7 @@ const SalesLeads: React.FC = () => {
                 customerName: selectedLead.companyName,
                 customerId: orgId, // Customer is the new Org
                 address: 'Billing Address',
-                tasks: [`Platform Subscription: ${convertPlan.toUpperCase()}`],
+                tasks: [`Platform Subscription: ${convertPlan.toUpperCase()} (${convertBillingCycle.toUpperCase()})`],
                 jobStatus: 'Completed',
                 appointmentTime: new Date().toISOString(),
                 source: 'PlatformAdmin',
@@ -587,14 +642,10 @@ const SalesLeads: React.FC = () => {
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {!(settings.plans[calcPlan] || settings.plans.starter).unlimitedUsers ? (
                                                 <div>
-                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Additional Users (+${settings.excessUserFee}/user/mo)</label>
-                                                    <input 
-                                                        type="number"
-                                                        min="0"
-                                                        value={calcAdditionalUsers}
-                                                        onChange={e => setCalcAdditionalUsers(parseInt(e.target.value) || 0)}
-                                                        className="w-full p-2 border rounded text-sm bg-slate-50 dark:bg-slate-800 dark:border-slate-700 text-slate-950 dark:text-slate-50"
-                                                    />
+                                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Additional Users</label>
+                                                    <div className="w-full p-2 border rounded text-xs bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300">
+                                                        Seat add-ons disabled. Upgrade tier to add users.
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <div>
@@ -606,8 +657,7 @@ const SalesLeads: React.FC = () => {
                                             )}
                                             <div>
                                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Discount (%)</label>
-                                                <input 
-                                                    type="number"
+                                                <NumberInput 
                                                     min="0"
                                                     max="100"
                                                     value={calcDiscount}
@@ -647,17 +697,29 @@ const SalesLeads: React.FC = () => {
                                         </div>
 
                                         <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-100 dark:border-blue-900 text-xs">
-                                            <div className="flex items-center gap-1.5 text-blue-700 dark:text-blue-300 font-bold">
-                                                <Percent size={14}/> Projected Rep Commission:
+                                            <div className="flex flex-col gap-0.5">
+                                                <div className="flex items-center gap-1.5 text-blue-700 dark:text-blue-300 font-bold">
+                                                    <Percent size={14}/> Projected Rep Commission:
+                                                    <span className="text-blue-600 dark:text-blue-400 font-semibold">
+                                                        ({(calcPricing.effectiveRate * 100).toFixed(1)}%
+                                                        {calcPricing.annualKicker > 0 ? ` incl. +${(calcPricing.annualKicker * 100).toFixed(0)}% Annual Kicker` : ''})
+                                                    </span>
+                                                </div>
+                                                {calcPricing.annualKicker > 0 && (
+                                                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                                        ✨ Upfront annual payment bonus unlocks +5% kicker!
+                                                    </span>
+                                                )}
                                             </div>
-                                            <span className="font-black text-blue-900 dark:text-blue-100 text-sm">${calcPricing.projectedCommission.toFixed(2)}</span>
+                                            <span className="font-black text-blue-900 dark:text-blue-100 text-base">${calcPricing.projectedCommission.toFixed(2)}</span>
                                         </div>
 
                                         <div className="flex flex-wrap gap-2 pt-2">
                                             <Button 
                                                 variant="secondary" 
                                                 onClick={async () => {
-                                                    const quoteText = `\n\n[Quote Generated - ${new Date().toLocaleDateString()}]\nPlan: ${calcPlan.toUpperCase()}\nBilling Interval: ${calcBillingCycle.toUpperCase()}\nUsers: ${calcAdditionalUsers}\nDiscount: ${calcDiscount}%\nTotal Contract Price: $${calcPricing.total.toFixed(2)}\nProjected Commission: $${calcPricing.projectedCommission.toFixed(2)}`;
+                                                    const kickerNote = calcPricing.annualKicker > 0 ? ` (+${(calcPricing.annualKicker * 100).toFixed(0)}% Annual Prepayment Kicker)` : '';
+                                                    const quoteText = `\n\n[Quote Generated - ${new Date().toLocaleDateString()}]\nPlan: ${calcPlan.toUpperCase()}\nBilling Interval: ${calcBillingCycle.toUpperCase()}\nUsers: ${calcAdditionalUsers}\nDiscount: ${calcDiscount}%\nTotal Contract Price: $${calcPricing.total.toFixed(2)}\nCommission Rate: ${(calcPricing.effectiveRate * 100).toFixed(1)}%${kickerNote}\nProjected Commission: $${calcPricing.projectedCommission.toFixed(2)}`;
                                                     const newNotes = selectedLead.notes ? `${selectedLead.notes}${quoteText}` : quoteText.trim();
                                                     await db.collection('platformLeads').doc(selectedLead.id).update(cleanUndefinedFields({ notes: newNotes }));
                                                     setSelectedLead({ ...selectedLead, notes: newNotes });
@@ -819,55 +881,128 @@ const SalesLeads: React.FC = () => {
                                 <p className="font-bold text-slate-900">{selectedLead?.companyName}</p>
                                 <p className="text-sm text-slate-500">{selectedLead?.contactName} • {selectedLead?.email}</p>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Select Plan</label>
-                                <select title="Plan" aria-label="Conversion Plan"
-                                    className="w-full p-2 border rounded"
-                                    value={convertPlan}
-                                    onChange={e => setConvertPlan(e.target.value as any)}
-                                >
-                                    {Object.keys(settings.plans).map(planKey => (
-                                        <option key={planKey} value={planKey}>
-                                            {planKey.toUpperCase()} (${settings.plans[planKey as keyof typeof settings.plans].monthly}/mo)
-                                        </option>
-                                    ))}
-                                </select>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider mb-1">Subscription Plan</label>
+                                    <select title="Plan" aria-label="Conversion Plan"
+                                        className="w-full p-2.5 border rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-300 dark:border-slate-700 font-medium"
+                                        value={convertPlan}
+                                        onChange={e => setConvertPlan(e.target.value as any)}
+                                    >
+                                        {Object.keys(settings.plans).map(planKey => (
+                                            <option key={planKey} value={planKey}>
+                                                {planKey.toUpperCase()} (${settings.plans[planKey as keyof typeof settings.plans].monthly}/mo)
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider mb-1">Billing Interval</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setConvertBillingCycle('monthly')}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg border transition ${
+                                                convertBillingCycle === 'monthly'
+                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                                            }`}
+                                        >
+                                            Monthly
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setConvertBillingCycle('annual')}
+                                            className={`flex-1 py-2 text-xs font-bold rounded-lg border transition flex items-center justify-center gap-1 ${
+                                                convertBillingCycle === 'annual'
+                                                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                                            }`}
+                                        >
+                                            Annual <span className="bg-emerald-500 text-white text-[9px] px-1 rounded-full uppercase font-black">Save 20%</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Add-Ons Options */}
+                            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                                <span className="block text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1">Optional Add-Ons</span>
+                                
+                                <label className="flex items-center justify-between text-xs font-medium cursor-pointer p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded">
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={convertVirtualWorker}
+                                            onChange={e => setConvertVirtualWorker(e.target.checked)}
+                                            className="rounded text-blue-600 w-4 h-4"
+                                        />
+                                        <span>Virtual AI Worker Suite</span>
+                                    </div>
+                                    <span className="font-bold text-slate-600 dark:text-slate-400">
+                                        {convertBillingCycle === 'annual' ? '$599.88/yr' : '$49.99/mo'}
+                                    </span>
+                                </label>
+
+                                <label className="flex items-center justify-between text-xs font-medium cursor-pointer p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded">
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={convertAiVoiceAssistant}
+                                            onChange={e => setConvertAiVoiceAssistant(e.target.checked)}
+                                            className="rounded text-blue-600 w-4 h-4"
+                                        />
+                                        <span>24/7 AI Voice Receptionist</span>
+                                    </div>
+                                    <span className="font-bold text-slate-600 dark:text-slate-400">
+                                        {convertBillingCycle === 'annual' ? '$60.00/yr' : '$5.00/mo'} (+ $0.07/min usage)
+                                    </span>
+                                </label>
+
+                                <div className="flex items-center justify-between text-xs font-medium p-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                    <span>Additional Division Slots (${settings.divisionFee || 19.99}/mo):</span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setConvertDivisionSlots(Math.max(0, convertDivisionSlots - 1))}
+                                            disabled={convertDivisionSlots <= 0}
+                                            className="w-6 h-6 rounded bg-white dark:bg-slate-700 border text-slate-700 dark:text-white disabled:opacity-40"
+                                        >-</button>
+                                        <span className="font-bold w-4 text-center">{convertDivisionSlots}</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setConvertDivisionSlots(convertDivisionSlots + 1)}
+                                            className="w-6 h-6 rounded bg-white dark:bg-slate-700 border text-slate-700 dark:text-white"
+                                        >+</button>
+                                    </div>
+                                </div>
                             </div>
                             
-                            {!(settings.plans[convertPlan] || settings.plans.starter).unlimitedUsers && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Additional Users (+${settings.excessUserFee}/user)</label>
-                                    <input 
-                                        type="number"
-                                        min="0"
-                                        className="w-full p-2 border rounded"
-                                        value={additionalUsers} title="Users" aria-label="Users" placeholder="0"
-                                        onChange={e => setAdditionalUsers(parseInt(e.target.value) || 0)}
-                                    />
-                                </div>
-                            )}
-                            
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Custom Discount (%)</label>
+                                <label className="block text-xs font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider mb-1">Custom Sales Discount (%)</label>
                                 <div className="relative">
-                                    <input 
-                                        type="number"
+                                    <NumberInput 
                                         min="0"
                                         max="100"
-                                        className="w-full p-2 border rounded pr-8"
+                                        className="w-full p-2.5 border rounded-lg pr-8 text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white border-slate-300 dark:border-slate-700 font-medium"
                                         value={customDiscount} title="Discount" aria-label="Discount" placeholder="0"
                                         onChange={e => setCustomDiscount(parseFloat(e.target.value) || 0)}
                                     />
-                                    <Percent className="absolute right-2 top-2.5 text-gray-400" size={16}/>
+                                    <Percent className="absolute right-2.5 top-3 text-gray-400" size={16}/>
                                 </div>
                             </div>
                             
-                            <div className="bg-slate-100 p-3 rounded text-sm flex justify-between items-center">
-                                <span className="font-bold text-slate-700">Invoice Total:</span>
-                                <span className="font-black text-slate-900 text-lg">
-                                    ${pricing.total.toFixed(2)}
-                                    {customDiscount > 0 && <span className="text-xs text-green-600 ml-2 font-normal">(-{customDiscount}%)</span>}
-                                </span>
+                            <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-sm flex justify-between items-center border border-slate-200 dark:border-slate-700">
+                                <div>
+                                    <span className="font-black text-slate-800 dark:text-white text-xs uppercase tracking-wider block">Deal Total ({convertBillingCycle.toUpperCase()}):</span>
+                                    <span className="text-[11px] text-slate-500">Base Plan + Add-ons</span>
+                                </div>
+                                <div className="text-right">
+                                    <span className="font-black text-emerald-600 dark:text-emerald-400 text-xl">
+                                        ${pricing.total.toFixed(2)}
+                                    </span>
+                                    {customDiscount > 0 && <span className="text-xs text-rose-500 ml-2 font-bold block">(-{customDiscount}% applied)</span>}
+                                </div>
                             </div>
 
                             <div className="flex justify-end gap-2 pt-4">

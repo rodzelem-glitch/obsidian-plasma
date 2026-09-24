@@ -22,7 +22,7 @@ interface BusinessRegistrationFormProps {
     promoCode: string;
     setPromoCode: (val: string) => void;
     selectedPlan: string;
-    setSelectedPlan: (plan: 'starter' | 'growth' | 'enterprise' | 'payments_only') => void;
+    setSelectedPlan: (plan: 'starter' | 'growth' | 'business' | 'enterprise' | 'payments_only') => void;
     platformSettings: PlatformSettings | null;
     consentGiven: boolean;
     setConsentGiven: (val: boolean) => void;
@@ -59,18 +59,38 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
 
     const planPrices = useMemo(() => {
         const cfg = platformSettings;
+
+        const getPlanUserText = (planKey: 'starter' | 'growth' | 'business' | 'enterprise' | 'payments_only', defaultMax: number, defaultUnlimited: boolean) => {
+            const plan = cfg?.plans?.[planKey];
+            if (!plan) {
+                return defaultUnlimited ? 'Unlimited' : `Up to ${defaultMax}`;
+            }
+            if (plan.unlimitedUsers || (plan.unlimitedUsers !== false && defaultUnlimited) || (plan.maxUsers !== undefined && plan.maxUsers >= 999999)) {
+                return 'Unlimited';
+            }
+            return `Up to ${plan.maxUsers ?? defaultMax}`;
+        };
+
         return {
             starter: cfg?.plans?.starter?.monthly || 49,
             growth: cfg?.plans?.growth?.monthly || 149,
-            enterprise: cfg?.plans?.enterprise?.monthly || 299,
+            business: cfg?.plans?.business?.monthly || 349,
+            enterprise: cfg?.plans?.enterprise?.monthly || 699,
             payments_only: cfg?.plans?.payments_only?.monthly || 10,
-            starterUsers: cfg?.plans?.starter?.unlimitedUsers ? 'Unlimited' : `Up to ${cfg?.plans?.starter?.maxUsers || 5}`,
-            growthUsers: cfg?.plans?.growth?.unlimitedUsers ? 'Unlimited' : `Up to ${cfg?.plans?.growth?.maxUsers || 15}`,
-            enterpriseUsers: cfg?.plans?.enterprise?.unlimitedUsers ? 'Unlimited' : `Up to ${cfg?.plans?.enterprise?.maxUsers || 15}`,
-            paymentsOnlyUsers: 'Unlimited',
+            starterUsers: getPlanUserText('starter', 1, false),
+            growthUsers: getPlanUserText('growth', 5, false),
+            businessUsers: getPlanUserText('business', 15, false),
+            enterpriseUsers: getPlanUserText('enterprise', 999999, true),
+            paymentsOnlyUsers: getPlanUserText('payments_only', 999999, true),
             starterRibbon: cfg?.plans?.starter?.ribbonText || '',
-            growthRibbon: cfg?.plans?.growth?.ribbonText || '',
+            growthRibbon: cfg?.plans?.growth?.ribbonText || 'Popular',
+            businessRibbon: cfg?.plans?.business?.ribbonText || 'Scale Team',
             enterpriseRibbon: cfg?.plans?.enterprise?.ribbonText || '',
+            starterSla: cfg?.plans?.starter?.supportResponseTime || '3-Day Guarantee',
+            growthSla: cfg?.plans?.growth?.supportResponseTime || '24-Hour Support SLA',
+            businessSla: cfg?.plans?.business?.supportResponseTime || 'Same-Day Priority SLA',
+            enterpriseSla: cfg?.plans?.enterprise?.supportResponseTime || '1-2 Hour Support SLA',
+            paymentsOnlySla: cfg?.plans?.payments_only?.supportResponseTime || 'Standard Support',
             userFee: cfg?.excessUserFee || 25
         };
     }, [platformSettings]);
@@ -123,7 +143,7 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                         <div className="space-y-3">
                             {isPaymentsOnly ? (
                                 <>
-                                    <PlanCard id="payments_only" name="Payment Processing" price={planPrices.payments_only} users={`${planPrices.paymentsOnlyUsers} Users`} ribbonText="" selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                                    <PlanCard id="payments_only" name="Payment Processing" price={planPrices.payments_only} users={`${planPrices.paymentsOnlyUsers} Users`} ribbonText="" supportResponseTime={planPrices.paymentsOnlySla} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
                                     <p className="text-center text-xs text-slate-500">Includes manual Proposals, Invoicing, and Payment Processing.</p>
                                     <button type="button" onClick={() => setSelectedPlan('starter')} className="w-full text-xs text-blue-400 hover:text-blue-300 py-2 transition-colors">
                                         Need more features? View all plans →
@@ -131,9 +151,10 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                                 </>
                             ) : (
                                 <>
-                                    <PlanCard id="starter" name="TekTrakker Pro" price={planPrices.starter} users={`${planPrices.starterUsers} Users Included`} ribbonText={planPrices.starterRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
-                                    <PlanCard id="growth" name="TekTrakker Premium" price={planPrices.growth} users={`${planPrices.growthUsers} Users Included`} ribbonText={planPrices.growthRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
-                                    <PlanCard id="enterprise" name="TekTrakker Unlimited" price={planPrices.enterprise} users={`${planPrices.enterpriseUsers} Users Included`} ribbonText={planPrices.enterpriseRibbon} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                                    <PlanCard id="starter" name="TekTrakker Pro" price={planPrices.starter} users={`${planPrices.starterUsers} Users Included`} ribbonText={planPrices.starterRibbon} supportResponseTime={planPrices.starterSla} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                                    <PlanCard id="growth" name="TekTrakker Premium" price={planPrices.growth} users={`${planPrices.growthUsers} Users Included`} ribbonText={planPrices.growthRibbon} supportResponseTime={planPrices.growthSla} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                                    <PlanCard id="business" name="TekTrakker Business" price={planPrices.business} users={`${planPrices.businessUsers} Users Included`} ribbonText={planPrices.businessRibbon} supportResponseTime={planPrices.businessSla} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
+                                    <PlanCard id="enterprise" name="TekTrakker Unlimited" price={planPrices.enterprise} users={`${planPrices.enterpriseUsers} Users Included`} ribbonText={planPrices.enterpriseRibbon} supportResponseTime={planPrices.enterpriseSla} selectedPlan={selectedPlan} setSelectedPlan={setSelectedPlan} />
                                 </>
                             )}
                         </div>
@@ -176,7 +197,7 @@ export const BusinessRegistrationForm: React.FC<BusinessRegistrationFormProps> =
                 <>
                     <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 text-center mb-6">
                         <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Selected Plan</p>
-                        <p className="text-2xl font-black text-white">{selectedPlan === 'starter' ? 'TekTrakker Pro' : selectedPlan === 'growth' ? 'TekTrakker Premium' : selectedPlan === 'payments_only' ? 'Payment Processing' : 'TekTrakker Unlimited'}</p>
+                        <p className="text-2xl font-black text-white">{selectedPlan === 'starter' ? 'TekTrakker Pro' : selectedPlan === 'growth' ? 'TekTrakker Premium' : selectedPlan === 'business' ? 'TekTrakker Business' : selectedPlan === 'payments_only' ? 'Payment Processing' : 'TekTrakker Unlimited'}</p>
                         <p className="text-sm text-blue-400 font-bold">${planPrices[selectedPlan as keyof typeof planPrices]} / month</p>
                         <p className="text-xs text-slate-500 mt-2">{isIOS ? '1 Month Auto-Renewing Subscription' : isPaymentsOnly ? 'Billed Monthly • Cancel Anytime' : '14 Day Free Trial • Cancel Anytime'}</p>
                         {isIOS && (

@@ -38,14 +38,14 @@ const ROUTE_CONFIG: Record<string, { title: string, subtitle: string, icon: any,
     '/admin/analytics': { title: 'Admin Analytics', subtitle: 'Deep operational and platform engagement metrics.', icon: BarChart2, bgClass: 'bg-gradient-to-r from-violet-600 to-purple-800' },
     
     // Master Admin Routes
-    '/master/analytics': { title: 'Platform Analytics', subtitle: 'An overview of platform usage, billing, and API metrics from Google Cloud.', icon: BarChart2, bgClass: 'bg-gradient-to-r from-violet-800 to-fuchsia-800' },
+    '/master/analytics': { title: 'Metrics & Telemetry Hub', subtitle: 'Centralized dashboard for platform performance, AI tokens, telephony, storage, and agent reports.', icon: BarChart2, bgClass: 'bg-gradient-to-r from-violet-800 to-fuchsia-800' },
     '/master/franchises': { title: 'Franchise Operations', subtitle: 'Manage tenant silos, custom branding, and BYOK configurations.', icon: Building2, bgClass: 'bg-gradient-to-r from-blue-800 to-slate-900' },
     '/master/compliance': { title: 'Compliance Registry', subtitle: 'Audit platform usage and background check integrations.', icon: CheckSquare, bgClass: 'bg-gradient-to-r from-rose-800 to-red-700' },
     '/master/organizations': { title: 'Tenants', subtitle: 'Platform organization routing and environment variables.', icon: Briefcase, bgClass: 'bg-gradient-to-r from-indigo-800 to-slate-900' },
     '/master/members': { title: 'Global Identity', subtitle: 'Cross-tenant global authentication ledger.', icon: ShieldCheck, bgClass: 'bg-gradient-to-r from-slate-700 to-neutral-900' },
     '/master/users': { title: 'Global User Registry', subtitle: 'Total platform user base and activity monitoring.', icon: Users, bgClass: 'bg-gradient-to-r from-blue-700 to-indigo-900' },
     '/master/customers': { title: 'Global CRM', subtitle: 'Platform-wide customer ledger.', icon: Globe, bgClass: 'bg-gradient-to-r from-teal-700 to-emerald-900' },
-    '/master/billing': { title: 'Platform Ledger', subtitle: 'Stripe SaaS subscriptions and RevenueCat syncs.', icon: CreditCard, bgClass: 'bg-gradient-to-r from-emerald-700 to-green-900' },
+    '/master/billing': { title: 'Platform Ledger', subtitle: 'Platform subscriptions, payment gateways, and RevenueCat syncs.', icon: CreditCard, bgClass: 'bg-gradient-to-r from-emerald-700 to-green-900' },
     '/master/ai-usage': { title: 'AI Telemetry', subtitle: 'Real-time agent model usage, token limits, and task analysis.', icon: BrainCircuit, bgClass: 'bg-gradient-to-r from-purple-700 to-indigo-900' },
     '/master/integration-requests': { title: 'Integration Requests', subtitle: 'Monitor and manage stubbed integration activations.', icon: Box, bgClass: 'bg-gradient-to-r from-amber-600 to-orange-800' },
     '/master/storage-usage': { title: 'Blob Storage', subtitle: 'File hosting telemetry and multimedia quotas.', icon: HardDrive, bgClass: 'bg-gradient-to-r from-slate-600 to-slate-800' }

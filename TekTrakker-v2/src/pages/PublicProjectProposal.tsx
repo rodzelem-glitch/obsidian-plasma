@@ -2,9 +2,9 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from 'lib/firebase';
 import { useLanguage } from 'context/LanguageContext';
-import { matchTier, displayTierName , cleanUndefinedFields } from 'lib/utils';
+import { matchTier, displayTierName, cleanUndefinedFields, getOrGenerateAccountNumber, formatFullAddress, getAddressLines, resolveServiceLocation, getAvailableProposalTiers, getProposalTierLabel, sanitizeCustomerScopeText } from 'lib/utils';
 import { useAppContext } from 'context/AppContext';
-import type { Proposal, Organization, Job } from 'types';
+import type { Proposal, Organization, Job, Customer } from 'types';
 import showToast from 'lib/toast';
 import Button from 'components/ui/Button';
 import Card from 'components/ui/Card';
@@ -12,9 +12,12 @@ import Input from 'components/ui/Input';
 import Modal from 'components/ui/Modal';
 import SignaturePad, { SignaturePadHandle } from 'components/ui/SignaturePad';
 import { getPendingCompetingProposals } from 'components/modals/MultipleProposalsModal';
+import { computeCanonicalFinancials } from 'lib/financialCalculator';
+import { globalConfirm } from 'lib/globalConfirm';
 import { 
     Shield, Printer, FileDown, CheckCircle, Sparkles, Phone, Mail, 
-    MapPin, FileText, ClipboardCheck, Info, X, Calendar, UserCheck, AlertCircle
+    MapPin, FileText, ClipboardCheck, Info, X, Calendar, UserCheck, AlertCircle,
+    Scale, FileSignature
 } from 'lucide-react';
 
 export interface PublicProjectProposalProps {
@@ -43,9 +46,14 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
     const sigPadRef = useRef<SignaturePadHandle>(null);
     const [signerName, setSignerName] = useState('');
     const [associatedJob, setAssociatedJob] = useState<Job | null>(null);
+    const [customer, setCustomer] = useState<Customer | null>(null);
     
     const [hasDeclinedTerms, setHasDeclinedTerms] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(propDataFromProps?.selectedOption || null);
+
+    const formatAddr = (addr: any, city?: string | null, state?: string | null, zip?: string | null): string => {
+        return formatFullAddress(addr, city, state, zip);
+    };
 
     // NDA Gating State
     const [ndaSignerName, setNdaSignerName] = useState('');
@@ -63,6 +71,54 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                     if (orgDoc.exists) setOrganization({ ...orgDoc.data(), id: orgDoc.id } as Organization);
                 });
             }
+
+            // Always resolve customer if not already in customer state
+            const targetCustId = propDataFromProps.customerId || (propDataFromProps as any).clientCustomerId;
+            const targetCustName = propDataFromProps.customerName;
+            if (targetCustId) {
+                const found = appState.customers?.find(c => c.id === targetCustId);
+                if (found) setCustomer(found);
+                else {
+                    db.collection('customers').doc(targetCustId).get().then(doc => {
+                        if (doc.exists) setCustomer({ id: doc.id, ...doc.data() } as Customer);
+                    }).catch(err => console.error("Error fetching customer:", err));
+                }
+            } else if (targetCustName) {
+                const found = appState.customers?.find(c => {
+                    const cName = (c.name || '').toLowerCase().trim();
+                    const tName = targetCustName.toLowerCase().trim();
+                    return cName === tName || cName.includes(tName) || tName.includes(cName);
+                });
+                if (found) setCustomer(found);
+                else {
+                    const orgId = propDataFromProps.organizationId || appState.currentOrganization?.id || '';
+                    const q = orgId ? db.collection('customers').where('organizationId', '==', orgId) : db.collection('customers');
+                    q.get().then(snap => {
+                        const allC = snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer));
+                        const target = targetCustName.toLowerCase().trim();
+                        const match = allC.find(c => {
+                            const cName = (c.name || '').toLowerCase().trim();
+                            return cName === target || cName.includes(target) || target.includes(cName);
+                        });
+                        if (match) setCustomer(match);
+                    }).catch(err => console.error("Error querying customer by name:", err));
+                }
+            }
+
+            const propIdToLook = propDataFromProps.jobId || propDataFromProps.id || (propDataFromProps as any).proposalNumber;
+            const fJob = appState.jobs?.find(j => (propDataFromProps.jobId && j.id === propDataFromProps.jobId) || (propIdToLook && j.proposalId === propIdToLook));
+            if (fJob) {
+                setAssociatedJob(fJob);
+            } else if (propDataFromProps.jobId) {
+                db.collection('jobs').doc(propDataFromProps.jobId).get().then(jDoc => {
+                    if (jDoc.exists) setAssociatedJob({ id: jDoc.id, ...jDoc.data() } as Job);
+                }).catch(err => console.error("Error fetching job:", err));
+            } else if (propIdToLook) {
+                db.collection('jobs').where('proposalId', '==', propIdToLook).limit(1).get().then(snap => {
+                    if (!snap.empty) setAssociatedJob({ id: snap.docs[0].id, ...snap.docs[0].data() } as Job);
+                }).catch(err => console.warn("Error querying job by proposalId:", err));
+            }
+
             setLoading(false);
             return;
         }
@@ -76,14 +132,6 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                 return;
             }
             try {
-                if (!appState.isDemoMode && !auth.currentUser) {
-                    try {
-                        await auth.signInAnonymously();
-                    } catch (e: any) {
-                        console.warn("Anonymous sign-in not available, proceeding unauthenticated:", e.message || e);
-                    }
-                }
-
                 let data: Proposal | null = null;
                 if (appState.isDemoMode) {
                     const mockProp = appState.proposals?.find(p => p.id === effectiveProposalId);
@@ -95,7 +143,7 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                 if (!data) {
                     const doc = await db.collection('proposals').doc(effectiveProposalId).get();
                     if (!doc.exists) {
-                        throw new Error("Commercial proposal not found.");
+                        throw new Error("Proposal not found.");
                     }
                     data = { ...doc.data(), id: doc.id } as Proposal;
                 }
@@ -103,7 +151,7 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                 const isEmployee = appState.currentUser && appState.currentUser.role !== 'customer';
                 const isUserLoggedIn = (auth.currentUser && !auth.currentUser.isAnonymous) || !!isEmployee;
                 if (data.status === 'Draft' && !isUserLoggedIn) {
-                    throw new Error("Commercial proposal not found.");
+                    throw new Error("Proposal not found.");
                 }
                 setProposal(data);
                 if (data.selectedOption) setSelectedOption(data.selectedOption);
@@ -123,6 +171,78 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                             }
                         } catch (jobErr) {
                             console.error("Error fetching associated job:", jobErr);
+                        }
+                    }
+                }
+
+                const targetCustId = data.customerId || (data as any).clientCustomerId;
+
+                // Fallback job lookup by proposalId or customer if jobId wasn't directly linked
+                if (!data.jobId) {
+                    if (appState.isDemoMode) {
+                        const mockJob = appState.jobs?.find(j => j.proposalId === effectiveProposalId || (data?.id && j.proposalId === data.id) || (targetCustId && j.customerId === targetCustId) || (data?.customerName && j.customerName === data.customerName));
+                        if (mockJob) setAssociatedJob(mockJob);
+                    } else {
+                        try {
+                            const propJobSnap = await db.collection('jobs')
+                                .where('proposalId', '==', effectiveProposalId)
+                                .limit(1)
+                                .get();
+                            if (!propJobSnap.empty) {
+                                setAssociatedJob({ id: propJobSnap.docs[0].id, ...propJobSnap.docs[0].data() } as Job);
+                            } else if (targetCustId || data.customerName) {
+                                const jobSnap = await db.collection('jobs')
+                                    .where(targetCustId ? 'customerId' : 'customerName', '==', targetCustId || data.customerName)
+                                    .limit(1)
+                                    .get();
+                                if (!jobSnap.empty) {
+                                    setAssociatedJob({ id: jobSnap.docs[0].id, ...jobSnap.docs[0].data() } as Job);
+                                }
+                            }
+                        } catch (jErr) {
+                            console.warn("Fallback job lookup failed:", jErr);
+                        }
+                    }
+                }
+
+                // Fetch customer record by customerId or customerName
+                if (targetCustId) {
+                    if (appState.isDemoMode) {
+                        const mockCust = appState.customers?.find(c => c.id === targetCustId);
+                        if (mockCust) setCustomer(mockCust);
+                    } else {
+                        try {
+                            const custDoc = await db.collection('customers').doc(targetCustId).get();
+                            if (custDoc.exists) setCustomer({ id: custDoc.id, ...custDoc.data() } as Customer);
+                        } catch (cErr) {
+                            console.error("Error fetching customer:", cErr);
+                        }
+                    }
+                } else if (data.customerName) {
+                    if (appState.isDemoMode) {
+                        const mockCust = appState.customers?.find(c => {
+                            const cName = (c.name || '').toLowerCase().trim();
+                            const tName = (data?.customerName || '').toLowerCase().trim();
+                            return cName === tName || cName.includes(tName) || tName.includes(cName);
+                        });
+                        if (mockCust) setCustomer(mockCust);
+                    } else {
+                        try {
+                            const custSnap = await db.collection('customers').where('name', '==', data.customerName).limit(1).get();
+                            if (!custSnap.empty) {
+                                setCustomer({ id: custSnap.docs[0].id, ...custSnap.docs[0].data() } as Customer);
+                            } else if (data.organizationId) {
+                                const orgCustSnap = await db.collection('customers').where('organizationId', '==', data.organizationId).get();
+                                const allC = orgCustSnap.docs.map(d => ({ id: d.id, ...d.data() } as Customer));
+                                const target = data.customerName.toLowerCase().trim();
+                                const match = allC.find(c => {
+                                    const cName = (c.name || '').toLowerCase().trim();
+                                    return cName === target || cName.includes(target) || target.includes(cName);
+                                });
+                                if (match) setCustomer(match);
+                            }
+                        } catch (cErr) {
+                            console.error("Error fetching customer by name:", cErr);
                         }
                     }
                 }
@@ -173,7 +293,13 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                                         await sendNotification(recipientId, {
                                             title: 'Potential Proposal Share!',
                                             body: notificationContent,
-                                            type: 'proposal_share_warning'
+                                            type: 'proposal_share_warning',
+                                            link: `/proposal-view/${data.id}`,
+                                            data: {
+                                                proposalId: data.id,
+                                                customerId: data.customerId,
+                                                type: 'proposal_share_warning'
+                                            }
                                         }, data.organizationId);
 
                                         if (!appState.isDemoMode) {
@@ -251,11 +377,55 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
 
     const availableTiers = useMemo(() => {
         if (!proposal) return [];
-        return ['Basic', 'Premium', 'Platinum'].filter(t => calculateTierTotal(t).items.length > 0);
-    }, [proposal, organization]);
+        return getAvailableProposalTiers(proposal);
+    }, [proposal]);
 
-    const activeTier = selectedOption || (availableTiers[0] || 'Basic');
-    const showMultiTier = isStandardProposal && availableTiers.length > 1 && !selectedOption;
+    const getTierLabel = (tierName: string) => {
+        return getProposalTierLabel(proposal, tierName);
+    };
+
+    const activeTier = selectedOption || (proposal?.selectedOption ? getProposalTierLabel(proposal, proposal.selectedOption) : null) || (availableTiers[0] || 'Basic');
+    const hasMultipleTiers = isStandardProposal && availableTiers.length > 1;
+    const showMultiTier = hasMultipleTiers;
+
+    const sanitizeLineItemDescription = (desc?: string) => {
+        if (!desc) return '';
+        const m = desc.match(/(Warranty Terms\s*&?\s*Disclaimer|Warranty Terms|Workmanship Warranty)[\s\S]*/i);
+        if (m && m.index !== undefined) {
+            return desc.substring(0, m.index).trim();
+        }
+        return desc.trim();
+    };
+
+    const rawPricingDisclaimer = proposal?.pricingDisclaimer 
+        || (proposal as any)?.pricingTerms 
+        || organization?.pricingDisclaimer 
+        || organization?.proposalDisclaimer 
+        || "Proposal pricing is valid for 30 days from issuance. Pricing reflects current material, equipment, and labor rates and is subject to market availability.";
+    const effectivePricingDisclaimer = sanitizeCustomerScopeText(rawPricingDisclaimer);
+
+    const effectiveWarranty = useMemo(() => {
+        if (proposal?.warrantyTerms) return proposal.warrantyTerms;
+        if (proposal?.warrantyDisclaimer) return proposal.warrantyDisclaimer;
+        if ((proposal as any)?.warrantyNotes) return (proposal as any).warrantyNotes;
+
+        // Extract from any line items if embedded
+        const allItems = [...(proposal?.items || []), ...(proposal?.tierItems || []), ...(proposal?.lineItems || [])];
+        for (const it of allItems) {
+            const d = it?.description || '';
+            const m = d.match(/(Warranty Terms\s*&?\s*Disclaimer|Warranty Terms|Workmanship Warranty)[\s\S]*/i);
+            if (m && m.index !== undefined) {
+                return d.substring(m.index).trim();
+            }
+        }
+
+        return (
+            (organization as any)?.warrantyTerms ||
+            (organization as any)?.warrantyDisclaimer ||
+            (organization as any)?.warrantyNotes ||
+            ''
+        );
+    }, [proposal, organization]);
 
     const tierItems = useMemo(() => {
         if (!proposal) return [];
@@ -280,18 +450,55 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
         const signedAtStr = new Date().toISOString();
 
         try {
-            let finalTier = selectedOption || 'Basic';
+            let finalTier = activeTier || 'Basic';
             let finalSubtotal = calculatedSubtotal;
             let finalTaxAmount = calculatedTaxAmount;
             let finalTotal = grandTotal;
             let invoiceId = proposal.invoiceId || null;
 
             if (isStandardProposal) {
-                finalTier = selectedOption || (availableTiers[0] || 'Basic');
+                finalTier = activeTier || (availableTiers[0] || 'Basic');
                 const tierCalc = calculateTierTotal(finalTier);
                 finalSubtotal = tierCalc.subtotal;
                 finalTaxAmount = tierCalc.taxAmount;
                 finalTotal = tierCalc.total;
+
+                const invoiceItems = tierCalc.items.map((pItem: any) => ({
+                    id: pItem.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                    name: pItem.name || pItem.description || 'Proposal Item',
+                    description: pItem.description || pItem.name || 'Proposal Item',
+                    details: pItem.details || pItem.description || '',
+                    notes: pItem.notes || '',
+                    scopeOfWork: pItem.scopeOfWork || '',
+                    subItems: Array.isArray(pItem.subItems) ? pItem.subItems : [],
+                    quantity: Number(pItem.quantity || 1),
+                    unitPrice: Number(pItem.price || pItem.unitPrice || 0),
+                    price: Number(pItem.price || pItem.unitPrice || 0),
+                    total: Number(pItem.total || ((pItem.price || pItem.unitPrice || 0) * (pItem.quantity || 1))),
+                    type: (pItem.type as any) || 'Part',
+                    partCost: pItem.partCost,
+                    laborHours: pItem.laborHours,
+                    hourlyRate: pItem.hourlyRate,
+                    margin: pItem.margin,
+                    taxable: pItem.taxable !== false
+                }));
+
+                const canonical = computeCanonicalFinancials({
+                    items: invoiceItems,
+                    subtotal: finalSubtotal,
+                    taxAmount: finalTaxAmount,
+                    depositType: (proposal as any).depositType,
+                    depositValue: (proposal as any).depositValue,
+                    depositAmount: (proposal as any).depositAmount,
+                    depositPaid: (proposal as any).depositPaid,
+                    depositPaidAmount: (proposal as any).depositPaidAmount,
+                    depositNotes: (proposal as any).depositNotes,
+                    paymentTerms: (proposal as any).paymentTerms || 'net_30',
+                    amountPaid: (proposal as any).amountPaid || 0,
+                    additionalFeePercent: (proposal as any).additionalFeePercent || 0,
+                    additionalFeeName: (proposal as any).additionalFeeName || '',
+                    additionalFeeAmount: (proposal as any).additionalFeeAmount || 0,
+                });
 
                 if (proposal.jobId) {
                     try {
@@ -299,43 +506,74 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                         if (jobDoc.exists) {
                             const jobData = jobDoc.data();
                             const existingInvoice = jobData?.invoice || {};
-                            invoiceId = existingInvoice.id || null;
-                            
-                            const invoiceItems = tierCalc.items.map((pItem: any) => ({
-                                id: pItem.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                                description: pItem.name || pItem.description || 'Proposal Item',
-                                quantity: pItem.quantity || 1,
-                                unitPrice: pItem.price || 0,
-                                total: pItem.total || ((pItem.price || 0) * (pItem.quantity || 1)),
-                                type: (pItem.type as any) || 'Part'
-                            }));
+                            const isJobCompletedOrPaid = jobData?.jobStatus === 'Completed' || jobData?.jobStatus === 'Archived' || existingInvoice?.status === 'Paid';
 
-                            const updatedInvoice = {
-                                ...existingInvoice,
-                                proposalId: proposal.id,
-                                items: invoiceItems,
-                                subtotal: finalSubtotal,
-                                taxAmount: finalTaxAmount,
-                                totalAmount: finalTotal,
-                                amount: finalTotal,
-                                status: existingInvoice.status || 'Unpaid'
-                            };
+                            if (isJobCompletedOrPaid) {
+                                // Do NOT overwrite completed job's existing invoice (e.g. diagnostic service call).
+                                // Keep proposal bidirectionally linked in linkedProposalIds without destroying invoice.
+                                if (!appState.isDemoMode) {
+                                    const linkedProps = Array.from(new Set([...(jobData?.linkedProposalIds || []), proposal.id]));
+                                    await db.collection('jobs').doc(proposal.jobId).update(cleanUndefinedFields({
+                                        linkedProposalIds: linkedProps,
+                                        updatedAt: new Date().toISOString()
+                                    }));
+                                }
+                            } else {
+                                const targetJobId = proposal.jobId || jobDoc.id || 'JOB';
+                                const cleanJobSuffix = targetJobId.replace(/^JOB-?/i, '');
+                                invoiceId = existingInvoice.id || `INV-${cleanJobSuffix}`;
+                                const invoiceNumber = existingInvoice.invoiceNumber || existingInvoice.number || cleanJobSuffix;
 
-                            if (!appState.isDemoMode) {
-                                await db.collection('jobs').doc(proposal.jobId).update(cleanUndefinedFields({
+                                const updatedInvoice = {
+                                    ...existingInvoice,
+                                    id: invoiceId,
+                                    invoiceNumber: invoiceNumber,
+                                    number: invoiceNumber,
+                                    proposalId: proposal.id,
+                                    proposalNumber: proposal.proposalNumber || proposal.id,
+                                    poNumber: proposal.poNumber || existingInvoice.poNumber || jobData?.poNumber || jobData?.workOrderNumber || '',
+                                    recommendations: proposal.recommendations || existingInvoice.recommendations || '',
+                                    items: invoiceItems,
+                                    subtotal: canonical.subtotal,
+                                    taxRate: canonical.taxRate,
+                                    taxAmount: canonical.taxAmount,
+                                    totalAmount: canonical.grandTotal,
+                                    grandTotal: canonical.grandTotal,
+                                    amount: canonical.grandTotal,
+                                    depositType: canonical.depositType,
+                                    depositValue: canonical.depositValue,
+                                    depositAmount: canonical.depositRequired,
+                                    depositRequired: canonical.depositRequired,
+                                    depositPaid: canonical.depositPaid,
+                                    depositPaidAmount: canonical.depositPaidAmount,
+                                    depositNotes: canonical.depositNotes,
+                                    amountPaid: canonical.amountPaid,
+                                    balanceDue: canonical.balanceDue,
+                                    balanceRemaining: canonical.balanceRemaining,
+                                    amountDueToday: canonical.amountDueToday,
+                                    amountDueNet: canonical.amountDueNet,
+                                    paymentTerms: canonical.paymentTerms,
+                                    paymentTermsLabel: canonical.paymentTermsLabel,
+                                    financialStatus: canonical.financialStatus,
+                                    status: existingInvoice.status || 'Unpaid'
+                                };
+
+                                if (!appState.isDemoMode) {
+                                    await db.collection('jobs').doc(proposal.jobId).update(cleanUndefinedFields({
+                                        proposalId: proposal.id,
+                                        invoice: updatedInvoice,
+                                        updatedAt: new Date().toISOString()
+                                    }));
+                                }
+                                
+                                setAssociatedJob({
+                                    ...jobData,
+                                    id: jobDoc.id,
                                     proposalId: proposal.id,
                                     invoice: updatedInvoice,
                                     updatedAt: new Date().toISOString()
-                                }));
+                                } as Job);
                             }
-                            
-                            setAssociatedJob({
-                                ...jobData,
-                                id: jobDoc.id,
-                                proposalId: proposal.id,
-                                invoice: updatedInvoice,
-                                updatedAt: new Date().toISOString()
-                            } as Job);
                         }
                     } catch (jobErr) {
                         console.error("Error updating associated job's invoice:", jobErr);
@@ -367,6 +605,8 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                     updatePayload.subtotal = finalSubtotal;
                     updatePayload.taxAmount = finalTaxAmount;
                     updatePayload.total = finalTotal;
+                    updatePayload.totalAmount = finalTotal;
+                    updatePayload.grandTotal = finalTotal;
                     updatePayload.invoiceId = invoiceId;
                 }
                 await db.collection('proposals').doc(proposal.id).update(cleanUndefinedFields(updatePayload));
@@ -441,20 +681,24 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
             try {
                 const { sendNotification, notifyAdmins } = await import('lib/notificationService');
                 
-                if (recipientId) {
-                    await sendNotification(recipientId, {
-                        title: 'Proposal Accepted!',
-                        body: notificationContent,
+                const notifPayload = {
+                    title: 'Proposal Accepted!',
+                    body: notificationContent,
+                    type: 'proposal_accepted',
+                    link: `/proposal-view/${proposal.id}`,
+                    data: {
+                        proposalId: proposal.id,
+                        customerId: proposal.customerId,
                         type: 'proposal_accepted'
-                    }, proposal.organizationId || organization?.id);
+                    }
+                };
+
+                if (recipientId) {
+                    await sendNotification(recipientId, notifPayload, proposal.organizationId || organization?.id);
                 }
                 
                 if (proposal.organizationId || organization?.id) {
-                    await notifyAdmins(proposal.organizationId || organization?.id || '', {
-                        title: 'Proposal Accepted!',
-                        body: notificationContent,
-                        type: 'proposal_accepted'
-                    });
+                    await notifyAdmins(proposal.organizationId || organization?.id || '', notifPayload);
                 }
 
                 // Add to system messages collection for tracking
@@ -488,7 +732,7 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
     const handleVerbalAccept = async () => {
         if (!proposal) return;
         
-        if (!window.confirm(t("Are you sure you want to mark this proposal as verbally accepted?"))) {
+        if (!(await globalConfirm(t("Are you sure you want to mark this proposal as verbally accepted?"), t("Verbal Authorization"), t("Accept Proposal"), t("Cancel")))) {
             return;
         }
 
@@ -497,14 +741,14 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
         const signerName = "Verbal Acceptance";
 
         try {
-            let finalTier = selectedOption || 'Basic';
+            let finalTier = activeTier || 'Basic';
             let finalSubtotal = calculatedSubtotal;
             let finalTaxAmount = calculatedTaxAmount;
             let finalTotal = grandTotal;
             let invoiceId = proposal.invoiceId || null;
 
             if (isStandardProposal) {
-                finalTier = selectedOption || (availableTiers[0] || 'Basic');
+                finalTier = activeTier || (availableTiers[0] || 'Basic');
                 const tierCalc = calculateTierTotal(finalTier);
                 finalSubtotal = tierCalc.subtotal;
                 finalTaxAmount = tierCalc.taxAmount;
@@ -516,34 +760,68 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                         if (jobDoc.exists) {
                             const jobData = jobDoc.data();
                             const existingInvoice = jobData?.invoice || {};
-                            invoiceId = existingInvoice.id || null;
-                            
-                            const invoiceItems = tierCalc.items.map((pItem: any) => ({
-                                id: pItem.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                                description: pItem.name || pItem.description || 'Proposal Item',
-                                quantity: pItem.quantity || 1,
-                                unitPrice: pItem.price || 0,
-                                total: pItem.total || ((pItem.price || 0) * (pItem.quantity || 1)),
-                                type: (pItem.type as any) || 'Part'
-                            }));
+                            const isJobCompletedOrPaid = jobData?.jobStatus === 'Completed' || jobData?.jobStatus === 'Archived' || existingInvoice?.status === 'Paid';
 
-                            const updatedInvoice = {
-                                ...existingInvoice,
-                                proposalId: proposal.id,
-                                items: invoiceItems,
-                                subtotal: finalSubtotal,
-                                taxAmount: finalTaxAmount,
-                                totalAmount: finalTotal,
-                                amount: finalTotal,
-                                status: existingInvoice.status || 'Unpaid'
-                            };
-
-                            if (!appState.isDemoMode) {
-                                await db.collection('jobs').doc(proposal.jobId).update(cleanUndefinedFields({
-                                    proposalId: proposal.id,
-                                    invoice: updatedInvoice,
-                                    updatedAt: new Date().toISOString()
+                            if (isJobCompletedOrPaid) {
+                                // Do NOT overwrite completed job's existing invoice (e.g. diagnostic service call).
+                                // Keep proposal bidirectionally linked in linkedProposalIds without destroying invoice.
+                                if (!appState.isDemoMode) {
+                                    const linkedProps = Array.from(new Set([...(jobData?.linkedProposalIds || []), proposal.id]));
+                                    await db.collection('jobs').doc(proposal.jobId).update(cleanUndefinedFields({
+                                        linkedProposalIds: linkedProps,
+                                        updatedAt: new Date().toISOString()
+                                    }));
+                                }
+                            } else {
+                                const targetJobId = proposal.jobId || jobDoc.id || 'JOB';
+                                const cleanJobSuffix = targetJobId.replace(/^JOB-?/i, '');
+                                invoiceId = existingInvoice.id || `INV-${cleanJobSuffix}`;
+                                const invoiceNumber = existingInvoice.invoiceNumber || existingInvoice.number || cleanJobSuffix;
+                                
+                                const invoiceItems = tierCalc.items.map((pItem: any) => ({
+                                    id: pItem.id || `item-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                                    name: pItem.name || pItem.description || 'Proposal Item',
+                                    description: pItem.description || pItem.name || 'Proposal Item',
+                                    details: pItem.details || pItem.description || '',
+                                    notes: pItem.notes || '',
+                                    scopeOfWork: pItem.scopeOfWork || '',
+                                    subItems: Array.isArray(pItem.subItems) ? pItem.subItems : [],
+                                    quantity: Number(pItem.quantity || 1),
+                                    unitPrice: Number(pItem.price || pItem.unitPrice || 0),
+                                    price: Number(pItem.price || pItem.unitPrice || 0),
+                                    total: Number(pItem.total || ((pItem.price || pItem.unitPrice || 0) * (pItem.quantity || 1))),
+                                    type: (pItem.type as any) || 'Part',
+                                    partCost: pItem.partCost,
+                                    laborHours: pItem.laborHours,
+                                    hourlyRate: pItem.hourlyRate,
+                                    margin: pItem.margin,
+                                    taxable: pItem.taxable !== false
                                 }));
+
+                                const updatedInvoice = {
+                                    ...existingInvoice,
+                                    id: invoiceId,
+                                    invoiceNumber: invoiceNumber,
+                                    number: invoiceNumber,
+                                    proposalId: proposal.id,
+                                    proposalNumber: proposal.proposalNumber || proposal.id,
+                                    poNumber: proposal.poNumber || existingInvoice.poNumber || jobData?.poNumber || jobData?.workOrderNumber || '',
+                                    recommendations: proposal.recommendations || existingInvoice.recommendations || '',
+                                    items: invoiceItems,
+                                    subtotal: finalSubtotal,
+                                    taxAmount: finalTaxAmount,
+                                    totalAmount: finalTotal,
+                                    amount: finalTotal,
+                                    status: existingInvoice.status || 'Unpaid'
+                                };
+
+                                if (!appState.isDemoMode) {
+                                    await db.collection('jobs').doc(proposal.jobId).update(cleanUndefinedFields({
+                                        proposalId: proposal.id,
+                                        invoice: updatedInvoice,
+                                        updatedAt: new Date().toISOString()
+                                    }));
+                                }
                             }
                         }
                     } catch (jobErr) {
@@ -579,6 +857,13 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                     updatePayload.invoiceId = invoiceId;
                 }
                 await db.collection('proposals').doc(proposal.id).update(cleanUndefinedFields(updatePayload));
+                dispatch({
+                    type: 'UPDATE_PROPOSAL',
+                    payload: {
+                        id: proposal.id,
+                        ...updatePayload
+                    }
+                });
             }
             
             showToast.success("Proposal verbally accepted successfully!");
@@ -654,7 +939,7 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
     if (loading) return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center flex-col gap-3">
             <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-sm font-bold text-slate-500">{t("Fetching commercial proposal details...")}</p>
+            <p className="text-sm font-bold text-slate-500">{t("Fetching proposal details...")}</p>
         </div>
     );
 
@@ -728,6 +1013,26 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
         window.print();
     };
 
+    const handleDownloadPdf = async () => {
+        if (!proposal) return;
+        try {
+            showToast.info(t("Generating PDF document..."));
+            const { generateProposalPdfAttachment } = await import('lib/pdfHelper');
+            const { downloadFile } = await import('lib/downloadHelper');
+            const propToExport = {
+                ...proposal,
+                selectedOption: selectedOption || activeTier
+            };
+            const att = await generateProposalPdfAttachment(propToExport, organization);
+            const dataUri = `data:application/pdf;base64,${att.content}`;
+            await downloadFile(dataUri, att.filename);
+            showToast.success(t("PDF downloaded successfully!"));
+        } catch (err: any) {
+            console.error("PDF download error:", err);
+            showToast.error(t("Failed to generate PDF: ") + (err.message || err));
+        }
+    };
+
     if (!proposal) return null;
 
     if (hasDeclinedTerms) {
@@ -737,7 +1042,7 @@ const PublicProjectProposal: React.FC<PublicProjectProposalProps> = ({
                     <Shield className="w-16 h-16 text-rose-500 mx-auto mb-4 animate-pulse" />
                     <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-2">{t("Access Declined")}</h2>
                     <p className="text-slate-600 dark:text-slate-400 text-sm mb-6 leading-relaxed">
-                        {t("You declined the required legal agreements (Terms of Agreement or Non-Disclosure Agreement). In order to view, download, or authorize this commercial bid, you must review and agree to the required agreements from")} <strong>{organization?.name || 'Service Provider'}</strong>.
+                        {t("You declined the required legal agreements (Terms of Agreement or Non-Disclosure Agreement). In order to view, download, or authorize this proposal, you must review and agree to the required agreements from")} <strong>{organization?.name || 'Service Provider'}</strong>.
                     </p>
                     <div className="flex flex-col gap-3">
                         <Button onClick={() => setHasDeclinedTerms(false)} className="w-full font-bold">
@@ -844,22 +1149,38 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
         );
     }
 
+    const isCommercial = !!(
+        customer?.customerType === 'Commercial' || 
+        customer?.customerType === 'Property Management' || 
+        (customer?.serviceLocations && customer.serviceLocations.length > 0) ||
+        (proposal as any)?.customerType === 'Commercial' ||
+        (proposal as any)?.isProjectLevel === true ||
+        (proposal as any)?.isCommercial === true
+    );
+
     const isSummaryHidden = false; // For commercial we only want to keep the first popup one
 
-    const laborSub = proposal.laborSubtotal || 0;
+    const laborSub = (proposal.laborItems && proposal.laborItems.length > 0)
+        ? proposal.laborItems.reduce((sum: number, it: any) => sum + (Number(it.value) || (Number(it.hours || 0) * Number(it.rate || 0))), 0)
+        : (proposal.laborSubtotal || 0);
     const roundedLabor = proposal.roundedLaborProposal || 0;
-    const partsTot = proposal.partsTotal || 0;
-    const allowanceTot = proposal.allowanceTotal || 0;
+    const partsTot = (proposal.partItems && proposal.partItems.length > 0)
+        ? proposal.partItems.reduce((sum: number, it: any) => sum + (Number(it.customerLineTotal) || (Number(it.quantity || 1) * Number(it.customerUnitPrice || 0))), 0)
+        : (proposal.partsTotal || 0);
+    const allowanceTot = (proposal.allowanceItems && proposal.allowanceItems.length > 0)
+        ? proposal.allowanceItems.reduce((sum: number, it: any) => sum + (Number(it.amount) || 0), 0)
+        : (proposal.allowanceTotal || 0);
 
+    const activeTierCalc = isStandardProposal ? calculateTierTotal(activeTier) : null;
     const calculatedSubtotal = isStandardProposal 
-        ? (calculateTierTotal(activeTier).subtotal)
+        ? ((activeTierCalc && activeTierCalc.subtotal > 0) ? activeTierCalc.subtotal : (proposal.subtotal || proposal.total || 0))
         : ((roundedLabor || laborSub) + partsTot + allowanceTot);
-    const baseSubtotal = proposal.recommendedRoundedTotal || calculatedSubtotal;
+    const baseSubtotal = proposal.recommendedRoundedTotal || calculatedSubtotal || proposal.subtotal || proposal.total || 0;
     const roundingAdjustment = proposal.recommendedRoundedTotal ? (proposal.recommendedRoundedTotal - calculatedSubtotal) : 0;
     
     const tRate = proposal.taxRate || 0;
     const calculatedTaxAmount = isStandardProposal
-        ? (calculateTierTotal(activeTier).taxAmount)
+        ? (activeTierCalc ? activeTierCalc.taxAmount : (proposal.taxAmount !== undefined ? proposal.taxAmount : 0))
         : (proposal.taxAmount !== undefined ? proposal.taxAmount : Number((baseSubtotal * (tRate / 100)).toFixed(2)));
     
     const pRate = proposal.processingFeeRate || 0;
@@ -868,41 +1189,71 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
         : Number(((baseSubtotal + calculatedTaxAmount) * (pRate / 100)).toFixed(2));
     
     const grandTotal = isStandardProposal
-        ? (calculateTierTotal(activeTier).total)
+        ? ((activeTierCalc && activeTierCalc.total > 0) ? activeTierCalc.total : (proposal.total || (proposal as any).amount || baseSubtotal))
         : (baseSubtotal + calculatedTaxAmount + calculatedProcessingFeeAmount);
     const valTotal = grandTotal;
 
     return (
         <div className="min-h-screen bg-slate-100 dark:bg-slate-950 print:bg-white text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-150">
             {/* FLOATING ACTION HEADER */}
-            <div className="bg-white/80 dark:bg-slate-900/80 sm:backdrop-blur-md border-b border-slate-200 dark:border-slate-800 py-3 px-4 md:px-6 sticky top-0 z-40 flex flex-col sm:flex-row justify-between items-center print:hidden shadow-sm gap-3 h-auto min-h-[4rem]">
-                <div className="flex items-center gap-3">
-                    {organization?.logoUrl || organization?.letterheadDataUrl ? (
-                        <img 
-                            src={organization.logoUrl || organization.letterheadDataUrl} 
-                            alt={proposal.preparedByOrganization || 'Logo'} 
-                            className="h-9 max-w-[140px] object-contain rounded"
-                        />
-                    ) : (
-                        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary-600 to-indigo-600 text-white flex items-center justify-center font-black shadow-md">
-                            {proposal.preparedByOrganization?.slice(0,2).toUpperCase() || 'TT'}
+            <div className={`bg-white/80 dark:bg-slate-900/80 sm:backdrop-blur-md border-b border-slate-200 dark:border-slate-800 py-3 px-4 md:px-6 sticky top-0 z-40 flex flex-col sm:flex-row ${embedded ? 'justify-end' : 'justify-between'} items-center print:hidden shadow-sm gap-3 h-auto min-h-[3.5rem] ${embedded ? 'rounded-2xl mb-4 border shadow-none bg-white dark:bg-slate-900' : ''}`}>
+                {!embedded && (
+                    <div className="flex items-center gap-3">
+                        {organization?.logoUrl || organization?.letterheadDataUrl ? (
+                            <img 
+                                src={organization.logoUrl || organization.letterheadDataUrl} 
+                                alt={proposal.preparedByOrganization || 'Logo'} 
+                                className="h-9 max-w-[140px] object-contain rounded"
+                            />
+                        ) : (
+                            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary-600 to-indigo-600 text-white flex items-center justify-center font-black shadow-md">
+                                {proposal.preparedByOrganization?.slice(0,2).toUpperCase() || 'TT'}
+                            </div>
+                        )}
+                        <div>
+                            <h1 className="text-sm font-black text-slate-900 dark:text-white tracking-tight">{proposal.preparedByOrganization || 'TekAir Inc'}</h1>
+                            <p className="text-[10px] text-slate-500 font-semibold">{isCommercial ? t("Commercial Proposal Portal") : t("Proposal Portal")}</p>
+                        </div>
+                    </div>
+                )}
+                <div className="flex flex-wrap items-center justify-center gap-2 w-full sm:w-auto">
+                    {hasMultipleTiers && proposal.status !== 'Accepted' && (
+                        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                            <span className="text-[10px] font-black uppercase text-slate-400 px-2 tracking-wider hidden md:inline">Tier:</span>
+                            {availableTiers.map(tierName => {
+                                const isSel = matchTier(tierName, activeTier);
+                                const tCalc = calculateTierTotal(tierName);
+                                return (
+                                    <button
+                                        key={tierName}
+                                        type="button"
+                                        onClick={() => setSelectedOption(tierName)}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                                            isSel
+                                                ? 'bg-primary-600 text-white shadow-sm'
+                                                : 'text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+                                        }`}
+                                    >
+                                        {isSel && <CheckCircle size={13} />}
+                                        <span>{getTierLabel(tierName)}</span>
+                                        <span className="opacity-75 text-[11px] font-mono">(${tCalc.total.toLocaleString(undefined, {maximumFractionDigits: 0})})</span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
-                    <div>
-                        <h1 className="text-sm font-black text-slate-900 dark:text-white tracking-tight">{proposal.preparedByOrganization || 'TekAir Inc'}</h1>
-                        <p className="text-[10px] text-slate-500 font-semibold">{t("Commercial Proposal Portal")}</p>
-                    </div>
-                </div>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                    {availableTiers.length > 1 && selectedOption && proposal.status !== 'Accepted' && (
-                        <Button variant="secondary" size="sm" onClick={() => setSelectedOption(null)} className="flex items-center gap-1.5 font-bold">
-                            &larr; {t("Change Package")}
-                        </Button>
+                    {!embedded && (
+                        <>
+                            <Button variant="secondary" size="sm" onClick={handleDownloadPdf} className="flex items-center gap-1.5 font-bold">
+                                <FileDown size={14} />
+                                {t("Download PDF")}
+                            </Button>
+                            <Button variant="secondary" size="sm" onClick={handlePrint} className="flex items-center gap-1.5 font-bold">
+                                <Printer size={14} />
+                                {t("Print")}
+                            </Button>
+                        </>
                     )}
-                    <Button variant="secondary" size="sm" onClick={handlePrint} className="flex items-center gap-1.5 font-bold">
-                        <Printer size={14} />
-                        {t("Print")}
-                    </Button>
                     {proposal.status === 'Accepted' ? (
                         <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-full border border-emerald-200/50">
                             <CheckCircle size={14} />
@@ -924,12 +1275,21 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                 <X size={14} />
                                 {t("Decline")}
                             </Button>
+                            {appState.currentUser && (
+                                <Button 
+                                    onClick={handleVerbalAccept}
+                                    disabled={isSubmitting}
+                                    className="bg-amber-500 hover:bg-amber-600 hover:scale-[1.02] border-0 text-white font-bold flex items-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 transition-all py-2 px-3.5 text-xs md:text-sm"
+                                >
+                                    <span>{t("Verbal Accept")}{hasMultipleTiers ? ` "${getTierLabel(activeTier)}"` : ''}</span>
+                                </Button>
+                            )}
                             <Button 
                                 onClick={() => setIsSigningOpen(true)} 
                                 className="bg-emerald-600 hover:bg-emerald-700 hover:scale-[1.02] border-0 text-white font-bold flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 transition-all py-2 px-4"
                             >
                                 <ClipboardCheck size={16} />
-                                {t("Accept & Sign")}
+                                {hasMultipleTiers ? `${t("Accept & Sign")} "${getTierLabel(activeTier)}"` : t("Accept & Sign")}
                             </Button>
                         </div>
                     )}
@@ -938,33 +1298,86 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
 
             {/* MAIN PORTAL BODY */}
             <div className="flex-grow py-8 px-4 md:px-8 max-w-5xl mx-auto w-full space-y-6 print:py-0 print:px-0">
-                {showMultiTier ? (
+                {showMultiTier && (
                     <div className="space-y-6 mb-10 animate-fade-in">
                         <div className="text-center max-w-xl mx-auto mb-8">
+                            <span className="inline-block px-3 py-1 bg-primary-50 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800 text-[11px] font-black uppercase tracking-widest rounded-full mb-2">
+                                {proposal.status === 'Accepted' ? t("Package Options Comparison") : t("Package Options")}
+                            </span>
                             <h2 className="text-3xl font-black text-slate-800 dark:text-slate-200 tracking-tight">{t("Select Your Package Option")}</h2>
-                            <p className="text-slate-500 text-sm mt-2">{t("Please choose one of the options below to review the detailed scope, pricing, and authorize the proposal.")}</p>
+                            <p className="text-slate-500 text-sm mt-2">{t("Click any option below to review its detailed scope, price, and select it for your authorization.")}</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             {availableTiers.map(tierName => {
                                 const tierCalc = calculateTierTotal(tierName);
+                                const isSelected = matchTier(tierName, activeTier);
+                                const isAcceptedThisTier = proposal.status === 'Accepted' && matchTier(tierName, proposal.selectedOption || activeTier);
+
                                 return (
                                     <div 
                                         key={tierName} 
                                         role="button"
                                         tabIndex={0}
-                                        onClick={() => setSelectedOption(tierName)} 
+                                        onClick={() => {
+                                            if (proposal.status !== 'Accepted') {
+                                                setSelectedOption(tierName);
+                                            }
+                                        }} 
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' || e.key === ' ') {
                                                 e.preventDefault();
-                                                setSelectedOption(tierName);
+                                                if (proposal.status !== 'Accepted') {
+                                                    setSelectedOption(tierName);
+                                                }
                                             }
                                         }}
-                                        className="p-8 border-2 border-slate-200 dark:border-slate-800 hover:border-primary-500 dark:hover:border-primary-400 rounded-3xl bg-white dark:bg-slate-900 transition-all cursor-pointer hover:shadow-2xl flex flex-col hover:scale-[1.02] transform active:scale-95 text-left"
+                                        className={`p-8 border-3 rounded-3xl transition-all flex flex-col text-left relative ${
+                                            isSelected 
+                                                ? 'border-primary-600 dark:border-primary-500 bg-primary-50/50 dark:bg-primary-950/40 shadow-2xl ring-4 ring-primary-500/20 scale-[1.02]' 
+                                                : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-600 hover:shadow-xl'
+                                        } ${proposal.status !== 'Accepted' ? 'cursor-pointer' : ''}`}
                                     >
-                                        <h3 className="text-center font-black text-2xl uppercase mb-6 text-slate-800 dark:text-slate-200 tracking-tight">{tierName} Option</h3>
-                                        <div className="text-center mb-8 border-b dark:border-slate-800 pb-6">
-                                            <div className="text-4xl font-black tracking-tight text-primary-600 dark:text-primary-400 font-mono">${tierCalc.total.toLocaleString(undefined, {minimumFractionDigits: 2})}</div>
+                                        {/* Selected Badge */}
+                                        {isSelected && (
+                                            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-primary-600 to-indigo-600 text-white text-[10px] font-black uppercase tracking-widest px-4 py-1 rounded-full shadow-md flex items-center gap-1">
+                                                <CheckCircle size={12} />
+                                                <span>{isAcceptedThisTier ? t("Accepted Package") : t("Selected Package")}</span>
+                                            </div>
+                                        )}
+
+                                        <h3 className={`text-center font-black text-2xl uppercase mb-6 tracking-tight ${isSelected ? 'text-primary-700 dark:text-primary-300' : 'text-slate-800 dark:text-slate-200'}`}>
+                                            {(() => {
+                                                const lbl = getTierLabel(tierName);
+                                                return lbl.toLowerCase().includes('option') ? lbl : `${lbl} Option`;
+                                            })()}
+                                        </h3>
+                                        <div className="text-center mb-8 border-b border-slate-200 dark:border-slate-800 pb-6">
+                                            <div className={`text-4xl font-black tracking-tight font-mono ${isSelected ? 'text-primary-600 dark:text-primary-400' : 'text-slate-900 dark:text-white'}`}>
+                                                ${tierCalc.total.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                            </div>
                                             <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-2">{t("All-Inclusive Total")}</div>
+                                            {(() => {
+                                                const hasDep = ((proposal as any)?.depositAmount > 0) || ((proposal as any)?.depositValue > 0);
+                                                if (!hasDep) return null;
+                                                let tDep = 0;
+                                                if ((proposal as any)?.depositType === 'percentage' && (proposal as any)?.depositValue > 0) {
+                                                    tDep = (tierCalc.total * Number((proposal as any).depositValue)) / 100;
+                                                } else if ((proposal as any)?.depositValue > 0) {
+                                                    tDep = Math.min(tierCalc.total, Number((proposal as any).depositValue));
+                                                } else if ((proposal as any)?.depositAmount > 0) {
+                                                    tDep = Math.min(tierCalc.total, Number((proposal as any).depositAmount));
+                                                }
+                                                if (tDep <= 0) return null;
+                                                return (
+                                                    <div className="text-xs font-extrabold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-xl py-1.5 px-3 mt-3 inline-flex items-center gap-1.5 shadow-sm">
+                                                        <span>💳 {t("Deposit Required:")}</span>
+                                                        <span className="font-black">${tDep.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                                                        {(proposal as any)?.depositType === 'percentage' && (proposal as any)?.depositValue && (
+                                                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">({(proposal as any).depositValue}%)</span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                         <div className="space-y-4 mb-8 flex-grow">
                                             {tierCalc.items.map((item: any, idx: number) => (
@@ -973,9 +1386,9 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                                         <div className="flex items-start gap-2">
                                                             <span className="text-emerald-500 font-bold shrink-0">✓</span>
                                                             <div className="flex flex-col">
-                                                                <span className="font-bold text-slate-850 dark:text-slate-200 leading-tight">{item.name || item.description}</span>
-                                                                {item.description && item.description !== item.name && (
-                                                                    <span className="text-[10px] text-slate-500 mt-0.5 leading-snug whitespace-pre-wrap">{item.description}</span>
+                                                                <span className="font-bold text-slate-850 dark:text-slate-200 leading-tight">{item.name || sanitizeLineItemDescription(item.description)}</span>
+                                                                {sanitizeLineItemDescription(item.description) && sanitizeLineItemDescription(item.description) !== item.name && (
+                                                                    <span className="text-[10px] text-slate-500 mt-0.5 leading-snug whitespace-pre-wrap">{sanitizeLineItemDescription(item.description)}</span>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -992,14 +1405,40 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                                 </div>
                                             ))}
                                         </div>
-                                        <Button className="mt-auto w-full bg-gradient-to-r from-primary-600 to-indigo-600 border-0 font-bold text-xs uppercase tracking-widest h-12 shadow-lg">{t("Select Option")}</Button>
+
+                                        {proposal.status !== 'Accepted' ? (
+                                            isSelected ? (
+                                                <div className="mt-auto w-full py-3.5 bg-emerald-600 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
+                                                    <CheckCircle size={16} />
+                                                    <span>{t("Selected Option")}</span>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedOption(tierName);
+                                                    }}
+                                                    className="mt-auto w-full py-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-primary-600 hover:text-white text-slate-800 dark:text-slate-200 font-black text-xs uppercase tracking-widest rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm border border-slate-200 dark:border-slate-700 cursor-pointer"
+                                                >
+                                                    <span>{t("Select This Option")}</span>
+                                                    <span>&rarr;</span>
+                                                </button>
+                                            )
+                                        ) : (
+                                            <div className="mt-auto text-center text-xs font-bold text-slate-400 uppercase tracking-wider py-2">
+                                                {isAcceptedThisTier ? `✓ ${t("Accepted")}` : t("Alternative Option")}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
                         </div>
                     </div>
-                ) : (
-                    <Card className="p-8 md:p-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl print:border-0 print:shadow-none print:p-0 relative overflow-hidden">
+                )}
+
+                
+                <Card className="p-8 md:p-12 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-3xl print:border-0 print:shadow-none print:p-0 relative overflow-hidden">
                     {/* Watermarks - Multi-Pattern for visual security */}
                     {(organization?.logoUrl || organization?.letterheadDataUrl) && (
                         <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
@@ -1023,78 +1462,202 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                     
                     <div className="relative z-10 space-y-8 flex flex-col w-full">
                         {/* Invoice/Proposal Header block */}
-                        <div className="flex flex-col md:flex-row justify-between gap-6 pb-6 border-b border-slate-100 dark:border-slate-800">
-                            {/* Prepared by / logo */}
-                            <div className="flex items-center">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-6 border-b border-slate-100 dark:border-slate-800">
+                            {/* Prepared by / logo & organization contact details */}
+                            <div className="flex flex-col items-start max-w-[38%] text-left">
                                 {organization?.logoUrl || organization?.letterheadDataUrl ? (
                                     <img 
                                         src={organization.logoUrl || organization.letterheadDataUrl} 
                                         alt={proposal.preparedByOrganization || 'Logo'} 
-                                        className="h-28 max-w-[420px] md:h-32 object-contain py-1"
+                                        className="h-20 max-w-[320px] object-contain py-1 mb-2"
                                     />
-                                ) : (
-                                    <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{proposal.preparedByOrganization}</h2>
+                                ) : null}
+                                <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{organization?.name || proposal.preparedByOrganization}</h2>
+                                {organization?.address && (
+                                    <div className="text-xs text-slate-500 font-medium font-sans mt-0.5">
+                                        {formatFullAddress(organization.address, (organization as any)?.city, (organization as any)?.state, (organization as any)?.zip)}
+                                    </div>
                                 )}
-                            </div>
-
-                        {/* Proposal metadata / prepared for */}
-                        <div className="space-y-4 md:text-right">
-                            <div className="inline-block bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl md:text-left min-w-[240px]">
-                                <h3 className="text-[10px] uppercase font-black tracking-widest text-slate-400 mb-2">{t("Proposal Details")}</h3>
-                                <div className="space-y-1 text-xs">
-                                    <div className="flex justify-between gap-4">
-                                        <span className="text-slate-500 font-medium">{t("Proposal ID:")}</span>
-                                        <strong className="text-slate-900 dark:text-white font-mono">#{proposal.id}</strong>
-                                    </div>
-                                    <div className="flex justify-between gap-4">
-                                        <span className="text-slate-500 font-medium">{t("Date:")}</span>
-                                        <strong className="text-slate-900 dark:text-white">{new Date(proposal.createdAt).toLocaleDateString()}</strong>
-                                    </div>
-                                    {proposal.poNumber && (
-                                        <div className="flex justify-between gap-4">
-                                            <span className="text-slate-500 font-medium">{t("PO Number:")}</span>
-                                            <strong className="text-slate-900 dark:text-white">{proposal.poNumber}</strong>
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-slate-500 font-medium">
+                                    {organization?.phone && (
+                                        <div className="flex items-center gap-1">
+                                            <Phone size={12} className="text-slate-400 shrink-0" />
+                                            <span>{organization.phone}</span>
                                         </div>
                                     )}
-                                    {proposal.scid && (
-                                        <div className="flex justify-between gap-4">
-                                            <span className="text-slate-500 font-medium">{t("SCID:")}</span>
-                                            <strong className="text-slate-900 dark:text-white">{proposal.scid}</strong>
+                                    {organization?.email && (
+                                        <div className="flex items-center gap-1">
+                                            <Mail size={12} className="text-slate-400 shrink-0" />
+                                            <span>{organization.email}</span>
                                         </div>
                                     )}
                                 </div>
+                                {(organization as any)?.licenseNumber && (
+                                    <div className="text-[11px] text-slate-400 font-semibold mt-1">
+                                        License #: {(organization as any).licenseNumber}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Center: Bold PROPOSAL Label */}
+                            <div className="flex flex-col items-center justify-center text-center self-center px-4">
+                                <h2 className="text-3xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight uppercase">
+                                    PROPOSAL
+                                </h2>
+                            </div>
+
+                            {/* Proposal metadata / prepared for */}
+                            <div className="space-y-4 md:text-right">
+                                <div className="inline-block bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl md:text-left min-w-[260px] shadow-sm text-left">
+                                    <h3 className="text-[10px] uppercase font-black tracking-widest text-slate-400 mb-2 border-b border-slate-200/60 dark:border-slate-800 pb-1">{t("Proposal Details")}</h3>
+                                    <div className="space-y-1.5 text-xs">
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-slate-500 font-medium">{t("Proposal ID:")}</span>
+                                            <strong className="text-slate-900 dark:text-white font-mono">#{(proposal as any).customProposalNumber || proposal.id}</strong>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-slate-500 font-medium">{t("Date:")}</span>
+                                            <strong className="text-slate-900 dark:text-white">{new Date(proposal.createdAt).toLocaleDateString()}</strong>
+                                        </div>
+                                        <div className="flex justify-between gap-4">
+                                            <span className="text-slate-500 font-medium">{t("Valid Until:")}</span>
+                                            <strong className="text-slate-900 dark:text-white">{proposal.validUntil ? new Date(proposal.validUntil).toLocaleDateString() : new Date(new Date(proposal.createdAt).getTime() + 30*86400000).toLocaleDateString()}</strong>
+                                        </div>
+                                        {((customer as any)?.accountNumber || (proposal as any)?.accountNumber || (customer ? getOrGenerateAccountNumber(customer) : '')) && (
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500 font-medium">{t("Account #:")}</span>
+                                                <strong className="text-indigo-600 dark:text-indigo-400 font-mono font-bold">
+                                                    {(customer as any)?.accountNumber || (proposal as any)?.accountNumber || (customer ? getOrGenerateAccountNumber(customer) : '')}
+                                                </strong>
+                                            </div>
+                                        )}
+                                        {((proposal as any).workOrderNumber || (proposal as any).woNumber || proposal.poNumber || associatedJob?.workOrderNumber || (associatedJob as any)?.woNumber || associatedJob?.poNumber || (proposal as any).customWorkOrderNumber) && (
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500 font-medium">{t("WO Number:")}</span>
+                                                <strong className="text-slate-900 dark:text-white font-mono">{(proposal as any).workOrderNumber || (proposal as any).woNumber || proposal.poNumber || associatedJob?.workOrderNumber || (associatedJob as any)?.woNumber || associatedJob?.poNumber || (proposal as any).customWorkOrderNumber}</strong>
+                                            </div>
+                                        )}
+                                        {proposal.scid && (
+                                            <div className="flex justify-between gap-4">
+                                                <span className="text-slate-500 font-medium">{t("SCID:")}</span>
+                                                <strong className="text-slate-900 dark:text-white">{proposal.scid}</strong>
+                                            </div>
+                                        )}
+                                        {proposal.status && (
+                                            <div className="flex justify-between gap-4 pt-1 border-t border-slate-200/50 dark:border-slate-800">
+                                                <span className="text-slate-500 font-medium">{t("Status:")}</span>
+                                                <strong className={`uppercase font-bold tracking-wider text-[10px] px-2 py-0.5 rounded-full ${proposal.status === 'Accepted' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+                                                    {proposal.status}
+                                                </strong>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
                     {/* 3-Tier Multi-Entity Address Header Layout */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* Box 1: Customer / Property Mgr */}
-                        <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1">
-                            <h3 className="text-[10px] uppercase font-black tracking-widest text-indigo-600 dark:text-indigo-400">{t("1. CUSTOMER / PROPERTY MGR")}</h3>
-                            <p className="font-bold text-sm text-slate-900 dark:text-white">{proposal.customerName || '23rd Group Facility Services'}</p>
-                            <p className="text-xs text-slate-500 font-medium">{(proposal as any).customerAddress || (proposal as any).clientAddress || '4944 Parkway Plaza Blvd, Charlotte, NC 28217'}</p>
-                            {proposal.projectName && <p className="text-[11px] text-slate-400 font-semibold pt-1">Project: {proposal.projectName}</p>}
-                        </div>
+                    {(() => {
+                        const targetLocationId = (proposal as any)?.locationId || associatedJob?.locationId;
+                        const isCommercial = !!(
+                            customer?.customerType === 'Commercial' || 
+                            customer?.customerType === 'Property Management' || 
+                            (customer?.serviceLocations && customer.serviceLocations.length > 0)
+                        );
 
-                        {/* Box 2: Bill To (Paying Entity) */}
-                        <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1">
-                            <h3 className="text-[10px] uppercase font-black tracking-widest text-emerald-600 dark:text-emerald-400">{t("2. BILL TO (PAYING ENTITY)")}</h3>
-                            <p className="font-bold text-sm text-slate-900 dark:text-white">{(proposal as any).billToName || (proposal as any).billingCompany || proposal.customerName || '23rd Group Facility Services'}</p>
-                            <p className="text-xs text-slate-500 font-medium">{(proposal as any).billToAddress || (proposal as any).billingAddress || (proposal as any).customerAddress || '4944 Parkway Plaza Blvd, Charlotte, NC 28217'}</p>
-                            {proposal.poNumber && <p className="text-[11px] font-mono text-slate-400 font-bold pt-1">PO #: {proposal.poNumber}</p>}
-                        </div>
+                        const matchedLocation = resolveServiceLocation(
+                            proposal || associatedJob,
+                            customer
+                        );
 
-                        {/* Box 3: Service Site Location */}
-                        <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1">
-                            <h3 className="text-[10px] uppercase font-black tracking-widest text-sky-600 dark:text-sky-400">{t("3. SERVICE SITE LOCATION")}</h3>
-                            <p className="font-bold text-sm text-slate-900 dark:text-white">{(proposal as any).serviceLocationName || (proposal as any).siteName || proposal.customerName || 'Humana Conviva'}</p>
-                            <div className="flex items-start gap-1.5 text-xs text-slate-500 font-medium">
-                                <MapPin size={13} className="text-slate-400 mt-0.5 shrink-0" />
-                                <span>{(proposal as any).serviceLocationAddress || (proposal as any).siteAddress || proposal.locationAddress || '4455 Thousands Oaks Drive, San Antonio, TX 78233'}</span>
+                        const box1Name = proposal?.customerName || customer?.name || 'Customer';
+                        const box1Lines = getAddressLines(
+                            customer?.address || (proposal as any)?.customerAddress || (proposal as any)?.clientAddress || (customer as any)?.billingAddress,
+                            (proposal as any)?.city || customer?.city,
+                            (proposal as any)?.state || customer?.state,
+                            (proposal as any)?.zip || customer?.zip
+                        );
+
+                        const locPropBillToName = matchedLocation?.billToName || (matchedLocation?.billToSameAsSite ? (matchedLocation.propertyName || matchedLocation.name) : null);
+                        const locPropBillToAddr = matchedLocation?.billToAddress || (matchedLocation?.billToSameAsSite ? (matchedLocation.address || (proposal as any)?.serviceLocationAddress || associatedJob?.address) : null);
+
+                        const box2Name = (proposal as any)?.billToName || (proposal as any)?.billingCompany || locPropBillToName || (customer as any)?.billingCompany || customer?.name || proposal?.customerName;
+                        const box2Lines = getAddressLines(
+                            (proposal as any)?.billToAddress || (proposal as any)?.billingAddress || locPropBillToAddr || (customer as any)?.billingAddress || customer?.address || (proposal as any)?.customerAddress,
+                            matchedLocation?.billToSameAsSite ? (matchedLocation.city || (proposal as any)?.serviceLocationCity || customer?.city) : ((proposal as any)?.city || customer?.city),
+                            matchedLocation?.billToSameAsSite ? (matchedLocation.state || (proposal as any)?.serviceLocationState || customer?.state) : ((proposal as any)?.state || customer?.state),
+                            matchedLocation?.billToSameAsSite ? (matchedLocation.zip || (proposal as any)?.serviceLocationZip || customer?.zip) : ((proposal as any)?.zip || customer?.zip)
+                        );
+
+                        const box3Name = matchedLocation?.propertyName || matchedLocation?.name || (proposal as any)?.serviceLocationName || (proposal as any)?.locationName || (proposal as any)?.siteName || associatedJob?.locationName || (associatedJob as any)?.customerName || proposal?.customerName;
+                        const rawBox3Addr = matchedLocation?.address || (proposal as any)?.serviceLocationAddress || (proposal as any)?.locationAddress || (proposal as any)?.siteAddress || (proposal as any)?.address || associatedJob?.address;
+                        const box3City = matchedLocation?.city || (proposal as any)?.serviceLocationCity || (proposal as any)?.city || (associatedJob as any)?.city || customer?.city || '';
+                        const box3State = matchedLocation?.state || (proposal as any)?.serviceLocationState || (proposal as any)?.state || (associatedJob as any)?.state || customer?.state || '';
+                        const box3Zip = matchedLocation?.zip || (proposal as any)?.serviceLocationZip || (proposal as any)?.zip || (associatedJob as any)?.zip || customer?.zip || '';
+
+                        const box3Lines = getAddressLines(
+                            rawBox3Addr,
+                            box3City,
+                            box3State,
+                            box3Zip
+                        );
+
+                        const effectiveWo = (proposal as any).workOrderNumber || (proposal as any).woNumber || proposal.poNumber || associatedJob?.workOrderNumber || (associatedJob as any)?.woNumber || associatedJob?.poNumber || (proposal as any).customWorkOrderNumber || '';
+
+                        return (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
+                                {/* Box 1: Customer / Property Mgr */}
+                                <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1 text-left">
+                                    <h3 className="text-[10px] uppercase font-black tracking-widest text-indigo-600 dark:text-indigo-400">{t("1. CUSTOMER / PROPERTY MGR")}</h3>
+                                    <p className="font-bold text-sm text-slate-900 dark:text-white">{box1Name}</p>
+                                    <div className="text-xs text-slate-500 font-medium font-sans">
+                                        {box1Lines.street && <div>{box1Lines.street}</div>}
+                                        {box1Lines.cityStateZip && <div>{box1Lines.cityStateZip}</div>}
+                                        {!box1Lines.street && !box1Lines.cityStateZip && <div>Address on file</div>}
+                                    </div>
+                                    {proposal.projectName && <p className="text-[11px] text-slate-400 font-semibold pt-1">Project: {proposal.projectName}</p>}
+                                </div>
+
+                                {/* Box 2: Bill To (Paying Entity) */}
+                                <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1 text-left">
+                                    <h3 className="text-[10px] uppercase font-black tracking-widest text-emerald-600 dark:text-emerald-400">{t("2. BILL TO (PAYING ENTITY)")}</h3>
+                                    <p className="font-bold text-sm text-slate-900 dark:text-white">{box2Name}</p>
+                                    <div className="text-xs text-slate-500 font-medium font-sans">
+                                        {box2Lines.street && <div>{box2Lines.street}</div>}
+                                        {box2Lines.cityStateZip && <div>{box2Lines.cityStateZip}</div>}
+                                        {!box2Lines.street && !box2Lines.cityStateZip && (
+                                            <>
+                                                {box1Lines.street && <div>{box1Lines.street}</div>}
+                                                {box1Lines.cityStateZip && <div>{box1Lines.cityStateZip}</div>}
+                                                {!box1Lines.street && !box1Lines.cityStateZip && <div>Address on file</div>}
+                                            </>
+                                        )}
+                                    </div>
+                                    {effectiveWo && (
+                                        <p className="text-[11px] font-mono text-slate-400 font-bold pt-1">
+                                            WO #: {effectiveWo}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Box 3: Service Site Location */}
+                                <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-1 text-left">
+                                    <h3 className="text-[10px] uppercase font-black tracking-widest text-sky-600 dark:text-sky-400">{t("3. SERVICE SITE LOCATION")}</h3>
+                                    <p className="font-bold text-sm text-slate-900 dark:text-white">{box3Name}</p>
+                                    <div className="flex items-start gap-1.5 text-xs text-slate-500 font-medium">
+                                        <MapPin size={13} className="text-slate-400 mt-0.5 shrink-0" />
+                                        <div>
+                                            {box3Lines.street && <div>{box3Lines.street}</div>}
+                                            {box3Lines.cityStateZip && <div>{box3Lines.cityStateZip}</div>}
+                                            {!box3Lines.street && !box3Lines.cityStateZip && (
+                                                <span className="text-slate-400 italic font-normal">Site Location Pending / Unspecified</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
+                        );
+                    })()}
 
                     {/* Big Proposal Title */}
                     <div className="space-y-2 text-center md:text-left py-4">
@@ -1133,7 +1696,7 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                                         ? `${proposal.laborItems.reduce((sum, item) => sum + item.hours, 0)} estimated labor hours` 
                                                         : t("All estimated labor hours")}
                                                 </td>
-                                                <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">{formatCurrency(proposal.laborSubtotal || 0)}</td>
+                                                 <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">{formatCurrency(laborSub)}</td>
                                             </tr>
                                             {!!proposal.roundedLaborProposal && (
                                                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20">
@@ -1149,9 +1712,9 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                                         ? `${proposal.partItems.length} itemized parts with wait times`
                                                         : t("Itemized parts and supplies")}
                                                 </td>
-                                                <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">{formatCurrency(proposal.partsTotal || 0)}</td>
+                                                <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">{formatCurrency(partsTot)}</td>
                                             </tr>
-                                            {proposal.allowanceTotal && proposal.allowanceTotal > 0 ? (
+                                            {allowanceTot > 0 ? (
                                                 <tr className="border-b border-slate-100 dark:border-slate-800">
                                                     <td className="p-4 font-bold text-slate-950 dark:text-white">{t("Logistics / Crane Allowances")}</td>
                                                     <td className="p-4 text-xs text-slate-500 font-medium">
@@ -1159,7 +1722,7 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                                             ? proposal.allowanceItems.map(a => a.description).join(', ')
                                                             : t("Mobilization allowances")}
                                                     </td>
-                                                    <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">{formatCurrency(proposal.allowanceTotal)}</td>
+                                                    <td className="p-4 text-right font-mono text-slate-600 dark:text-slate-400">{formatCurrency(allowanceTot)}</td>
                                                 </tr>
                                             ) : null}
                                             <tr className="border-b border-slate-250 dark:border-slate-800 bg-slate-50 dark:bg-slate-955">
@@ -1202,10 +1765,63 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                         <td className="p-4 text-xs text-indigo-700 dark:text-indigo-350 font-bold uppercase tracking-wider">{t("All Inclusive Contract Total")}</td>
                                         <td className="p-4 text-right font-black text-xl text-primary-600 dark:text-primary-400 font-mono">{formatCurrency(grandTotal)}</td>
                                     </tr>
+                                    {(() => {
+                                        const hasDep = ((proposal as any)?.depositAmount > 0) || ((proposal as any)?.depositValue > 0);
+                                        if (!hasDep) return null;
+                                        let depAmt = 0;
+                                        if ((proposal as any)?.depositType === 'percentage' && (proposal as any)?.depositValue > 0) {
+                                            depAmt = (grandTotal * Number((proposal as any).depositValue)) / 100;
+                                        } else if ((proposal as any)?.depositValue > 0) {
+                                            depAmt = Math.min(grandTotal, Number((proposal as any).depositValue));
+                                        } else if ((proposal as any)?.depositAmount > 0) {
+                                            depAmt = Math.min(grandTotal, Number((proposal as any).depositAmount));
+                                        }
+                                        if (depAmt <= 0) return null;
+                                        const remainingBal = Math.max(0, grandTotal - depAmt);
+                                        const depPaid = !!(proposal as any)?.depositPaid;
+                                        const termsLabel = ((proposal as any)?.paymentTerms || 'net_30').replace('_', ' ').toUpperCase();
+                                        return (
+                                            <>
+                                                <tr className="border-t-2 border-amber-300 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/30">
+                                                    <td className="p-4 font-black text-amber-900 dark:text-amber-200 text-sm">
+                                                        {t("Required Upfront Deposit (Due Today)")}
+                                                        {(proposal as any)?.depositType === 'percentage' && (proposal as any)?.depositValue && (
+                                                            <span className="text-xs font-normal text-amber-700 dark:text-amber-400 ml-1.5">({(proposal as any).depositValue}%)</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4 text-xs text-amber-800 dark:text-amber-300 font-bold">
+                                                        {depPaid ? t("Deposit Paid & Verified") : t("Due upon proposal acceptance before work begins")}
+                                                    </td>
+                                                    <td className="p-4 text-right font-black text-base text-amber-900 dark:text-amber-200 font-mono">
+                                                        {formatCurrency(depAmt)}
+                                                        {depPaid && <span className="text-xs text-emerald-600 block">({t("PAID")})</span>}
+                                                    </td>
+                                                </tr>
+                                                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60">
+                                                    <td className="p-4 font-bold text-slate-700 dark:text-slate-300 text-xs">
+                                                        {t("Remaining Balance Due")} ({termsLabel.includes('NET') ? termsLabel : t("Upon Completion")})
+                                                    </td>
+                                                    <td className="p-4 text-xs text-slate-500 font-medium">
+                                                        {t("Payable upon project milestones or completion")}
+                                                    </td>
+                                                    <td className="p-4 text-right font-mono font-bold text-slate-900 dark:text-white text-sm">
+                                                        {formatCurrency(remainingBal)}
+                                                    </td>
+                                                </tr>
+                                            </>
+                                        );
+                                    })()}
                                 </tbody>
                             </table>
                         </div>
                     </div>
+
+                    {(proposal as any)?.depositNotes && (
+                        <div className="p-4 bg-amber-50/90 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 rounded-2xl flex items-start gap-3 text-amber-900 dark:text-amber-200 text-xs shadow-sm">
+                            <span className="font-extrabold uppercase tracking-wider text-[11px] shrink-0">💳 {t("Deposit Instructions & Terms:")}</span>
+                            <span className="italic font-medium leading-relaxed">{(proposal as any).depositNotes}</span>
+                        </div>
+                    )}
 
                     {/* DETAILED SECTIONS */}
                     {isSummaryHidden ? (
@@ -1220,7 +1836,9 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                         <>
                             {isStandardProposal && tierItems.length > 0 && (
                                 <div className="space-y-3">
-                                    <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest border-l-4 border-[#B38728] pl-3">{t("Detailed Scope of Work / Items")}</h3>
+                                    <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest border-l-4 border-[#B38728] pl-3">
+                                        {t("Detailed Scope of Work / Items")}{hasMultipleTiers ? ` (${getTierLabel(activeTier)} Option)` : ''}
+                                    </h3>
                                     <div className="overflow-x-auto custom-scrollbar border border-slate-200 dark:border-slate-850 rounded-2xl bg-white dark:bg-slate-900">
                                         <table className="w-full text-left border-collapse text-sm">
                                             <thead>
@@ -1235,9 +1853,9 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                                 {tierItems.map((item: any, idx: number) => (
                                                     <tr key={item.id || idx} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
                                                         <td className="p-3 text-left">
-                                                            <div className="font-bold text-slate-900 dark:text-white">{item.name || item.description}</div>
-                                                            {item.description && item.description !== item.name && (
-                                                                <div className="text-xs text-slate-505 font-medium leading-relaxed mt-0.5 whitespace-pre-wrap">{item.description}</div>
+                                                            <div className="font-bold text-slate-900 dark:text-white">{item.name || sanitizeLineItemDescription(item.description)}</div>
+                                                            {sanitizeLineItemDescription(item.description) && sanitizeLineItemDescription(item.description) !== item.name && (
+                                                                <div className="text-xs text-slate-505 font-medium leading-relaxed mt-0.5 whitespace-pre-wrap">{sanitizeLineItemDescription(item.description)}</div>
                                                             )}
                                                         </td>
                                                         <td className="p-3 text-center text-xs font-mono font-bold text-slate-700 dark:text-slate-350">{item.quantity}</td>
@@ -1309,17 +1927,17 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                                         <td className="p-3 font-semibold text-slate-900 dark:text-white text-xs">{item.unitName}</td>
                                                         <td className="p-3 text-xs text-slate-700 dark:text-slate-300 font-medium">{item.partName}</td>
                                                         <td className="p-3 text-center text-xs font-mono font-bold text-slate-700 dark:text-slate-300">{item.quantity}</td>
-                                                        <td className="p-3 text-right text-xs font-mono text-slate-500">{formatCurrency(item.customerUnitPrice)}</td>
-                                                        <td className="p-3 text-xs text-slate-505 font-medium">
+                                                        <td className={`p-3 text-right text-xs font-mono ${item.customerUnitPrice < 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-500'}`}>{formatCurrency(item.customerUnitPrice)}</td>
+                                                        <td className="p-3 text-xs text-slate-500 font-medium">
                                                             <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                                                item.availability === 'In stock' 
+                                                                item.availability === 'In stock' || item.availability === 'Immediate' || item.customerLineTotal < 0
                                                                     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400' 
                                                                     : 'bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400'
                                                             }`}>
                                                                 {item.availability}
                                                             </span>
                                                         </td>
-                                                        <td className="p-3 text-right font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(item.customerLineTotal)}</td>
+                                                        <td className={`p-3 text-right font-mono font-bold ${item.customerLineTotal < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'}`}>{formatCurrency(item.customerLineTotal)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -1337,7 +1955,7 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                             <thead>
                                                 <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-850">
                                                     <th className="p-3 text-xs font-black text-slate-400 uppercase tracking-widest w-64">{t("Special Allowance")}</th>
-                                                    <th className="p-3 text-xs font-black text-slate-400 uppercase tracking-widest">{t("Scope Basis")}</th>
+                                                    <th className="p-3 text-xs font-black text-slate-400 uppercase tracking-widest">{t("Scope of Work")}</th>
                                                     <th className="p-3 text-xs font-black text-slate-400 uppercase tracking-widest text-right w-40">{t("Amount")}</th>
                                                 </tr>
                                             </thead>
@@ -1345,7 +1963,7 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                                 {proposal.allowanceItems.map((item, idx) => (
                                                     <tr key={item.id || idx} className="border-b border-slate-100 dark:border-slate-800">
                                                         <td className="p-3 font-bold text-slate-900 dark:text-white text-xs">{item.description}</td>
-                                                        <td className="p-3 text-xs text-slate-600 dark:text-slate-400 font-medium">{item.basis}</td>
+                                                        <td className="p-3 text-xs text-slate-600 dark:text-slate-400 font-medium">{sanitizeCustomerScopeText(item.basis)}</td>
                                                         <td className="p-3 text-right font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(item.amount)}</td>
                                                     </tr>
                                                 ))}
@@ -1411,8 +2029,8 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                         )}
                     </div>
 
-                    {/* SIGNATURE / AUTHORIZATION WATERMARK BOX */}
-                    <div className="pt-8 border-t border-slate-200 dark:border-slate-850">
+                    {/* SIGNATURE / AUTHORIZATION WATERMARK BOX (Positioned directly above Disclaimers & Warranty) */}
+                    <div className="pt-4 border-t border-slate-200 dark:border-slate-850">
                         {proposal.status === 'Accepted' ? (
                             <div className="bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-250 dark:border-emerald-900/30 p-6 md:p-8 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-6 animate-fade-in">
                                 <div className="space-y-2 text-center md:text-left">
@@ -1421,7 +2039,7 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                         <h3 className="text-lg font-black tracking-tight">{t("Authorized & Accepted")}</h3>
                                     </div>
                                     <p className="text-xs text-slate-500 font-medium">
-                                        {t("This proposal has been electronically authorized and signed.")}
+                                        {t("By signing below, customer approves the proposed scope of work, accepts the terms, and authorizes services as specified.")}
                                     </p>
                                     <div className="text-xs space-y-1 text-slate-600 dark:text-slate-400 font-semibold pt-1">
                                         <p>Authorized Signer: <strong className="text-slate-800 dark:text-slate-200">{proposal.signatureName}</strong></p>
@@ -1446,79 +2064,96 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
                                     </div>
                                 </div>
                                 {proposal.signatureDataUrl && (
-                                    <div className="bg-white p-4 rounded-xl border border-slate-200/60 shadow-sm max-w-[280px]">
-                                        <p className="text-[9px] uppercase font-black tracking-widest text-slate-400 mb-1 border-b pb-1">Signature Capture</p>
-                                        <img 
-                                            src={proposal.signatureDataUrl} 
-                                            alt="Client Electronic Signature" 
-                                            className="max-h-20 object-contain mx-auto"
-                                        />
+                                    <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50 shadow-xs flex flex-col items-center gap-1 shrink-0">
+                                        <img src={proposal.signatureDataUrl} alt="Signature" className="h-14 max-w-[200px] object-contain" />
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Digital Audit Verified</span>
                                     </div>
                                 )}
                             </div>
-                        ) : proposal.status === 'Declined' ? (
-                            <div className="bg-rose-50/50 dark:bg-rose-955/10 border border-rose-250 dark:border-rose-900/30 p-6 md:p-8 rounded-2xl flex flex-col justify-center items-center gap-4 animate-fade-in text-center">
-                                <X className="text-rose-600 dark:text-rose-400 shrink-0" size={36} />
-                                <h3 className="text-lg font-black tracking-tight text-rose-700 dark:text-rose-405">{t("Proposal Declined")}</h3>
-                                <p className="text-xs text-slate-500 font-medium max-w-lg mx-auto">
-                                    {t("This commercial proposal has been declined by the customer and cannot be authorized. Please contact the service provider to make changes and submit a new proposal.")}
-                                </p>
-                            </div>
                         ) : (
-                            <div className="bg-slate-50 dark:bg-slate-950 p-6 rounded-2xl text-center border border-slate-200 dark:border-slate-850 space-y-4">
-                                <h3 className="text-base font-black text-slate-950 dark:text-white">{t("Commercial Proposal Approval")}</h3>
-                                <p className="text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
-                                    {t("Review all details above. Once satisfied, click below to supply your name and digital signature. Signing authorizes this commercial contract estimate work to proceed.")}
-                                </p>
-                                <div className="flex justify-center gap-4">
-                                    <Button 
-                                        onClick={handleDeclineProposal}
-                                        variant="danger"
-                                        className="px-8 py-3 text-base font-black hover:scale-105 active:scale-95 transition-all animate-fade-in"
-                                    >
-                                        {t("Decline Proposal")}
-                                    </Button>
-                                    <Button 
-                                        onClick={() => setIsSigningOpen(true)}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-8 py-3 text-base shadow-lg hover:scale-105 active:scale-95 transition-all"
-                                    >
-                                        {t("Authorize and Sign Bid")}
-                                    </Button>
-                                    <Button 
-                                        onClick={handleVerbalAccept}
-                                        disabled={isSubmitting}
-                                        className="bg-amber-500 hover:bg-amber-600 text-white font-black px-8 py-3 text-base shadow-lg hover:scale-105 active:scale-95 transition-all animate-fade-in"
-                                    >
-                                        {isSubmitting ? t("Submitting...") : t("Verbal Accept")}
-                                    </Button>
+                            <div className="bg-slate-50 dark:bg-slate-950 p-6 md:p-8 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-6">
+                                <div className="space-y-1 text-center md:text-left">
+                                    <h3 className="text-base font-black text-slate-800 dark:text-slate-200">
+                                        {isCommercial ? t("Commercial Proposal Authorization") : t("Ready to Authorize?")}
+                                    </h3>
+                                    <p className="text-xs text-slate-500">
+                                        {t("By signing below, customer approves the proposed scope of work, accepts the terms, and authorizes services as specified.")}
+                                    </p>
                                 </div>
+                                <Button 
+                                    onClick={() => setIsSigningOpen(true)} 
+                                    className="bg-primary-600 hover:bg-primary-700 text-white font-black h-12 px-6 rounded-xl shadow-lg shadow-primary-500/20 uppercase tracking-wider text-xs flex items-center gap-2"
+                                >
+                                    <FileSignature size={16} />
+                                    <span>
+                                        {hasMultipleTiers 
+                                            ? `Authorize & Sign "${getTierLabel(activeTier)}" (${formatCurrency(grandTotal)})` 
+                                            : t("Authorize & Digitally Sign Proposal")
+                                        }
+                                    </span>
+                                </Button>
                             </div>
                         )}
                     </div>
 
+                    {/* PRICING & ESTIMATE DISCLAIMER */}
+                    {effectivePricingDisclaimer && (
+                        <div className="p-4 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl space-y-1.5 animate-fade-in text-left">
+                            <h4 className="text-[11px] font-black text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <Scale size={14} className="text-amber-600 dark:text-amber-400" />
+                                {t("Pricing & Estimate Disclaimer")}
+                            </h4>
+                            <p className="text-xs text-amber-950 dark:text-amber-200/90 leading-relaxed font-medium">
+                                {effectivePricingDisclaimer}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* WARRANTY TERMS & SERVICE GUARANTEE */}
+                    {effectiveWarranty && (
+                        <div className="p-4 bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40 rounded-2xl space-y-1.5 animate-fade-in text-left border-l-4 border-l-indigo-600">
+                            <h4 className="text-[11px] font-black text-indigo-800 dark:text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <Shield size={14} className="text-indigo-600 dark:text-indigo-400" />
+                                {t("Warranty Terms & Service Guarantee")}
+                            </h4>
+                            <p className="text-xs text-indigo-950 dark:text-indigo-200/90 leading-relaxed font-medium whitespace-pre-line">
+                                {effectiveWarranty}
+                            </p>
+                        </div>
+                    )}
+
                     {/* Terms & Conditions & Legal Compliance Footer */}
-                    <div className="pt-8 border-t border-slate-200 dark:border-slate-800 space-y-4 text-center">
+                    <div className="pt-8 border-t border-slate-200 dark:border-slate-850 space-y-4 text-center">
                         <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl text-left space-y-1">
                             <h4 className="text-[11px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">{t("TERMS & CONDITIONS")}</h4>
                             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
-                                {t("Proposal pricing is valid for 30 days from issuance. Payment terms are net 30 days upon project completion unless otherwise negotiated. All work will be performed during standard business hours in compliance with local commercial building codes. TekAir Inc. maintains full commercial liability and worker's compensation insurance.")}
+                                {organization?.termsAndConditions || organization?.proposalTerms || effectivePricingDisclaimer || t(`Proposal pricing is valid for 30 days from issuance. Payment terms are net 30 days upon project completion unless otherwise negotiated. All work will be performed during standard business hours in compliance with local ${isCommercial ? 'commercial ' : ''}building codes. ${organization?.name || proposal?.preparedByOrganization || 'TekAir Inc.'} maintains full liability and worker's compensation insurance.`)}
                             </p>
                         </div>
-                        <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400 font-semibold pt-2">
-                            <p className="font-bold text-slate-800 dark:text-slate-200">
-                                STATE LICENSE # {organization?.licenseNumber || proposal?.preparedByLicence || 'TACLA73240E'} — © {new Date().getFullYear()} {proposal?.preparedByOrganization || organization?.name || 'TekAir Inc.'}
-                            </p>
-                            <p className="text-[11px] text-slate-500 font-normal max-w-2xl mx-auto">
-                                {organization?.complianceFooter || 'Regulated by The Texas Department of Licensing and Regulation P.O. Box 12157, Austin, Texas 78711 • 1-800-803-9202 • 512-463-6599 • www.tdlr.texas.gov'}
-                            </p>
-                            <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold pt-1">
-                                TEKTRAKKER SERVICE VERIFICATION SYSTEM
-                            </p>
-                        </div>
+                        {(() => {
+                            const isTekAir = String(organization?.name || proposal?.preparedByOrganization || '').toLowerCase().includes('tekair') || organization?.id === 'org-1765817997819';
+                            const orgName = proposal?.preparedByOrganization || organization?.name || (isTekAir ? 'TekAir Inc.' : 'Service Provider');
+                            const licNum = organization?.licenseNumber || proposal?.preparedByLicence || (isTekAir ? 'TACLA73240E' : '');
+                            const compText = organization?.complianceFooter || (organization as any)?.footerText || (isTekAir ? 'Regulated by The Texas Department of Licensing and Regulation, P.O. Box 12157, Austin, Texas 78711 • 1-800-803-9202 • 512-463-6599 • www.tdlr.texas.gov' : '');
+                            return (
+                                <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400 font-semibold pt-2">
+                                    <p className="font-bold text-slate-800 dark:text-slate-200">
+                                        {licNum ? `STATE LICENSE # ${licNum} — ` : ''}© {new Date().getFullYear()} {orgName}
+                                    </p>
+                                    {compText && (
+                                        <p className="text-[11px] text-slate-500 font-normal max-w-2xl mx-auto">
+                                            {compText}
+                                        </p>
+                                    )}
+                                    <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold pt-1">
+                                        TEKTRAKKER SERVICE VERIFICATION SYSTEM
+                                    </p>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             </Card>
-            )}
             </div>
 
             {/* PRINT FOOTER */}
@@ -1528,10 +2163,24 @@ Any breach of this Agreement shall cause irreparable harm, and Discloser shall b
 
             {/* SIGNATURE PAD MODAL */}
             {isSigningOpen && (
-                <Modal isOpen={true} onClose={() => setIsSigningOpen(false)} title={t("Authorize Commercial Proposal")}>
+                <Modal isOpen={true} onClose={() => setIsSigningOpen(false)} title={isCommercial ? t("Authorize Commercial Proposal") : t("Authorize Proposal")}>
                     <div className="space-y-4 animate-modal-in">
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                            {t("Please input your full legal name and draw your signature on the pad below to accept the estimate.")}
+                        {hasMultipleTiers && (
+                            <div className="p-3.5 bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 rounded-xl flex items-center justify-between text-xs">
+                                <span className="font-bold text-slate-700 dark:text-slate-300">{t("Selected Package:")}</span>
+                                <span className="font-black text-primary-600 dark:text-primary-400 font-mono text-sm">
+                                    {getTierLabel(activeTier).toLowerCase().includes('option') ? getTierLabel(activeTier) : `${getTierLabel(activeTier)} Option`} — {formatCurrency(grandTotal)}
+                                </span>
+                            </div>
+                        )}
+                        {effectivePricingDisclaimer && (
+                            <div className="p-3 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/40 text-[11px] text-amber-900 dark:text-amber-200 leading-relaxed">
+                                <span className="font-bold text-amber-800 dark:text-amber-300">📌 {t("Pricing Terms")}: </span>
+                                {effectivePricingDisclaimer}
+                            </div>
+                        )}
+                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+                            {t(`By signing below, customer approves the proposed scope of work, accepts the terms, and authorizes ${organization?.name || proposal?.preparedByOrganization || 'TekAir Inc.'} to perform services as specified.`)}
                         </p>
                         
                         <Input 

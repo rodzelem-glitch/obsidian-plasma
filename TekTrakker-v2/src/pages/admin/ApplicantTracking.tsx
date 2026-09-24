@@ -25,19 +25,19 @@ const STATUS_COLORS: Record<string, string> = {
 };
 const INDUSTRY_ROLES: Record<string, string[]> = {
     'HVAC': ['HVAC Technician', 'Installer', 'Sales'],
-    'Plumbing': ['Plumber', 'Apprentice', 'Sales'],
-    'Electrical': ['Electrician', 'Apprentice', 'Sales'],
-    'Landscaping': ['Landscaper', 'Crew Leader', 'Designer', 'Sales'],
-    'Cleaning': ['Cleaner', 'Janitor', 'Supervisor', 'Sales'],
-    'Painting': ['Painter', 'Prep Cook', 'Crew Leader', 'Sales'],
-    'Roofing': ['Roofer', 'Foreman', 'Estimator', 'Sales'],
-    'Contracting': ['Carpenter', 'Project Manager', 'Estimator', 'Laborer'],
-    'Masonry': ['Mason', 'Tender', 'Foreman', 'Estimator'],
-    'Telecommunications': ['Cable Technician', 'Network Installer', 'Support Specialist'],
-    'Solar': ['Solar Installer', 'Electrician', 'Site Surveyor', 'Sales'],
-    'Security': ['Security Technician', 'Installer', 'Sales'],
-    'Pet Grooming': ['Groomer', 'Bather', 'Receptionist'],
-    'General': ['Laborer', 'Project Manager', 'Sales'],
+    'Plumbing': ['Master Plumber', 'Journeyman Plumber', 'Plumbing Apprentice', 'Drain Technician', 'Sales'],
+    'Electrical': ['Master Electrician', 'Journeyman Electrician', 'Electrical Apprentice', 'Low Voltage Tech', 'Sales'],
+    'Landscaping': ['Landscape Technician', 'Crew Leader', 'Irrigation Specialist', 'Landscape Designer', 'Sales'],
+    'Cleaning': ['Residential Cleaner', 'Commercial Janitor', 'Floor Technician', 'Cleaning Supervisor', 'Sales'],
+    'Painting': ['Interior/Exterior Painter', 'Prep Technician', 'Paint Crew Leader', 'Estimator', 'Sales'],
+    'Roofing': ['Roofing Specialist', 'Foreman', 'Roofing Inspector', 'Estimator', 'Sales'],
+    'Contracting': ['Lead Carpenter', 'Drywall Specialist', 'Tile Installer', 'Project Manager', 'Estimator', 'Laborer'],
+    'Masonry': ['Brick & Block Mason', 'Concrete Finisher', 'Masonry Tender', 'Foreman', 'Estimator'],
+    'Telecommunications': ['Fiber Optic Technician', 'Structured Cabling Tech', 'Network Installer', 'Support Specialist', 'Sales'],
+    'Solar': ['Solar PV Installer', 'Solar Electrician', 'Site Surveyor', 'System Designer', 'Sales'],
+    'Security': ['Low Voltage Security Tech', 'Access Control Specialist', 'CCTV Installer', 'Sales'],
+    'Pet Grooming': ['Pet Groomer', 'Bather & Prep Tech', 'Salon Coordinator', 'Receptionist'],
+    'General': ['Handyman Technician', 'General Laborer', 'Maintenance Specialist', 'Project Manager', 'Sales'],
 };
 
 const ApplicantTracking: React.FC = () => {

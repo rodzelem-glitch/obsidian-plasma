@@ -17,6 +17,8 @@ import Spinner from 'components/ui/Spinner';
 import showToast from 'lib/toast';
 import { Capacitor } from '@capacitor/core';
 import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
+import WebCameraModal from 'pages/briefing/components/WebCameraModal';
+import { globalConfirm } from 'lib/globalConfirm';
 
 interface Props {
     isOpen: boolean;
@@ -97,6 +99,7 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
     const [selectedZoneFilter, setSelectedZoneFilter] = useState<string>('All');
     const [isCreatingNewZone, setIsCreatingNewZone] = useState<boolean>(false);
     const [newZoneName, setNewZoneName] = useState<string>('');
+    const [isWebCameraOpen, setIsWebCameraOpen] = useState(false);
 
     // Compute unique zones from assets and shapes
     const availableZones = useMemo(() => {
@@ -494,18 +497,41 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
         setIsUploading(true);
 
         try {
-            const uploadPromises = Array.from(files).map(async (file) => {
-                const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '') : `photo-${Date.now()}.png`;
-                const orgId = state.currentOrganization?.id || 'default';
-                const path = `organizations/${orgId}/customers/${customer.id}/locations/${locationId}/photos/${Date.now()}_${safeName}`;
-                return await uploadFileToStorage(path, file);
-            });
+            const orgId = state.currentOrganization?.id || 'default';
+            const total = files.length;
+            const newUrls: string[] = [];
 
-            const newUrls = await Promise.all(uploadPromises);
+            for (let i = 0; i < total; i++) {
+                const file = files[i];
+                if (total > 1) {
+                    showToast.info(`Uploading location photo ${i + 1} of ${total}...`);
+                }
+                const safeName = file.name ? file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_') : `photo-${Date.now()}.png`;
+                const uniqueNonce = Math.random().toString(36).substring(2, 9);
+                const path = `organizations/${orgId}/customers/${customer.id}/locations/${locationId}/photos/${Date.now()}_${i}_${uniqueNonce}_${safeName}`;
+                try {
+                    const downloadUrl = await uploadFileToStorage(path, file);
+                    if (downloadUrl) {
+                        newUrls.push(downloadUrl);
+                    }
+                } catch (singleErr) {
+                    console.error(`Failed to upload location photo ${i + 1}:`, singleErr);
+                }
+            }
+
+            if (newUrls.length === 0) {
+                showToast.error("Failed to upload photos. Please check your network connection.");
+                return;
+            }
+
             const updatedPhotos = [...photos, ...newUrls];
             setPhotos(updatedPhotos);
             await saveLocationData({ photos: updatedPhotos });
-            showToast.success("Location photo(s) uploaded");
+            if (newUrls.length < total) {
+                showToast.success(`Uploaded ${newUrls.length} of ${total} location photos.`);
+            } else {
+                showToast.success(`Location photo${total > 1 ? 's' : ''} uploaded!`);
+            }
         } catch (err) {
             console.error(err);
             showToast.error("Failed to upload photos");
@@ -547,7 +573,30 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
         }
     };
 
-    // Mobile camera photo trigger
+    const handleWebCameraCapture = async (dataUrl: string) => {
+        try {
+            setIsUploading(true);
+            const response = await fetch(dataUrl);
+            const blob = await response.blob();
+            const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+            
+            const orgId = state.currentOrganization?.id || 'default';
+            const path = `organizations/${orgId}/customers/${customer.id}/locations/${locationId}/photos/${Date.now()}_camera.jpg`;
+            const downloadUrl = await uploadFileToStorage(path, file);
+            
+            const updatedPhotos = [...photos, downloadUrl];
+            setPhotos(updatedPhotos);
+            await saveLocationData({ photos: updatedPhotos });
+            showToast.success("Photo captured successfully");
+        } catch (err) {
+            console.error("Web Camera Upload Error:", err);
+            showToast.error("Failed to upload camera photo");
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    // Camera photo trigger
     const triggerNativeCamera = async () => {
         try {
             const isNative = Capacitor.isNativePlatform();
@@ -575,19 +624,48 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
                     showToast.success("Photo captured successfully");
                 }
             } else {
-                // Fallback click on hidden file input
-                document.getElementById('native-file-upload')?.click();
+                setIsWebCameraOpen(true);
             }
         } catch (err) {
-            console.error("Native Camera Error:", err);
-            showToast.error("Failed to capture photo from camera");
+            console.error("Camera Error:", err);
+            setIsWebCameraOpen(true);
         } finally {
             setIsUploading(false);
         }
     };
 
+    const triggerNativeGallery = async () => {
+        try {
+            const isNative = Capacitor.isNativePlatform();
+            if (isNative) {
+                const result = await CapacitorCamera.pickImages({
+                    quality: 85,
+                    limit: 0
+                });
+                if (result.photos && result.photos.length > 0) {
+                    showToast.info(`Selected ${result.photos.length} location photo(s). Uploading...`);
+                    const filePromises = result.photos.map(async (photo, idx) => {
+                        const response = await fetch(photo.webPath);
+                        const blob = await response.blob();
+                        return new File([blob], `location_gallery_${Date.now()}_${idx}.jpg`, { type: 'image/jpeg' });
+                    });
+                    const convertedFiles = await Promise.all(filePromises);
+                    await processUploadedPhotos(convertedFiles);
+                }
+            } else {
+                document.getElementById('location-photo-file')?.click();
+            }
+        } catch (err: any) {
+            const msg = (err?.message || '').toLowerCase();
+            if (!msg.includes('cancel') && !msg.includes('dismiss')) {
+                console.error("Gallery picker error:", err);
+                showToast.error("Failed to pick photos: " + (err.message || "Unknown error"));
+            }
+        }
+    };
+
     const handleDeletePhoto = async (indexToDelete: number) => {
-        if (!window.confirm("Are you sure you want to delete this photo?")) return;
+        if (!(await globalConfirm("Are you sure you want to delete this photo?", "Delete Photo", "Delete", "Cancel"))) return;
         const updatedPhotos = photos.filter((_, idx) => idx !== indexToDelete);
         setPhotos(updatedPhotos);
         await saveLocationData({ photos: updatedPhotos });
@@ -651,7 +729,7 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
     };
 
     const handleDeleteLayout = async () => {
-        if (!window.confirm("Are you sure you want to delete this floor plan? (All manual pin placements will be safely preserved.)")) return;
+        if (!(await globalConfirm("Are you sure you want to delete this floor plan? (All manual pin placements will be safely preserved.)", "Delete Floor Plan", "Delete Plan", "Cancel"))) return;
         setLayoutPhotoUrl('');
         setLayoutProfessionalSvg('');
         
@@ -1061,7 +1139,7 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
 
             const result = await callGeminiAI({
                 prompt,
-                modelName: "gemini-3.6-flash",
+                modelName: "gemini-3.7-flash",
                 image: {
                     data: base64Image,
                     mimeType: blob.type || "image/png"
@@ -1297,7 +1375,7 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
     };
 
     const handleDeleteAsset = async (assetId: string) => {
-        if (!window.confirm("Are you sure you want to permanently delete this equipment asset from the customer database? This action cannot be undone.")) return;
+        if (!(await globalConfirm("Are you sure you want to permanently delete this equipment asset from the customer database? This action cannot be undone.", "Delete Equipment Asset", "Delete Asset", "Cancel"))) return;
 
         const updatedHotspots = hotspots.filter(hp => hp.equipmentId !== assetId);
         setHotspots(updatedHotspots);
@@ -1318,7 +1396,7 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
             onClose={onClose} 
             title={`Location Details: ${location.propertyName || location.name}`} 
             size="xl"
-            zIndex="z-[260]"
+            zIndex="z-[10060]"
         >
             <div className="flex flex-col h-full space-y-4">
                 {/* Tabs */}
@@ -1396,6 +1474,14 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
                                         disabled={isUploading}
                                     >
                                         <Camera size={14} /> Camera
+                                    </Button>
+
+                                    <Button 
+                                        onClick={triggerNativeGallery} 
+                                        className="text-xs py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5"
+                                        disabled={isUploading}
+                                    >
+                                        <Image size={14} /> Gallery
                                     </Button>
                                     
                                     <Button 
@@ -2650,6 +2736,14 @@ const LocationPhotosLayoutModal: React.FC<Props> = ({
                         </div>                    )}
                 </div>
             </div>
+
+            {isWebCameraOpen && (
+                <WebCameraModal 
+                    isOpen={isWebCameraOpen}
+                    onClose={() => setIsWebCameraOpen(false)}
+                    onCapture={handleWebCameraCapture}
+                />
+            )}
         </Modal>
     );
 };

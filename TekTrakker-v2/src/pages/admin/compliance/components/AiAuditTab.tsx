@@ -8,6 +8,7 @@ import Input from 'components/ui/Input';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
 import { useLanguage } from 'context/LanguageContext';
+import { globalConfirm } from 'lib/globalConfirm';
 
 interface AiLog {
     id: string;
@@ -245,7 +246,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
     const recommendedLogs = logs.filter(isHighlyRecommended);
 
     const handleUndo = async (log: AiLog) => {
-        if (!window.confirm(t("Are you sure you want to securely reverse this AI database transaction?"))) return;
+        if (!(await globalConfirm(t("Are you sure you want to securely reverse this AI database transaction?"), t("Reverse AI Transaction"), t("Reverse Transaction"), t("Cancel")))) return;
         
         try {
             const undoFn = functions.httpsCallable('undoAiAction');

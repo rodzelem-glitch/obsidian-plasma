@@ -1,5 +1,6 @@
 import { cleanUndefinedFields } from '../../../lib/utils';
 import showToast from "lib/toast";
+import { offlineSyncManager } from 'lib/offlineSyncManager';
 import React, { useRef, useState } from 'react';
 import { useAppContext } from '../../../context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
@@ -178,7 +179,14 @@ export const SubcontractorBillModal: React.FC<SubcontractorBillModalProps> = ({ 
                 createdAt: new Date().toISOString(),
                 uploadedBy: state.currentUser ? `${state.currentUser.firstName || ''} ${state.currentUser.lastName || ''}`.trim() : 'Subcontractor',
                 type: 'Document',
-                metadata: { label: 'Subcontractor Invoice' }
+                metadata: { 
+                    label: 'Subcontractor Invoice', 
+                    isInternal: true, 
+                    internalOnly: true, 
+                    isSubcontractorDoc: true, 
+                    category: 'expense',
+                    isExpense: true 
+                }
             };
 
             // 2. Submit Expense to the Sponsoring Organization
@@ -209,6 +217,26 @@ export const SubcontractorBillModal: React.FC<SubcontractorBillModalProps> = ({ 
                 companyName: subName,
                 customerName: job.customerName || 'N/A'
             };
+
+            // Register bill HTML with offline sync queue for automatic upload to Firebase Storage
+            const billStoragePath = `organizations/${job.organizationId || 'default'}/jobs/${job.id}/bills/${billFile.fileName}`;
+            try {
+                await offlineSyncManager.registerPendingUpload({
+                    id: billFile.id,
+                    jobId: job.id,
+                    parentCollection: 'jobs',
+                    parentId: job.id,
+                    orgId: job.organizationId || 'default',
+                    storagePath: billStoragePath,
+                    dataUrl: billFile.dataUrl,
+                    fileName: billFile.fileName,
+                    fileType: 'text/html',
+                    timestamp: Date.now(),
+                    expenseId: expense.id
+                });
+            } catch (queueErr) {
+                console.warn("[SubcontractorBillModal] Offline queue registration warning:", queueErr);
+            }
 
             // Write both expense and payable records, and update the job document
             if (!state.isDemoMode) {

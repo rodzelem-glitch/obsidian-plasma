@@ -5,6 +5,8 @@ import { LayoutDashboard, Users, DollarSign, Target, FileText, Wrench, Receipt, 
 import type { User } from '../../types';
 import { Logo } from '../ui/Logo';
 import { useLanguage } from 'context/LanguageContext';
+import { useAppContext } from 'context/AppContext';
+import { setActiveView } from 'lib/viewState';
 
 interface SalesSidebarProps {
   user: User;
@@ -14,6 +16,8 @@ interface SalesSidebarProps {
 }
 
 const SalesSidebar: React.FC<SalesSidebarProps> = ({ user, onLogout, isOpen = false, onClose }) => {
+  const { state } = useAppContext();
+  const isMasterAdmin = state.isMasterAdmin || user.role === 'master_admin';
   const location = useLocation();
   const { t } = useLanguage();
 
@@ -31,7 +35,7 @@ const SalesSidebar: React.FC<SalesSidebarProps> = ({ user, onLogout, isOpen = fa
         group: 'Outreach',
         items: [
             { path: '/sales/campaigns', label: 'Campaigns', icon: Rocket },
-            { path: '/sales/messages', label: 'Messages', icon: MessageSquare },
+            { path: '/sales/communications', label: 'Communications', icon: MessageSquare },
         ]
     },
     {
@@ -97,9 +101,12 @@ const SalesSidebar: React.FC<SalesSidebarProps> = ({ user, onLogout, isOpen = fa
                     <p className="text-xs text-slate-500 truncate">{t('Platform Sales')}</p>
                 </div>
             </div>
-            {user.role === 'master_admin' && (
+            {isMasterAdmin && (
                 <button
-                    onClick={() => window.location.href = '/#/master/dashboard'}
+                    onClick={() => {
+                        setActiveView('master', user.id);
+                        window.location.href = '/#/master/dashboard';
+                    }}
                     className="w-full mb-3 flex items-center justify-center px-4 py-2 border border-purple-500 text-purple-600 dark:text-purple-400 rounded-md shadow-sm text-sm font-medium bg-transparent hover:bg-purple-50 dark:hover:bg-purple-900/30 focus:outline-none transition-colors"
                 >
                     {t('Return to Master Admin')}

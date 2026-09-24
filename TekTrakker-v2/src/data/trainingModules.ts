@@ -152,7 +152,7 @@ The CRM is the core of operations.
 
 1. **Locate the Job**: Find a job that a technician has marked "Completed".
 2. **Generate Invoice**: Click the "Invoice" tab. The system will automatically pull the line items the customer accepted from the proposal.
-3. **Collect Payment**: Click "Take Payment" to open the secure Stripe interface.
+3. **Collect Payment**: Click "Take Payment" to open the secure TekTrakker Payments interface.
 4. **Process Card**: Manually enter the card details or use a connected card reader. The invoice state will automatically switch to "Paid".
         `
     },

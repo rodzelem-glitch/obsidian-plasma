@@ -1,4 +1,7 @@
 import React, { useState, useMemo } from 'react';
+import { DollarSign, Sparkles } from 'lucide-react';
+import { showToast } from 'lib/toast';
+import { formatDisplayId, checkJobHasVerifiedEquipmentSerial } from 'lib/utils';
 import { useAppContext } from 'context/AppContext';
 import type { MembershipPlan } from 'types';
 import Modal from 'components/ui/Modal';
@@ -7,6 +10,8 @@ import Input from 'components/ui/Input';
 import Select from 'components/ui/Select';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import SignaturePad from 'components/ui/SignaturePad';
+import AutoResizeTextarea from 'components/ui/AutoResizeTextarea';
+import { resolveJobInvoiceNumber } from 'lib/numbering';
 import type { InvoiceLineItem, Proposal } from 'types'; 
 
 // Modular Components
@@ -14,6 +19,7 @@ import InvoiceHeader from './invoice-editor/InvoiceHeader';
 import LineItemsList from './invoice-editor/LineItemsList';
 import InvoiceActions from './invoice-editor/InvoiceActions';
 import { useInvoiceLogic } from './invoice-editor/useInvoiceLogic';
+import AddWarrantyToInvoiceModal from './invoice-editor/AddWarrantyToInvoiceModal';
 import RecipientSelectorModal from 'components/modals/RecipientSelectorModal';
 
 interface InvoiceEditorModalProps {
@@ -30,9 +36,11 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         address, setAddress,
         billToName, setBillToName,
         billToAddress, setBillToAddress,
-        lineItems,
+        lineItems, setLineItems,
         handleAddItem, handleUpdateItem, handleDeleteItem, handleMoveItem,
+        handleAddSubItem, handleUpdateSubItem, handleDeleteSubItem,
         totals,
+        taxRate, setTaxRate,
         isSaving,
         handleSave,
         handleMarkPaid, handleMarkUnpaid, handleMarkPending,
@@ -60,15 +68,23 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         warrantyDisclaimerAgreed, setWarrantyDisclaimerAgreed,
         membershipEnrollment, setMembershipEnrollment,
         recommendations, setRecommendations,
+        handleImportJobRecommendations,
         additionalFeeName, setAdditionalFeeName,
         additionalFeePercent, setAdditionalFeePercent,
         retainagePercent, setRetainagePercent,
         invoiceDate, setInvoiceDate,
         dueDate, setDueDate,
         paymentTerms, setPaymentTerms,
+        displayFormat, setDisplayFormat,
         linkedJobs,
         syncInvoiceWithLinked, setSyncInvoiceWithLinked,
         handleImportFromLinkedJobs,
+        requireDeposit, setRequireDeposit,
+        depositType, setDepositType,
+        depositValue, setDepositValue,
+        depositNotes, setDepositNotes,
+        depositPaid, setDepositPaid,
+        depositAmount,
     } = useInvoiceLogic(jobId, isOpen, onClose);
 
     const { state } = useAppContext();
@@ -77,6 +93,33 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         isOpen: boolean;
         type: 'send' | 'receipt' | 'reminder';
     }>({ isOpen: false, type: 'send' });
+    const [isAddWarrantyModalOpen, setIsAddWarrantyModalOpen] = useState(false);
+
+    const handleAddWarrantyItem = (item: {
+        name: string;
+        description: string;
+        unitPrice: number;
+        type: 'Service' | 'Part/Labor';
+        taxable: boolean;
+        extendedWarrantyData: any;
+    }) => {
+        const randomIdSuffix = Math.floor(Math.random() * 1000000);
+        const newItem: InvoiceLineItem = {
+            id: `item-${Date.now()}-${randomIdSuffix}`,
+            name: item.name,
+            description: item.description,
+            quantity: 1,
+            unitPrice: item.unitPrice,
+            total: item.unitPrice,
+            type: item.type,
+            taxable: item.taxable,
+            isExtendedWarranty: true,
+            extendedWarrantyData: item.extendedWarrantyData
+        };
+        setLineItems(prev => [...prev, newItem]);
+        setIsAddWarrantyModalOpen(false);
+        showToast.success(`Added ${item.name} to invoice`);
+    };
     
     // Default system plans merged with organization
     const DEFAULT_PLANS: Omit<MembershipPlan, 'organizationId'>[] = [
@@ -133,10 +176,62 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
         );
     }, [currentJob, customer]);
 
+    const preFlightAudit = useMemo(() => {
+        if (!customer || !customer.submissionRules) return null;
+        const rules = customer.submissionRules;
+        const actualPo = (currentJob as any)?.poNumber || (currentJob as any)?.po || '';
+        const poOk = !rules.requirePoNumber || (typeof actualPo === 'string' && actualPo.trim().length > 0);
+        
+        const sigOk = !rules.requireSignedWorkOrder || 
+            !!(currentJob as any)?.customerSignature || 
+            !!(currentJob as any)?.signature ||
+            !!(currentJob as any)?.signOffSheetUrl ||
+            !!(currentJob as any)?.signoffSheetUrl ||
+            !!(currentJob as any)?.customWorkOrderFormUrl ||
+            !!(currentJob as any)?.signOff?.sheetUrl ||
+            (currentJob as any)?.signOff?.status === 'COMPLETED' ||
+            !!(currentJob as any)?.invoiceSignature ||
+            !!(currentJob as any)?.invoice?.signatureUrl ||
+            !!(currentJob as any)?.workflowState?.customerSignature ||
+            !!(currentJob as any)?.workflowState?.siteManagerSignature ||
+            !!(currentJob as any)?.signatures?.length ||
+            ((currentJob as any)?.files || []).some((f: any) => 
+                f.fileName?.includes('SignOff') || 
+                f.fileName?.includes('Signature') || 
+                f.label?.includes('Sign-Off') || 
+                f.metadata?.category === 'signoff' || 
+                f.metadata?.category === 'signature'
+            );
+        const photoOk = !rules.requireBeforeAfterPhotos || !!((currentJob as any)?.photos && (currentJob as any).photos.length > 0);
+        const serialOk = !rules.requireEquipmentSerial || checkJobHasVerifiedEquipmentSerial(currentJob, customer, state.equipment);
+
+        const singleWoOk = !rules.requireSingleWoPerInvoice || !((currentJob as any)?.linkedInvoiceIds?.length > 0 || (currentJob as any)?.jobIds?.length > 1);
+
+        const totalRulesCount = [rules.requirePoNumber, rules.requireSignedWorkOrder, rules.requireBeforeAfterPhotos, rules.requireEquipmentSerial, rules.requireSingleWoPerInvoice].filter(Boolean).length;
+        const passedRulesCount = [rules.requirePoNumber && poOk, rules.requireSignedWorkOrder && sigOk, rules.requireBeforeAfterPhotos && photoOk, rules.requireEquipmentSerial && serialOk, rules.requireSingleWoPerInvoice && singleWoOk].filter(Boolean).length;
+
+        const isCompliant = poOk && sigOk && photoOk && serialOk && singleWoOk;
+        const apContacts = customer.contacts?.filter((c: any) => c.contactRoles?.includes('invoicing') || c.contactRoles?.includes('ap')) || [];
+
+        return {
+            rules,
+            poOk,
+            sigOk,
+            photoOk,
+            serialOk,
+            singleWoOk,
+            totalRulesCount,
+            passedRulesCount,
+            isCompliant,
+            apContacts,
+            portal: rules.thirdPartyPortal
+        };
+    }, [customer, currentJob, state.equipment]);
+
     if (!currentJob) return null;
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={`Invoice Manager #${currentJob.invoice.id}`} size="xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={`Invoice Manager #${currentJob.invoice?.id || resolveJobInvoiceNumber(currentJob)}`} size="xl" zIndex="z-[10060]">
             <div className="flex flex-col space-y-6">
                 <InvoiceHeader
                     customerName={customerName}
@@ -153,9 +248,188 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     setDueDate={setDueDate}
                     paymentTerms={paymentTerms}
                     setPaymentTerms={setPaymentTerms}
+                    displayFormat={displayFormat}
+                    setDisplayFormat={setDisplayFormat}
                     currentJob={currentJob}
                     customer={customer}
                 />
+
+                {/* COMMERCIAL PRE-FLIGHT QUALITY GATE BANNER */}
+                {preFlightAudit && (preFlightAudit.totalRulesCount > 0 || preFlightAudit.portal?.required || preFlightAudit.apContacts.length > 0) && (
+                    <div className={`p-4 rounded-xl border transition-all ${
+                        preFlightAudit.isCompliant 
+                            ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800' 
+                            : 'bg-amber-50/80 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800'
+                    }`}>
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2.5">
+                                <span className={`px-2.5 py-1 text-xs font-black rounded-lg uppercase tracking-wider ${
+                                    preFlightAudit.isCompliant
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-amber-600 text-white'
+                                }`}>
+                                    {preFlightAudit.isCompliant ? '✅ Pre-Flight Audit Passed' : `⚠️ Pre-Flight Warning (${preFlightAudit.totalRulesCount - preFlightAudit.passedRulesCount} Action Items)`}
+                                </span>
+                                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                                    Commercial Submission Checklist for {customer.name}
+                                </h4>
+                            </div>
+
+                            {preFlightAudit.portal?.required && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-extrabold px-2.5 py-1 rounded bg-indigo-600 text-white uppercase shadow-sm">
+                                        🌐 Portal Upload Required: {preFlightAudit.portal.portalName || '3rd Party Portal'}
+                                    </span>
+                                    {preFlightAudit.portal.portalUrl && (
+                                        <a 
+                                            href={preFlightAudit.portal.portalUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-[11px] font-bold px-2.5 py-1 bg-indigo-700 hover:bg-indigo-800 text-white rounded transition-colors"
+                                        >
+                                            Open Portal ↗
+                                        </a>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Audit Badges */}
+                        <div className="flex flex-wrap gap-2 mt-3 text-xs">
+                            {preFlightAudit.rules.requirePoNumber && (
+                                <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                    preFlightAudit.poOk 
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border-emerald-300' 
+                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300 border-rose-300'
+                                }`}>
+                                    {preFlightAudit.poOk ? '✓ PO Attached' : '❌ PO Number Required'}
+                                </span>
+                            )}
+
+                            {preFlightAudit.rules.requireSignedWorkOrder && (
+                                <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                    preFlightAudit.sigOk 
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border-emerald-300' 
+                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300 border-rose-300'
+                                }`}>
+                                    {preFlightAudit.sigOk ? '✓ Work Order Signed' : '❌ Customer Signature Missing'}
+                                </span>
+                            )}
+
+                            {preFlightAudit.rules.requireBeforeAfterPhotos && (
+                                <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                    preFlightAudit.photoOk 
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border-emerald-300' 
+                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300 border-rose-300'
+                                }`}>
+                                    {preFlightAudit.photoOk ? '✓ Job Photos Attached' : '❌ Job Photos (Before/After) Missing'}
+                                </span>
+                            )}
+
+                            {preFlightAudit.rules.requireEquipmentSerial && (
+                                <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                    preFlightAudit.serialOk 
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border-emerald-300' 
+                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300 border-rose-300'
+                                }`}>
+                                    {preFlightAudit.serialOk ? '✓ Asset Serial Verified' : '❌ Equipment Specs/Serial Missing'}
+                                </span>
+                            )}
+
+                            {preFlightAudit.rules.requireSingleWoPerInvoice && (
+                                <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                    preFlightAudit.singleWoOk 
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border-emerald-300' 
+                                        : 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300 border-rose-300'
+                                }`}>
+                                    {preFlightAudit.singleWoOk ? '✓ Single WO on Invoice' : '❌ NEST Rule: Only 1 WO Allowed Per Invoice'}
+                                </span>
+                            )}
+                            {preFlightAudit.rules.submissionDeadlineDays && (() => {
+                                const workDateStr = currentJob?.checkOutTime || currentJob?.appointmentTime || (currentJob as any)?.completedDate || invoiceDate || currentJob?.createdAt;
+                                const workDate = workDateStr ? new Date(workDateStr) : new Date();
+                                const elapsed = Math.max(0, Math.floor((Date.now() - workDate.getTime()) / (1000 * 60 * 60 * 24)));
+                                const left = (preFlightAudit.rules.submissionDeadlineDays || 20) - elapsed;
+                                return (
+                                    <span className={`px-2.5 py-1 rounded-lg font-bold border flex items-center gap-1 ${
+                                        left < 0 
+                                            ? 'bg-rose-900 text-white border-rose-600 animate-pulse' 
+                                            : left <= 5 
+                                            ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse' 
+                                            : left <= 10 
+                                            ? 'bg-amber-100 text-amber-800 border-amber-300' 
+                                            : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                    }`}>
+                                        {left < 0 ? `🛑 Cutoff Passed (${Math.abs(left)}d overdue)` : `⏱️ ${left}d Remaining (20-Day Invoicing Cutoff)`}
+                                    </span>
+                                );
+                            })()}
+                        </div>
+
+                        {/* AP Routing Contact Info */}
+                        {preFlightAudit.apContacts.length > 0 && (
+                            <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex items-center gap-2 text-xs">
+                                <span className="font-extrabold text-slate-500 uppercase text-[10px]">Routed AP Contacts:</span>
+                                {preFlightAudit.apContacts.map((c: any) => (
+                                    <span key={c.id} className="font-bold text-emerald-700 dark:text-emerald-400 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                                        {c.name} ({c.email})
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                        {preFlightAudit.rules.customSubmissionNotes && (
+                            <p className="mt-2 text-xs font-medium text-amber-900 dark:text-amber-200 italic">
+                                📌 Note: {preFlightAudit.rules.customSubmissionNotes}
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {/* Impact Service Group $45 Initial Equipment Survey Fee Prompt */}
+                {(customer?.id === 'cust-1787187506048' || customer?.name?.toLowerCase().includes('impact')) && (() => {
+                    const hasAuditFee = lineItems.some(item => 
+                        (item.name || '').toLowerCase().includes('audit') || 
+                        (item.name || '').toLowerCase().includes('survey') || 
+                        (item.description || '').toLowerCase().includes('survey') || 
+                        (item.description || '').toLowerCase().includes('data verification')
+                    );
+                    if (hasAuditFee) return null;
+
+                    return (
+                        <div className="mb-4 p-3.5 rounded-xl border border-emerald-300 dark:border-emerald-800/80 bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 dark:from-emerald-950/30 dark:via-teal-950/20 dark:to-emerald-950/30 flex items-center justify-between flex-wrap gap-3 shadow-xs">
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0">
+                                    <DollarSign size={18} />
+                                </div>
+                                <div>
+                                    <h4 className="text-xs font-black uppercase text-emerald-900 dark:text-emerald-200 tracking-wider">
+                                        Impact Contract #2282: $45 Initial Equipment Audit Fee Eligible
+                                    </h4>
+                                    <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-0.5">
+                                        Page 10 compensation: $45 paid for first-visit physical equipment inspection, data plate recording, and filter verification across all 49 stores.
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="primary"
+                                onClick={() => {
+                                    handleAddItem(
+                                        'Fee',
+                                        'Initial Equipment Audit & Data Verification Fee - First-trip physical equipment inspection, data plate recording, and filter verification per Impact Contract #2282.',
+                                        45.00,
+                                        false
+                                    );
+                                    showToast.success("Added $45.00 Equipment Audit Fee to invoice!");
+                                }}
+                                className="h-8 text-xs font-black px-3.5 !bg-emerald-600 hover:!bg-emerald-700 !text-white shadow-md border-0 shrink-0 cursor-pointer"
+                            >
+                                ➕ Add $45 Audit Fee
+                            </Button>
+                        </div>
+                    );
+                })()}
 
                 <LineItemsList
                     lineItems={lineItems}
@@ -163,8 +437,20 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     handleDeleteItem={handleDeleteItem}
                     handleAddItem={handleAddItem}
                     setIsDiscountModalOpen={setIsDiscountModalOpen}
-                    contractedRate={customer?.pricingRules?.contractedRate}
+                    onOpenWarrantyModal={() => setIsAddWarrantyModalOpen(true)}
+                    contractedRate={customer?.pricingRules?.contractedRate ?? customer?.pricingRules?.standardRate}
+                    overtimeRate={customer?.pricingRules?.overtimeRate ?? customer?.pricingRules?.overtimeLaborRate ?? customer?.pricingRules?.overtimeContractedRate}
+                    emergencyContractedRate={customer?.pricingRules?.emergencyContractedRate ?? customer?.pricingRules?.emergencyRate}
+                    tripCharge={customer?.pricingRules?.tripFee ?? customer?.pricingRules?.tripCharge}
+                    emergencyTripCharge={customer?.pricingRules?.emergencyTripFee ?? customer?.pricingRules?.emergencyTripCharge}
+                    partsMarkupPercentage={customer?.pricingRules?.partsMarkupPercentage ?? customer?.pricingRules?.markupPercentage}
+                    partsMarkupRules={customer?.pricingRules?.partsMarkupRules}
+                    partsMarkupTier1={customer?.pricingRules?.partsMarkupTier1}
+                    partsMarkupTier2={customer?.pricingRules?.partsMarkupTier2}
                     handleMoveItem={handleMoveItem}
+                    handleAddSubItem={handleAddSubItem}
+                    handleUpdateSubItem={handleUpdateSubItem}
+                    handleDeleteSubItem={handleDeleteSubItem}
                 />
 
                 {/* Additional Fees and Retainage */}
@@ -212,37 +498,218 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     </div>
                 </div>
 
-                <div className="mt-8 flex flex-col items-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-6">
-                    {currentJob.invoice.status !== 'Failed' && currentJob.invoice.amountPaid !== undefined && currentJob.invoice.amountPaid > 0 ? (
-                        <>
-                            <div className="text-right text-sm">
-                                <span className="font-bold text-gray-500 uppercase tracking-widest mr-2">Grand Total:</span>
-                                <span className="font-black text-slate-800 dark:text-slate-200">${totals.total.toFixed(2)}</span>
-                            </div>
-                            <div className="text-right text-emerald-600 dark:text-emerald-400 text-sm">
-                                <span className="font-bold uppercase tracking-widest mr-2">Paid to Date:</span>
-                                <span className="font-black">${currentJob.invoice.amountPaid.toFixed(2)}</span>
-                            </div>
-                            <div className="text-right text-primary-600 dark:text-primary-400 border-t border-dashed border-slate-200 dark:border-slate-700 pt-2 mt-1">
-                                <span className="text-xs font-bold uppercase tracking-widest mr-2">Remaining Balance Due:</span>
-                                <span className="text-3xl font-black">${Math.max(0, totals.total - currentJob.invoice.amountPaid).toFixed(2)}</span>
-                            </div>
-                        </>
-                    ) : (
-                        <div className="text-right">
-                            {currentJob.invoice.status === 'Failed' && (
-                                <div className="mb-2 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-600 dark:text-rose-400 text-right">
-                                    <span className="block font-black uppercase tracking-wider">⚠️ Payment Method Failed</span>
-                                    {currentJob.invoice.lastFailureReason && (
-                                        <span className="block text-[11px] font-normal text-rose-700 dark:text-rose-300 mt-0.5">Reason: {currentJob.invoice.lastFailureReason}</span>
-                                    )}
+                {/* Down Payment / Deposit Section */}
+                <div className="mt-6 border-t border-slate-100 dark:border-slate-800 pt-6">
+                    <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                            💵 Down Payment / Deposit Requirement
+                        </h4>
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={requireDeposit}
+                                onChange={e => {
+                                    const enabled = e.target.checked;
+                                    setRequireDeposit(enabled);
+                                    if (!enabled) {
+                                        setDepositValue(0);
+                                        setDepositPaid(false);
+                                    }
+                                }}
+                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                Require Deposit ({requireDeposit ? 'ENABLED' : 'OFF'})
+                            </span>
+                        </label>
+                    </div>
+
+                    {requireDeposit && (
+                        <div className="p-4 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl space-y-3 animate-in fade-in duration-200">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">Deposit Calculation</label>
+                                    <select
+                                        value={depositType}
+                                        onChange={e => setDepositType(e.target.value as 'flat' | 'percentage')}
+                                        className="w-full h-10 px-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-xs font-semibold text-slate-900 dark:text-white"
+                                    >
+                                        <option value="flat">Flat Dollar ($)</option>
+                                        <option value="percentage">Percentage (%)</option>
+                                    </select>
                                 </div>
-                            )}
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Grand Total Due</p>
-                            <p className="text-3xl font-black text-rose-600 dark:text-rose-500">${totals.total.toFixed(2)}</p>
+                                <div>
+                                    <Input
+                                        label={depositType === 'percentage' ? "Deposit Percentage (%)" : "Deposit Amount ($)"}
+                                        type="number"
+                                        min={0}
+                                        step="0.01"
+                                        value={depositValue}
+                                        onChange={e => setDepositValue(parseFloat(e.target.value) || 0)}
+                                    />
+                                </div>
+                                <div>
+                                    <Input
+                                        label="Calculated Deposit Due"
+                                        type="text"
+                                        disabled
+                                        value={`$${(depositAmount || 0).toFixed(2)}`}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-4 items-center">
+                                <div className="flex-1 w-full">
+                                    <Input
+                                        label="Deposit Instructions / Terms"
+                                        value={depositNotes}
+                                        onChange={e => setDepositNotes(e.target.value)}
+                                        placeholder="e.g. Deposit required prior to scheduling / start of work"
+                                    />
+                                </div>
+                                {(depositValue > 0 || depositAmount > 0 || depositPaid) && (
+                                    <label className="flex items-center gap-2 cursor-pointer pt-4 select-none">
+                                        <input
+                                            type="checkbox"
+                                            checked={depositPaid}
+                                            onChange={e => setDepositPaid(e.target.checked)}
+                                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                            Deposit Marked Paid ({depositPaid ? 'YES' : 'NO'})
+                                        </span>
+                                    </label>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
+
+                <div className="mt-8 flex flex-col items-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-6">
+                    {(() => {
+                        const invTerms = paymentTerms || currentJob.invoice.paymentTerms || 'net_30';
+                        const isNet = invTerms.toLowerCase().includes('net');
+                        const invTermsDisplay = isNet ? invTerms.replace('_', ' ').toUpperCase() : 'Due';
+
+                        const rawPaid = Number(
+                            (depositPaid ? (totals.depositAmount || currentJob.invoice.depositAmount || 0) : 0) ||
+                            currentJob.invoice.amountPaid ||
+                            currentJob.invoice.depositPaidAmount ||
+                            0
+                        );
+                        const effectivePaid = Math.min(totals.total, Math.max(0, rawPaid));
+                        const balanceRemaining = Math.max(0, totals.total - effectivePaid);
+
+                        const dueToday = totals.depositAmount > 0 ? ((depositPaid || effectivePaid >= totals.depositAmount) ? 0 : totals.depositAmount) : (isNet ? 0 : balanceRemaining);
+                        const dueNet = isNet ? balanceRemaining : 0;
+
+                        return (
+                            <div className="w-full max-w-sm space-y-2 bg-slate-50 dark:bg-slate-900/40 p-4 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+                                {currentJob.invoice.status === 'Failed' && (
+                                    <div className="mb-2 p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-600 dark:text-rose-400 text-right">
+                                        <span className="block font-black uppercase tracking-wider">⚠️ Payment Method Failed</span>
+                                        {currentJob.invoice.lastFailureReason && (
+                                            <span className="block text-[11px] font-normal text-rose-700 dark:text-rose-300 mt-0.5">Reason: {currentJob.invoice.lastFailureReason}</span>
+                                        )}
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center text-xs font-bold text-slate-600 dark:text-slate-400 px-2">
+                                    <span className="uppercase tracking-wider">Subtotal:</span>
+                                    <span className="font-black text-slate-900 dark:text-white">${totals.subtotal.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs font-bold text-slate-600 dark:text-slate-400 px-2 pb-1 border-b border-slate-200/50 dark:border-slate-800">
+                                    <span className="uppercase tracking-wider flex items-center gap-1.5">
+                                        <span>Sales Tax ({taxRate}%):</span>
+                                        {customer?.taxExempt && (
+                                            customer.taxExemptCertUrl ? (
+                                                <span className="text-[10px] text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 font-extrabold">
+                                                    🏛️ Exempt (Cert Verified)
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700 font-extrabold">
+                                                    ⚠️ Cert Missing (Taxed)
+                                                </span>
+                                            )
+                                        )}
+                                    </span>
+                                    <span className="font-black text-slate-900 dark:text-white">${totals.tax.toFixed(2)}</span>
+                                </div>
+                                {totals.depositAmount > 0 && !depositPaid && dueToday > 0 && (
+                                    <div className="flex justify-between items-center text-sm font-extrabold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-xl border border-amber-200 dark:border-amber-800">
+                                        <span className="uppercase tracking-wider">Deposit Due Today:</span>
+                                        <span className="font-black text-amber-900 dark:text-amber-300">
+                                            ${dueToday.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
+                                {totals.depositAmount > 0 && !depositPaid && dueToday > 0 && isNet && (
+                                    <div className="flex justify-between items-center text-sm font-bold text-slate-700 dark:text-slate-300 px-2">
+                                        <span className="uppercase tracking-wider">Final Balance Due ({invTermsDisplay}):</span>
+                                        <span className="font-black">${dueNet.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center text-base font-black text-slate-900 dark:text-white pt-2 border-t border-slate-200 dark:border-slate-700 px-2">
+                                    <span className="uppercase tracking-wider">Grand Total:</span>
+                                    <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">${totals.total.toFixed(2)}</span>
+                                </div>
+                                {(effectivePaid > 0 || depositPaid) && (
+                                    <div className="flex justify-between items-center text-sm font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 p-2 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                                        <span className="uppercase tracking-wider">{depositPaid ? 'Deposit Paid:' : 'Previously Paid:'}</span>
+                                        <span className="font-black">-${effectivePaid.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center text-base font-black bg-[#FFF8DB] dark:bg-[#2A2415] p-3.5 rounded-xl border-2 border-[#D4AF37] shadow-sm mt-2">
+                                    <span className="uppercase tracking-wider text-[#8B6508] dark:text-[#F3C649] text-xs sm:text-sm font-black">{isNet ? `Balance Due (${invTermsDisplay}):` : 'Total Due:'}</span>
+                                    <span className="text-2xl font-black text-[#8B6508] dark:text-[#FFF8DB] font-mono">${balanceRemaining.toFixed(2)}</span>
+                                </div>
+                            </div>
+                        );
+                    })()}
+                </div>
+
+                {/* Editor Mode Only: Internal Cost & Profit Summary */}
+                {(() => {
+                    let totalInternalCost = 0;
+                    let totalCustomerRev = 0;
+                    lineItems.forEach(item => {
+                        if (item.type !== 'Discount' && item.type !== 'Fee') {
+                            const cost = Number(item.cost ?? item.vendorCost ?? 0);
+                            const price = Number(item.unitPrice || 0);
+                            const qty = Number(item.quantity || 1);
+                            if (cost > 0) {
+                                totalInternalCost += cost * qty;
+                            }
+                            if (price > 0) {
+                                totalCustomerRev += price * qty;
+                            }
+                        }
+                    });
+
+                    if (totalInternalCost > 0) {
+                        const grossProfit = totalCustomerRev - totalInternalCost;
+                        const marginPct = totalCustomerRev > 0 ? (grossProfit / totalCustomerRev) * 100 : 0;
+                        return (
+                            <div className="p-3.5 bg-slate-100/90 dark:bg-slate-800/90 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 text-xs shadow-inner">
+                                <div className="flex items-center gap-2">
+                                    <span className="font-extrabold uppercase text-[10px] tracking-wider bg-slate-200 dark:bg-slate-700 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">
+                                        Editor Only
+                                    </span>
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">
+                                        Internal Cost & Profit Breakdown:
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <span className="text-slate-500 dark:text-slate-400">
+                                        Total Cost: <strong className="text-slate-800 dark:text-slate-200">${totalInternalCost.toFixed(2)}</strong>
+                                    </span>
+                                    <span className={`font-bold ${grossProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                        Estimated Profit: <strong>{grossProfit >= 0 ? '+' : ''}${grossProfit.toFixed(2)}</strong> ({marginPct.toFixed(1)}% margin)
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    }
+                    return null;
+                })()}
 
                 {linkedJobs.length > 0 && (
                     <div className="my-4 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-2xl border border-slate-150 dark:border-slate-850 space-y-3">
@@ -363,17 +830,28 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     )}
                 </div>
 
-                {/* Technician Recommendations Section */}
+                {/* Notes & Recommendations Section */}
                 <div className="mt-6 border-t border-slate-100 dark:border-slate-800 pt-6">
-                    <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                        💡 Technician Recommendations
-                    </h4>
-                    <p className="text-[10px] text-slate-500 mb-3 uppercase font-bold tracking-widest">Provide proactive service advice to the customer</p>
-                    <textarea
-                        className="w-full min-h-[100px] p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm focus:ring-2 focus:ring-primary-500 transition-all resize-none"
+                    <div className="flex items-center justify-between mb-1">
+                        <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                            📝 Notes & Recommendations
+                        </h4>
+                        <button
+                            type="button"
+                            onClick={handleImportJobRecommendations}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors shadow-xs cursor-pointer"
+                        >
+                            <Sparkles size={12} className="text-indigo-600 dark:text-indigo-400" />
+                            Import from Job
+                        </button>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mb-3 uppercase font-bold tracking-widest">Job notes, technician recommendations, or customer advice for this invoice</p>
+                    <AutoResizeTextarea
+                        className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm focus:ring-2 focus:ring-primary-500 transition-all text-slate-700 dark:text-slate-200"
                         value={recommendations}
                         onChange={e => setRecommendations(e.target.value)}
-                        placeholder="e.g. Recommend replacing the capacitor within the next 6 months to prevent system failure..."
+                        placeholder="e.g. System tested and fully operational. Recommend replacing air filter every 90 days."
+                        minHeight={100}
                     />
                 </div>
 
@@ -394,7 +872,7 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
             </div>
             
             {isDiscountModalOpen && (
-                <Modal isOpen={true} onClose={() => setIsDiscountModalOpen(false)} title="Apply Discount" zIndex="z-[300]">
+                <Modal isOpen={true} onClose={() => setIsDiscountModalOpen(false)} title="Apply Discount" zIndex="z-[10070]">
                     <div className="space-y-4">
                         <Select 
                             label="Scope"
@@ -425,7 +903,7 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
             )}
 
             {isMembershipModalOpen && (
-                <Modal isOpen={true} onClose={() => setIsMembershipModalOpen(false)} title="Enroll Membership" zIndex="z-[300]">
+                <Modal isOpen={true} onClose={() => setIsMembershipModalOpen(false)} title="Enroll Membership" zIndex="z-[10070]">
                     <form 
                         onSubmit={e => {
                             e.preventDefault();
@@ -475,7 +953,7 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
             )}
 
             {isSigningOpen && (
-                <Modal isOpen={true} onClose={() => setIsSigningOpen(false)} title="Sign Invoice" size="md" zIndex="z-[300]">
+                <Modal isOpen={true} onClose={() => setIsSigningOpen(false)} title="Sign Invoice" size="md" zIndex="z-[10070]">
                     <div className="space-y-4">
                         <p className="text-sm text-gray-500">I authorize the work performed and agree to the total amount due.</p>
                         <SignaturePad ref={sigPadRef} className="w-full h-40 border rounded" /> 
@@ -488,7 +966,7 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
             )}
 
             {isImportProposalModalOpen && (
-                <Modal isOpen={true} onClose={() => setIsImportProposalModalOpen(false)} title="Import from Proposal" zIndex="z-[300]">
+                <Modal isOpen={true} onClose={() => setIsImportProposalModalOpen(false)} title="Import from Proposal" zIndex="z-[10070]">
                     <div className="space-y-4">
                         <p className="text-sm text-gray-500">Select a proposal to import its line items into this invoice.</p>
                         <Select
@@ -499,9 +977,12 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                             <option value="">-- Select a Proposal --</option>
                             {relevantProposals.map((prop: Proposal) => {
                                 const isLinkedToOtherJob = prop.jobId && prop.jobId !== currentJob.id;
+                                const title = prop.title || prop.items?.[0]?.name || 'Service Proposal';
+                                const statusStr = prop.status ? ` [${prop.status}]` : '';
+                                const dateStr = prop.createdAt ? new Date(prop.createdAt).toLocaleDateString() : '';
                                 return (
                                     <option key={prop.id} value={prop.id}>
-                                        {prop.customerName} - {new Date(prop.createdAt).toLocaleDateString()} - ${prop.total.toFixed(2)}{isLinkedToOtherJob ? ` (Linked to Job #${prop.jobId})` : ''}
+                                        #{formatDisplayId(prop.id)} - {title} - ${prop.total?.toFixed(2)}{statusStr} ({prop.customerName} - {dateStr}){isLinkedToOtherJob ? ` (Linked to Job #${prop.jobId})` : ''}
                                     </option>
                                 );
                             })}
@@ -521,7 +1002,9 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                     isOpen={recipientModalConfig.isOpen}
                     onClose={() => setRecipientModalConfig(prev => ({ ...prev, isOpen: false }))}
                     customerId={currentJob.customerId}
-                    locationId={currentJob.locationId}
+                    locationId={currentJob.locationId || (currentJob as any).serviceLocationId}
+                    locationName={currentJob.locationName || (currentJob as any).siteLocationName || (currentJob as any).address}
+                    documentType={recipientModalConfig.type === 'send' ? 'invoice' : recipientModalConfig.type === 'receipt' ? 'receipt' : 'reminder'}
                     title={
                         recipientModalConfig.type === 'send'
                             ? 'Select Invoice Recipients'
@@ -539,6 +1022,16 @@ const InvoiceEditorModal: React.FC<InvoiceEditorModalProps> = ({ isOpen, onClose
                             handleSendReminder(emails);
                         }
                     }}
+                />
+            )}
+            {isAddWarrantyModalOpen && (
+                <AddWarrantyToInvoiceModal
+                    isOpen={isAddWarrantyModalOpen}
+                    onClose={() => setIsAddWarrantyModalOpen(false)}
+                    customer={customer}
+                    job={currentJob}
+                    organization={state.currentOrganization}
+                    onAddWarrantyItem={handleAddWarrantyItem}
                 />
             )}
 

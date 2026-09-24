@@ -2,6 +2,7 @@
 import React from 'react';
 import { Customer } from '../../../../types/types';
 import { useLanguage } from '../../../../context/LanguageContext';
+import { formatAddress } from 'lib/utils';
 
 interface CustomerTableProps {
     customers: Customer[];
@@ -12,17 +13,17 @@ interface CustomerTableProps {
 const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustomer, searchTerm }) => {
     const { t } = useLanguage();
     return (
-        <div className="hidden md:block">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800">
+        <div className="hidden md:block overflow-y-auto max-h-[calc(100vh-220px)] border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900">
+            <table className="min-w-full border-separate border-spacing-0 divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 shadow-xs border-b border-gray-200 dark:border-gray-700">
                     <tr>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th scope="col" className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             {t("Name")}
                         </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th scope="col" className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             {t("Contact")}
                         </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th scope="col" className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             {t("Address")}
                         </th>
                     </tr>
@@ -50,7 +51,7 @@ const CustomerTable: React.FC<CustomerTableProps> = ({ customers, onSelectCustom
                                 {customer.phone || customer.email}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                                {customer.address}
+                                {formatAddress(customer.address)}
                             </td>
                         </tr>
                     ))}

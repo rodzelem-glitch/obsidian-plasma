@@ -62,6 +62,48 @@ export const setupFCMToken = async (userId: string) => {
                 console.log('[FCM-Capacitor] Target Notification received in foreground: ', notification);
             });
 
+            await PushNotifications.addListener('pushNotificationActionPerformed', async (action) => {
+                console.log('[FCM-Capacitor] Push action performed: ', action);
+                const notification = action.notification;
+                const data = notification?.data || {};
+                
+                // 1. Mark notification as read in Firestore
+                const notificationId = data.notificationId || data.id;
+                if (notificationId) {
+                    try {
+                        const { markNotificationInDb } = await import('./notificationNavigator');
+                        const userDoc = await db.collection('users').doc(userId).get().catch(() => null);
+                        const userData = userDoc?.exists ? ({ id: userId, ...userDoc.data() } as any) : ({ id: userId });
+                        await markNotificationInDb(notificationId, userData);
+                    } catch (readErr) {
+                        console.warn('[FCM-Capacitor] Failed to mark notification as read:', readErr);
+                    }
+                }
+
+                // 2. Resolve destination URL and navigate
+                try {
+                    const { getNotificationTargetUrl } = await import('./notificationNavigator');
+                    const userDoc = await db.collection('users').doc(userId).get().catch(() => null);
+                    const userData = userDoc?.exists ? ({ id: userId, ...userDoc.data() } as any) : null;
+                    
+                    const targetUrl = getNotificationTargetUrl({
+                        id: notificationId,
+                        title: notification.title,
+                        message: notification.body,
+                        type: data.type,
+                        link: data.link || data.url,
+                        data: data
+                    }, userData);
+
+                    if (targetUrl) {
+                        const cleanRoute = targetUrl.replace(/^(\/#\/|#\/)/, '/');
+                        window.location.hash = `#${cleanRoute.startsWith('/') ? cleanRoute : `/${cleanRoute}`}`;
+                    }
+                } catch (navErr) {
+                    console.error('[FCM-Capacitor] Error navigating on push action:', navErr);
+                }
+            });
+
             await PushNotifications.register();
 
         } catch (err) {

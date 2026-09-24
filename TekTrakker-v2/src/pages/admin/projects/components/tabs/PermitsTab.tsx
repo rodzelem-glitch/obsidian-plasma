@@ -65,21 +65,41 @@ const PermitsTab: React.FC<PermitsTabProps> = ({ permits, onPermitAdd, onPermitE
                     </Button>
                 </div>
             </div>
-            <Table headers={['Permit #', 'Type', 'Status', 'Dates', 'Action'].map(h => t(h))}>
-                {(permits || []).map((p, idx) => (
-                    <tr key={idx}>
-                        <td className="px-6 py-4 font-bold">{p.number}</td>
-                        <td className="px-6 py-4">{t(p.type)}</td>
-                        <td className="px-6 py-4">
-                            <span className={`px-2 py-1 rounded text-xs ${p.status === 'Approved' ? 'bg-green-100 text-green-800' : 'bg-yellow-100'}`}>{t(p.status)}</span>
-                        </td>
-                        <td className="px-6 py-4 text-xs text-gray-500">{t("Issued:")} {p.issueDate}</td>
-                        <td className="px-6 py-4">
-                            <button onClick={() => onPermitEdit(p)} className="text-blue-600 hover:underline text-xs font-medium">{t("Edit")}</button>
-                        </td>
-                    </tr>
-                ))}
-            </Table>
+            {permits && permits.length > 0 ? (
+                <Table headers={['Permit #', 'Type', 'Status', 'Dates', 'Action'].map(h => t(h))}>
+                    {permits.map((p, idx) => (
+                        <tr key={idx}>
+                            <td className="px-6 py-4 font-bold">{p.number}</td>
+                            <td className="px-6 py-4">{t(p.type)}</td>
+                            <td className="px-6 py-4">
+                                <span className={`px-2 py-1 rounded text-xs ${p.status === 'Approved' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'}`}>{t(p.status)}</span>
+                            </td>
+                            <td className="px-6 py-4 text-xs text-gray-500">
+                                {p.issueDate ? (
+                                    <span>{t("Issued:")} {p.issueDate}</span>
+                                ) : (
+                                    <span className="italic text-amber-600 dark:text-amber-400">{t("Not yet issued (Pending)")}</span>
+                                )}
+                                {p.expirationDate && (
+                                    <span className="block text-[10px] text-gray-400">{t("Expires:")} {p.expirationDate}</span>
+                                )}
+                            </td>
+                            <td className="px-6 py-4">
+                                <button onClick={() => onPermitEdit(p)} className="text-blue-600 hover:underline text-xs font-medium">{t("Edit")}</button>
+                            </td>
+                        </tr>
+                    ))}
+                </Table>
+            ) : (
+                <div className="py-12 px-4 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">
+                        {t("No issued permits on file for this project.")}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-500 max-w-md mx-auto">
+                        {t("Permit applications and submittal milestones are tracked under Tasks. Click \"+ Add Permit\" when official permit numbers and approval documents are issued.")}
+                    </p>
+                </div>
+            )}
             
             {!isShovelsConnected && (
                 <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-lg text-center">

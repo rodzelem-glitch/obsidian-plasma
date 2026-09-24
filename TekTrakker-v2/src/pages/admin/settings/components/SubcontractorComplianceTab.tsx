@@ -123,13 +123,13 @@ const SubcontractorComplianceTab: React.FC = () => {
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">Website HTML Embed Code (Copy &amp; Paste to your Website):</label>
                     <div className="relative">
                         <pre className="p-3 bg-slate-900 text-slate-100 rounded-xl text-xs font-mono overflow-x-auto select-all">
-                            {`<iframe src="${window.location.origin}/#/widgets/subcontractor-setup/${state.currentOrganization?.id || state.currentUser?.organizationId || 'YOUR_ORG_ID'}" width="100%" height="800px" frameborder="0"></iframe>`}
+                            {`<iframe src="${window.location.origin}/#/widgets/subcontractor-setup/${state.currentOrganization?.id || state.currentUser?.organizationId || 'YOUR_ORG_ID'}" width="100%" height="850px" style="width: 100%; border: 0; min-height: 850px;" frameborder="0"></iframe>`}
                         </pre>
                         <button
                             type="button"
                             onClick={() => {
                                 const orgId = state.currentOrganization?.id || state.currentUser?.organizationId || 'YOUR_ORG_ID';
-                                const embedCode = `<iframe src="${window.location.origin}/#/widgets/subcontractor-setup/${orgId}" width="100%" height="800px" frameborder="0"></iframe>`;
+                                const embedCode = `<iframe src="${window.location.origin}/#/widgets/subcontractor-setup/${orgId}" width="100%" height="850px" style="width: 100%; border: 0; min-height: 850px;" frameborder="0"></iframe>`;
                                 navigator.clipboard.writeText(embedCode);
                                 showToast.success("Copied website embed code to clipboard!");
                             }}
@@ -147,20 +147,37 @@ const SubcontractorComplianceTab: React.FC = () => {
                     <Lock className="w-4 h-4 text-indigo-500" /> Enforcement & Dispatch Rules
                 </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                     <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700 flex items-start justify-between gap-3">
                         <div>
                             <span className="font-bold text-xs text-slate-800 dark:text-slate-200 block mb-1">
                                 Enforce Compliance Before Assignment
                             </span>
                             <p className="text-[11px] text-slate-500 leading-normal">
-                                Prevents dispatching jobs or creating work orders for subcontractors with missing, unverified, or expired compliance documents.
+                                Standard lock: Prevents dispatching jobs or creating work orders for subcontractors with missing or expired compliance documents.
                             </p>
                         </div>
                         <Toggle 
                             label=""
                             enabled={settings.enforceComplianceBeforeAssignment ?? true}
                             onChange={(val) => setSettings(prev => ({ ...prev, enforceComplianceBeforeAssignment: val }))}
+                        />
+                    </div>
+
+                    <div className="p-4 bg-amber-50/60 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/50 flex items-start justify-between gap-3">
+                        <div>
+                            <span className="font-bold text-xs text-amber-900 dark:text-amber-200 block mb-1 flex items-center gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                Emergency Lock Bypass Mode
+                            </span>
+                            <p className="text-[11px] text-amber-800/90 dark:text-amber-300/80 leading-normal">
+                                Allows dispatchers to bypass the compliance lock when in a rush, assigning jobs immediately while paperwork is collected afterwards.
+                            </p>
+                        </div>
+                        <Toggle 
+                            label=""
+                            enabled={settings.allowTemporaryComplianceBypass ?? true}
+                            onChange={(val) => setSettings(prev => ({ ...prev, allowTemporaryComplianceBypass: val }))}
                         />
                     </div>
 

@@ -1,10 +1,11 @@
 
 import React, { useMemo, useState } from 'react';
 import Card from 'components/ui/Card';
-import { CalendarIcon, Clock, FileText, ShieldCheck, Star, Award, User, CalendarPlus } from 'lucide-react';
+import { CalendarIcon, Clock, FileText, ShieldCheck, Star, Award, User, CalendarPlus, ChevronDown } from 'lucide-react';
 import type { Job, BusinessDocument, User as AppUser } from 'types';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import { useAppContext } from 'context/AppContext';
+import { isInternalExpenseFile } from 'lib/utils';
 
 interface AppointmentsSectionProps {
     jobs: Job[];
@@ -21,6 +22,7 @@ const CertBadge: React.FC<{ label: string; icon: React.ReactNode }> = ({ label, 
 
 const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documents, users = [], onEditJob }) => {
     const { dispatch } = useAppContext();
+    const [isCollapsed, setIsCollapsed] = useState(true);
     const [viewingPastDocument, setViewingPastDocument] = useState<{ title: string; htmlContent?: string; dataUrl?: string } | null>(null);
 
     const getJobDocuments = (jobId: string): BusinessDocument[] => {
@@ -88,12 +90,27 @@ const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documen
 
     return (
         <>
-        <section>
-            <h3 className="text-lg font-black text-slate-900 dark:text-white mb-4 flex items-center gap-2 uppercase tracking-wider">
-                <CalendarIcon className="text-primary-600" size={20} /> Upcoming Appointments
-            </h3>
-            <div className="space-y-4">
-                {jobs.length > 0 ? jobs.map(job => {
+        <section className="space-y-4">
+            <div 
+                onClick={() => setIsCollapsed(prev => !prev)}
+                className="flex items-center justify-between cursor-pointer group select-none bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:border-primary-400 transition-all"
+            >
+                <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-wider">
+                    <CalendarIcon className="text-primary-600" size={20} />
+                    <span>Upcoming Appointments</span>
+                    <span className="bg-primary-100 text-primary-800 dark:bg-primary-950 dark:text-primary-300 text-xs px-2 py-0.5 rounded-full font-bold">
+                        {jobs.length}
+                    </span>
+                </h3>
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 group-hover:text-primary-600 transition-colors">
+                    <span>{isCollapsed ? 'Show Appointments' : 'Collapse'}</span>
+                    <ChevronDown size={18} className={`transition-transform duration-200 ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} />
+                </div>
+            </div>
+
+            {!isCollapsed && (
+                <div className="space-y-4">
+                {jobs.map(job => {
                     const tech = getTech(job);
                     const certs = tech?.certifications || [];
                     const hasEPA = certs.some((c: any) => c.name?.toLowerCase().includes('epa'));
@@ -118,7 +135,7 @@ const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documen
                                         <span className="text-xl leading-none">{new Date(job.appointmentTime).getDate()}</span>
                                     </div>
                                     <div>
-                                        <p className="font-black text-slate-900 dark:text-white text-lg">{job.tasks.join(', ')}</p>
+                                        <p className="font-black text-slate-900 dark:text-white text-lg">{(job.tasks || []).join(', ') || 'Scheduled Service'}</p>
                                         <p className="text-sm text-slate-500 flex items-center gap-1 mt-1">
                                             <Clock size={14} /> {new Date(job.appointmentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </p>
@@ -201,9 +218,9 @@ const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documen
                             </div>
 
                             {/* Files and Documents Section */}
-                            {((job.files || []).filter(f => !(f as any).fileType?.startsWith('image/')).length > 0 || getJobDocuments(job.id).length > 0) && (
+                            {((job.files || []).filter(f => !isInternalExpenseFile(f) && !(f as any).fileType?.startsWith('image/')).length > 0 || getJobDocuments(job.id).length > 0) && (
                                 <div className="flex flex-wrap gap-2 pt-4 mt-4 border-t border-slate-100 dark:border-slate-800">
-                                    {(job.files || []).filter(f => !((f as any).fileType?.startsWith('image/'))).map((file) => (
+                                    {(job.files || []).filter(f => !isInternalExpenseFile(f) && !((f as any).fileType?.startsWith('image/'))).map((file) => (
                                         <button
                                             type="button"
                                             onClick={() => handleViewDocument(file.fileName || (file as any).metadata?.label || 'Document', file.dataUrl || (file as any).url)}
@@ -229,12 +246,14 @@ const AppointmentsSection: React.FC<AppointmentsSectionProps> = ({ jobs, documen
                             )}
                         </Card>
                     );
-                }) : (
+                })}
+                {jobs.length === 0 && (
                     <div className="bg-white dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-3xl p-4 md:p-10 text-center text-slate-400 font-bold italic">
                         No upcoming appointments scheduled.
                     </div>
                 )}
-            </div>
+                </div>
+            )}
         </section>
 
         {viewingPastDocument && (

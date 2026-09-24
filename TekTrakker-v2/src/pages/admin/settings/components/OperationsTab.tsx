@@ -3,7 +3,9 @@ import React from 'react';
 import Card from 'components/ui/Card';
 import Input from 'components/ui/Input';
 import Toggle from 'components/ui/Toggle';
-import { MapPinIcon, Gavel, Users, Zap, Bot, CreditCard, FileText } from 'lucide-react';
+import Textarea from 'components/ui/Textarea';
+import { MapPinIcon, Gavel, Users, Zap, Bot, CreditCard, FileText, Building, CheckSquare, Info } from 'lucide-react';
+import { PaymentInstructionsCard } from 'components/payment/PaymentInstructionsCard';
 
 interface OperationsTabProps {
     address: string;
@@ -50,6 +52,10 @@ interface OperationsTabProps {
     setAchProcessingFeePercent: (val: string) => void;
     achProcessingFeeFlat: string;
     setAchProcessingFeeFlat: (val: string) => void;
+    jobPrefix: string;
+    setJobPrefix: (val: string) => void;
+    jobStartNumber: string;
+    setJobStartNumber: (val: string) => void;
     invoicePrefix: string;
     setInvoicePrefix: (val: string) => void;
     invoiceStartNumber: string;
@@ -72,6 +78,21 @@ interface OperationsTabProps {
     setLateFeeGracePeriod: (val: string) => void;
     autoSendMonthlyStatements: boolean;
     setAutoSendMonthlyStatements: (val: boolean) => void;
+    acceptWire: boolean;
+    setAcceptWire: (val: boolean) => void;
+    wireInstructions: string;
+    setWireInstructions: (val: string) => void;
+    acceptCheck: boolean;
+    setAcceptCheck: (val: boolean) => void;
+    checkInstructions: string;
+    setCheckInstructions: (val: string) => void;
+    acceptAch: boolean;
+    setAcceptAch: (val: boolean) => void;
+    achInstructions: string;
+    setAchInstructions: (val: string) => void;
+    orgName?: string;
+    orgAddress?: { street?: string; city?: string; state?: string; zip?: string };
+    orgEmail?: string;
 }
 
 const OperationsTab: React.FC<OperationsTabProps> = ({
@@ -96,6 +117,8 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
     achProcessingFeeEnabled, setAchProcessingFeeEnabled,
     achProcessingFeePercent, setAchProcessingFeePercent,
     achProcessingFeeFlat, setAchProcessingFeeFlat,
+    jobPrefix, setJobPrefix,
+    jobStartNumber, setJobStartNumber,
     invoicePrefix, setInvoicePrefix,
     invoiceStartNumber, setInvoiceStartNumber,
     proposalPrefix, setProposalPrefix,
@@ -106,7 +129,16 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
     lateFeeValue, setLateFeeValue,
     lateFeeInterestRate, setLateFeeInterestRate,
     lateFeeGracePeriod, setLateFeeGracePeriod,
-    autoSendMonthlyStatements, setAutoSendMonthlyStatements
+    autoSendMonthlyStatements, setAutoSendMonthlyStatements,
+    acceptWire, setAcceptWire,
+    wireInstructions, setWireInstructions,
+    acceptCheck, setAcceptCheck,
+    checkInstructions, setCheckInstructions,
+    acceptAch, setAcceptAch,
+    achInstructions, setAchInstructions,
+    orgName = '',
+    orgAddress,
+    orgEmail = ''
 }) => {
     return (
         <div className="space-y-6">
@@ -226,6 +258,149 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
             </Card>
 
             <Card>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                    <h3 className="text-lg font-bold flex items-center gap-2 text-indigo-600">
+                        <Building size={20} /> Offline &amp; Direct Payment Instructions (Wire, Check, ACH)
+                    </h3>
+                    <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                        Auto-Populates System-Wide
+                    </span>
+                </div>
+                <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                    Configure instructions for physical checks, bank wire transfers, and ACH direct deposits. These will automatically populate on customer invoices, invoice PDFs &amp; printouts, deposit requests, and Statement of Account ledgers. Use the checkboxes to control which payment methods your organization accepts.
+                </p>
+
+                <div className="space-y-6">
+                    {/* Check Payment Instructions */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 space-y-4">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                                    <FileText size={18} />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Accept Physical Checks</h4>
+                                    <p className="text-xs text-slate-400">Enable check remittance instructions for clients mailing physical checks</p>
+                                </div>
+                            </div>
+                            <Toggle 
+                                label="" 
+                                enabled={acceptCheck} 
+                                onChange={setAcceptCheck} 
+                            />
+                        </div>
+
+                        {acceptCheck && (
+                            <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800 animate-fade-in space-y-2">
+                                <Textarea 
+                                    label="Check Payment Instructions"
+                                    value={checkInstructions}
+                                    onChange={e => setCheckInstructions(e.target.value)}
+                                    rows={3}
+                                    placeholder={`Make checks payable to: ${orgName || 'Your Business Name'}\nMailing Address: 123 Main St, Suite 100, City, ST 12345\nMemo: Please include Invoice # on check memo line.`}
+                                />
+                                <p className="text-[11px] text-slate-400 italic">
+                                    Leave blank to use smart organization defaults (Payable to {orgName || 'Company'} at your business address).
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Wire Transfer Instructions */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 space-y-4">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+                                    <Building size={18} />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Accept Wire Transfers</h4>
+                                    <p className="text-xs text-slate-400">Enable wire remittance details for high-value or commercial wire transfers</p>
+                                </div>
+                            </div>
+                            <Toggle 
+                                label="" 
+                                enabled={acceptWire} 
+                                onChange={setAcceptWire} 
+                            />
+                        </div>
+
+                        {acceptWire && (
+                            <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800 animate-fade-in space-y-2">
+                                <Textarea 
+                                    label="Wire Transfer Instructions"
+                                    value={wireInstructions}
+                                    onChange={e => setWireInstructions(e.target.value)}
+                                    rows={4}
+                                    placeholder={`Bank Name: JPMorgan Chase\nAccount Name: ${orgName || 'Your Business LLC'}\nRouting Number (Wire): 123456789\nAccount Number: 987654321\nSwift / BIC: CHASUS33\nReference: Please include Invoice # in wire remittance notes.`}
+                                />
+                                <p className="text-[11px] text-slate-400 italic">
+                                    Include bank name, wire routing number, account number, beneficiary name, and any reference codes.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ACH / Direct Bank Transfer Instructions */}
+                    <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 space-y-4">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                    <CreditCard size={18} />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Accept ACH / Direct Deposit</h4>
+                                    <p className="text-xs text-slate-400">Enable ACH transfer information for automated or direct bank deposits</p>
+                                </div>
+                            </div>
+                            <Toggle 
+                                label="" 
+                                enabled={acceptAch} 
+                                onChange={setAcceptAch} 
+                            />
+                        </div>
+
+                        {acceptAch && (
+                            <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800 animate-fade-in space-y-2">
+                                <Textarea 
+                                    label="ACH / Direct Deposit Instructions"
+                                    value={achInstructions}
+                                    onChange={e => setAchInstructions(e.target.value)}
+                                    rows={4}
+                                    placeholder={`Bank Name: JPMorgan Chase\nAccount Name: ${orgName || 'Your Business LLC'}\nRouting Number (ACH): 123456789\nAccount Number: 987654321\nAccount Type: Business Checking\nRemittance: Email remittance notification to ${orgEmail || 'billing@example.com'}.`}
+                                />
+                                <p className="text-[11px] text-slate-400 italic">
+                                    Specify ACH routing number, account number, account type, and remittance notification email.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Live Preview Card */}
+                    {(acceptCheck || acceptWire || acceptAch) && (
+                        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                            <h5 className="text-xs font-black uppercase text-slate-400 tracking-wider mb-3">
+                                Client Preview (How Instructions Appear on Invoices &amp; Portals)
+                            </h5>
+                            <PaymentInstructionsCard 
+                                organization={{
+                                    name: orgName,
+                                    address: orgAddress as any,
+                                    email: orgEmail,
+                                    acceptCheck,
+                                    checkInstructions,
+                                    acceptWire,
+                                    wireInstructions,
+                                    acceptAch,
+                                    achInstructions
+                                } as any}
+                            />
+                        </div>
+                    )}
+                </div>
+            </Card>
+
+            <Card>
                 <h3 className="text-lg font-bold mb-6 flex items-center gap-2 text-indigo-600">
                     <Gavel size={20} /> Late Fees & Interest Rates
                 </h3>
@@ -327,9 +502,32 @@ const OperationsTab: React.FC<OperationsTabProps> = ({
                     <Zap size={20} /> Custom Document Numbering Schemes
                 </h3>
                 <p className="text-xs text-slate-500 mb-6 -mt-4 leading-relaxed">
-                    Configure custom prefixes and sequence starting numbers for your organization's Invoices and Proposals. Next document pointer will automatically initialize or synchronize if starting numbers change.
+                    Configure custom prefixes and sequence starting numbers for your organization's Jobs, Invoices, and Proposals. Related documents will automatically synchronize to their corresponding Job sequence.
                 </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Job Numbering */}
+                    <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-4">
+                        <h4 className="font-bold text-slate-800 dark:text-slate-200">Job Series</h4>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                id="job-prefix"
+                                label="Prefix (e.g. Job-)"
+                                value={jobPrefix}
+                                onChange={e => setJobPrefix(e.target.value)}
+                            />
+                            <Input
+                                id="job-start-num"
+                                label="Start Number"
+                                type="number"
+                                value={jobStartNumber}
+                                onChange={e => setJobStartNumber(e.target.value)}
+                            />
+                        </div>
+                        <p className="text-[10px] text-slate-400 italic">
+                            Next Job: <span className="font-bold text-indigo-500">{jobPrefix}{jobStartNumber}</span>
+                        </p>
+                    </div>
+
                     {/* Invoice Numbering */}
                     <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-4">
                         <h4 className="font-bold text-slate-800 dark:text-slate-200">Invoice Series</h4>

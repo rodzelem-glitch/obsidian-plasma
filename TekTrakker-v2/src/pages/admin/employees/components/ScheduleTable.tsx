@@ -11,14 +11,14 @@ interface ScheduleTableProps {
 
 const ScheduleTable: React.FC<ScheduleTableProps> = ({ schedules, onUpdate }) => {
     return (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800">
+        <div className="overflow-x-auto overflow-y-auto max-h-[70vh] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+            <table className="min-w-full border-separate border-spacing-0 divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 shadow-xs border-b border-gray-200 dark:border-gray-700">
                     <tr>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Day</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Status</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">Start Time</th>
-                        <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase">End Time</th>
+                        <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Day</th>
+                        <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                        <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Start Time</th>
+                        <th className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">End Time</th>
                     </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">

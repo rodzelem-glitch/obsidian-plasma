@@ -4,7 +4,7 @@ import { useAppContext } from 'context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
 import Card from 'components/ui/Card';
 import Button from 'components/ui/Button';
-import { Wrench, CalendarIcon, FileText, ArrowLeft, MapPin, Tag, Compass, Layers, Camera } from 'lucide-react';
+import { Wrench, CalendarIcon, FileText, ArrowLeft, MapPin, Tag, Compass, Layers, Camera, ExternalLink } from 'lucide-react';
 
 const AssetLookup: React.FC = () => {
     const { customerId } = useParams<{ customerId: string }>();
@@ -145,10 +145,19 @@ const AssetLookup: React.FC = () => {
                                 <span className="text-slate-850 dark:text-slate-200">{asset.notes}</span>
                             </div>
                         )}
-                        {asset.gpsPin && (
+                        {asset.gpsPin && typeof asset.gpsPin.lat === 'number' && typeof asset.gpsPin.lng === 'number' && !isNaN(asset.gpsPin.lat) && !isNaN(asset.gpsPin.lng) && (asset.gpsPin.lat !== 0 || asset.gpsPin.lng !== 0) && (
                             <div className="col-span-2 flex items-center gap-1 font-mono text-[10px]">
                                 <Compass size={12} className="text-slate-400" />
-                                <span>GPS Coordinates: {asset.gpsPin.lat.toFixed(6)}, {asset.gpsPin.lng.toFixed(6)}</span>
+                                <a
+                                    href={`https://www.google.com/maps?q=${asset.gpsPin.lat},${asset.gpsPin.lng}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline flex items-center gap-1"
+                                    title="Open coordinates in Google Maps"
+                                >
+                                    <span>GPS Coordinates: {asset.gpsPin.lat.toFixed(6)}, {asset.gpsPin.lng.toFixed(6)}</span>
+                                    <ExternalLink size={10} className="opacity-70" />
+                                </a>
                             </div>
                         )}
                     </div>

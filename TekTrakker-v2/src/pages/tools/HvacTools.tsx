@@ -3,6 +3,7 @@ import { cleanUndefinedFields } from 'lib/utils';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../../context/AppContext';
+import { useLanguage } from '../../context/LanguageContext';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Camera as CapCamera, CameraResultType, CameraSource } from '@capacitor/camera';
 import Tesseract from 'tesseract.js';
+import { scanDataPlatePhoto } from '../../utils/dataPlateOcr';
 import { HardwareAPI } from '../../lib/HardwareIntegrationService';
 import { Job, ToolReading } from '../../types';
 import { formatAddress } from '../../lib/utils';
@@ -99,6 +101,7 @@ const INDOOR_VITALS = [
 
 const IndustryToolsHub: React.FC = () => {
     const { state, dispatch } = useAppContext();
+    const { t } = useLanguage();
     const [activeTab, setActiveTab] = useState<'refrigerant' | 'airflow' | 'electrical' | 'vrf' | 'chiller' | 'vitals'>('refrigerant');
 
     // --- REFRIGERANT STATE ---
@@ -141,6 +144,7 @@ const IndustryToolsHub: React.FC = () => {
     // --- SAVE MODAL STATE ---
     const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
     const [selectedJobId, setSelectedJobId] = useState('');
+    const [readingPhase, setReadingPhase] = useState<'before' | 'after'>('before');
     const [isSaving, setIsSaving] = useState(false);
 
     const [isBluetoothConnecting, setIsBluetoothConnecting] = useState(false);
@@ -197,7 +201,7 @@ const IndustryToolsHub: React.FC = () => {
             const functions = getFunctions();
             const callGeminiAI = httpsCallable(functions, 'callGeminiAI');
             const prompt = `Senior VRF Tech Support: ${vrfBrand} VRF, Error ${vrfError}. Identify issue and 3-5 tech steps. JSON: { "issue": "...", "steps": ["..."] }`;
-            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.6-flash', config: { response_mime_type: "application/json" } });
+            const result: any = await callGeminiAI({ prompt, modelName: 'gemini-3.7-flash', config: { response_mime_type: "application/json" } });
             const cleanJson = (result.data.text || '{}').replace(/```json/g, '').replace(/```/g, '').trim();
             setVrfAnalysis(JSON.parse(cleanJson));
         } catch (e) {
@@ -214,6 +218,7 @@ const IndustryToolsHub: React.FC = () => {
             const reading: ToolReading = {
                 id: `read_${Date.now()}`,
                 type: 'HVAC_Diagnostics',
+                phase: readingPhase,
                 timestamp: new Date().toISOString(),
                 data: {
                     refrigerant: { type: refType, superheat: results.sh, subcooling: results.sc },
@@ -224,7 +229,8 @@ const IndustryToolsHub: React.FC = () => {
             };
             const job = state.jobs.find(j => j.id === selectedJobId);
             if (job) {
-                const updatedReadings = [...(job.toolReadings || []), reading];
+                const currentReadings = Array.isArray(job.toolReadings) ? job.toolReadings : (job.toolReadings ? [job.toolReadings] : []);
+                const updatedReadings = [...currentReadings, reading];
                 await db.collection('jobs').doc(selectedJobId).update(cleanUndefinedFields({ toolReadings: updatedReadings }));
                 dispatch({ type: 'UPDATE_JOB', payload: { ...job, toolReadings: updatedReadings } });
             }
@@ -244,7 +250,7 @@ const IndustryToolsHub: React.FC = () => {
             const job = state.jobs.find(j => j.id === vitalsJobId);
             if (!job) throw new Error("Job not found");
             
-            const existingReadings = job.toolReadings || [];
+            const existingReadings = Array.isArray(job.toolReadings) ? job.toolReadings : (job.toolReadings ? [job.toolReadings] : []);
             const otherReadings = existingReadings.filter(r => r.type !== 'HVAC_Vitals' as any);
             
             const newReading: ToolReading = {
@@ -302,35 +308,24 @@ const IndustryToolsHub: React.FC = () => {
 
     const processOCRImage = async (dataUrl: string) => {
         setIsScanningOCR(true);
-        showToast.info("Analyzing image with OCR...");
+        showToast.info("Analyzing data plate image with AI Vision...");
         try {
-            const result = await Tesseract.recognize(dataUrl, 'eng');
-            const text = result.data.text;
-            
-            const lraMatch = text.match(/LRA[\s:]*([\d\.]+)/i);
-            const rlaMatch = text.match(/RLA[\s:]*([\d\.]+)/i);
-            
-            const updates: any = {};
-            let found = false;
-            
-            if (lraMatch && lraMatch[1]) { updates.comp_lra = lraMatch[1]; found = true; }
-            if (rlaMatch && rlaMatch[1]) { updates.comp_rla = rlaMatch[1]; found = true; }
-            
-            if (found) {
-                setVitalsData(prev => {
-                    const merged = { ...prev };
-                    if (updates.comp_lra && (!prev.comp_lra || prev.comp_lra.trim() === '')) {
-                        merged.comp_lra = updates.comp_lra;
-                    }
-                    if (updates.comp_rla && (!prev.comp_rla || prev.comp_rla.trim() === '')) {
-                        merged.comp_rla = updates.comp_rla;
-                    }
-                    return merged;
-                });
-                showToast.success("OCR Successful: Extracted data plate values.");
-            } else {
-                showToast.warn("OCR couldn't find expected values (LRA/RLA). Please enter manually.");
-            }
+            const ocrData = await scanDataPlatePhoto(dataUrl, {
+                volts: vitalsData.comp_lra,
+                amps: vitalsData.comp_rla
+            });
+
+            setVitalsData(prev => {
+                const merged = { ...prev };
+                if (ocrData.amps && (!prev.comp_rla || prev.comp_rla.trim() === '')) {
+                    merged.comp_rla = String(ocrData.amps);
+                }
+                if (ocrData.volts && (!prev.comp_lra || prev.comp_lra.trim() === '')) {
+                    merged.comp_lra = String(ocrData.volts);
+                }
+                return merged;
+            });
+            showToast.success("AI Vision OCR Successful! (Manual inputs preserved)");
         } catch (e) {
             console.error("OCR Error:", e);
             showToast.warn("OCR processing failed.");
@@ -363,120 +358,226 @@ const IndustryToolsHub: React.FC = () => {
 
     const handleOCRScan = async () => {
         try {
-            const image = await CapCamera.getPhoto({
-                quality: 90,
-                allowEditing: true,
-                resultType: CameraResultType.DataUrl,
-                source: CameraSource.Prompt
-            });
+            const isNative = (window as any).Capacitor?.isNativePlatform?.();
+            if (isNative) {
+                const image = await CapCamera.getPhoto({
+                    quality: 90,
+                    allowEditing: true,
+                    resultType: CameraResultType.DataUrl,
+                    source: CameraSource.Prompt
+                });
 
-            if (image.dataUrl) {
-                await processOCRImage(image.dataUrl);
+                if (image.dataUrl) {
+                    await processOCRImage(image.dataUrl);
+                    return;
+                }
+            } else {
+                fileInputRef.current?.click();
             }
         } catch (e) {
-            console.error("Camera Cancelled/Failed", e);
+            console.warn("Native camera cancelled/unavailable, falling back to file picker:", e);
+            fileInputRef.current?.click();
         }
     };
 
 
     return (
         <div className="p-4 sm:p-6 pb-32 space-y-6 max-w-5xl mx-auto">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                
-                 {activeJobs.length > 0 && (
-                    <Button onClick={() => setIsSaveModalOpen(true)} className="bg-emerald-600">
-                        <Save size={18} className="mr-2" /> Save to Active Job
+            {/* Header & Quick Job Save */}
+            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+                        <Wrench size={24} />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                            {t("HVAC Diagnostic & Calculator Console")}
+                        </h2>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                            {t("Real-time P/T saturation curves, Superheat, Subcooling & System Vitals")}
+                        </p>
+                    </div>
+                </div>
+
+                {activeJobs.length > 0 && (
+                    <Button onClick={() => setIsSaveModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/20 shrink-0">
+                        <Save size={18} className="mr-2" /> {t("Save to Active Job")}
                     </Button>
                 )}
             </header>
 
-            <div className="flex flex-wrap gap-2 overflow-x-auto custom-scrollbar bg-transparent sticky top-0 z-10 p-1 mb-4">
+            {/* High-Tech Tab Navigation Bar */}
+            <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar bg-slate-200/60 dark:bg-slate-900/80 p-2 rounded-2xl border border-slate-200 dark:border-slate-800 sticky top-0 z-20 backdrop-blur-md">
                 {[
-                    { id: 'refrigerant', label: 'Charging', icon: Droplet },
-                    { id: 'airflow', label: 'Airflow', icon: Wind },
-                    { id: 'vitals', label: 'System Vitals', icon: ClipboardCheck },
-                    { id: 'electrical', label: 'Electrical', icon: Zap },
-                    { id: 'vrf', label: 'VRF AI', icon: Cpu },
-                    { id: 'chiller', label: 'Chiller', icon: Activity }
+                    { id: 'refrigerant', label: 'Charging', icon: Droplet, badge: 'P/T' },
+                    { id: 'airflow', label: 'Airflow', icon: Wind, badge: 'Delta T' },
+                    { id: 'vitals', label: 'System Vitals', icon: ClipboardCheck, badge: 'OCR / BT' },
+                    { id: 'electrical', label: 'Electrical', icon: Zap, badge: 'kW' },
+                    { id: 'vrf', label: 'VRF AI', icon: Cpu, badge: 'AI' },
+                    { id: 'chiller', label: 'Chiller', icon: Activity, badge: 'Approach' }
                 ].map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)}
-                        className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold transition-all rounded-xl whitespace-nowrap border-2 ${
+                        className={`flex items-center gap-2.5 px-4 py-2.5 text-xs font-black transition-all rounded-xl whitespace-nowrap cursor-pointer ${
                             activeTab === tab.id 
-                                ? 'border-primary-600 bg-primary-600 text-white shadow-md shadow-primary-500/30 font-black' 
-                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:border-primary-300 dark:hover:border-primary-600 hover:shadow-sm'
+                                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/25 scale-[1.02]' 
+                                : 'bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80'
                         }`}
                     >
-                        <tab.icon size={18} />
-                        <span>{tab.label}</span>
+                        <tab.icon size={16} className={activeTab === tab.id ? 'text-white' : 'text-blue-500 dark:text-blue-400'} />
+                        <span>{t(tab.label)}</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-extrabold uppercase tracking-wider ${
+                            activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                        }`}>
+                            {tab.badge}
+                        </span>
                     </button>
                 ))}
             </div>
 
             <div className="grid grid-cols-1 gap-6">
+                {/* 1. CHARGING TAB */}
                 {activeTab === 'refrigerant' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Card title="System Inputs" className="space-y-4">
-                            <Select label="Refrigerant Type" value={refType} onChange={e => setRefType(e.target.value)}>
-                                {REFRIGERANTS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+                        {/* System Inputs */}
+                        <div className="md:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-5">
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                                <h3 className="font-extrabold text-sm uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                                    <Droplet size={18} className="text-blue-600" />
+                                    {t("System Inputs & Pressure / Temp Gauge Data")}
+                                </h3>
+                            </div>
+
+                            <Select label={t("Refrigerant Type")} value={refType} onChange={e => setRefType(e.target.value)}>
+                                {REFRIGERANTS.map(r => <option key={r.value} value={r.value}>{r.label} ({r.category})</option>)}
                             </Select>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Input label="Suction Pressure (PSIG)" type="number" value={suctionPress} onChange={e => setSuctionPress(e.target.value)} />
-                                <Input label="Suction Temp (°F)" type="number" value={suctionTemp} onChange={e => setSuctionTemp(e.target.value)} />
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {/* Suction Line Card */}
+                                <div className="p-4 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 rounded-xl space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/60 px-2 py-0.5 rounded-md">
+                                            {t("Low Side / Suction Line")}
+                                        </span>
+                                    </div>
+                                    <Input label={t("Suction Pressure (PSIG)")} type="number" value={suctionPress} onChange={e => setSuctionPress(e.target.value)} placeholder="e.g. 118" />
+                                    <Input label={t("Suction Temp (°F)")} type="number" value={suctionTemp} onChange={e => setSuctionTemp(e.target.value)} placeholder="e.g. 54" />
+                                    
+                                    {/* Calculated Saturation Temp */}
+                                    <div className="pt-2 border-t border-blue-200/60 dark:border-blue-900/40 flex items-center justify-between text-xs">
+                                        <span className="font-semibold text-slate-500 dark:text-slate-400">{t("Suction Sat Temp:")}</span>
+                                        <span className="font-black text-blue-600 dark:text-blue-400">
+                                            {!isNaN(parseFloat(suctionPress)) ? `${calculateSatTemp(parseFloat(suctionPress), refType).toFixed(1)}°F` : '--°F'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Liquid Line Card */}
+                                <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 rounded-xl space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-md">
+                                            {t("High Side / Liquid Line")}
+                                        </span>
+                                    </div>
+                                    <Input label={t("Liquid Pressure (PSIG)")} type="number" value={liquidPress} onChange={e => setLiquidPress(e.target.value)} placeholder="e.g. 320" />
+                                    <Input label={t("Liquid Temp (°F)")} type="number" value={liquidTemp} onChange={e => setLiquidTemp(e.target.value)} placeholder="e.g. 91" />
+                                    
+                                    {/* Calculated Saturation Temp */}
+                                    <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40 flex items-center justify-between text-xs">
+                                        <span className="font-semibold text-slate-500 dark:text-slate-400">{t("Liquid Sat Temp:")}</span>
+                                        <span className="font-black text-emerald-600 dark:text-emerald-400">
+                                            {!isNaN(parseFloat(liquidPress)) ? `${calculateSatTemp(parseFloat(liquidPress), refType).toFixed(1)}°F` : '--°F'}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Input label="Liquid Pressure (PSIG)" type="number" value={liquidPress} onChange={e => setLiquidPress(e.target.value)} />
-                                <Input label="Liquid Temp (°F)" type="number" value={liquidTemp} onChange={e => setLiquidTemp(e.target.value)} />
+                        </div>
+
+                        {/* Calculated Results Gauges */}
+                        <div className="md:col-span-5 bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 text-white border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-6">
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                    <Sparkles size={14} className="text-blue-400 animate-pulse" />
+                                    {t("Live Calculated Diagnostics")}
+                                </span>
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded-full border border-blue-500/30">
+                                    {refType}
+                                </span>
                             </div>
-                        </Card>
-                        <Card title="Calculated Results" className="flex flex-col justify-center gap-6 bg-slate-50 dark:bg-slate-800/50">
-                            <div className="text-center">
-                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Superheat</p>
-                                <p className={`text-5xl font-black ${results.sh > 0 ? 'text-blue-600' : 'text-slate-300'}`}>{results.sh.toFixed(1)}°F</p>
+
+                            {/* Superheat Gauge Card */}
+                            <div className="bg-slate-800/80 border border-blue-500/30 rounded-2xl p-5 text-center relative overflow-hidden group hover:border-blue-500/60 transition-all">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition-all" />
+                                <p className="text-xs font-black text-blue-400 uppercase tracking-widest mb-1">
+                                    {t("Superheat (Evaporator / TXV Check)")}
+                                </p>
+                                <p className={`text-5xl font-black tracking-tight my-2 ${results.sh > 0 ? 'text-blue-400' : 'text-slate-600'}`}>
+                                    {results.sh.toFixed(1)}°F
+                                </p>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    {results.sh > 0 
+                                        ? (results.sh >= 8 && results.sh <= 15 ? `✓ ${t("Optimal Superheat Range (8°F - 15°F)")}` : `! ${t("Check Airflow or TXV Operation")}`) 
+                                        : t("Enter Suction Line Pressure & Temp")}
+                                </p>
                             </div>
-                            <div className="text-center">
-                                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Subcooling</p>
-                                <p className={`text-5xl font-black ${results.sc > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>{results.sc.toFixed(1)}°F</p>
+
+                            {/* Subcooling Gauge Card */}
+                            <div className="bg-slate-800/80 border border-emerald-500/30 rounded-2xl p-5 text-center relative overflow-hidden group hover:border-emerald-500/60 transition-all">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition-all" />
+                                <p className="text-xs font-black text-emerald-400 uppercase tracking-widest mb-1">
+                                    {t("Subcooling (Condenser / Charge Check)")}
+                                </p>
+                                <p className={`text-5xl font-black tracking-tight my-2 ${results.sc > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                                    {results.sc.toFixed(1)}°F
+                                </p>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    {results.sc > 0 
+                                        ? (results.sc >= 8 && results.sc <= 14 ? `✓ ${t("Optimal Charge (Target SC: 10°F - 12°F)")}` : `! ${t("Check Charge / Condenser Airflow")}`) 
+                                        : t("Enter Liquid Line Pressure & Temp")}
+                                </p>
                             </div>
-                        </Card>
+                        </div>
                     </div>
                 )}
 
+                {/* 2. AIRFLOW TAB */}
                 {activeTab === 'airflow' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Card title="Psychrometrics" className="space-y-4">
+                        <Card title={t("Psychrometric Airflow Inputs")} className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Input label="Return Dry Bulb (°F)" type="number" value={returnTemp} onChange={e => setReturnTemp(e.target.value)} />
-                                <Input label="Supply Dry Bulb (°F)" type="number" value={supplyTemp} onChange={e => setSupplyTemp(e.target.value)} />
+                                <Input label={t("Return Dry Bulb (°F)")} type="number" value={returnTemp} onChange={e => setReturnTemp(e.target.value)} placeholder="e.g. 75" />
+                                <Input label={t("Supply Dry Bulb (°F)")} type="number" value={supplyTemp} onChange={e => setSupplyTemp(e.target.value)} placeholder="e.g. 56" />
                             </div>
                         </Card>
-                        <Card title="Performance" className="flex flex-col justify-center items-center bg-slate-50 dark:bg-slate-800/50">
-                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Delta T (Temp Split)</p>
-                            <p className="text-6xl font-black text-primary-600">{results.deltaT.toFixed(1)}°F</p>
-                            <div className="mt-4 p-3 rounded-lg bg-white dark:bg-slate-700 border text-xs text-center max-w-[200px]">
+                        <Card title={t("Airflow Split Performance")} className="flex flex-col justify-center items-center bg-slate-50 dark:bg-slate-800/50 p-6 text-center">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">{t("Delta T (Temp Split)")}</p>
+                            <p className="text-6xl font-black text-blue-600 dark:text-blue-400 my-2">{results.deltaT.toFixed(1)}°F</p>
+                            <div className="mt-4 p-3 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs font-bold text-center max-w-[260px] shadow-sm">
                                 {results.deltaT >= 16 && results.deltaT <= 22 ? 
-                                    <span className="text-emerald-600 font-bold">✓ Normal Operating Range</span> : 
-                                    <span className="text-amber-600 font-bold">! Out of Range (Check Airflow/Charge)</span>
+                                    <span className="text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-1">✓ {t("Normal Operating Range (16°F - 22°F)")}</span> : 
+                                    <span className="text-amber-600 dark:text-amber-400 flex items-center justify-center gap-1">! {t("Out of Range (Check Ductwork / Airflow)")}</span>
                                 }
                             </div>
                         </Card>
                     </div>
                 )}
 
+                {/* 3. ELECTRICAL TAB */}
                 {activeTab === 'electrical' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Card title="Amp & Volt Meter" className="space-y-4">
-                            <Select label="Phase Configuration" value={phase} onChange={e => setPhase(e.target.value as any)}>
-                                <option value="1">Single Phase (120/240V)</option>
-                                <option value="3">Three Phase (208/480V)</option>
+                        <Card title={t("Amp & Volt Meter Calculator")} className="space-y-4">
+                            <Select label={t("Phase Configuration")} value={phase} onChange={e => setPhase(e.target.value as any)}>
+                                <option value="1">{t("Single Phase (120/240V)")}</option>
+                                <option value="3">{t("Three Phase (208/480V)")}</option>
                             </Select>
-                            <Input label="Voltage (V)" type="number" value={volts} onChange={e => setVolts(e.target.value)} />
-                            <Input label="Amperage (A)" type="number" value={amps} onChange={e => setAmps(e.target.value)} />
+                            <Input label={t("Voltage (V)")} type="number" value={volts} onChange={e => setVolts(e.target.value)} placeholder="e.g. 230" />
+                            <Input label={t("Amperage (A)")} type="number" value={amps} onChange={e => setAmps(e.target.value)} placeholder="e.g. 18.5" />
                         </Card>
-                        <Card title="Power Consumption" className="flex flex-col justify-center items-center bg-slate-50 dark:bg-slate-800/50">
-                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Total Power</p>
-                            <p className="text-6xl font-black text-amber-500">{(results.power / 1000).toFixed(2)} <span className="text-2xl">kW</span></p>
+                        <Card title={t("Total Power Consumption")} className="flex flex-col justify-center items-center bg-slate-50 dark:bg-slate-800/50 p-6 text-center">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">{t("Calculated Power Load")}</p>
+                            <p className="text-6xl font-black text-amber-500 my-2">{(results.power / 1000).toFixed(2)} <span className="text-2xl">kW</span></p>
+                            <p className="text-xs text-slate-400 font-medium">{t("Real-time electrical load calculation")}</p>
                         </Card>
                     </div>
                 )}
@@ -636,6 +737,35 @@ const IndustryToolsHub: React.FC = () => {
             <Modal isOpen={isSaveModalOpen} onClose={() => setIsSaveModalOpen(false)} title="Save Readings to Job">
                 <div className="space-y-4">
                     <p className="text-sm text-slate-500">Save current data to the digital job folder.</p>
+
+                    <div>
+                        <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">Repair Phase</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setReadingPhase('before')}
+                                className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all flex items-center justify-center gap-1 ${
+                                    readingPhase === 'before'
+                                        ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                }`}
+                            >
+                                🛠️ Before Repair
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setReadingPhase('after')}
+                                className={`py-2 px-3 text-xs font-bold rounded-lg border transition-all flex items-center justify-center gap-1 ${
+                                    readingPhase === 'after'
+                                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                }`}
+                            >
+                                ✨ After Repair
+                            </button>
+                        </div>
+                    </div>
+
                     <Select label="Select Target Job" value={selectedJobId} onChange={e => setSelectedJobId(e.target.value)}>
                         <option value="">-- Choose an active job --</option>
                         {activeJobs.map(j => <option key={j.id} value={j.id}>{j.customerName} - {formatAddress(j.address)}</option>)}

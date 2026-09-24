@@ -19,15 +19,18 @@ export interface User {
   organizationId: string; 
   uid?: string; 
   username: string;
+  name?: string;
   email?: string | null; 
   password?: string | null; 
   firstName: string;
   lastName: string;
+  title?: string;
+  includeSignatureInOutbound?: boolean;
   payRate: number | string; 
   payType?: 'hourly' | 'salary'; 
   billableRate?: number | null; 
   ptoAccrued: number; 
-  role: 'master_admin' | 'franchise_admin' | 'admin' | 'employee' | 'both' | 'customer' | 'supervisor' | 'platform_sales' | 'Technician' | 'Subcontractor'; 
+  role: 'master_admin' | 'franchise_admin' | 'admin' | 'employee' | 'both' | 'customer' | 'supervisor' | 'platform_sales' | 'Technician' | 'Lead Technician' | 'Dispatcher' | 'Office Staff' | 'Manager' | 'Administrator' | 'Subcontractor'; 
   franchiseId?: string;
   dispatchTeamIds?: string[];
   reportsTo?: string | null; 
@@ -65,6 +68,8 @@ export interface User {
   location?: { lat: number; lng: number; timestamp: string; };
   lastLocationUpdate?: string | null;
   lastLoginAt?: string | null; 
+  lastSalesActivityAt?: string | null;
+  customCommissionSettings?: any;
   preferences?: any;
   permissions?: string[]; 
   marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; ip?: string; gclid?: string; };

@@ -7,9 +7,10 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import type { Job, User } from '../../types';
 import { ChevronLeftIcon, ChevronRightIcon } from '../../constants/constants';
-import { Users, AlertTriangle, CloudLightning, ThermometerSun } from 'lucide-react';
+import { Users, AlertTriangle, CloudLightning, ThermometerSun, Archive, Inbox } from 'lucide-react';
 import { db } from '../../lib/firebase';
 import JobDetailModal from '../../components/modals/JobDetailModal';
+import { globalConfirm } from 'lib/globalConfirm';
 
 const getStateTimezone = (stateCode: string): string => {
     const code = (stateCode || '').trim().toUpperCase();
@@ -60,6 +61,7 @@ const DispatchBoard: React.FC = () => {
     const [draggedJobId, setDraggedJobId] = useState<string | null>(null);
     const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString('en-CA')); // YYYY-MM-DD
     const [viewMode, setViewMode] = useState<'1day' | '3day'>('1day');
+    const [showArchived, setShowArchived] = useState(false);
     const [severeWeatherAlert, setSevereWeatherAlert] = useState<{ type: string, temp?: number, desc?: string } | null>(null);
     const [isRescheduling, setIsRescheduling] = useState(false);
     const numDays = viewMode === '3day' ? 3 : 1;
@@ -131,8 +133,15 @@ const DispatchBoard: React.FC = () => {
         return allTechs;
     }, [state.users, state.currentUser, state.currentOrganization, state.teams]);
 
-    // Linked Partners for lookup
-    const linkedPartners = useMemo(() => state.subcontractors.filter(s => s.handshakeStatus === 'Linked' && s.linkedOrgId), [state.subcontractors]);
+    // Subcontractors & Partners for lookup
+    const linkedPartners = useMemo(() => {
+        if (!state.subcontractors) return [];
+        const currentOrgId = state.currentOrganization?.id;
+        return state.subcontractors.filter(s => 
+            (s.organizationId === currentOrgId || s.linkedOrgId === currentOrgId) && 
+            s.status !== 'Inactive'
+        );
+    }, [state.subcontractors, state.currentOrganization]);
 
     // Weather Alert Logic
     useEffect(() => {
@@ -172,6 +181,7 @@ const DispatchBoard: React.FC = () => {
     const jobs = useMemo(() => {
         const combinedJobs = [...(state.jobs || []), ...(state.externalJobs || [])];
         const dateFiltered = combinedJobs.filter((j: Job) => {
+            if (!showArchived && j.archived) return false;
             if (!j.appointmentTime) return false;
 
             const [sy, sm, sd] = selectedDate.split('-').map(Number);
@@ -195,7 +205,7 @@ const DispatchBoard: React.FC = () => {
             }
         }
         return dateFiltered;
-    }, [state.jobs, state.externalJobs, selectedDate, numDays, state.currentUser, state.teams]);
+    }, [state.jobs, state.externalJobs, selectedDate, numDays, state.currentUser, state.teams, showArchived]);
 
     const getJobStyle = (job: Job) => {
         const start = new Date(job.appointmentTime);
@@ -224,6 +234,7 @@ const DispatchBoard: React.FC = () => {
     };
 
     const getJobColor = (job: Job) => {
+        if (job.jobStatus === 'Needs Review' || job.needsAdminVerification) return 'bg-amber-500 border-amber-300 shadow-md ring-2 ring-amber-400 animate-pulse';
         if (job.assignedPartnerId === state.currentOrganization?.id) return 'bg-indigo-600 border-indigo-400'; // Special color for partner jobs
         if (job.jobStatus === 'Completed') return 'bg-emerald-600 border-emerald-400';
         if (job.jobStatus === 'In Progress') return 'bg-blue-600 border-blue-400';
@@ -376,7 +387,7 @@ const DispatchBoard: React.FC = () => {
             return;
         }
 
-        if (!window.confirm(`Found ${exteriorJobs.length} exterior/high-risk jobs for today. Automatically push to tomorrow?`)) {
+        if (!(await globalConfirm(`Found ${exteriorJobs.length} exterior/high-risk jobs for today. Automatically push to tomorrow?`, "Severe Weather Dispatch Action", "Reschedule to Tomorrow", "Cancel"))) {
             setIsRescheduling(false);
             return;
         }
@@ -405,6 +416,29 @@ const DispatchBoard: React.FC = () => {
         const newM = String(current.getMonth() + 1).padStart(2, '0');
         const newD = String(current.getDate()).padStart(2, '0');
         setSelectedDate(`${newY}-${newM}-${newD}`);
+    };
+
+    const handleToggleArchiveJob = async (job: Job, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        if (!hasPermission(state.currentUser, 'manage_dispatch')) {
+            showToast.warn("You do not have permission to modify jobs.");
+            return;
+        }
+        const newArchived = !job.archived;
+        const updates = {
+            archived: newArchived,
+            archivedAt: newArchived ? new Date().toISOString() : null,
+            archivedBy: newArchived ? state.currentUser?.id : null
+        };
+
+        try {
+            dispatch({ type: 'UPDATE_JOB', payload: { ...job, ...updates } });
+            await db.collection('jobs').doc(job.id).update(cleanUndefinedFields(updates));
+            showToast.success(newArchived ? "Job taken off dispatch board (Archived)" : "Job restored to dispatch board");
+        } catch (err) {
+            console.error("Failed to update job archive status:", err);
+            showToast.error("Failed to update job status");
+        }
     };
 
     const [activeTechId, setActiveTechId] = useState<string | null>(null);
@@ -441,10 +475,22 @@ const DispatchBoard: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-between bg-gray-50 dark:bg-gray-900/50 p-1.5 rounded-xl border border-gray-100 dark:border-gray-800">
-                    <div className="hidden md:flex bg-gray-200 dark:bg-gray-800 rounded-lg p-0.5 mr-2">
+                    <div className="hidden md:flex items-center gap-1.5 bg-gray-200 dark:bg-gray-800 rounded-lg p-0.5 mr-2">
                         <button onClick={() => setViewMode('1day')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === '1day' ? 'bg-white dark:bg-gray-600 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>{t("1 Day")}</button>
                         <button onClick={() => setViewMode('3day')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === '3day' ? 'bg-white dark:bg-gray-600 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}>{t("3 Days")}</button>
                     </div>
+                    <button 
+                        onClick={() => setShowArchived(!showArchived)} 
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 border ${
+                            showArchived 
+                                ? 'bg-amber-500 border-amber-600 text-white shadow-sm' 
+                                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                        title={showArchived ? "Click to hide archived jobs from board" : "Click to show archived jobs on board"}
+                    >
+                        <Archive size={14} />
+                        <span>{showArchived ? t("Showing Archived") : t("Show Archived")}</span>
+                    </button>
                     <button aria-label={t("Previous day")} title={t("Previous day")} onClick={() => changeDay(-1)} className="p-2 rounded-lg hover:bg-white dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-all shadow-sm">
                         <ChevronLeftIcon className="w-5 h-5" />
                     </button>
@@ -538,16 +584,29 @@ const DispatchBoard: React.FC = () => {
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
                                                 <p className="text-[10px] font-black text-gray-400 uppercase">{new Date(job.appointmentTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                                                <p className="font-bold text-gray-900 dark:text-white">{customer?.name || job.customerName}</p>
+                                                <p className="font-bold text-gray-900 dark:text-white">{customer?.name || (customer as any)?.companyName || job.customerName}</p>
                                             </div>
-                                            <div className="bg-gray-50 dark:bg-gray-700 px-2 py-1 rounded-lg text-[10px] font-bold text-primary-600">
-                                                {job.jobStatus}
+                                            <div className={`px-2 py-1 rounded-lg text-[10px] font-bold ${
+                                                job.jobStatus === 'Needs Review' || job.needsAdminVerification
+                                                    ? 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 font-black animate-pulse'
+                                                    : 'bg-gray-50 dark:bg-gray-700 text-primary-600'
+                                            }`}>
+                                                {job.jobStatus === 'Needs Review' ? '⚠️ Needs Review' : job.jobStatus}
                                             </div>
                                         </div>
                                         <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">{job.tasks[0]}</p>
                                         <div className="flex justify-between items-center text-[10px] text-gray-500 bg-gray-50 dark:bg-gray-700/50 -mx-4 -mb-4 p-3 rounded-b-2xl border-t border-gray-100 dark:border-gray-800">
-                                            <span className="truncate max-w-[200px]">{formatAddress(job.address || customer?.address)}</span>
-                                            <button onClick={() => setViewingJob(job)} className="text-primary-600 font-bold">{t("Details")} &rsaquo;</button>
+                                            <span className="truncate max-w-[140px]">{formatAddress(job.address || customer?.address)}</span>
+                                            <div className="flex items-center gap-3">
+                                                <button 
+                                                    onClick={(e) => handleToggleArchiveJob(job, e)}
+                                                    className={`font-bold transition-colors ${job.archived ? 'text-amber-600 hover:text-amber-700' : 'text-gray-500 hover:text-red-500'}`}
+                                                    title={job.archived ? "Restore to dispatch board" : "Take off dispatch board without deleting"}
+                                                >
+                                                    {job.archived ? t("Restore") : t("Take Off Board")}
+                                                </button>
+                                                <button onClick={() => setViewingJob(job)} className="text-primary-600 font-bold">{t("Details")} &rsaquo;</button>
+                                            </div>
                                         </div>
                                     </div>
                                 );
@@ -559,7 +618,7 @@ const DispatchBoard: React.FC = () => {
 
             {/* Desktop View: Timeline */}
             <Card className="hidden md:flex flex-1 overflow-hidden flex-col bg-white dark:bg-gray-800 p-0 relative border border-gray-200 dark:border-gray-700">
-                <div className="flex-1 overflow-x-auto overflow-y-auto relative custom-scrollbar touch-pan-x" ref={containerRef}>
+                <div className="flex-1 overflow-x-auto overflow-y-auto relative custom-scrollbar" ref={containerRef}>
                     <div className={`relative pb-8 ${viewMode === '3day' ? 'min-w-[2400px]' : 'min-w-[1000px]'}`}>
                         <div className="flex border-b border-gray-200 dark:border-gray-700 ml-40 sticky top-0 bg-gray-50 dark:bg-gray-900 z-20 shadow-sm">
                             {Array.from({ length: numDays }).map((_, dayIndex) => {
@@ -640,11 +699,21 @@ const DispatchBoard: React.FC = () => {
 
                                                     style={getJobStyle(job)} // NOSONAR
                                                 >
-                                                    <div className="font-bold truncate drop-shadow-md">{customer?.name || job.customerName}</div>
+                                                    <div className="font-bold truncate drop-shadow-md pr-4">{customer?.name || job.customerName}</div>
                                                     <div className="truncate opacity-90">{job.tasks[0]}</div>
+                                                    {job.archived && (
+                                                        <div className="text-[8px] uppercase font-black bg-amber-400/80 text-black px-1 rounded mt-1 inline-block mr-1">{t("Archived")}</div>
+                                                    )}
                                                     {job.assignedPartnerId === state.currentOrganization?.id && (
                                                         <div className="text-[8px] uppercase font-black bg-white/20 px-1 rounded mt-1 inline-block">{t("Partner Job")}</div>
                                                     )}
+                                                    <button
+                                                        onClick={(e) => handleToggleArchiveJob(job, e)}
+                                                        title={job.archived ? "Restore to dispatch board" : "Take off dispatch board without deleting"}
+                                                        className="absolute top-1 right-3 p-1 rounded bg-black/30 hover:bg-black/60 text-white/90 hover:text-white z-20 transition-all"
+                                                    >
+                                                        <Archive size={10} />
+                                                    </button>
                                                     {job.assistants && job.assistants.length > 0 && (
                                                         <div className="absolute bottom-1 right-1 flex items-center gap-1 bg-black/20 px-1.5 py-0.5 rounded text-[9px] font-bold">
                                                             <Users size={10} /> +{job.assistants.length}

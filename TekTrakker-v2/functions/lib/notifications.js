@@ -66,6 +66,19 @@ exports.onNotificationCreated = functions.firestore
             console.log(`No FCM tokens found for user ${userId}`);
             return;
         }
+        const customData = {
+            notificationId: context.params.notificationId,
+            url: notification.link || notification.url || '/',
+            link: notification.link || notification.url || '/',
+            type: notification.type || 'general'
+        };
+        if (notification.data && typeof notification.data === 'object') {
+            for (const [key, value] of Object.entries(notification.data)) {
+                if (value !== undefined && value !== null) {
+                    customData[key] = String(value);
+                }
+            }
+        }
         const message = {
             notification: {
                 title: notification.title || 'New Notification',
@@ -76,10 +89,7 @@ exports.onNotificationCreated = functions.firestore
                     channelId: 'default',
                 }
             },
-            data: {
-                url: notification.link || notification.url || '/',
-                type: notification.type || 'general'
-            },
+            data: customData,
             tokens: tokens
         };
         const response = await admin.messaging().sendEachForMulticast(message);

@@ -1,11 +1,13 @@
 import showToast from "lib/toast";
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, X, Send, Image as ImageIcon, Loader2, Mic, MicOff, Volume2, VolumeX, PhoneCall, PhoneOff, RefreshCw } from 'lucide-react';
+import ReactDOM from 'react-dom';
+import { Bot, X, Send, Image as ImageIcon, Loader2, Mic, MicOff, Volume2, VolumeX, PhoneCall, PhoneOff, RefreshCw, ShieldAlert, CheckCircle2, XCircle, ArrowRight } from 'lucide-react';
 import Draggable from 'react-draggable';
 import { useAppContext } from 'context/AppContext';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import { globalConfirm } from 'lib/globalConfirm';
 
 interface Message {
     id: string;
@@ -355,19 +357,26 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
             }
         } catch (error: any) {
             console.error("AI Communication Error", error);
+            const isDemandSpikeOrBusy = 
+                error?.code === 'functions/resource-exhausted' || 
+                error?.code === 'functions/unavailable' || 
+                error?.message?.includes('503') || 
+                error?.message?.includes('high demand') ||
+                error?.message?.includes('overloaded');
+
             setMessages(prev => [...prev, {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
                 content: (error?.code === 'functions/failed-precondition' || error?.code === 'functions/permission-denied')
                     ? error.message
-                    : error?.code === 'functions/resource-exhausted'
-                    ? "I'm temporarily overloaded with requests. Please wait about 15 seconds and resend your message. I apologize for the inconvenience!"
+                    : isDemandSpikeOrBusy
+                    ? (error?.message && !error.message.includes('[GoogleGenerativeAI Error]') && !error.message.includes('INTERNAL') ? error.message : "I'm temporarily experiencing a high volume of requests right now. Please wait about 10 seconds and resend your message. I apologize for the inconvenience!")
                     : "I'm experiencing a high volume of requests right now and my connection timed out. Could you please try sending that again?",
                 timestamp: new Date()
             }]);
 
-            // Automatically trigger the failure report email (skip for transient rate limit errors)
-            if (error?.code !== 'functions/resource-exhausted') {
+            // Automatically trigger the failure report email (skip for transient rate limit or high demand spikes)
+            if (!isDemandSpikeOrBusy) {
             try {
                 const reportAction = httpsCallable(getFunctions(), 'reportWorkerFailure');
                 const chatHistory = messagesRef.current
@@ -413,17 +422,38 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
             const savedPos = localStorage.getItem('virtual-worker-pos');
             if (savedPos) {
                 try {
-                    setPosition(JSON.parse(savedPos));
+                    const parsed = JSON.parse(savedPos);
+                    const minX = -(window.innerWidth - 80);
+                    const minY = -(window.innerHeight - 160);
+                    if (parsed.x < minX || parsed.x > 30 || parsed.y < minY || parsed.y > 90) {
+                        setPosition({ x: 0, y: 0 });
+                        localStorage.removeItem('virtual-worker-pos');
+                    } else {
+                        setPosition(parsed);
+                    }
                 } catch (e) { console.error(e); }
             }
             if (localStorage.getItem('virtual-worker-hidden') === 'true') {
                 setIsHidden(true);
             }
+
+            const handleResize = () => {
+                setPosition(prev => {
+                    const minX = -(window.innerWidth - 80);
+                    const minY = -(window.innerHeight - 160);
+                    if (prev.x < minX || prev.x > 30 || prev.y < minY || prev.y > 90) {
+                        return { x: 0, y: 0 };
+                    }
+                    return prev;
+                });
+            };
+            window.addEventListener('resize', handleResize);
+            return () => window.removeEventListener('resize', handleResize);
         }
     }, []);
 
-    const handleHide = () => {
-        if (window.confirm("Hide the AI Worker bubble? You can unhide it anytime from your Profile (click your avatar at the top right) under the Security tab.")) {
+    const handleHide = async () => {
+        if (await globalConfirm("Hide the AI Worker bubble? You can unhide it anytime from your Profile (click your avatar at the top right) under the Security tab.", "Hide AI Worker", "Hide Bubble", "Keep Visible")) {
             setIsHidden(true);
             localStorage.setItem('virtual-worker-hidden', 'true');
         }
@@ -501,17 +531,18 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
         return null;
     }
 
-    const innerContent = (
-        <div className="relative flex flex-col items-end">
-            {/* The Chat Window */}
-            {isOpen && (
-                <div 
-                    onDragEnter={handleDrag}
-                    onDragOver={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDrop={handleDrop}
-                    className={`${variant === 'nav' ? 'fixed top-20 right-4 sm:absolute sm:top-full sm:mt-4 sm:right-0 sm:origin-top-right z-[9999]' : `absolute ${isLeftHalf ? 'left-0' : 'right-0'} ${isTopHalf ? (isLeftHalf ? 'top-full mt-4 origin-top-left' : 'top-full mt-4 origin-top-right') : (isLeftHalf ? 'bottom-full mb-4 origin-bottom-left' : 'bottom-full mb-4 origin-bottom-right')}`} w-[calc(100vw-32px)] sm:w-[360px] md:w-[400px] h-[500px] max-h-[70vh] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 transition-all transform animate-in fade-in zoom-in duration-200 relative`}
-                >
+    const chatWindowPortal = (typeof document !== 'undefined' && isOpen) ? ReactDOM.createPortal(
+        <div 
+            onDragEnter={handleDrag}
+            onDragOver={handleDrag}
+            onDragLeave={handleDrag}
+            onDrop={handleDrop}
+            className={`fixed z-[99999] inset-x-3 sm:inset-x-auto top-[calc(56px+env(safe-area-inset-top,0px)+8px)] ${
+                variant === 'nav' 
+                    ? 'sm:top-16 sm:right-6 sm:origin-top-right' 
+                    : 'sm:bottom-[160px] sm:right-6 sm:top-auto sm:origin-bottom-right'
+            } w-[calc(100vw-24px)] max-w-[440px] sm:w-[400px] h-[calc(100dvh-150px)] sm:h-[550px] max-h-[620px] sm:max-h-[75vh] mx-auto sm:mx-0 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 transition-all transform animate-in fade-in zoom-in-95 duration-200`}
+        >
                     {dragActive && (
                         <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center border-4 border-dashed border-blue-500 rounded-2xl p-4 text-center animate-fade-in">
                             <div className="p-4 bg-blue-500/10 rounded-full border border-blue-500/30 mb-3 animate-bounce">
@@ -538,8 +569,8 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                         </div>
                         <div className="flex items-center gap-1 relative z-10">
                             <button 
-                                onClick={() => {
-                                    if(window.confirm("Clear chat history?")) {
+                                onClick={async () => {
+                                    if (await globalConfirm("Clear chat history?", "Clear Chat", "Clear History", "Cancel")) {
                                         setMessages([{
                                             id: 'init-msg',
                                             role: 'assistant',
@@ -549,7 +580,7 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                                         localStorage.removeItem('virtual-worker-cache');
                                     }
                                 }}
-                                className="p-2 hover:bg-black/20 rounded-full transition-colors focus:outline-none"
+                                className="p-2 hover:bg-black/20 rounded-full transition-colors focus:outline-none cursor-pointer"
                                 title="Clear memory"
                             >
                                 <span className="text-[10px] font-bold px-1 uppercase leading-none opacity-80">Clear</span>
@@ -589,19 +620,62 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                                     <p className={`text-[10px] mt-1 text-right ${msg.role === 'user' ? 'text-white/70' : 'text-slate-400'}`}>
                                         {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </p>
-                                    {msg.choices && msg.choices.length > 0 && (
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            {msg.choices.map((choice, idx) => (
-                                                <button
-                                                    key={idx}
-                                                    onClick={() => submitDirectMessage(choice)}
-                                                    className="bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 text-xs px-3 py-1.5 rounded-full transition-colors whitespace-normal text-left font-medium shadow-sm"
-                                                >
-                                                    {choice}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
+                                    {msg.choices && msg.choices.length > 0 && (() => {
+                                         const isConfirmationDialog = msg.choices.some(c => /confirm|force complete|proceed/i.test(c)) &&
+                                                                     msg.choices.some(c => /cancel|keep|review/i.test(c));
+
+                                         if (isConfirmationDialog) {
+                                             return (
+                                                 <div className="mt-3 p-3 bg-amber-500/10 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700/50 rounded-xl space-y-2">
+                                                     <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                                         <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                                         <span>Action Verification Required</span>
+                                                     </div>
+                                                     <p className="text-[11px] text-slate-600 dark:text-slate-300">
+                                                         Please verify the target details before the Virtual Worker commits this change to your organization's database.
+                                                     </p>
+                                                     <div className="flex flex-wrap gap-2 pt-1">
+                                                         {msg.choices.map((choice, idx) => {
+                                                             const isAffirmative = /confirm|force complete|proceed/i.test(choice);
+                                                             return (
+                                                                 <button
+                                                                     key={idx}
+                                                                     onClick={() => submitDirectMessage(choice)}
+                                                                     className={`flex items-center gap-1.5 text-xs px-3.5 py-1.5 rounded-lg transition-all font-semibold shadow-sm ${
+                                                                         isAffirmative
+                                                                             ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 hover:scale-[1.02]'
+                                                                             : 'bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600'
+                                                                     }`}
+                                                                 >
+                                                                     {isAffirmative ? (
+                                                                         <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                                                                     ) : (
+                                                                         <XCircle className="w-3.5 h-3.5 text-slate-400" />
+                                                                     )}
+                                                                     <span>{choice}</span>
+                                                                 </button>
+                                                             );
+                                                         })}
+                                                     </div>
+                                                 </div>
+                                             );
+                                         }
+
+                                         return (
+                                             <div className="mt-3 flex flex-wrap gap-2">
+                                                 {msg.choices.map((choice, idx) => (
+                                                     <button
+                                                         key={idx}
+                                                         onClick={() => submitDirectMessage(choice)}
+                                                         className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700/60 text-xs px-3 py-1.5 rounded-full transition-all whitespace-normal text-left font-medium shadow-sm hover:scale-[1.02]"
+                                                     >
+                                                         <ArrowRight className="w-3 h-3 opacity-70" />
+                                                         <span>{choice}</span>
+                                                     </button>
+                                                 ))}
+                                             </div>
+                                         );
+                                     })()}
                                 </div>
                             </div>
                         ))}
@@ -659,10 +733,13 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                             </button>
                         </form>
                     </div>
-                </div>
-            )}
+                </div>,
+                document.body
+            ) : null;
 
-            {variant === 'nav' ? (
+    if (variant === 'nav') {
+        return (
+            <>
                 <button 
                     onClick={() => setIsOpen(!isOpen)} 
                     className="p-1.5 sm:p-2 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-600 dark:text-blue-400 transition-colors relative group" 
@@ -671,65 +748,70 @@ const VirtualWorker: React.FC<VirtualWorkerProps> = ({ variant = 'floating' }) =
                     {!isOpen && <span className="absolute inset-1 rounded-full animate-ping opacity-30 bg-blue-500 pointer-events-none"></span>}
                     <Bot className={`w-5 h-5 sm:w-6 sm:h-6 relative z-10 ${!isOpen ? '' : 'text-blue-700 dark:text-blue-300'}`} />
                 </button>
-            ) : (
-                <div className="relative">
-                    {!isOpen && (
-                        <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-slate-900"></div>
-                    )}
-                    <button
-                        onClick={() => setIsOpen(!isOpen)}
-                        className="drag-handle w-14 h-14 rounded-full text-white shadow-xl flex items-center justify-center hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 focus:outline-none group overflow-hidden relative bg-slate-900 dark:bg-slate-950 cursor-grab active:cursor-grabbing"
-                        aria-label="Toggle AI Worker"
-                        title="Toggle AI Worker"
-                    >
-                        <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/20 to-white/0 transform -translate-x-full group-hover:animate-shimmer pointer-events-none"></div>
-                        <div className={`transition-transform duration-300 absolute ${isOpen ? 'rotate-90 scale-0 opacity-0' : 'rotate-0 scale-100 opacity-100'}`}>
-                            <Bot size={28} />
-                        </div>
-                        <div className={`transition-transform duration-300 absolute ${isOpen ? 'rotate-0 scale-100 opacity-100' : '-rotate-90 scale-0 opacity-0'}`}>
-                            <X size={28} />
-                        </div>
-                    </button>
-                </div>
-            )}
-        </div>
-    );
-
-    if (variant === 'nav') return innerContent;
+                {chatWindowPortal}
+            </>
+        );
+    }
 
     return (
-        <Draggable 
-            nodeRef={nodeRef} 
-            bounds="html" 
-            handle=".drag-handle"
-            position={position}
-            onStart={(e, data) => { isDraggingGlobal.current = { x: data.x, y: data.y }; }}
-            onStop={(e, data) => {
-                if (nodeRef.current) {
-                    const rect = (nodeRef.current as HTMLElement).getBoundingClientRect();
-                    setIsTopHalf(rect.top < window.innerHeight / 2);
-                    setIsLeftHalf(rect.left < window.innerWidth / 2);
-                }
-                const dx = Math.abs(data.x - isDraggingGlobal.current.x);
-                const dy = Math.abs(data.y - isDraggingGlobal.current.y);
-                if (dx < 5 && dy < 5) {} else {
-                    const newPos = { x: data.x, y: data.y };
-                    setPosition(newPos);
-                    localStorage.setItem('virtual-worker-pos', JSON.stringify(newPos));
-                }
-            }}
-        >
-            <div ref={nodeRef} className="fixed bottom-[96px] right-[24px] md:bottom-[96px] md:right-[24px] z-[100] touch-none">
-            <style>{`
-                .brand-bg { background-color: ${brandColor} !important; }
-                .brand-ring { --tw-ring-color: ${brandColor} !important; }
-                .anim-delay-0 { animation-delay: 0ms !important; }
-                .anim-delay-150 { animation-delay: 150ms !important; }
-                .anim-delay-300 { animation-delay: 300ms !important; }
-            `}</style>
-            {innerContent}
-            </div>
-        </Draggable>
+        <>
+            <Draggable 
+                nodeRef={nodeRef} 
+                bounds={{
+                    left: -(typeof window !== 'undefined' ? window.innerWidth - 80 : 300),
+                    right: 0,
+                    top: -(typeof window !== 'undefined' ? window.innerHeight - 160 : 500),
+                    bottom: 0
+                }} 
+                handle=".drag-handle"
+                position={position}
+                onStart={(e, data) => { isDraggingGlobal.current = { x: data.x, y: data.y }; }}
+                onStop={(e, data) => {
+                    if (nodeRef.current) {
+                        const rect = (nodeRef.current as HTMLElement).getBoundingClientRect();
+                        setIsTopHalf(rect.top < window.innerHeight / 2);
+                        setIsLeftHalf(rect.left < window.innerWidth / 2);
+                    }
+                    const dx = Math.abs(data.x - isDraggingGlobal.current.x);
+                    const dy = Math.abs(data.y - isDraggingGlobal.current.y);
+                    if (dx < 5 && dy < 5) {} else {
+                        const newPos = { x: data.x, y: data.y };
+                        setPosition(newPos);
+                        localStorage.setItem('virtual-worker-pos', JSON.stringify(newPos));
+                    }
+                }}
+            >
+                <div ref={nodeRef} className="fixed bottom-[96px] right-[24px] md:bottom-[96px] md:right-[24px] z-[100] touch-none">
+                    <style>{`
+                        .brand-bg { background-color: ${brandColor} !important; }
+                        .brand-ring { --tw-ring-color: ${brandColor} !important; }
+                        .anim-delay-0 { animation-delay: 0ms !important; }
+                        .anim-delay-150 { animation-delay: 150ms !important; }
+                        .anim-delay-300 { animation-delay: 300ms !important; }
+                    `}</style>
+                    <div className="relative">
+                        {!isOpen && (
+                            <div className="absolute inset-0 rounded-full animate-ping opacity-20 bg-slate-900"></div>
+                        )}
+                        <button
+                            onClick={() => setIsOpen(!isOpen)}
+                            className="drag-handle w-14 h-14 rounded-full text-white shadow-xl flex items-center justify-center hover:-translate-y-1 hover:shadow-2xl transition-all duration-300 focus:outline-none group overflow-hidden relative bg-slate-900 dark:bg-slate-950 cursor-grab active:cursor-grabbing"
+                            aria-label="Toggle AI Worker"
+                            title="Toggle AI Worker"
+                        >
+                            <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/20 to-white/0 transform -translate-x-full group-hover:animate-shimmer pointer-events-none"></div>
+                            <div className={`transition-transform duration-300 absolute ${isOpen ? 'rotate-90 scale-0 opacity-0' : 'rotate-0 scale-100 opacity-100'}`}>
+                                <Bot size={28} />
+                            </div>
+                            <div className={`transition-transform duration-300 absolute ${isOpen ? 'rotate-0 scale-100 opacity-100' : '-rotate-90 scale-0 opacity-0'}`}>
+                                <X size={28} />
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </Draggable>
+            {chatWindowPortal}
+        </>
     );
 };
 

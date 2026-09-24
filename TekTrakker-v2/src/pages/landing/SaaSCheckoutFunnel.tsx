@@ -98,7 +98,7 @@ const SaaSCheckoutFunnel: React.FC = () => {
                             </button>
 
                             <div className="flex items-center justify-center gap-2 text-sm text-slate-400 font-medium">
-                                <Shield size={16} /> Bank-Level Stripe Encryption
+                                <Shield size={16} /> Bank-Level 256-Bit SSL Encryption
                             </div>
                             
                             <div className="mt-8 space-y-3">

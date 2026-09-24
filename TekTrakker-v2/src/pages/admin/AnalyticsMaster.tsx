@@ -24,6 +24,7 @@ const AnalyticsMaster: React.FC = () => {
     const navigate = useNavigate();
     
     const [excludeTest, setExcludeTest] = useState(true);
+    const [timeRange, setTimeRange] = useState<'month' | 'ytd' | 'all'>('ytd');
 
     // Helper to check if item is test data
     const isTestItem = (name: string) => {
@@ -32,12 +33,33 @@ const AnalyticsMaster: React.FC = () => {
         return lower.includes('test') || lower.includes('demo') || lower.includes('sample');
     };
 
+    // Helper to check if date falls within selected time range
+    const isWithinTimeRange = (dateStr?: string) => {
+        if (!dateStr || timeRange === 'all') return true;
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return true;
+        
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
+        if (timeRange === 'ytd') {
+            return d.getFullYear() === currentYear;
+        }
+        if (timeRange === 'month') {
+            return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+        }
+        return true;
+    };
+
     // Filtered Jobs
     const filteredJobs = useMemo(() => {
-        return (state.jobs as Job[]).filter(j => 
-            !excludeTest || (!isTestItem(j.customerName) && !isTestItem(j.specialInstructions))
-        );
-    }, [state.jobs, excludeTest]);
+        return (state.jobs as Job[]).filter(j => {
+            const isNotTest = !excludeTest || (!isTestItem(j.customerName) && !isTestItem(j.specialInstructions));
+            const jobDate = (j as any).completedAt || j.appointmentTime || (j as any).endTime || j.createdAt;
+            return isNotTest && isWithinTimeRange(jobDate);
+        });
+    }, [state.jobs, excludeTest, timeRange]);
 
     // ------------------------------------------------------------------
     // 1. FINANCIAL HEALTH CALCULATIONS
@@ -48,13 +70,13 @@ const AnalyticsMaster: React.FC = () => {
             .reduce((sum: number, j: Job) => sum + (j.invoice.totalAmount || j.invoice.amount || 0), 0);
 
         const warrantyRevenue = (state.warrantyClaims || [])
-            .filter((c: any) => c.status === 'Credit Received')
+            .filter((c: any) => c.status === 'Credit Received' && isWithinTimeRange(c.createdAt || c.claimDate))
             .reduce((sum: number, c: any) => sum + (c.amountApproved || 0), 0);
 
         const revenue = jobRevenue + warrantyRevenue;
 
         const expenses = (state.expenses || [])
-            .filter(e => !excludeTest || (!isTestItem(e.description) && !isTestItem(e.vendor)))
+            .filter(e => (!excludeTest || (!isTestItem(e.description) && !isTestItem(e.vendor))) && isWithinTimeRange(e.date || e.createdAt))
             .reduce((sum: number, e: any) => sum + e.amount, 0);
 
         const inventoryValue = (state.inventory as InventoryItem[])
@@ -64,7 +86,7 @@ const AnalyticsMaster: React.FC = () => {
         const profit = revenue - expenses;
 
         return { revenue, jobRevenue, warrantyRevenue, expenses, inventoryValue, profit };
-    }, [filteredJobs, state.expenses, state.inventory, state.warrantyClaims, excludeTest]);
+    }, [filteredJobs, state.expenses, state.inventory, state.warrantyClaims, excludeTest, timeRange]);
 
     // ------------------------------------------------------------------
     // 2. LABOR EFFICIENCY CALCULATIONS
@@ -85,7 +107,7 @@ const AnalyticsMaster: React.FC = () => {
         const allShiftLogs = Object.values(state.shiftLogs).flat() as ShiftLog[];
         
         allShiftLogs.forEach((log: ShiftLog) => {
-            if (log.clockIn && log.clockOut) {
+            if (log.clockIn && log.clockOut && isWithinTimeRange(log.clockIn)) {
                 const start = new Date(log.clockIn).getTime();
                 const end = new Date(log.clockOut).getTime();
                 const durationHours = (end - start) / (1000 * 60 * 60);
@@ -97,7 +119,7 @@ const AnalyticsMaster: React.FC = () => {
         const wastedTime = Math.max(0, clockedHours - billableHours);
 
         return { billableHours, clockedHours, efficiencyRate, wastedTime };
-    }, [filteredJobs, state.shiftLogs]);
+    }, [filteredJobs, state.shiftLogs, timeRange]);
 
     // ------------------------------------------------------------------
     // 3. LOSS & WASTE TRACKING
@@ -187,17 +209,41 @@ const AnalyticsMaster: React.FC = () => {
 
     return (
         <div className="space-y-6 pb-20">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                
-                {state.currentUser?.role === 'master_admin' && (
-                    <div className="bg-white dark:bg-slate-800 px-4 py-2 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-4 shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <Filter size={14} className="text-slate-400"/>
-                            <span className="text-[10px] font-black uppercase text-slate-400">Filters</span>
-                        </div>
-                        <Toggle label="Hide Test Data" enabled={excludeTest} onChange={setExcludeTest} />
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 text-white p-4.5 rounded-2xl shadow-md border border-slate-800">
+                <div>
+                    <h2 className="text-xl font-black flex items-center gap-2">
+                        <Activity className="text-indigo-400" size={24} /> Executive Analytics & Business Performance
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                        Real-time financial health, labor efficiency, loss tracking, and team performance.
+                    </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                    {/* Time Period Filter Pills */}
+                    <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700">
+                        {(['month', 'ytd', 'all'] as const).map(tr => (
+                            <button
+                                key={tr}
+                                onClick={() => setTimeRange(tr)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                    timeRange === tr
+                                        ? 'bg-indigo-600 text-white shadow'
+                                        : 'text-slate-400 hover:text-white'
+                                }`}
+                            >
+                                {tr === 'month' ? 'Current Month' : tr === 'ytd' ? 'YTD' : 'All Time'}
+                            </button>
+                        ))}
                     </div>
-                )}
+
+                    {state.currentUser?.role === 'master_admin' && (
+                        <div className="bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 flex items-center gap-2">
+                            <Filter size={14} className="text-slate-400"/>
+                            <Toggle label="Hide Test" enabled={excludeTest} onChange={setExcludeTest} />
+                        </div>
+                    )}
+                </div>
             </header>
 
             {/* 1. FINANCIAL HEALTH ROW */}

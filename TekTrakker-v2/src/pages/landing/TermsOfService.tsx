@@ -94,6 +94,16 @@ const TermsOfService: React.FC = () => {
                  For organizations using TekTrakker's platform-wide telephony, messaging (SMS/MMS), or generative AI integrations, usage-based fees will apply. Standard platform rates are charged monthly based on actual transmission volumes: outbound and inbound messages are charged at $0.02 per SMS, and voice calls at $0.03 per minute, unless otherwise specified in your subscription tier. You are solely responsible for all message content, obtaining proper customer opt-in/consent under TCPA and local A2P regulations, and protecting the platform against messaging spam or abuse. Failure to comply may result in immediate suspension of telephony services.
              </p>
            </section>
+
+          <section>
+             <h2 className="text-2xl font-black text-slate-900 mb-6 flex items-center gap-3">
+                 <span className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-sm">6</span>
+                 Annual Agreements, Default & Acceleration Clause
+             </h2>
+             <p className="text-slate-600 leading-relaxed font-medium bg-slate-50 p-4 border-l-4 border-slate-900 rounded-r-lg">
+                 For organizations enrolled in an annual subscription or fixed-term agreement, you commit to the full contract period. In the event of non-payment, payment method cancellation, or un-cured account default prior to the completion of your annual term, TekTrakker reserves the right to declare the entire remaining balance of the annual contract term immediately due and payable ("Contract Acceleration"). TekTrakker shall also be entitled to recover all reasonable collection agency fees, late interest charges (1.5% per month or the maximum statutory rate), and legal costs incurred in collecting outstanding contracted balances.
+             </p>
+           </section>
         </div>
       </main>
 

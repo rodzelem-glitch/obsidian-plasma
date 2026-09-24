@@ -1,15 +1,83 @@
 import type { StoredFile } from '../types/file';
 
+export type ContactRole = 'proposals' | 'invoicing' | 'ap' | 'on_site' | 'emergency' | 'account_manager' | 'incoming_workorders' | 'custom' | string;
+
 export interface CustomerContact {
     id: string;
     name: string;
     title?: string;
     email: string;
     phone: string;
+    extension?: string;
     isPrimary?: boolean;
+    isAccountManager?: boolean;
+    isIncomingWorkOrderContact?: boolean;
     portalRole?: 'corporate' | 'regional' | 'branch';
     allowedLocationIds?: string[];
+    assignedLocationIds?: string[];
+    assignedJobIds?: string[];
     portalUserStatus?: 'invited' | 'active' | 'inactive';
+    contactRoles?: ContactRole[];
+    customRoleName?: string;
+    canApproveProposals?: boolean;
+    canAuthorizeWorkOrders?: boolean;
+    isBillingContact?: boolean;
+    isEmergencyContact?: boolean;
+    notes?: string;
+}
+
+export interface CheckInProcedure {
+    required?: boolean;
+    method?: 'IVR' | 'SMS' | 'App' | 'WebPortal' | 'OnSiteTablet' | 'Custom' | string;
+    phoneNumber?: string;
+    portalUrl?: string;
+    instructions?: string;
+}
+
+export interface EarlyPayTerms {
+    enabled?: boolean;
+    standardDays?: number;
+    tiers?: Array<{ days: number; discountPercent: number }>;
+}
+
+export interface CustomerSubmissionRules {
+    requirePoNumber?: boolean;
+    poPattern?: string;
+    requireSignedWorkOrder?: boolean;
+    requireBeforeAfterPhotos?: boolean;
+    requireEquipmentSerial?: boolean;
+    requireSingleWoPerInvoice?: boolean;
+    allowedFileFormats?: ('PDF' | 'JPEG' | 'PNG' | string)[];
+    thirdPartyPortal?: {
+        required: boolean;
+        portalName?: 'NEST Facilitate / ISP Connect' | 'ServiceChannel' | 'Corrigo' | 'FM Pilot' | 'Verisae' | 'Fixx' | 'OfficeTrax' | 'Other' | string;
+        portalWoNumberRequired?: boolean;
+        portalUrl?: string;
+        phoneNumber?: string;
+        submissionNotes?: string;
+        username?: string;
+        password?: string;
+        apiKey?: string;
+        pinCode?: string;
+    };
+    checkInProcedure?: CheckInProcedure;
+    earlyPayTerms?: EarlyPayTerms;
+    customSubmissionNotes?: string;
+    requireNteApprovalCall?: boolean;
+    defaultNteLimit?: number;
+    accountManagerContact?: {
+        name?: string;
+        phone?: string;
+        extension?: string;
+        email?: string;
+    };
+    requireProposalWithin24Hours?: boolean;
+    noPaperworkForStoreAssociate?: boolean;
+    doNotDiscussPricingWithStoreAssociate?: boolean;
+    allowEmergencyPaperSignOff?: boolean;
+    invoiceSubmissionEmail?: string;
+    apInquiryEmail?: string;
+    submissionDeadlineDays?: number;
 }
 
 export interface EquipmentAsset {
@@ -22,6 +90,12 @@ export interface EquipmentAsset {
     brand: string;
     model: string;
     serial: string;
+    modelNumber?: string;
+    serialNumber?: string;
+    indoorModel?: string;
+    indoorSerial?: string;
+    ageYears?: number | string;
+    systemNickname?: string;
     type: string;
     tonnage?: number;
     refrigerantType?: string;
@@ -30,6 +104,13 @@ export interface EquipmentAsset {
     electricityType?: string;
     seerRating?: string;
     filterType?: string;
+    volts?: string;
+    amps?: string;
+    phase?: string;
+    refrigerantCharge?: string;
+    btuCapacity?: string;
+    compressorType?: string;
+    blowerType?: string;
     physicalLocation?: string; // e.g. Roof, Mechanical Room
     exactPlacement?: string;   // e.g. Front left corner, North wall near ladder
     servesArea?: string;       // e.g. Dining room, Kitchen
@@ -64,6 +145,27 @@ export interface EquipmentAsset {
     systemGroupId?: string;
     systemGroupName?: string;
     systemGroupRole?: 'Evaporator' | 'Condensing Unit' | 'Controller' | 'Compressor' | 'Standalone' | string;
+
+    // Component & Parts Replacement Tracking
+    replacedParts?: ReplacedPartRecord[];
+}
+
+export interface ReplacedPartRecord {
+    id: string;
+    name: string;
+    partNumber?: string;
+    sku?: string;
+    quantity?: number;
+    unitPrice?: number;
+    replacedAt?: string;
+    jobId?: string;
+    poNumber?: string;
+    technicianName?: string;
+    warrantyDurationMonths?: number;
+    notes?: string;
+    photoUrl?: string;
+    equipmentId?: string;
+    equipmentName?: string;
 }
 
 export interface AssetWarranty {
@@ -102,6 +204,10 @@ export interface ServiceLocation {
    organizationId: string;
    customerId: string; // Links back to Customer parent
    propertyName: string; // e.g. Stone Oak Retail Center, Unit 104
+   storeNumber?: string; // e.g. Store #4663, Store #CK058
+   locationNumber?: string; // e.g. Store #1042, Loc-004
+   mall?: string; // Shopping center, mall, or plaza name (e.g. South Park Mall, Standalone / Strip Center)
+   building?: string; // e.g. Building B, North Wing
    address: string;
    city?: string;
    state?: string;
@@ -130,11 +236,38 @@ export interface ServiceLocation {
    layoutHotspots?: LayoutHotspot[];
    layoutVertices?: { id: string; x: number; y: number }[];
    layoutCustomShapes?: any[];
+
+   // Location-Specific Billing Overrides
+   billToSameAsSite?: boolean;
+   billToName?: string;
+   billToAddress?: string;
+}
+
+export interface CustomerMarkupRule {
+    id: string;
+    condition: 'under' | 'over'; // 'under' = <= threshold, 'over' = > threshold
+    threshold: number;           // e.g. 1500
+    rate: number;                // e.g. 43
+    label?: string;              // e.g. "Standard Commercial Parts"
+}
+
+export interface CustomerRateVisibility {
+    showStandardRate?: boolean;
+    showOvertimeRate?: boolean;
+    showEmergencyRate?: boolean;
+    showTripFee?: boolean;
+    showEmergencyTripCharge?: boolean;
+    showEmergencyTripFee?: boolean;
+    showPartsMarkup?: boolean;
+    showPaymentTerms?: boolean;
+    showTaxExemptStatus?: boolean;
+    showAccountSla?: boolean;
 }
 
 export interface Customer {
   id: string;
   organizationId: string;
+  accountNumber?: string;
   name: string;
   firstName?: string;
   lastName?: string;
@@ -155,19 +288,64 @@ export interface Customer {
   taxExempt?: boolean;
   taxExemptCertUrl?: string;
   taxExemptNumber?: string;
+  vendorId?: string;
+  externalAccountingId?: string;
+  accountSla?: 'emergency_4hr' | 'same_day_8hr' | 'next_day_24hr' | 'standard_48hr' | string;
+  onboarding?: {
+      packetStatus?: 'not_sent' | 'sent' | 'signed' | 'expired';
+      w9OnFile?: boolean;
+      coiOnFile?: boolean;
+      packetEnvelopeId?: string;
+      correspondenceDate?: string;
+      correspondenceDateFormatted?: string;
+      tekAirContactEmail?: string;
+      requiredForms?: string[];
+      onboardingStatus?: string;
+      notes?: string;
+  };
   internalNotes?: string;
-  vendorCompliance?: { w9Url?: string; coiUrl?: string; vendorAgreementUrl?: string; };
+  vendorCompliance?: { 
+      w9Url?: string; 
+      coiUrl?: string; 
+      vendorAgreementUrl?: string; 
+      vendorStatus?: string;
+      vendorNumber?: string;
+      correspondenceDate?: string;
+      correspondenceDateFormatted?: string;
+      tekAirContactEmail?: string;
+      requiredForms?: string[];
+      onboardingStatus?: string;
+      notes?: string;
+  };
   pricingRules?: { 
       standardRate?: number; 
       emergencyRate?: number; 
       tripCharge?: number; 
+      tripFee?: number;
+      emergencyTripCharge?: number;
+      emergencyTripFee?: number;
       markupPercentage?: number; 
+      partsMarkupPercentage?: number;
+      partsMarkupRules?: CustomerMarkupRule[];
+      partsMarkupTier1?: number;
+      partsMarkupTier2?: number;
+      partsMarkupNotes?: string;
       contractedRate?: number;
+      emergencyContractedRate?: number;
+      overtimeRate?: number;
+      overtimeLaborRate?: number;
+      overtimeContractedRate?: number;
+      travelTime?: string;
+      travelIncluded?: boolean;
+      visibility?: CustomerRateVisibility;
   };
+  rateVisibility?: CustomerRateVisibility;
+  submissionRules?: CustomerSubmissionRules;
 
   // Legacy/Embedded Data
   hvacSystem: { brand: string; type: string; installDate?: string | null; };
   equipment?: EquipmentAsset[];
+  warrantyContracts?: any[];
   serviceHistory: any[];
   notes?: string | null;
   files?: StoredFile[]; 
@@ -194,10 +372,35 @@ export interface Customer {
   maintenanceAgreement?: MaintenanceAgreement | null;
 }
 
+export interface UnitConsumableSpec {
+  id: string;
+  name: string; // e.g. "Air Filter", "Drive Belt", "Water Filtration Cartridge", "Sacrificial Anode", "UPS Battery", "Door Gasket"
+  sizeOrPartNo: string; // e.g. "20x25x2 MERV 11", "AX-48", "3M HF40-S", "12V 7Ah"
+  quantity: number;
+  intervalMonths?: number; // e.g. 2 (every 2 months)
+  category?: 'Filter' | 'Belt' | 'Chemical' | 'Electrical' | 'Plumbing' | 'Custom';
+  notes?: string;
+}
+
+export interface CoveredUnitMaintenanceRule {
+  unitId: string;
+  unitName?: string;
+  serviceFrequency?: 'Monthly' | 'Bi-Monthly' | 'Quarterly' | 'Semi-Annually' | 'Annually';
+  consumables?: UnitConsumableSpec[];
+  tasks?: string[];
+  partsDiscountPct?: number;
+  partsAllowance?: number;
+  unitMonthlyFee?: number;
+  notes?: string;
+}
+
 export interface MaintenanceVisit {
   id: string;
   targetMonth: string;
   targetDate?: string;
+  title?: string;
+  scope?: string;
+  coveredUnitIds?: string[];
   status: 'Pending' | 'Scheduled' | 'Completed' | 'Overdue';
   assignedTechId?: string;
   assignedTechName?: string;
@@ -209,6 +412,7 @@ export interface MaintenanceVisit {
 export interface MaintenanceAgreement {
   id: string;
   agreementName: string;
+  tradeType?: 'HVAC' | 'Plumbing' | 'Electrical' | 'Refrigeration' | 'Fire Safety' | 'General' | string;
   status: 'Draft' | 'Active' | 'Cancelled' | 'Expired';
   startDate: string;
   endDate: string;
@@ -217,6 +421,10 @@ export interface MaintenanceAgreement {
   paymentTerms: string;
   coveredItems: string[];
   coveredEquipmentIds: string[];
+  coveredUnitRules?: CoveredUnitMaintenanceRule[];
+  partsDiscountPercentage?: number;
+  partsAllowanceTotal?: number;
+  partsAllowanceRemaining?: number;
   frequency: 'Monthly' | 'Bi-Monthly' | 'Quarterly' | 'Semi-Annually' | 'Annually';
   visits: MaintenanceVisit[];
   notes?: string;

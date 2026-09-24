@@ -3,6 +3,7 @@ import type { User } from 'types';
 import MasterSidebar from './MasterSidebar';
 import TopNavActions from '../common/TopNavActions';
 import PageHeader from '../ui/PageHeader';
+import RouteErrorBoundary from '../common/RouteErrorBoundary';
 
 interface MasterLayoutProps {
   user: User;
@@ -46,7 +47,9 @@ const MasterLayout: React.FC<MasterLayoutProps> = ({ user, onLogout, children })
 
             <div className="min-h-full max-w-7xl mx-auto pb-8">
               <PageHeader />
-              {children}
+              <RouteErrorBoundary>
+                {children}
+              </RouteErrorBoundary>
             </div>        </main>
       </div>
     </div>

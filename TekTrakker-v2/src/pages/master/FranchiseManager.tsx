@@ -4,9 +4,11 @@ import showToast from "lib/toast";
 import React, { useState, useEffect } from 'react';
 import { db, storage, functions } from '../../lib/firebase';
 import { Network, Plus, Trash2, Key, Globe, Store, Loader2, Save, Map, Handshake, CloudLightning, Copy, Upload, CreditCard, ShieldCheck } from 'lucide-react';
+import { NumberInput } from '../../components/ui/Input';
 import type { Franchise } from '../../types/franchise';
 import { useAppContext } from '../../context/AppContext';
 import { generateColorShades } from '../../lib/colorUtils';
+import { globalConfirm } from 'lib/globalConfirm';
 
 const FranchiseManager: React.FC = () => {
     const { state } = useAppContext();
@@ -191,7 +193,7 @@ const FranchiseManager: React.FC = () => {
     };
 
     const handleDelete = async (id: string) => {
-        if (!window.confirm("Are you SURE? This will orphan all tenants under this franchise!")) return;
+        if (!(await globalConfirm("Are you SURE? This will orphan all tenants under this franchise!", "Delete Franchise", "Delete Franchise", "Cancel"))) return;
         await db.collection('franchises').doc(id).delete();
         setIsEditing(false);
         setSelectedFranchise(null);
@@ -445,11 +447,11 @@ const FranchiseManager: React.FC = () => {
                                         <div className="grid grid-cols-2 gap-4 mt-2">
                                             <div>
                                                 <label htmlFor="formPerUserFeeInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">TekTrakker Rev-Share: Per User ($)</label>
-                                                <input id="formPerUserFeeInput" aria-label="Per User Fee" title="Per User Fee" type="number" placeholder="0" value={formPerUserFee} onChange={e => setFormPerUserFee(parseFloat(e.target.value) || 0)} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5" />
+                                                <NumberInput id="formPerUserFeeInput" aria-label="Per User Fee" title="Per User Fee" placeholder="0" value={formPerUserFee} onChange={e => setFormPerUserFee(parseFloat(e.target.value) || 0)} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5" />
                                             </div>
                                             <div>
                                                 <label htmlFor="formPerVirtualWorkerFeeInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">TekTrakker Rev-Share: Per Virtual Worker ($)</label>
-                                                <input id="formPerVirtualWorkerFeeInput" aria-label="Per Virtual Worker Fee" title="Per Virtual Worker Fee" type="number" placeholder="0" value={formPerVirtualWorkerFee} onChange={e => setFormPerVirtualWorkerFee(parseFloat(e.target.value) || 0)} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5" />
+                                                <NumberInput id="formPerVirtualWorkerFeeInput" aria-label="Per Virtual Worker Fee" title="Per Virtual Worker Fee" placeholder="0" value={formPerVirtualWorkerFee} onChange={e => setFormPerVirtualWorkerFee(parseFloat(e.target.value) || 0)} className="w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5" />
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-4 mt-2">
@@ -462,7 +464,7 @@ const FranchiseManager: React.FC = () => {
                                             </div>
                                             <div>
                                                 <label htmlFor="formLifetimeFeeInput" className="text-xs font-bold text-slate-600 dark:text-slate-400">Franchise Lifetime License Fee ($)</label>
-                                                <input id="formLifetimeFeeInput" aria-label="Lifetime Fee" title="Lifetime Fee" type="number" placeholder="25000" value={formLifetimeFee} onChange={e => setFormLifetimeFee(parseFloat(e.target.value) || 0)} disabled={formBillingType !== 'lifetime'} className={`w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 ${formBillingType !== 'lifetime' ? 'opacity-50 cursor-not-allowed' : ''}`} />
+                                                <NumberInput id="formLifetimeFeeInput" aria-label="Lifetime Fee" title="Lifetime Fee" placeholder="25000" value={formLifetimeFee} onChange={e => setFormLifetimeFee(parseFloat(e.target.value) || 0)} disabled={formBillingType !== 'lifetime'} className={`w-full mt-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-1.5 ${formBillingType !== 'lifetime' ? 'opacity-50 cursor-not-allowed' : ''}`} />
                                             </div>
                                         </div>
                                     </div>

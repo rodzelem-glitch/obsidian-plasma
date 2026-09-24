@@ -1,10 +1,10 @@
-import { cleanUndefinedFields } from '../../lib/utils';
+import { cleanUndefinedFields, getBaseUrl } from '../../lib/utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
 import Input from 'components/ui/Input';
 import Textarea from 'components/ui/Textarea';
-import { MessageSquare, Send, Phone, User, X, Check, Sparkles } from 'lucide-react';
+import { MessageSquare, Send, Phone, User, X, Check, Sparkles, FileText, CreditCard, Link as LinkIcon, Wrench } from 'lucide-react';
 import { useAppContext } from 'context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
 import { db } from 'lib/firebase';
@@ -16,6 +16,12 @@ export interface SendSMSModalProps {
     customerId?: string | null;
     recipientPhone?: string;
     recipientName?: string;
+    job?: any;
+    invoice?: any;
+    proposal?: any;
+    paymentRequest?: any;
+    defaultMessage?: string;
+    zIndex?: string;
     onSuccess?: () => void;
 }
 
@@ -25,6 +31,12 @@ const SendSMSModal: React.FC<SendSMSModalProps> = ({
     customerId,
     recipientPhone,
     recipientName,
+    job,
+    invoice,
+    proposal,
+    paymentRequest,
+    defaultMessage,
+    zIndex = 'z-[10080]',
     onSuccess
 }) => {
     const { state } = useAppContext();
@@ -37,9 +49,10 @@ const SendSMSModal: React.FC<SendSMSModalProps> = ({
 
     // Find customer doc if customerId provided
     const customer = useMemo(() => {
-        if (!customerId) return null;
-        return state.customers?.find((c: any) => c.id === customerId) || null;
-    }, [state.customers, customerId]);
+        const cId = customerId || job?.customerId || invoice?.job?.customerId;
+        if (!cId) return null;
+        return state.customers?.find((c: any) => c.id === cId) || null;
+    }, [state.customers, customerId, job, invoice]);
 
     // Available contact phones for quick selection
     const availablePhones = useMemo(() => {
@@ -62,6 +75,25 @@ const SendSMSModal: React.FC<SendSMSModalProps> = ({
         return list;
     }, [customer, recipientPhone, recipientName]);
 
+    // Compute resolved link URLs
+    const resolvedInvoiceLink = useMemo(() => {
+        const targetJobId = job?.id || invoice?.jobId || invoice?.id;
+        return targetJobId ? `${getBaseUrl()}/#/invoice/${targetJobId}` : null;
+    }, [job, invoice]);
+
+    const resolvedProposalLink = useMemo(() => {
+        const propId = proposal?.id || job?.proposalId;
+        return propId ? `${getBaseUrl()}/#/proposal-view/${propId}` : null;
+    }, [proposal, job]);
+
+    const resolvedReportLink = useMemo(() => {
+        return job?.id ? `${getBaseUrl()}/#/service-report/${job.id}` : null;
+    }, [job]);
+
+    const resolvedPaymentRequestLink = useMemo(() => {
+        return paymentRequest?.id ? `${getBaseUrl()}/#/pay/${paymentRequest.id}` : null;
+    }, [paymentRequest]);
+
     useEffect(() => {
         if (!isOpen) return;
 
@@ -69,22 +101,57 @@ const SendSMSModal: React.FC<SendSMSModalProps> = ({
         setSelectedPhone(initialPhone);
 
         const orgName = state.currentOrganization?.name || 'Service Provider';
-        const clientName = recipientName || customer?.name || 'Customer';
+        const clientName = recipientName || customer?.name || job?.customerName || 'Customer';
 
-        setMessage(`Hello ${clientName}, this is a message from ${orgName}. `);
-    }, [isOpen, recipientPhone, recipientName, customer, availablePhones, state.currentOrganization]);
+        if (defaultMessage) {
+            setMessage(defaultMessage);
+        } else if (resolvedInvoiceLink) {
+            const invId = invoice?.id || job?.invoice?.id || job?.id?.slice(0, 8) || 'N/A';
+            const totalAmt = Number(invoice?.totalAmount || invoice?.amount || job?.invoice?.totalAmount || 0);
+            setMessage(`Hi ${clientName}, your invoice #${invId}${totalAmt > 0 ? ` ($${totalAmt.toFixed(2)})` : ''} from ${orgName} is ready for online review and payment: ${resolvedInvoiceLink}`);
+        } else if (resolvedProposalLink) {
+            const propId = proposal?.id || job?.proposalId || 'N/A';
+            setMessage(`Hi ${clientName}, your proposal from ${orgName} is ready for review and authorization online: ${resolvedProposalLink}`);
+        } else if (resolvedPaymentRequestLink) {
+            const payAmt = Number(paymentRequest?.amount || 0);
+            setMessage(`Hi ${clientName}, here is your secure online payment link from ${orgName} for $${payAmt.toFixed(2)} (${paymentRequest.title || 'Deposit'}): ${resolvedPaymentRequestLink}`);
+        } else {
+            setMessage(`Hello ${clientName}, this is a message from ${orgName}. `);
+        }
+    }, [isOpen, recipientPhone, recipientName, customer, availablePhones, defaultMessage, resolvedInvoiceLink, resolvedProposalLink, resolvedPaymentRequestLink, job, invoice, proposal, paymentRequest, state.currentOrganization]);
 
-    const handleApplyTemplate = (templateType: 'reminder' | 'update' | 'arriving') => {
+    const handleApplyTemplate = (templateType: 'invoice' | 'proposal' | 'deposit' | 'reminder' | 'update' | 'arriving') => {
         const orgName = state.currentOrganization?.name || 'Service Provider';
-        const clientName = recipientName || customer?.name || 'Customer';
+        const clientName = recipientName || customer?.name || job?.customerName || 'Customer';
 
-        if (templateType === 'reminder') {
+        if (templateType === 'invoice') {
+            const invId = invoice?.id || job?.invoice?.id || job?.id?.slice(0, 8) || 'N/A';
+            const totalAmt = Number(invoice?.totalAmount || invoice?.amount || job?.invoice?.totalAmount || 0);
+            const link = resolvedInvoiceLink || `${getBaseUrl()}/#/invoice/${job?.id || 'id'}`;
+            setMessage(`Hi ${clientName}, your invoice #${invId}${totalAmt > 0 ? ` for $${totalAmt.toFixed(2)}` : ''} from ${orgName} is ready. View & pay online here: ${link}`);
+        } else if (templateType === 'proposal') {
+            const link = resolvedProposalLink || `${getBaseUrl()}/#/proposal-view/${proposal?.id || job?.proposalId || 'id'}`;
+            setMessage(`Hi ${clientName}, your proposal from ${orgName} is ready for review. You can review options and authorize online here: ${link}`);
+        } else if (templateType === 'deposit') {
+            const payAmt = Number(paymentRequest?.amount || 250);
+            const link = resolvedPaymentRequestLink || `${getBaseUrl()}/#/pay/${paymentRequest?.id || 'request'}`;
+            setMessage(`Hi ${clientName}, please use this link from ${orgName} to submit your $${payAmt.toFixed(2)} deposit securely: ${link}`);
+        } else if (templateType === 'reminder') {
             setMessage(`Hi ${clientName}, this is a friendly reminder from ${orgName} regarding your upcoming service appointment. Please reply YES to confirm.`);
         } else if (templateType === 'arriving') {
             setMessage(`Hi ${clientName}, your technician from ${orgName} is en route and will arrive shortly!`);
         } else if (templateType === 'update') {
             setMessage(`Hi ${clientName}, we have an update regarding your service request from ${orgName}. Please give us a call or reply to this text.`);
         }
+    };
+
+    const handleInsertLink = (linkUrl: string, label: string) => {
+        if (!linkUrl) return;
+        setMessage(prev => {
+            const trimmed = prev.trim();
+            return trimmed ? `${trimmed} ${linkUrl}` : `${label}: ${linkUrl}`;
+        });
+        showToast.info(t(`${label} inserted into message.`));
     };
 
     const handleSend = async () => {
@@ -103,7 +170,7 @@ const SendSMSModal: React.FC<SendSMSModalProps> = ({
             const targetCustomerId = customerId || customer?.id || null;
             const nowIso = new Date().toISOString();
 
-            // 1. Write to global messages collection for system-wide messaging & timeline tracking
+            // 1. Write to global messages collection for system-wide messaging & twilio/backend dispatch
             const msgObj: any = {
                 id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                 senderId: state.currentUser?.id || 'staff',
@@ -112,6 +179,7 @@ const SendSMSModal: React.FC<SendSMSModalProps> = ({
                 customerId: targetCustomerId,
                 to: finalPhone,
                 content: message.trim(),
+                body: message.trim(),
                 timestamp: nowIso,
                 createdAt: nowIso,
                 organizationId: state.currentOrganization?.id || null,
@@ -154,6 +222,7 @@ const SendSMSModal: React.FC<SendSMSModalProps> = ({
             onClose={onClose}
             title={t("Send SMS Text Message")}
             size="md"
+            zIndex={zIndex}
         >
             <div className="p-6 space-y-5">
                 {/* Header */}
@@ -210,6 +279,58 @@ const SendSMSModal: React.FC<SendSMSModalProps> = ({
                     )}
                 </div>
 
+                {/* Quick Document Links */}
+                {(resolvedInvoiceLink || resolvedProposalLink || resolvedReportLink || resolvedPaymentRequestLink) && (
+                    <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                            <LinkIcon size={12} className="text-teal-600" />
+                            {t("Insert Document Links:")}
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                            {resolvedInvoiceLink && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleInsertLink(resolvedInvoiceLink, t("Invoice Link"))}
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-colors shadow-sm"
+                                >
+                                    <CreditCard size={12} className="text-blue-600" />
+                                    {t("Insert Invoice Link")}
+                                </button>
+                            )}
+                            {resolvedProposalLink && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleInsertLink(resolvedProposalLink, t("Proposal Link"))}
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-colors shadow-sm"
+                                >
+                                    <FileText size={12} className="text-indigo-600" />
+                                    {t("Insert Proposal Link")}
+                                </button>
+                            )}
+                            {resolvedPaymentRequestLink && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleInsertLink(resolvedPaymentRequestLink, t("Deposit Link"))}
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-colors shadow-sm"
+                                >
+                                    <CreditCard size={12} className="text-emerald-600" />
+                                    {t("Insert Deposit Link")}
+                                </button>
+                            )}
+                            {resolvedReportLink && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleInsertLink(resolvedReportLink, t("Report Link"))}
+                                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition-colors shadow-sm"
+                                >
+                                    <Wrench size={12} className="text-teal-600" />
+                                    {t("Insert Report Link")}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Quick Templates */}
                 <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
@@ -217,6 +338,33 @@ const SendSMSModal: React.FC<SendSMSModalProps> = ({
                         {t("Quick Message Templates:")}
                     </span>
                     <div className="flex flex-wrap gap-1.5">
+                        {resolvedInvoiceLink && (
+                            <button
+                                type="button"
+                                onClick={() => handleApplyTemplate('invoice')}
+                                className="px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 text-[11px] font-bold rounded-lg transition-colors border border-blue-200/60 dark:border-blue-800/60"
+                            >
+                                {t("Invoice Link SMS")}
+                            </button>
+                        )}
+                        {resolvedProposalLink && (
+                            <button
+                                type="button"
+                                onClick={() => handleApplyTemplate('proposal')}
+                                className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold rounded-lg transition-colors border border-indigo-200/60 dark:border-indigo-800/60"
+                            >
+                                {t("Proposal Link SMS")}
+                            </button>
+                        )}
+                        {resolvedPaymentRequestLink && (
+                            <button
+                                type="button"
+                                onClick={() => handleApplyTemplate('deposit')}
+                                className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold rounded-lg transition-colors border border-emerald-200/60 dark:border-emerald-800/60"
+                            >
+                                {t("Deposit Request SMS")}
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={() => handleApplyTemplate('reminder')}

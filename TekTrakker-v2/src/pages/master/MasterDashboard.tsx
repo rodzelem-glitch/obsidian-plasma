@@ -5,6 +5,7 @@ import DashboardHeader from './components/DashboardHeader';
 import SaaSMetrics from './components/SaaSMetrics';
 import DataSeedingActions from './components/DataSeedingActions';
 import ApiBillingSection from './components/ApiBillingSection';
+import SupportSlaTracker from 'components/common/SupportSlaTracker';
 
 const MasterDashboard: React.FC = () => {
     const { state } = useAppContext();
@@ -69,6 +70,13 @@ const MasterDashboard: React.FC = () => {
                 totalUsers={totalUsers}
                 activeOrgs={activeOrgs}
             />
+
+            {/* Live Support Guidelines & SLA Monitor */}
+            {isMasterAdmin && (
+                <div className="mt-8">
+                    <SupportSlaTracker />
+                </div>
+            )}
 
             {/* Promo Code Management Section moved under SaaS Metrics */}
             {isMasterAdmin && (

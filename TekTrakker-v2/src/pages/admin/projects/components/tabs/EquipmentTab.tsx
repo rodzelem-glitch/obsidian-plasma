@@ -8,6 +8,7 @@ import showToast from "lib/toast";
 import { getBaseUrl } from "lib/utils";
 import EquipmentHierarchy from './equipment/EquipmentHierarchy';
 import { useLanguage } from 'context/LanguageContext';
+import { globalConfirm } from 'lib/globalConfirm';
 
 interface EquipmentTabProps {
     project: Project;
@@ -35,7 +36,7 @@ const EquipmentTab: React.FC<EquipmentTabProps> = ({ project, customer }) => {
             if (!promptedEmail) return;
             targetEmail = promptedEmail;
         } else {
-            const confirmEmail = window.confirm(t("Send equipment health report to {email}?", { email: targetEmail }));
+            const confirmEmail = await globalConfirm(t("Send equipment health report to {email}?", { email: targetEmail }), t("Email Equipment Report"), t("Send Report"), t("Cancel"));
             if (!confirmEmail) return;
         }
 

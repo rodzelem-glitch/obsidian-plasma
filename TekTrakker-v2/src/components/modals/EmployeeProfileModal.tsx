@@ -1,4 +1,5 @@
 import { getBaseUrl , cleanUndefinedFields } from "lib/utils";
+import { globalConfirm } from "lib/globalConfirm";
 import { Capacitor } from '@capacitor/core';
 
 import React, { useState, useEffect } from 'react';
@@ -17,7 +18,10 @@ import { decryptSensitiveData } from 'lib/encryption';
 import { sendEmail, notifyAdmins } from 'lib/notificationService';
 import { uploadFileToStorage } from 'lib/storageService';
 import showToast from 'lib/toast';
+import { checkAndAutoUpgradeOrgTier } from 'lib/autoUpgradeTier';
 import { generateRandomSecret, verifyTOTP, getOtpauthUri } from 'lib/totp';
+import { detectFileType } from 'lib/fileViewerHelper';
+import { generateUserEmailSignatureHtml } from 'lib/signatureHelper';
 
 interface EmployeeProfileModalProps {
     isOpen: boolean;
@@ -234,26 +238,34 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
             setIsDecrypting(true);
             const orgId = state.currentOrganization.id;
             try {
+                // Fetch fresh user doc from Firestore to guarantee documents and live fields are immediately in sync
+                const userDoc = await db.collection('users').doc(initialData.id).get();
+                const freshUserData = userDoc.exists ? userDoc.data() : null;
+
                 const sensitiveDoc = await db.collection('users').doc(initialData.id).collection('private').doc('sensitive').get();
                 const sensitiveFields = sensitiveDoc.exists ? sensitiveDoc.data() : {};
                 
-                if (sensitiveFields) {
-                    let decryptedSsn = sensitiveFields.ssn || '';
+                if (sensitiveFields || freshUserData) {
+                    let decryptedSsn = sensitiveFields?.ssn || '';
                     if (decryptedSsn && decryptedSsn.length > 20) {
                         decryptedSsn = await decryptSensitiveData(decryptedSsn, orgId);
                     }
-                    let decryptedPay = sensitiveFields.payRate || 0;
+                    let decryptedPay = sensitiveFields?.payRate || 0;
                     if (typeof decryptedPay === 'string' && decryptedPay.length > 20) {
                         const val = await decryptSensitiveData(decryptedPay, orgId);
                         decryptedPay = parseFloat(val) || 0;
                     }
-                    let decryptedDob = sensitiveFields.dob || '';
+                    let decryptedDob = sensitiveFields?.dob || '';
                     if (decryptedDob && decryptedDob.length > 20) {
                         decryptedDob = await decryptSensitiveData(decryptedDob, orgId);
                     }
                     
                     setFormData(prev => ({
                         ...prev,
+                        ...(freshUserData ? {
+                            documents: freshUserData.documents || prev.documents || [],
+                            profilePicUrl: freshUserData.profilePicUrl || prev.profilePicUrl
+                        } : {}),
                         ...sensitiveFields,
                         ssn: decryptedSsn,
                         payRate: decryptedPay,
@@ -303,11 +315,16 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
         setIsDeleting(true);
         try {
             if (formData.id) {
-                await db.collection('users').doc(formData.id).update(cleanUndefinedFields({ status: 'archived', deleted: true }));
+                if (!state.isDemoMode) {
+                    await db.collection('users').doc(formData.id).update(cleanUndefinedFields({ status: 'archived', deleted: true }));
+                }
+                dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...formData, status: 'archived', deleted: true } as User });
+                showToast.success("Employee account archived.");
             }
-            if (auth.currentUser) {
+            if (!state.isDemoMode && auth.currentUser) {
                 await auth.currentUser.delete();
             }
+            onClose();
         } catch (error: any) {
             console.error("Account Deletion Error:", error);
             if (error.code === 'auth/requires-recent-login') {
@@ -336,6 +353,19 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
             const path = `organizations/${orgId}/users/${userId}/profilePic_${Date.now()}`;
             const downloadUrl = await uploadFileToStorage(path, file);
             setFormData(prev => ({ ...prev, profilePicUrl: downloadUrl }));
+
+            if (formData.id && !state.isDemoMode) {
+                await db.collection('users').doc(formData.id).update(cleanUndefinedFields({ profilePicUrl: downloadUrl }));
+                if (formData.email) {
+                    const normalizedEmail = formData.email.toLowerCase().trim();
+                    const matchingUsers = (state.users || []).filter(u => u.email?.toLowerCase().trim() === normalizedEmail && u.id !== formData.id);
+                    for (const mUser of matchingUsers) {
+                        await db.collection('users').doc(mUser.id).update(cleanUndefinedFields({ profilePicUrl: downloadUrl })).catch(err => console.warn("Failed to sync profile pic:", err));
+                    }
+                }
+                dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...formData, profilePicUrl: downloadUrl } as User });
+                showToast.success("Profile picture updated!");
+            }
         } catch (err) { console.error(err); showToast.error("Failed to upload profile picture."); }
         finally { setIsUploadingPic(false); }
     };
@@ -372,21 +402,72 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                 description: hrFileDesc,
                 tags: []
             };
-            setFormData(prev => ({ ...prev, documents: [...(prev.documents || []), newDoc] }));
+            const updatedDocs = [...(formData.documents || []), newDoc];
+            setFormData(prev => ({ ...prev, documents: updatedDocs }));
             setHrFileObj(null); setHrFileLabel(''); setHrFileDesc(''); setHrFileType(''); setHrFileVisible(false); setHrNewType('');
-        } catch (e) { showToast.error("Failed to process file."); }
+
+            if (formData.id && !state.isDemoMode) {
+                await db.collection('users').doc(formData.id).update(cleanUndefinedFields({ documents: updatedDocs }));
+                if (formData.email) {
+                    const normalizedEmail = formData.email.toLowerCase().trim();
+                    const matchingUsers = (state.users || []).filter(u => u.email?.toLowerCase().trim() === normalizedEmail && u.id !== formData.id);
+                    for (const mUser of matchingUsers) {
+                        await db.collection('users').doc(mUser.id).update(cleanUndefinedFields({ documents: updatedDocs })).catch(err => console.warn("Failed to sync documents:", err));
+                    }
+                }
+                dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...formData, documents: updatedDocs } as User });
+            }
+            showToast.success("HR document uploaded and saved successfully!");
+        } catch (e) { 
+            console.error("handleUploadHR error:", e);
+            showToast.error("Failed to process file."); 
+        }
         finally { setIsUploadingHR(false); }
     };
     
     const handleDeleteHR = async (id: string) => {
-        setFormData(prev => ({ ...prev, documents: (prev.documents || []).filter(d => d.id !== id) }));
+        const docToDelete = (formData.documents || []).find(d => d.id === id);
+        if (!(await globalConfirm(`Are you sure you want to delete "${docToDelete?.label || 'this document'}"?`, "Delete Document", "Delete", "Cancel"))) return;
+
+        const updatedDocs = (formData.documents || []).filter(d => d.id !== id);
+        setFormData(prev => ({ ...prev, documents: updatedDocs }));
+        if (formData.id && !state.isDemoMode) {
+            try {
+                await db.collection('users').doc(formData.id).update(cleanUndefinedFields({ documents: updatedDocs }));
+                if (formData.email) {
+                    const normalizedEmail = formData.email.toLowerCase().trim();
+                    const matchingUsers = (state.users || []).filter(u => u.email?.toLowerCase().trim() === normalizedEmail && u.id !== formData.id);
+                    for (const mUser of matchingUsers) {
+                        await db.collection('users').doc(mUser.id).update(cleanUndefinedFields({ documents: updatedDocs })).catch(err => console.warn("Failed to sync documents on delete:", err));
+                    }
+                }
+                dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...formData, documents: updatedDocs } as User });
+                showToast.success("Document deleted.");
+            } catch (err) {
+                console.error("Failed to delete document from database:", err);
+                showToast.error("Failed to delete document from database.");
+            }
+        }
     };
     
-    const toggleHRVisibility = (id: string) => {
-        setFormData(prev => ({ 
-            ...prev, 
-            documents: (prev.documents || []).map(d => d.id === id ? { ...d, isVisibleToEmployee: !d.isVisibleToEmployee } : d) 
-        }));
+    const toggleHRVisibility = async (id: string) => {
+        const updatedDocs = (formData.documents || []).map(d => d.id === id ? { ...d, isVisibleToEmployee: !d.isVisibleToEmployee } : d);
+        setFormData(prev => ({ ...prev, documents: updatedDocs }));
+        if (formData.id && !state.isDemoMode) {
+            try {
+                await db.collection('users').doc(formData.id).update(cleanUndefinedFields({ documents: updatedDocs }));
+                if (formData.email) {
+                    const normalizedEmail = formData.email.toLowerCase().trim();
+                    const matchingUsers = (state.users || []).filter(u => u.email?.toLowerCase().trim() === normalizedEmail && u.id !== formData.id);
+                    for (const mUser of matchingUsers) {
+                        await db.collection('users').doc(mUser.id).update(cleanUndefinedFields({ documents: updatedDocs })).catch(err => console.warn("Failed to sync visibility:", err));
+                    }
+                }
+                dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...formData, documents: updatedDocs } as User });
+            } catch (err) {
+                console.error("Failed to update visibility in database:", err);
+            }
+        }
     };
     
     const handleTogglePermission = (perm: string) => {
@@ -538,8 +619,15 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
             console.log("Saving user profile:", id, publicData);
             
             if (isNewUser) {
-                await db.collection('users').doc(id).set(cleanUndefinedFields(publicData));
-                await db.collection('users').doc(id).collection('private').doc('sensitive').set(cleanUndefinedFields(sensitiveData));
+                if (!state.isDemoMode) {
+                    await db.collection('users').doc(id).set(cleanUndefinedFields(publicData));
+                    await db.collection('users').doc(id).collection('private').doc('sensitive').set(cleanUndefinedFields(sensitiveData));
+                }
+                
+                // Auto-upgrade plan tier if user limit is exceeded
+                const activeOrgUsers = (state.users || []).filter(u => u.organizationId === orgId && u.status !== 'archived');
+                await checkAndAutoUpgradeOrgTier(orgId, state.currentOrganization?.plan, activeOrgUsers.length + 1);
+
                 // Send reminder for new hires
                 notifyAdmins(orgId, {
                     title: 'Action Required: New Hire Reporting',
@@ -547,8 +635,10 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                     type: 'system_alert'
                 });
             } else {
-                await db.collection('users').doc(id).update(cleanUndefinedFields(publicData));
-                await db.collection('users').doc(id).collection('private').doc('sensitive').set(cleanUndefinedFields(sensitiveData), { merge: true });
+                if (!state.isDemoMode) {
+                    await db.collection('users').doc(id).update(cleanUndefinedFields(publicData));
+                    await db.collection('users').doc(id).collection('private').doc('sensitive').set(cleanUndefinedFields(sensitiveData), { merge: true });
+                }
             }
 
             // Auto-sync subcontractor document in subcontractors collection
@@ -566,33 +656,42 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                     paymentType: 'perJob',
                     paymentPercentage: null
                 };
-                await db.collection('subcontractors').doc(id).set(cleanUndefinedFields(subDoc), { merge: true });
-            } else if (!isSelf) {
+                if (!state.isDemoMode) {
+                    await db.collection('subcontractors').doc(id).set(cleanUndefinedFields(subDoc), { merge: true });
+                }
+            } else if (!isSelf && !state.isDemoMode) {
                 await db.collection('subcontractors').doc(id).delete().catch(err => console.warn("Failed to delete subcontractor doc:", err));
             }
 
             // Update team documents memberIds lists
-            const nextTeamIds = formData.dispatchTeamIds || [];
-            const teamsToUpdate = state.teams.filter(t => t.organizationId === orgId);
-            const teamUpdates = teamsToUpdate.map(async (team) => {
-                const shouldHaveUser = nextTeamIds.includes(team.id);
-                const currentMembers = team.memberIds || [];
-                const hasUser = currentMembers.includes(id);
+            if (!state.isDemoMode) {
+                const nextTeamIds = formData.dispatchTeamIds || [];
+                const teamsToUpdate = state.teams.filter(t => t.organizationId === orgId);
+                const teamUpdates = teamsToUpdate.map(async (team) => {
+                    const shouldHaveUser = nextTeamIds.includes(team.id);
+                    const currentMembers = team.memberIds || [];
+                    const hasUser = currentMembers.includes(id);
 
-                if (shouldHaveUser && !hasUser) {
-                    await db.collection('teams').doc(team.id).update(cleanUndefinedFields({
-                        memberIds: [...currentMembers, id]
-                    }));
-                } else if (!shouldHaveUser && hasUser) {
-                    await db.collection('teams').doc(team.id).update(cleanUndefinedFields({
-                        memberIds: currentMembers.filter(mId => mId !== id)
-                    }));
-                }
-            });
-            await Promise.all(teamUpdates);
+                    if (shouldHaveUser && !hasUser) {
+                        await db.collection('teams').doc(team.id).update(cleanUndefinedFields({
+                            memberIds: [...currentMembers, id]
+                        }));
+                    } else if (!shouldHaveUser && hasUser) {
+                        await db.collection('teams').doc(team.id).update(cleanUndefinedFields({
+                            memberIds: currentMembers.filter(mId => mId !== id)
+                        }));
+                    }
+                });
+                await Promise.all(teamUpdates);
+            }
 
             dispatch({ type: 'UPDATE_EMPLOYEE', payload: { ...initialData, ...publicData, ...sensitiveData } as User });
-            onClose();
+            showToast.success("Employee profile saved successfully!");
+            try {
+                onClose();
+            } catch (closeErr) {
+                console.warn("onClose execution warning:", closeErr);
+            }
         } catch (error: any) { 
             console.error("Save Error Details:", error);
             showToast.error("Error saving profile: " + (error.message || "Unknown Error")); 
@@ -662,8 +761,71 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                                 {formData.hasAppAccess !== false && (
                                     <Input label="Email Address" type="email" value={formData.email || ''} onChange={e => setFormData({...formData, email: e.target.value})} required={!isSelf} disabled={isSelf} />
                                 )}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <Input label="Job Title / Position" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} placeholder="e.g. Lead HVAC Technician / Service Manager" />
+                                    <Input label="Phone" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                                </div>
                                 <Input label="Kiosk Access PIN (4 Digits)" type="text" maxLength={4} value={formData.kioskPin || ''} onChange={e => setFormData({...formData, kioskPin: e.target.value.replace(/\D/g, '')})} placeholder="1234" />
-                                <Input label="Phone" value={formData.phone || ''} onChange={e => setFormData({...formData, phone: e.target.value})} /></>
+
+                                {/* Official Email Signature Section */}
+                                <div className="bg-slate-50 dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3 mt-4">
+                                    <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-2">
+                                        <div className="flex items-center gap-2">
+                                            <Mail size={16} className="text-blue-500" />
+                                            <h4 className="font-bold text-xs uppercase tracking-wider text-slate-800 dark:text-slate-200">Official Email Signature</h4>
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="secondary"
+                                            className="text-[11px] font-bold text-blue-600 dark:text-blue-400"
+                                            onClick={() => {
+                                                const org = state.currentOrganization;
+                                                const orgName = org?.name || 'Company';
+                                                const generatedSignature = generateUserEmailSignatureHtml(formData, org);
+
+                                                setFormData({ 
+                                                    ...formData, 
+                                                    emailSignatureHtml: generatedSignature,
+                                                    includeSignatureInOutbound: true 
+                                                });
+                                                showToast.success(`Generated official email signature for ${orgName}!`);
+                                            }}
+                                        >
+                                            Auto-Generate Signature
+                                        </Button>
+                                    </div>
+
+                                    <div className="py-1">
+                                        <Toggle 
+                                            label="Include Signature in Outbound Emails"
+                                            description="Automatically appends this signature to all outgoing emails, proposals, and invoices."
+                                            enabled={formData.includeSignatureInOutbound !== false}
+                                            onChange={(val) => setFormData({ ...formData, includeSignatureInOutbound: val })}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">Signature HTML Content</label>
+                                        <textarea
+                                            rows={3}
+                                            value={formData.emailSignatureHtml || ''}
+                                            onChange={e => setFormData({ ...formData, emailSignatureHtml: e.target.value })}
+                                            placeholder="Click 'Auto-Generate Signature' or paste custom HTML here..."
+                                            className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 text-xs font-mono text-slate-800 dark:text-slate-200"
+                                        />
+                                    </div>
+
+                                    {formData.emailSignatureHtml && formData.includeSignatureInOutbound !== false && (
+                                        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-lg">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Live Signature Preview:</span>
+                                            <div 
+                                                dangerouslySetInnerHTML={{ __html: formData.emailSignatureHtml }} 
+                                                className="overflow-x-auto"
+                                            />
+                                        </div>
+                                    )}
+                                </div></>
                             )}
 
                             {activeTab === 'info' && (
@@ -1529,24 +1691,27 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                     <div className="w-full h-[70vh] flex flex-col bg-slate-100 dark:bg-slate-900 rounded-lg overflow-hidden relative group">
                         {(() => {
                             const url = viewerDoc.dataUrl || viewerDoc.fileUrl || viewerDoc.url || '';
-                            const isImage = url.startsWith('data:image/') || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(viewerDoc.fileName || '');
-                            const isPdf = url.startsWith('data:application/pdf') || /\.(pdf)$/i.test(viewerDoc.fileName || '');
+                            const fileInfo = detectFileType(url, viewerDoc.fileName);
                             
-                            if (isImage) {
+                            if (fileInfo.isImage) {
                                 return <img src={url} className="w-full h-full object-contain" alt={viewerDoc.label} />;
-                            } else if (isPdf) {
-                                return <iframe src={url} className="w-full h-full border-0" title={viewerDoc.label} />;
-                            } else if (url.startsWith('http') && /\.(doc|docx|xls|xlsx|csv|ppt|pptx)$/i.test(viewerDoc.fileName || '')) {
-                                return <iframe src={`https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`} className="w-full h-full border-0" title={viewerDoc.label} />;
+                            } else if (fileInfo.isPdf) {
+                                return <iframe src={url} className="w-full h-full border-0 bg-white" title={viewerDoc.label} />;
+                            } else if (fileInfo.isHtml) {
+                                return <iframe src={url} className="w-full h-full border-0 bg-white" title={viewerDoc.label} />;
+                            } else if (fileInfo.googleDocsViewerUrl) {
+                                return <iframe src={fileInfo.googleDocsViewerUrl} className="w-full h-full border-0 bg-white" title={viewerDoc.label} />;
                             } else {
                                 return (
                                     <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white dark:bg-slate-800">
                                         <FileText size={48} className="text-slate-400 mb-4" />
-                                        <p className="text-lg font-medium text-slate-700 dark:text-slate-200 mb-2">Preview not available</p>
-                                        <p className="text-sm text-slate-500 mb-4">This file type cannot be previewed directly in the browser.</p>
-                                        <a href={url} download={viewerDoc.fileName} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
-                                            <Download size={16} /> Download {viewerDoc.fileName}
-                                        </a>
+                                        <p className="text-lg font-medium text-slate-700 dark:text-slate-200 mb-2">{viewerDoc.fileName || viewerDoc.label}</p>
+                                        <p className="text-sm text-slate-500 mb-4">Click below to download or view this file.</p>
+                                        {url && (
+                                            <a href={url} download={viewerDoc.fileName} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+                                                <Download size={16} /> Open / Download {viewerDoc.fileName || 'File'}
+                                            </a>
+                                        )}
                                     </div>
                                 );
                             }
@@ -1554,9 +1719,8 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                         
                         {(() => {
                             const url = viewerDoc.dataUrl || viewerDoc.fileUrl || viewerDoc.url || '';
-                            const isRenderable = url.startsWith('data:image/') || url.startsWith('data:application/pdf') || /\.(jpg|jpeg|png|gif|webp|heic|pdf)$/i.test(viewerDoc.fileName || '');
-                            return isRenderable && (
-                                <a href={url} download={viewerDoc.fileName} className="absolute bottom-4 right-4 p-3 bg-slate-900/80 text-white rounded-full shadow-lg hover:bg-black transition-colors opacity-0 group-hover:opacity-100 backdrop-blur-sm" title="Download File">
+                            return url && (
+                                <a href={url} download={viewerDoc.fileName} target="_blank" rel="noopener noreferrer" className="absolute bottom-4 right-4 p-3 bg-slate-900/80 text-white rounded-full shadow-lg hover:bg-black transition-colors opacity-0 group-hover:opacity-100 backdrop-blur-sm" title="Open / Download File">
                                     <Download size={20} />
                                 </a>
                             );

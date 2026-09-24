@@ -9,6 +9,7 @@ import { useAppContext } from 'context/AppContext';
 import { useLanguage } from 'context/LanguageContext';
 import { db } from 'lib/firebase';
 import showToast from 'lib/toast';
+import { globalConfirm } from 'lib/globalConfirm';
 import Modal from 'components/ui/Modal';
 import Button from 'components/ui/Button';
 import Card from 'components/ui/Card';
@@ -459,7 +460,7 @@ const CompanyCalendar: React.FC = () => {
     };
 
     const handleDeleteClick = async (evt: CompanyEvent) => {
-        if (!window.confirm(`Are you sure you want to cancel the scheduled event "${evt.title}"?`)) return;
+        if (!(await globalConfirm(`Are you sure you want to cancel the scheduled event "${evt.title}"?`, "Cancel Scheduled Event", "Cancel Event", "Keep Event"))) return;
         
         try {
             if (isDemoMode) {

@@ -36,7 +36,7 @@ export function detectTimeDiscrepancies(
     users.forEach(u => userMap.set(u.id, u));
 
     jobs.forEach(job => {
-        if (!job.checkInTime || job.deleted || job.archived) return;
+        if (!job.checkInTime || job.deleted || job.archived || job.discrepancyDismissed) return;
 
         const techId = job.assignedTechnicianId;
         if (!techId) return;

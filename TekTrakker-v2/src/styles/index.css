@@ -13,22 +13,44 @@
 }
 
 /* Base Overrides for Mobile Experience */
-html, body {
+html {
     -webkit-tap-highlight-color: transparent;
     background-color: #f8fafc; /* bg-slate-50 equivalent */
-    overflow-x: hidden; /* Prevent global horizontal page overflow/bouncing */
+    overflow-x: clip; /* Modern clean horizontal clipping without creating a secondary scroll container or forcing overflow-y to auto */
 }
 
-/* Overscroll behavior locking removed to resolve Windows precision touchpad issues.
-   Native browser handling is now prioritized for scrolling stability. */
+body {
+    -webkit-tap-highlight-color: transparent;
+    background-color: #f8fafc;
+    overflow-x: clip;
+    -webkit-overflow-scrolling: touch; /* Crucial for native kinetic/momentum touch scrolling on iOS WKWebView */
+    touch-action: pan-y pinch-zoom; /* Enable natural vertical panning and pinch zooming without gesture aborts */
+}
 
+#root,
+.safe-area-wrapper {
+    overflow-x: clip;
+}
 
 /* Ensure dark mode overscroll doesn't flash white either */
 html.dark, html.dark body {
     background-color: #0f172a; /* bg-slate-900 equivalent */
 }
 
-/* safe-area-wrapper: Removed global padding-top to allow fixed headers to bleed into the notch natively */
+/* Universal hardware-accelerated momentum scrolling on iOS WebKit & Android WebViews */
+html,
+body,
+.overflow-y-auto,
+.overflow-x-auto,
+.overflow-auto,
+.custom-scrollbar,
+[class*="overflow-y-auto"],
+[class*="overflow-x-auto"],
+[class*="overflow-auto"] {
+    -webkit-overflow-scrolling: touch;
+}
+
+/* safe-area-wrapper: Allow fixed headers and bottom elements to respect hardware insets */
 
 .pt-safe {
   padding-top: var(--sat, env(safe-area-inset-top, 0px));
@@ -38,32 +60,48 @@ html.dark, html.dark body {
   padding-bottom: var(--sab, env(safe-area-inset-bottom, 0px));
 }
 
-/* Custom scrollbar for admin panels and table/grid views to make them readable and easy to drag */
-.custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+/* Custom scrollbar for fine pointer (desktop/trackpad) to make them draggable without capturing mobile touch gestures */
+@media (hover: hover) and (pointer: fine) {
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 10px;
+    }
+    .dark .custom-scrollbar::-webkit-scrollbar-track {
+        background: #1e293b;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 10px;
+        border: 2px solid #f1f5f9;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #475569;
+        border: 2px solid #1e293b;
+    }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+    }
 }
-.custom-scrollbar::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 10px;
+
+/* Hide scrollbar for Chrome, Safari, Edge and Firefox */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
 }
-.dark .custom-scrollbar::-webkit-scrollbar-track {
-    background: #1e293b;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 10px;
-    border: 2px solid #f1f5f9;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
-}
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #475569;
-    border: 2px solid #1e293b;
-}
-.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #64748b;
+
+.no-scrollbar,
+.scrollbar-none {
+    -ms-overflow-style: none !important;  /* IE and Edge */
+    scrollbar-width: none !important;  /* Firefox */
 }
 
 /* Mobile-First Utility Classes */
@@ -210,30 +248,38 @@ button, a, input, select, textarea {
     scrollbar-width: auto;
     -ms-overflow-style: auto;
 }
-.hide-scrollbar::-webkit-scrollbar, .scrollbar-hide::-webkit-scrollbar {
-    display: block;
-    width: 8px;
-    height: 8px;
+@media (hover: hover) and (pointer: fine) {
+    .hide-scrollbar::-webkit-scrollbar, .scrollbar-hide::-webkit-scrollbar {
+        display: block;
+        width: 8px;
+        height: 8px;
+    }
+    .hide-scrollbar::-webkit-scrollbar-track, .scrollbar-hide::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 10px;
+    }
+    .dark .hide-scrollbar::-webkit-scrollbar-track, .dark .scrollbar-hide::-webkit-scrollbar-track {
+        background: #1e293b;
+    }
+    .hide-scrollbar::-webkit-scrollbar-thumb, .scrollbar-hide::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 10px;
+        border: 2px solid #f1f5f9;
+    }
+    .hide-scrollbar::-webkit-scrollbar-thumb:hover, .scrollbar-hide::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
+    .dark .hide-scrollbar::-webkit-scrollbar-thumb, .dark .scrollbar-hide::-webkit-scrollbar-thumb {
+        background: #475569;
+        border: 2px solid #1e293b;
+    }
+    .dark .hide-scrollbar::-webkit-scrollbar-thumb:hover, .dark .scrollbar-hide::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+    }
 }
-.hide-scrollbar::-webkit-scrollbar-track, .scrollbar-hide::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 10px;
+
+/* Toastify Mobile & Modal Overlay z-index fix */
+.Toastify__toast-container {
+    z-index: 999999 !important;
 }
-.dark .hide-scrollbar::-webkit-scrollbar-track, .dark .scrollbar-hide::-webkit-scrollbar-track {
-    background: #1e293b;
-}
-.hide-scrollbar::-webkit-scrollbar-thumb, .scrollbar-hide::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 10px;
-    border: 2px solid #f1f5f9;
-}
-.hide-scrollbar::-webkit-scrollbar-thumb:hover, .scrollbar-hide::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
-}
-.dark .hide-scrollbar::-webkit-scrollbar-thumb, .dark .scrollbar-hide::-webkit-scrollbar-thumb {
-    background: #475569;
-    border: 2px solid #1e293b;
-}
-.dark .hide-scrollbar::-webkit-scrollbar-thumb:hover, .dark .scrollbar-hide::-webkit-scrollbar-thumb:hover {
-    background: #64748b;
-}
+

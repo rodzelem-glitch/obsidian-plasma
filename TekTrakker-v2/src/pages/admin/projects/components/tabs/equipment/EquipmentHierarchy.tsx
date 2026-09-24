@@ -4,7 +4,7 @@ import { Customer, ServiceLocation, EquipmentAsset, StoredFile } from 'types';
 import { db, firebase } from 'lib/firebase';
 import { getCurrentLocation } from 'lib/geolocation';
 import { useAppContext } from 'context/AppContext';
-import { ChevronRight, ChevronDown, Plus, Edit2, Trash2, MapPin, Box, Link as LinkIcon, Building2, Map, Tag, Compass, Layers, Camera as CameraIcon, ImageIcon, X, Sparkles } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, Edit2, Trash2, MapPin, Box, Link as LinkIcon, Building2, Map, Tag, Compass, Layers, Camera as CameraIcon, ImageIcon, X, Sparkles, Package, ShieldCheck, ExternalLink } from 'lucide-react';
 import Button from 'components/ui/Button';
 import Modal from 'components/ui/Modal';
 import Input from 'components/ui/Input';
@@ -18,8 +18,11 @@ import WebCameraModal from 'pages/briefing/components/WebCameraModal';
 import LocationPhotosLayoutModal from 'components/modals/LocationPhotosLayoutModal';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { BarcodeScannerButton } from 'components/ui/BarcodeScanner';
+import { globalConfirm } from 'lib/globalConfirm';
 
 import { EQUIPMENT_OPTIONS, LOCATION_OPTIONS } from '@/constants/industryNaming';
+import { LocationSearchSelector } from 'components/common/LocationSearchSelector';
+import { scanDataPlatePhoto } from '../../../../../../utils/dataPlateOcr';
 
 const PHYSICAL_LOCATION_OPTIONS = [
     'Roof', 'Mechanical Room', 'Walk-in Cooler', 'Walk-in Freezer', 
@@ -87,6 +90,7 @@ const EquipmentHierarchy: React.FC<Props> = ({ customer, autoOpenEquipmentId, on
     const [isResearchingAirHandler, setIsResearchingAirHandler] = useState(false);
     const [airHandlerDetails, setAirHandlerDetails] = useState({
         name: 'Air Handler',
+        type: 'Air Handler',
         brand: '',
         model: '',
         serial: '',
@@ -99,8 +103,11 @@ const EquipmentHierarchy: React.FC<Props> = ({ customer, autoOpenEquipmentId, on
         refrigerantType: '',
         heatType: '',
         electricityType: '',
+        volts: '',
+        amps: '',
         seerRating: '',
-        filterType: ''
+        filterType: '',
+        blowerType: ''
     });
 
     const locations = customer.serviceLocations || [];
@@ -199,7 +206,7 @@ const EquipmentHierarchy: React.FC<Props> = ({ customer, autoOpenEquipmentId, on
     };
 
     const handleDeleteLocation = async (id: string) => {
-        if (!window.confirm("Are you sure you want to delete this location? Equipment in this location will become unassigned.")) return;
+        if (!(await globalConfirm("Are you sure you want to delete this location? Equipment in this location will become unassigned.", "Delete Location", "Delete Location", "Cancel"))) return;
         
         const updatedLocations = locations.filter(l => l.id !== id);
         // Also remove parentId for children
@@ -308,14 +315,22 @@ Your task is to decode the model/serial numbers or look up standard specs to fil
 1. "brand": The manufacturer/brand of the equipment (e.g. "Trane", "Carrier", "Lennox", "Goodman").
 2. "model": The model number of the unit.
 3. "serial": The serial number of the unit.
-4. "type": The equipment type (e.g. "AC Condenser", "Furnace", "Heat Pump", "Thermostat").
+4. "type": The equipment type (e.g. "Air Handler", "Condenser", "Package Unit", "Furnace", "Heat Pump", "Compressor", "Chiller", "Boiler", "Water Heater", "Generator", "Mini Split").
 5. "year": Manufacturing year, e.g. "2018".
 6. "tonnage": Decode capacity/tonnage from model number BTUs (e.g. 024 = 2 tons, 036 = 3 tons, 042 = 3.5 tons, 048 = 4 tons, 060 = 5 tons). Return a number.
 7. "refrigerantType": E.g. "R410A", "R22", "R134a", "R404A".
-8. "heatType": E.g. "Gas", "Electric", "Heat Pump", "N/A".
-9. "seerRating": Standard SEER rating for this model series (e.g. "14", "16", "21").
-10. "electricityType": E.g. "230V / 1ph", "460V / 3ph", "115V / 1ph".
-11. "filterType": Standard filter dimensions and type if it's a standard cabinet size (e.g., "20x25x1 MERV 11").
+8. "refrigerantCharge": Factory charge (e.g. "5 lbs 8 oz").
+9. "btuCapacity": Nominal BTU capacity (e.g. "36000 BTU/h").
+10. "heatType": E.g. "Gas", "Electric", "Heat Pump", "Hydronic", "N/A".
+11. "seerRating": Standard SEER rating for this model series (e.g. "14", "16", "21").
+12. "electricityType": E.g. "230V / 1ph", "460V / 3ph", "115V / 1ph".
+13. "volts": Voltage rating (e.g. "208-230V").
+14. "amps": Amperage rating (e.g. "18.5A FLA").
+15. "phase": Phase (e.g. "1Ph", "3Ph").
+16. "filterType": Standard filter dimensions (e.g. "20x25x1 MERV 11").
+17. "compressorType": Compressor design (e.g. "Scroll", "Reciprocating", "Inverter").
+18. "blowerType": Blower design (e.g. "ECM Variable Speed", "PSC").
+19. "systemGroupRole": Suggested system role (e.g. "Evaporator", "Condensing Unit", "Compressor").
 
 CRITICAL SAFETY RULES:
 - DO NOT make up, guess, or hallucinate any information.
@@ -331,15 +346,23 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
   "year": string | null,
   "tonnage": number | null,
   "refrigerantType": string | null,
+  "refrigerantCharge": string | null,
+  "btuCapacity": string | null,
   "heatType": string | null,
   "seerRating": string | null,
   "electricityType": string | null,
-  "filterType": string | null
+  "volts": string | null,
+  "amps": string | null,
+  "phase": string | null,
+  "filterType": string | null,
+  "compressorType": string | null,
+  "blowerType": string | null,
+  "systemGroupRole": string | null
 }`;
 
             const result: any = await callGeminiAI({
                 prompt,
-                modelName: 'gemini-3.6-flash',
+                modelName: 'gemini-3.7-flash',
                 config: { response_mime_type: 'application/json' }
             });
 
@@ -349,7 +372,14 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             const updatedSpecs: any = {};
             Object.keys(specs).forEach(key => {
                 if (specs[key] !== null && specs[key] !== undefined && specs[key] !== '') {
-                    updatedSpecs[key] = specs[key];
+                    // Do NOT overwrite existing manual user entries!
+                    if (key === 'type') {
+                        if (!(updatedEq as any).type || (updatedEq as any).type === 'System' || (updatedEq as any).type === 'Equipment') {
+                            updatedSpecs.type = specs.type;
+                        }
+                    } else if (!(updatedEq as any)[key] || String((updatedEq as any)[key]).trim() === '') {
+                        updatedSpecs[key] = specs[key];
+                    }
                 }
             });
 
@@ -358,7 +388,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                     ...updatedEq,
                     ...updatedSpecs
                 });
-                showToast.success("AI successfully decoded barcode details!");
+                showToast.success("AI decoded barcode details! Manual entries preserved.");
             } else {
                 setEditingEquipment(updatedEq);
                 showToast.warn(`Barcode scanned: ${barcode}. Could not decode additional specifications.`);
@@ -387,52 +417,70 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             const model = editingEquipment.model;
             const serial = editingEquipment.serial || '';
 
-            const prompt = `Senior HVAC & Appliance Technical Advisor.
-Research and decode technical specs for this unit:
-- Manufacturer/Brand: ${brand}
+            const prompt = `You are an expert HVAC, Electrical, & Industrial Equipment Master AI.
+Research, decode, and derive technical specifications for this unit:
+- Brand/Manufacturer: ${brand}
 - Model Number: ${model}
 - Serial Number: ${serial}
 
-Your task is to decode the model/serial numbers or look up standard specs to fill out the following properties:
-1. "year": Decode the manufacturing year from the serial number format (e.g., first 2 or 4 digits, or letter date code depending on brand). E.g. "2018".
-2. "tonnage": Decode capacity/tonnage from model number BTUs (e.g. 024 = 2 tons, 036 = 3 tons, 042 = 3.5 tons, 048 = 4 tons, 060 = 5 tons). Return a number.
-3. "refrigerantType": E.g. "R410A", "R22", "R134a", "R404A".
-4. "heatType": E.g. "Gas", "Electric", "Heat Pump", "N/A".
-5. "seerRating": Standard SEER rating for this model series (e.g. "14", "16", "21").
-6. "electricityType": E.g. "230V / 1ph", "460V / 3ph", "115V / 1ph".
-7. "filterType": Standard filter dimensions and type if it's a standard cabinet size (e.g., "20x25x1 MERV 11").
-
-CRITICAL SAFETY RULES:
-- DO NOT make up, guess, or hallucinate any information.
-- Only return a value for a property if it is GUARANTEED or highly confident based on standard brand coding structures or verified manufacturer documentation.
-- If a property cannot be confidently verified, set its value to null (do NOT make up placeholder values, guess years, or guess SEER ratings).
-- If the serial number is blank or does not conform to date coding, set "year" to null.
-- If the model is unrecognized or fake, set all spec fields to null.
+Rules for Decoding & Specs Retrieval:
+1. "type": Classify unit type accurately based on model nomenclature or manufacturer specs (e.g. "Air Handler", "Condenser", "Package Unit", "Furnace", "Heat Pump", "Compressor", "Chiller", "Boiler", "Water Heater", "Generator", "Mini Split").
+2. "year": Decode manufacturing year from serial date code structure (e.g. Carrier week/year, Trane date code, York letter code, Rheem year digits) OR estimate era based on model series. E.g. "2018".
+3. "tonnage": Decode cooling capacity in TONS. Look for nominal MBH in model (018=1.5, 024=2.0, 030=2.5, 036=3.0, 042=3.5, 048=4.0, 060=5.0, 072=6.0, 090=7.5, 120=10.0). ALWAYS return capacity in TONS as a decimal (e.g. 3.0, 4.0), NEVER as raw MBH (like 36 or 48).
+4. "refrigerantType": Identify standard refrigerant for this brand/model series (e.g. R-410A, R-22, R-454B, R-134a, R-404A).
+5. "refrigerantCharge": Factory refrigerant charge if standard for this model (e.g. "5 lbs 8 oz", "104 oz").
+6. "btuCapacity": Nominal BTU capacity (e.g. "36000 BTU/h").
+7. "heatType": E.g. "Gas", "Electric", "Heat Pump", "Hydronic", "N/A".
+8. "seerRating": Standard SEER / SEER2 rating for this model series (e.g. "14", "16", "18", "21").
+9. "electricityType": Electrical voltage & phase (e.g. "208-230V / 1ph", "460V / 3ph", "115V / 1ph").
+10. "volts": Voltage rating (e.g. "208-230V").
+11. "amps": FLA / MCA / Max Fuse Amps.
+12. "phase": Electrical phase (e.g. "1Ph", "3Ph").
+13. "filterType": Standard filter size for this cabinet size (e.g. "20x25x1 MERV 11").
+14. "compressorType": Compressor design style if outdoor/package unit (e.g. "Scroll", "Reciprocating", "Inverter").
+15. "blowerType": Blower motor design if air handler/furnace (e.g. "ECM Variable Speed", "PSC").
+16. "systemGroupRole": Suggested role in system (e.g. "Evaporator", "Condensing Unit", "Compressor", "Controller").
 
 Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
 {
+  "type": string | null,
   "year": string | null,
   "tonnage": number | null,
   "refrigerantType": string | null,
+  "refrigerantCharge": string | null,
+  "btuCapacity": string | null,
   "heatType": string | null,
   "seerRating": string | null,
   "electricityType": string | null,
-  "filterType": string | null
+  "volts": string | null,
+  "amps": string | null,
+  "phase": string | null,
+  "filterType": string | null,
+  "compressorType": string | null,
+  "blowerType": string | null,
+  "systemGroupRole": string | null
 }`;
 
             const result: any = await callGeminiAI({
                 prompt,
-                modelName: 'gemini-3.6-flash',
-                config: { response_mime_type: 'application/json' }
+                modelName: 'gemini-3.7-flash',
+                config: { temperature: 0.1, response_mime_type: 'application/json' }
             });
 
             const cleanJson = (result.data?.text || '{}').replace(/```json/g, '').replace(/```/g, '').trim();
             const specs = JSON.parse(cleanJson);
 
+            if (specs.tonnage !== undefined && specs.tonnage !== null) {
+                let numT = typeof specs.tonnage === 'number' ? specs.tonnage : parseFloat(String(specs.tonnage));
+                if (!isNaN(numT) && numT >= 12 && numT <= 600 && numT % 6 === 0) {
+                    specs.tonnage = Math.round((numT / 12) * 10) / 10;
+                }
+            }
+
             const hasSpecs = Object.values(specs).some(val => val !== null && val !== undefined && val !== '');
 
             if (!hasSpecs) {
-                showToast.warn("No verified specifications could be confidently determined for this model/serial.");
+                showToast.warn("No verified specifications could be determined for this model/serial.");
                 setIsResearching(false);
                 return;
             }
@@ -440,6 +488,10 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             const updatedEq = { ...editingEquipment };
             let count = 0;
 
+            if (specs.type && (!updatedEq.type || updatedEq.type === 'System' || updatedEq.type === 'Equipment' || updatedEq.type.trim() === '')) {
+                updatedEq.type = specs.type;
+                count++;
+            }
             if (specs.year && !updatedEq.year) {
                 updatedEq.year = specs.year;
                 count++;
@@ -450,6 +502,14 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             }
             if (specs.refrigerantType && !updatedEq.refrigerantType) {
                 updatedEq.refrigerantType = specs.refrigerantType;
+                count++;
+            }
+            if (specs.refrigerantCharge && !updatedEq.refrigerantCharge) {
+                updatedEq.refrigerantCharge = specs.refrigerantCharge;
+                count++;
+            }
+            if (specs.btuCapacity && !updatedEq.btuCapacity) {
+                updatedEq.btuCapacity = specs.btuCapacity;
                 count++;
             }
             if (specs.heatType && !updatedEq.heatType) {
@@ -464,21 +524,46 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 updatedEq.electricityType = specs.electricityType;
                 count++;
             }
+            if (specs.volts && !updatedEq.volts) {
+                updatedEq.volts = specs.volts;
+                count++;
+            }
+            if (specs.amps && !updatedEq.amps) {
+                updatedEq.amps = specs.amps;
+                count++;
+            }
+            if (specs.phase && !updatedEq.phase) {
+                updatedEq.phase = specs.phase;
+                count++;
+            }
             if (specs.filterType && !updatedEq.filterType) {
                 updatedEq.filterType = specs.filterType;
                 count++;
             }
+            if (specs.compressorType && !updatedEq.compressorType) {
+                updatedEq.compressorType = specs.compressorType;
+                count++;
+            }
+            if (specs.blowerType && !updatedEq.blowerType) {
+                updatedEq.blowerType = specs.blowerType;
+                count++;
+            }
+            if (specs.systemGroupRole && !updatedEq.systemGroupRole) {
+                updatedEq.systemGroupRole = specs.systemGroupRole;
+                count++;
+            }
 
             setEditingEquipment(updatedEq);
+            setIsResearching(false);
+
             if (count > 0) {
-                showToast.success(`Successfully populated \${count} technical specifications!`);
+                showToast.success(`AI Specs Research complete! Auto-filled ${count} technical specifications (including Equipment Type).`);
             } else {
-                showToast.info("AI lookup completed, but no new details were added (existing fields were preserved or no new confident specs found).");
+                showToast.info("AI Research complete. All verified specs are already filled out.");
             }
-        } catch (error) {
-            console.error(error);
-            showToast.error("Failed to research specifications. Please try again.");
-        } finally {
+        } catch (err) {
+            console.error(err);
+            showToast.error("Failed to research unit specifications.");
             setIsResearching(false);
         }
     };
@@ -498,52 +583,60 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             const model = airHandlerDetails.model;
             const serial = airHandlerDetails.serial || '';
 
-            const prompt = `Senior HVAC & Appliance Technical Advisor.
-Research and decode technical specs for this Air Handler / Fan Coil unit:
-- Manufacturer/Brand: \${brand}
-- Model Number: \${model}
-- Serial Number: \${serial}
+            const prompt = `You are an expert HVAC, Electrical, & Industrial Equipment Master AI.
+Research, decode, and derive technical specifications for this Air Handler / Fan Coil unit:
+- Brand/Manufacturer: ${brand}
+- Model Number: ${model}
+- Serial Number: ${serial}
 
-Your task is to decode the model/serial numbers or look up standard specs to fill out the following properties:
-1. "year": Decode the manufacturing year from the serial number format (e.g., first 2 or 4 digits, or letter date code depending on brand). E.g. "2018".
-2. "tonnage": Decode capacity/tonnage from model number BTUs (e.g. 024 = 2 tons, 036 = 3 tons, 042 = 3.5 tons, 048 = 4 tons, 060 = 5 tons). Return a number.
-3. "refrigerantType": E.g. "R410A", "R22", "R134a", "R404A".
-4. "heatType": E.g. "Electric", "Gas", "Heat Pump", "N/A".
-5. "seerRating": Standard SEER rating for this model series (e.g. "14", "16", "21").
-6. "electricityType": E.g. "230V / 1ph", "460V / 3ph", "115V / 1ph".
-7. "filterType": Standard filter dimensions and type if it's a standard cabinet size (e.g., "20x25x1 MERV 11").
-
-CRITICAL SAFETY RULES:
-- DO NOT make up, guess, or hallucinate any information.
-- Only return a value for a property if it is GUARANTEED or highly confident based on standard brand coding structures or verified manufacturer documentation.
-- If a property cannot be confidently verified, set its value to null (do NOT make up placeholder values, guess years, or guess SEER ratings).
-- If the serial number is blank or does not conform to date coding, set "year" to null.
-- If the model is unrecognized or fake, set all spec fields to null.
+Rules for Decoding & Specs Retrieval:
+1. "type": Return "Air Handler" or specific fan coil type (e.g. "Fan Coil Unit", "Multi-Position Air Handler").
+2. "year": Decode manufacturing year from serial date code structure OR estimate era based on model series. E.g. "2018".
+3. "tonnage": Decode cooling capacity in TONS. Look for nominal MBH in model (018=1.5, 024=2.0, 030=2.5, 036=3.0, 042=3.5, 048=4.0, 060=5.0, 072=6.0, 090=7.5, 120=10.0). ALWAYS return capacity in TONS as a decimal (e.g. 3.0, 4.0), NEVER as raw MBH (like 36 or 48).
+4. "refrigerantType": Identify standard refrigerant for this brand/model series (e.g. R-410A, R-22, R-454B, R-134a, R-404A).
+5. "heatType": E.g. "Electric", "Gas", "Heat Pump", "Hydronic", "N/A".
+6. "seerRating": Standard SEER / SEER2 rating for this model series (e.g. "14", "16", "18", "21").
+7. "electricityType": Electrical voltage & phase (e.g. "208-230V / 1ph", "460V / 3ph", "115V / 1ph").
+8. "volts": Voltage rating (e.g. "208-230V").
+9. "amps": FLA / MCA / Max Fuse Amps.
+10. "filterType": Standard filter size for this cabinet size (e.g. "20x25x1 MERV 11").
+11. "blowerType": Blower motor design (e.g. "ECM Variable Speed", "PSC").
 
 Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
 {
+  "type": string | null,
   "year": string | null,
   "tonnage": number | null,
   "refrigerantType": string | null,
   "heatType": string | null,
   "seerRating": string | null,
   "electricityType": string | null,
-  "filterType": string | null
+  "volts": string | null,
+  "amps": string | null,
+  "filterType": string | null,
+  "blowerType": string | null
 }`;
 
             const result: any = await callGeminiAI({
                 prompt,
-                modelName: 'gemini-3.6-flash',
-                config: { response_mime_type: 'application/json' }
+                modelName: 'gemini-3.7-flash',
+                config: { temperature: 0.1, response_mime_type: 'application/json' }
             });
 
             const cleanJson = (result.data?.text || '{}').replace(/```json/g, '').replace(/```/g, '').trim();
             const specs = JSON.parse(cleanJson);
 
+            if (specs.tonnage !== undefined && specs.tonnage !== null) {
+                let numT = typeof specs.tonnage === 'number' ? specs.tonnage : parseFloat(String(specs.tonnage));
+                if (!isNaN(numT) && numT >= 12 && numT <= 600 && numT % 6 === 0) {
+                    specs.tonnage = Math.round((numT / 12) * 10) / 10;
+                }
+            }
+
             const hasSpecs = Object.values(specs).some(val => val !== null && val !== undefined && val !== '');
 
             if (!hasSpecs) {
-                showToast.warn("No verified specifications could be confidently determined for this model/serial.");
+                showToast.warn("No verified specifications could be determined for this model/serial.");
                 setIsResearchingAirHandler(false);
                 return;
             }
@@ -551,6 +644,12 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             const updatedDetails = { ...airHandlerDetails };
             let count = 0;
 
+            if (specs.type && (!updatedDetails.type || updatedDetails.type === 'System' || updatedDetails.type === 'Equipment' || updatedDetails.type.trim() === '')) {
+                updatedDetails.type = specs.type;
+                count++;
+            } else if (!updatedDetails.type) {
+                updatedDetails.type = "Air Handler";
+            }
             if (specs.year && !updatedDetails.year) {
                 updatedDetails.year = specs.year;
                 count++;
@@ -571,6 +670,14 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 updatedDetails.electricityType = specs.electricityType;
                 count++;
             }
+            if (specs.volts && !updatedDetails.volts) {
+                updatedDetails.volts = specs.volts;
+                count++;
+            }
+            if (specs.amps && !updatedDetails.amps) {
+                updatedDetails.amps = specs.amps;
+                count++;
+            }
             if (specs.seerRating && !updatedDetails.seerRating) {
                 updatedDetails.seerRating = specs.seerRating;
                 count++;
@@ -579,10 +686,14 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 updatedDetails.filterType = specs.filterType;
                 count++;
             }
+            if (specs.blowerType && !updatedDetails.blowerType) {
+                updatedDetails.blowerType = specs.blowerType;
+                count++;
+            }
 
             setAirHandlerDetails(updatedDetails);
             if (count > 0) {
-                showToast.success(`Successfully populated \${count} technical specifications for the Air Handler!`);
+                showToast.success(`Successfully populated ${count} technical specifications for the Air Handler!`);
             } else {
                 showToast.info("AI lookup completed, but no new details were added.");
             }
@@ -629,8 +740,19 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             sysRole = undefined;
         }
 
+        // Clean and validate gpsPin so empty/zero objects don't pollute
+        let cleanGpsPin: { lat: number; lng: number } | undefined = undefined;
+        if (editingEquipment?.gpsPin) {
+            const pLat = typeof editingEquipment.gpsPin.lat === 'number' ? editingEquipment.gpsPin.lat : parseFloat(String(editingEquipment.gpsPin.lat));
+            const pLng = typeof editingEquipment.gpsPin.lng === 'number' ? editingEquipment.gpsPin.lng : parseFloat(String(editingEquipment.gpsPin.lng));
+            if (!isNaN(pLat) && !isNaN(pLng) && (pLat !== 0 || pLng !== 0)) {
+                cleanGpsPin = { lat: pLat, lng: pLng };
+            }
+        }
+
         const finalEq: EquipmentAsset = {
             ...editingEquipment,
+            gpsPin: cleanGpsPin,
             systemGroupId: sysId,
             systemGroupName: sysName,
             systemGroupRole: sysRole
@@ -738,7 +860,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
     };
 
     const handleDeleteEquipment = async (id: string) => {
-        if (!window.confirm("Are you sure you want to delete this equipment?")) return;
+        if (!(await globalConfirm("Are you sure you want to delete this equipment?", "Delete Equipment", "Delete Equipment", "Cancel"))) return;
         const updatedEquipment = equipment.filter(e => e.id !== id);
         try {
             const cleanedEquipment = cleanListForFirestore(updatedEquipment);
@@ -791,8 +913,51 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                 } 
             });
             
+            let ocrUpdates: Partial<EquipmentAsset> = {};
+            if (photoType === 'serialPhotoUrl' || photoType === 'unitTagPhotoUrl') {
+                try {
+                    showToast.info("Scanning data plate with AI Vision...");
+                    const ocrData = await scanDataPlatePhoto(file, {
+                        brand: editingEquipment?.brand || '',
+                        model: editingEquipment?.model || '',
+                        serial: editingEquipment?.serial || '',
+                        year: editingEquipment?.year || '',
+                        tonnage: editingEquipment?.tonnage ? String(editingEquipment.tonnage) : '',
+                        refrigerantType: editingEquipment?.refrigerantType || '',
+                        electricityType: editingEquipment?.electricityType || '',
+                        seerRating: editingEquipment?.seerRating || ''
+                    });
+
+                    ocrUpdates = {
+                        type: editingEquipment?.type && editingEquipment.type !== 'System' && editingEquipment.type !== 'Equipment' && editingEquipment.type.trim() !== '' ? editingEquipment.type : (ocrData.type || editingEquipment?.type || ''),
+                        brand: editingEquipment?.brand && editingEquipment.brand.trim() !== '' ? editingEquipment.brand : (ocrData.brand || editingEquipment?.brand || ''),
+                        model: editingEquipment?.model && editingEquipment.model.trim() !== '' ? editingEquipment.model : (ocrData.model || editingEquipment?.model || ''),
+                        serial: editingEquipment?.serial && editingEquipment.serial.trim() !== '' ? editingEquipment.serial : (ocrData.serial || editingEquipment?.serial || ''),
+                        year: editingEquipment?.year && editingEquipment.year.trim() !== '' ? editingEquipment.year : (ocrData.year || editingEquipment?.year || ''),
+                        tonnage: editingEquipment?.tonnage ? editingEquipment.tonnage : (ocrData.tonnage ? Number(ocrData.tonnage) : editingEquipment?.tonnage),
+                        refrigerantType: editingEquipment?.refrigerantType && editingEquipment.refrigerantType.trim() !== '' ? editingEquipment.refrigerantType : (ocrData.refrigerantType || editingEquipment?.refrigerantType || ''),
+                        refrigerantCharge: editingEquipment?.refrigerantCharge && editingEquipment.refrigerantCharge.trim() !== '' ? editingEquipment.refrigerantCharge : (ocrData.refrigerantCharge || editingEquipment?.refrigerantCharge || ''),
+                        btuCapacity: editingEquipment?.btuCapacity && editingEquipment.btuCapacity.trim() !== '' ? editingEquipment.btuCapacity : (ocrData.btuCapacity || editingEquipment?.btuCapacity || ''),
+                        heatType: editingEquipment?.heatType && editingEquipment.heatType.trim() !== '' ? editingEquipment.heatType : (ocrData.heatType || editingEquipment?.heatType || ''),
+                        electricityType: editingEquipment?.electricityType && editingEquipment.electricityType.trim() !== '' ? editingEquipment.electricityType : (ocrData.electricityType || editingEquipment?.electricityType || ''),
+                        volts: editingEquipment?.volts && editingEquipment.volts.trim() !== '' ? editingEquipment.volts : (ocrData.volts || editingEquipment?.volts || ''),
+                        amps: editingEquipment?.amps && editingEquipment.amps.trim() !== '' ? editingEquipment.amps : (ocrData.amps || editingEquipment?.amps || ''),
+                        phase: editingEquipment?.phase && editingEquipment.phase.trim() !== '' ? editingEquipment.phase : (ocrData.phase || editingEquipment?.phase || ''),
+                        seerRating: editingEquipment?.seerRating && editingEquipment.seerRating.trim() !== '' ? editingEquipment.seerRating : (ocrData.seerRating || editingEquipment?.seerRating || ''),
+                        filterType: editingEquipment?.filterType && editingEquipment.filterType.trim() !== '' ? editingEquipment.filterType : (ocrData.filterType || editingEquipment?.filterType || ''),
+                        compressorType: editingEquipment?.compressorType && editingEquipment.compressorType.trim() !== '' ? editingEquipment.compressorType : (ocrData.compressorType || editingEquipment?.compressorType || ''),
+                        blowerType: editingEquipment?.blowerType && editingEquipment.blowerType.trim() !== '' ? editingEquipment.blowerType : (ocrData.blowerType || editingEquipment?.blowerType || ''),
+                        systemGroupRole: editingEquipment?.systemGroupRole && editingEquipment.systemGroupRole.trim() !== '' ? editingEquipment.systemGroupRole : (ocrData.systemGroupRole || editingEquipment?.systemGroupRole || '')
+                    };
+                    showToast.success("AI Data Plate Vision scan complete! Form auto-filled.");
+                } catch (ocrErr) {
+                    console.error("AI Data Plate OCR Failed:", ocrErr);
+                }
+            }
+
             setEditingEquipment(prev => prev ? {
                 ...prev,
+                ...ocrUpdates,
                 [photoType]: downloadUrl,
                 [`${photoType.replace('Url', 'Label')}`]: prev[`${photoType.replace('Url', 'Label')}` as keyof EquipmentAsset] || ''
             } : null);
@@ -859,7 +1024,8 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
     };
 
     const openEquipmentModal = (propertyId?: string, eq?: Partial<EquipmentAsset>) => {
-        setEditingEquipment(eq || { propertyId: propertyId || '', brand: '', model: '', serial: '', type: 'System' });
+        const initialWarranty = eq?.warranty || { requiresMaintenance: true, maintenanceIntervalMonths: 6 };
+        setEditingEquipment(eq ? { ...eq, warranty: initialWarranty } : { propertyId: propertyId || '', brand: '', model: '', serial: '', type: 'System', warranty: initialWarranty });
         setIsLinkedToSystem(!!eq?.systemGroupId);
         setSelectedSystemGroupId(eq?.systemGroupId || '');
         setNewSystemGroupName('');
@@ -876,6 +1042,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
         setAutoCreateAirHandler(false);
         setAirHandlerDetails({
             name: 'Air Handler',
+            type: 'Air Handler',
             brand: eq?.brand || '',
             model: '',
             serial: '',
@@ -888,8 +1055,11 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
             refrigerantType: '',
             heatType: '',
             electricityType: '',
+            volts: '',
+            amps: '',
             seerRating: '',
-            filterType: ''
+            filterType: '',
+            blowerType: ''
         });
         setIsEquipmentModalOpen(true);
     };
@@ -914,18 +1084,34 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     <Layers size={10} /> {eq.systemGroupName} ({eq.systemGroupRole || 'Member'})
                                 </span>
                             )}
+                            {eq.replacedParts && eq.replacedParts.length > 0 && (
+                                <span className="text-[10px] px-2 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 rounded-full font-medium flex items-center gap-0.5">
+                                    <Package size={10} /> {eq.replacedParts.length} Replaced Part{eq.replacedParts.length > 1 ? 's' : ''}
+                                </span>
+                            )}
+                            {eq.warranty?.requiresMaintenance !== false && (
+                                <span className="text-[10px] px-2 py-0.5 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 rounded-full font-medium flex items-center gap-0.5 border border-emerald-200 dark:border-emerald-800" title="Routine Maintenance Active">
+                                    <ShieldCheck size={10} /> Maint: {eq.warranty?.maintenanceIntervalMonths || 6}mo
+                                </span>
+                            )}
                         </div>
                         <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 space-y-0.5">
                             <div>SN: {eq.serial || 'N/A'} • Model: {eq.model}</div>
-                            {(eq.year || eq.tonnage || eq.refrigerantType || eq.heatType || eq.electricityType || eq.seerRating || eq.filterType) && (
+                            {(eq.year || eq.tonnage || eq.refrigerantType || eq.refrigerantCharge || eq.btuCapacity || eq.heatType || eq.electricityType || eq.volts || eq.amps || eq.seerRating || eq.filterType || eq.compressorType || eq.blowerType) && (
                                 <div className="text-[11px] text-slate-600 dark:text-slate-400 font-medium flex items-center gap-1.5 flex-wrap pt-0.5 pb-0.5">
                                     {eq.year && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Year: {eq.year}</span>}
                                     {eq.tonnage && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">{eq.tonnage} Tons</span>}
+                                    {eq.btuCapacity && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">BTU: {eq.btuCapacity}</span>}
                                     {eq.refrigerantType && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Ref: {eq.refrigerantType}</span>}
+                                    {eq.refrigerantCharge && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Charge: {eq.refrigerantCharge}</span>}
                                     {eq.heatType && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Heat: {eq.heatType}</span>}
                                     {eq.electricityType && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Elec: {eq.electricityType}</span>}
+                                    {eq.volts && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Volts: {eq.volts}</span>}
+                                    {eq.amps && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Amps: {eq.amps}</span>}
                                     {eq.seerRating && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">SEER: {eq.seerRating}</span>}
                                     {eq.filterType && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Filter: {eq.filterType}</span>}
+                                    {eq.compressorType && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Comp: {eq.compressorType}</span>}
+                                    {eq.blowerType && <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300">Blower: {eq.blowerType}</span>}
                                 </div>
                             )}
                             {(eq.physicalLocation || eq.exactPlacement || eq.servesArea) ? (
@@ -940,10 +1126,16 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                     <MapPin size={10} className="text-slate-400 shrink-0" /> {eq.location}
                                 </div>
                             ) : null}
-                            {eq.gpsPin && (
-                                <div className="text-[10px] text-slate-400 font-mono flex items-center gap-0.5">
+                            {eq.gpsPin && typeof eq.gpsPin.lat === 'number' && typeof eq.gpsPin.lng === 'number' && !isNaN(eq.gpsPin.lat) && !isNaN(eq.gpsPin.lng) && (eq.gpsPin.lat !== 0 || eq.gpsPin.lng !== 0) && (
+                                <a
+                                    href={`https://www.google.com/maps?q=${eq.gpsPin.lat},${eq.gpsPin.lng}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[10px] text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 font-mono flex items-center gap-0.5 hover:underline"
+                                    title="Open coordinates in Google Maps"
+                                >
                                     <Compass size={10} /> GPS: {eq.gpsPin.lat.toFixed(6)}, {eq.gpsPin.lng.toFixed(6)}
-                                </div>
+                                </a>
                             )}
                         </div>
                         {eq.linkedAssetIds && eq.linkedAssetIds.length > 0 && (
@@ -981,7 +1173,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                         {loc.locationType === 'Campus' || loc.locationType === 'Property' ? <Map size={16} className="text-emerald-600 shrink-0" /> : <Building2 size={16} className="text-indigo-500 shrink-0" />}
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="font-bold text-sm text-slate-900 dark:text-slate-100">{loc.name}</span>
+                                <span className="font-bold text-sm text-slate-900 dark:text-slate-100">{loc.propertyName || loc.name}</span>
                                 <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 rounded border border-slate-200 dark:border-slate-700 font-medium uppercase tracking-wider">{loc.locationType || 'Location'}</span>
                                 {loc.photos && loc.photos.length > 0 && (
                                     <span className="text-[10px] text-slate-400 flex items-center gap-0.5" title={`${loc.photos.length} Photo(s)`}>
@@ -1084,6 +1276,15 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                     </Select>
                     <Input label="Address (Optional)" value={editingLocation?.address || ''} onChange={e => setEditingLocation({...editingLocation, address: e.target.value})} placeholder="Location specific address" />
                     <Input label="Notes" value={editingLocation?.notes || ''} onChange={e => setEditingLocation({...editingLocation, notes: e.target.value})} placeholder="Access details, etc." />
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer pt-1">
+                        <input
+                            type="checkbox"
+                            checked={!!editingLocation?.billToSameAsSite}
+                            onChange={e => setEditingLocation({ ...editingLocation, billToSameAsSite: e.target.checked })}
+                            className="rounded text-primary-600 focus:ring-primary-500 h-4 w-4"
+                        />
+                        <span>Bill directly to this location (Billing entity matches site location)</span>
+                    </label>
                     
                     <div className="flex justify-end pt-4">
                         <Button onClick={handleSaveLocation} variant="primary" className="w-full">Save Location</Button>
@@ -1217,13 +1418,14 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                     <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
                         <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1"><MapPin size={14} /> {t("Precise Field Location Hierarchy")}</h5>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <Select label="Parent Location (Site)" value={editingEquipment?.propertyId || ''} onChange={e => setEditingEquipment({...editingEquipment, propertyId: e.target.value})}>
-                                <option value="">-- Unassigned --</option>
-                                {locations.map(l => (
-                                    <option key={l.id} value={l.id}>{l.name} ({l.locationType || 'Location'})</option>
-                                ))}
-                            </Select>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                            <LocationSearchSelector 
+                                locations={locations}
+                                selectedLocationId={editingEquipment?.propertyId || ''}
+                                onSelectLocation={(loc) => setEditingEquipment({ ...editingEquipment, propertyId: loc.id })}
+                                label="Parent Location (Site)"
+                                placeholder="Search location name, store #1042, address, city, zip, building..."
+                            />
                             <Select label="Area (Physical Location)" value={editingEquipment?.physicalLocation || ''} onChange={e => setEditingEquipment({...editingEquipment, physicalLocation: e.target.value})}>
                                 <option value="">-- Select Area --</option>
                                 {PHYSICAL_LOCATION_OPTIONS.map(opt => (
@@ -1257,54 +1459,109 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                 <div className="grid grid-cols-2 gap-2">
                                     <Input 
                                         label="GPS Latitude" 
-                                        type="number" 
-                                        step="any"
-                                        value={editingEquipment?.gpsPin?.lat ?? ''} 
+                                        type="text" 
+                                        inputMode="decimal"
+                                        value={editingEquipment?.gpsPin?.lat !== undefined && editingEquipment?.gpsPin?.lat !== null ? String(editingEquipment.gpsPin.lat) : ''} 
                                         onChange={e => {
-                                            const currentPin = editingEquipment?.gpsPin || { lat: 0, lng: 0 };
-                                            setEditingEquipment({...editingEquipment, gpsPin: { ...currentPin, lat: e.target.value === '' ? 0 : Number(e.target.value) }});
+                                            const val = e.target.value;
+                                            const currentLng = editingEquipment?.gpsPin?.lng;
+                                            if (val === '') {
+                                                setEditingEquipment({
+                                                    ...editingEquipment,
+                                                    gpsPin: currentLng !== undefined ? { lat: undefined as any, lng: currentLng } : undefined
+                                                });
+                                            } else {
+                                                setEditingEquipment({
+                                                    ...editingEquipment,
+                                                    gpsPin: { ...(editingEquipment?.gpsPin || {}), lat: val as any, lng: currentLng ?? ('' as any) }
+                                                });
+                                            }
                                         }} 
                                         placeholder="29.4241"
                                     />
                                     <Input 
                                         label="GPS Longitude" 
-                                        type="number" 
-                                        step="any"
-                                        value={editingEquipment?.gpsPin?.lng ?? ''} 
+                                        type="text" 
+                                        inputMode="decimal"
+                                        value={editingEquipment?.gpsPin?.lng !== undefined && editingEquipment?.gpsPin?.lng !== null ? String(editingEquipment.gpsPin.lng) : ''} 
                                         onChange={e => {
-                                            const currentPin = editingEquipment?.gpsPin || { lat: 0, lng: 0 };
-                                            setEditingEquipment({...editingEquipment, gpsPin: { ...currentPin, lng: e.target.value === '' ? 0 : Number(e.target.value) }});
+                                            const val = e.target.value;
+                                            const currentLat = editingEquipment?.gpsPin?.lat;
+                                            if (val === '') {
+                                                setEditingEquipment({
+                                                    ...editingEquipment,
+                                                    gpsPin: currentLat !== undefined ? { lat: currentLat, lng: undefined as any } : undefined
+                                                });
+                                            } else {
+                                                setEditingEquipment({
+                                                    ...editingEquipment,
+                                                    gpsPin: { ...(editingEquipment?.gpsPin || {}), lat: currentLat ?? ('' as any), lng: val as any }
+                                                });
+                                            }
                                         }} 
                                         placeholder="-98.4936"
                                     />
                                 </div>
-                                <button 
-                                    type="button"
-                                    onClick={async () => {
-                                        setGpsLoading(true);
-                                        try {
-                                            const loc = await getCurrentLocation();
-                                            if (loc) {
-                                                setEditingEquipment(prev => ({
-                                                    ...prev,
-                                                    gpsPin: { lat: loc.latitude, lng: loc.longitude }
-                                                }));
-                                                showToast.success("GPS Coordinates Captured!");
-                                            } else {
-                                                showToast.error("Failed to capture location. Please check device permissions.");
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <button 
+                                        type="button"
+                                        onClick={async () => {
+                                            setGpsLoading(true);
+                                            try {
+                                                const loc = await getCurrentLocation();
+                                                const lat = loc ? (typeof loc.lat === 'number' ? loc.lat : (loc as any).latitude) : undefined;
+                                                const lng = loc ? (typeof loc.lng === 'number' ? loc.lng : (loc as any).longitude) : undefined;
+                                                if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
+                                                    setEditingEquipment(prev => ({
+                                                        ...prev,
+                                                        gpsPin: { lat, lng }
+                                                    }));
+                                                    showToast.success(`GPS Coordinates Captured: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+                                                } else {
+                                                    showToast.error("Failed to capture location. Please check device permissions.");
+                                                }
+                                            } catch (err) {
+                                                showToast.error("Error capturing GPS coordinates.");
+                                            } finally {
+                                                setGpsLoading(false);
                                             }
-                                        } catch (err) {
-                                            showToast.error("Error capturing GPS coordinates.");
-                                        } finally {
-                                            setGpsLoading(false);
+                                        }}
+                                        disabled={gpsLoading}
+                                        className="flex items-center justify-center gap-1.5 py-1 px-3 border border-indigo-200 hover:border-indigo-300 dark:border-indigo-900 dark:hover:border-indigo-800 rounded bg-indigo-50/50 hover:bg-indigo-50 dark:bg-indigo-950/20 dark:hover:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 text-xs font-semibold h-8 transition-colors disabled:opacity-50"
+                                    >
+                                        <MapPin size={14} className={gpsLoading ? "animate-bounce" : ""} />
+                                        {gpsLoading ? "Capturing GPS..." : "Capture Device GPS"}
+                                    </button>
+
+                                    {(editingEquipment?.gpsPin?.lat !== undefined || editingEquipment?.gpsPin?.lng !== undefined) && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingEquipment({ ...editingEquipment, gpsPin: undefined })}
+                                            className="text-[11px] font-bold text-rose-500 hover:text-rose-700 underline cursor-pointer"
+                                        >
+                                            Clear GPS
+                                        </button>
+                                    )}
+
+                                    {(() => {
+                                        const pLat = typeof editingEquipment?.gpsPin?.lat === 'number' ? editingEquipment.gpsPin.lat : parseFloat(String(editingEquipment?.gpsPin?.lat || ''));
+                                        const pLng = typeof editingEquipment?.gpsPin?.lng === 'number' ? editingEquipment.gpsPin.lng : parseFloat(String(editingEquipment?.gpsPin?.lng || ''));
+                                        if (!isNaN(pLat) && !isNaN(pLng) && (pLat !== 0 || pLng !== 0)) {
+                                            return (
+                                                <a
+                                                    href={`https://www.google.com/maps?q=${pLat},${pLng}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                                                >
+                                                    <span>Preview on Google Maps</span>
+                                                    <ExternalLink size={10} />
+                                                </a>
+                                            );
                                         }
-                                    }}
-                                    disabled={gpsLoading}
-                                    className="flex items-center justify-center gap-1.5 py-1 px-3 border border-indigo-200 hover:border-indigo-300 dark:border-indigo-900 dark:hover:border-indigo-800 rounded bg-indigo-50/50 hover:bg-indigo-50 dark:bg-indigo-950/20 dark:hover:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 text-xs font-semibold h-8 transition-colors disabled:opacity-50"
-                                >
-                                    <MapPin size={14} className={gpsLoading ? "animate-bounce" : ""} />
-                                    {gpsLoading ? "Capturing GPS..." : "Capture Device GPS"}
-                                </button>
+                                        return null;
+                                    })()}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1409,7 +1666,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                                     <summary className="flex items-center justify-between p-2 cursor-pointer select-none text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800">
                                                         <span className="flex items-center gap-1.5">
                                                             <MapPin size={12} className="text-blue-500" />
-                                                            {loc.name} ({groupEq.length})
+                                                            {loc.propertyName || loc.name} ({groupEq.length})
                                                         </span>
                                                         <ChevronDown size={14} className="transition-transform group-open:rotate-180 text-slate-400" />
                                                     </summary>
@@ -1635,6 +1892,61 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                             {url ? (
                                                 <>
                                                     <img src={url} alt={label} className="absolute inset-0 w-full h-full object-cover rounded-xl" />
+                                                    {(key === 'serialPhotoUrl' || key === 'unitTagPhotoUrl') && (
+                                                        <div className="absolute top-1 left-1 flex gap-1 z-10">
+                                                            <button
+                                                                type="button"
+                                                                onClick={async (e) => {
+                                                                    e.preventDefault(); e.stopPropagation();
+                                                                    try {
+                                                                        showToast.info("Scanning data plate with AI Vision...");
+                                                                        const ocrData = await scanDataPlatePhoto(url, {
+                                                                            brand: editingEquipment?.brand || '',
+                                                                            model: editingEquipment?.model || '',
+                                                                            serial: editingEquipment?.serial || '',
+                                                                            year: editingEquipment?.year || '',
+                                                                            tonnage: editingEquipment?.tonnage ? String(editingEquipment.tonnage) : '',
+                                                                            refrigerantType: editingEquipment?.refrigerantType || '',
+                                                                            electricityType: editingEquipment?.electricityType || '',
+                                                                            seerRating: editingEquipment?.seerRating || ''
+                                                                        });
+
+                                                                        const ocrUpdates = {
+                                                                            type: editingEquipment?.type && editingEquipment.type !== 'System' && editingEquipment.type !== 'Equipment' && editingEquipment.type.trim() !== '' ? editingEquipment.type : (ocrData.type || editingEquipment?.type || ''),
+                                                                            brand: editingEquipment?.brand && editingEquipment.brand.trim() !== '' ? editingEquipment.brand : (ocrData.brand || editingEquipment?.brand || ''),
+                                                                            model: editingEquipment?.model && editingEquipment.model.trim() !== '' ? editingEquipment.model : (ocrData.model || editingEquipment?.model || ''),
+                                                                            serial: editingEquipment?.serial && editingEquipment.serial.trim() !== '' ? editingEquipment.serial : (ocrData.serial || editingEquipment?.serial || ''),
+                                                                            year: editingEquipment?.year && editingEquipment.year.trim() !== '' ? editingEquipment.year : (ocrData.year || editingEquipment?.year || ''),
+                                                                            tonnage: editingEquipment?.tonnage ? editingEquipment.tonnage : (ocrData.tonnage ? Number(ocrData.tonnage) : editingEquipment?.tonnage),
+                                                                            refrigerantType: editingEquipment?.refrigerantType && editingEquipment.refrigerantType.trim() !== '' ? editingEquipment.refrigerantType : (ocrData.refrigerantType || editingEquipment?.refrigerantType || ''),
+                                                                            refrigerantCharge: editingEquipment?.refrigerantCharge && editingEquipment.refrigerantCharge.trim() !== '' ? editingEquipment.refrigerantCharge : (ocrData.refrigerantCharge || editingEquipment?.refrigerantCharge || ''),
+                                                                            btuCapacity: editingEquipment?.btuCapacity && editingEquipment.btuCapacity.trim() !== '' ? editingEquipment.btuCapacity : (ocrData.btuCapacity || editingEquipment?.btuCapacity || ''),
+                                                                            heatType: editingEquipment?.heatType && editingEquipment.heatType.trim() !== '' ? editingEquipment.heatType : (ocrData.heatType || editingEquipment?.heatType || ''),
+                                                                            electricityType: editingEquipment?.electricityType && editingEquipment.electricityType.trim() !== '' ? editingEquipment.electricityType : (ocrData.electricityType || editingEquipment?.electricityType || ''),
+                                                                            volts: editingEquipment?.volts && editingEquipment.volts.trim() !== '' ? editingEquipment.volts : (ocrData.volts || editingEquipment?.volts || ''),
+                                                                            amps: editingEquipment?.amps && editingEquipment.amps.trim() !== '' ? editingEquipment.amps : (ocrData.amps || editingEquipment?.amps || ''),
+                                                                            phase: editingEquipment?.phase && editingEquipment.phase.trim() !== '' ? editingEquipment.phase : (ocrData.phase || editingEquipment?.phase || ''),
+                                                                            seerRating: editingEquipment?.seerRating && editingEquipment.seerRating.trim() !== '' ? editingEquipment.seerRating : (ocrData.seerRating || editingEquipment?.seerRating || ''),
+                                                                            filterType: editingEquipment?.filterType && editingEquipment.filterType.trim() !== '' ? editingEquipment.filterType : (ocrData.filterType || editingEquipment?.filterType || ''),
+                                                                            compressorType: editingEquipment?.compressorType && editingEquipment.compressorType.trim() !== '' ? editingEquipment.compressorType : (ocrData.compressorType || editingEquipment?.compressorType || ''),
+                                                                            blowerType: editingEquipment?.blowerType && editingEquipment.blowerType.trim() !== '' ? editingEquipment.blowerType : (ocrData.blowerType || editingEquipment?.blowerType || ''),
+                                                                            systemGroupRole: editingEquipment?.systemGroupRole && editingEquipment.systemGroupRole.trim() !== '' ? editingEquipment.systemGroupRole : (ocrData.systemGroupRole || editingEquipment?.systemGroupRole || '')
+                                                                        };
+
+                                                                        setEditingEquipment(prev => prev ? { ...prev, ...ocrUpdates } : null);
+                                                                        showToast.success("AI Data Plate Vision scan complete! Form auto-filled.");
+                                                                    } catch (err) {
+                                                                        console.error("AI Data Plate OCR Failed:", err);
+                                                                        showToast.error("Data plate OCR scan failed.");
+                                                                    }
+                                                                }}
+                                                                className="p-1 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-md transition-transform hover:scale-110"
+                                                                title={t("Scan / Parse Data Plate with AI")}
+                                                            >
+                                                                <Sparkles size={12} />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                     <button 
                                                         type="button" 
                                                         onClick={(e) => { 
@@ -1660,6 +1972,7 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                                             <ImageIcon size={16} className="text-blue-500 dark:text-blue-400" />
                                                             <input 
                                                                 type="file" 
+                                                                multiple
                                                                 className="hidden" 
                                                                 accept="image/*" 
                                                                 onChange={(e) => handleAssetPhotoUpload(e, key as any)} 
@@ -1694,6 +2007,236 @@ Return ONLY a valid JSON object matching this schema with NO markdown wrapper:
                                 );
                             })}
                         </div>
+                    </div>
+                    
+                    {/* SECTION 6: Replaced Parts & Component Maintenance History */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                <Package size={14} className="text-amber-500" /> {t("Replaced Parts & Component History")} ({(editingEquipment?.replacedParts || []).length})
+                            </h5>
+                        </div>
+
+                        {/* List of existing replaced parts on this unit */}
+                        {(editingEquipment?.replacedParts || []).length === 0 ? (
+                            <p className="text-xs text-slate-400 italic">No replacement parts recorded on this unit.</p>
+                        ) : (
+                            <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 custom-scrollbar">
+                                {(editingEquipment?.replacedParts || []).map((part: any, pIdx: number) => (
+                                    <div key={pIdx} className="p-2 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-xs flex justify-between items-center gap-2">
+                                        <div>
+                                            <span className="font-bold text-slate-900 dark:text-white">{part.name}</span>
+                                            <span className="text-slate-400 text-[10px] ml-2 font-mono">
+                                                {part.partNumber ? `PN: ${part.partNumber} • ` : ''}
+                                                {part.replacedAt ? new Date(part.replacedAt).toLocaleDateString() : ''}
+                                            </span>
+                                            {part.notes && <p className="text-[10px] text-slate-500 italic line-clamp-1">{part.notes}</p>}
+                                        </div>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                            <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 font-bold text-[9px] rounded">
+                                                Qty: {part.quantity || 1}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const updated = (editingEquipment?.replacedParts || []).filter((_: any, i: number) => i !== pIdx);
+                                                    setEditingEquipment(prev => prev ? { ...prev, replacedParts: updated } : null);
+                                                }}
+                                                className="text-red-500 hover:text-red-700 p-0.5 cursor-pointer"
+                                                title="Remove part"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    
+                    {/* SECTION 7: Routine Maintenance & Warranty Tracking */}
+                    <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-lg border border-slate-200 dark:border-slate-700 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                <ShieldCheck size={14} className="text-emerald-500" /> {t("Routine Maintenance & Warranty Tracking")}
+                            </h5>
+                            {editingEquipment?.warranty?.requiresMaintenance !== false && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                                    Active Tracking
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Maintenance Tracking Toggle */}
+                        <div className="flex items-center justify-between p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                            <div>
+                                <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                                        checked={editingEquipment?.warranty?.requiresMaintenance !== false}
+                                        onChange={e => {
+                                            const isChecked = e.target.checked;
+                                            setEditingEquipment(prev => prev ? {
+                                                ...prev,
+                                                warranty: {
+                                                    ...(prev.warranty || {}),
+                                                    requiresMaintenance: isChecked,
+                                                    maintenanceIntervalMonths: prev.warranty?.maintenanceIntervalMonths || 6
+                                                }
+                                            } : null);
+                                        }}
+                                    />
+                                    Track Routine Maintenance Reminders
+                                </label>
+                                <p className="text-[10px] text-slate-500 mt-0.5 ml-6">
+                                    Automatically alerts staff and customers when routine tune-ups or seasonal maintenance are due.
+                                </p>
+                            </div>
+                        </div>
+
+                        {editingEquipment?.warranty?.requiresMaintenance !== false && (
+                            <div className="space-y-3 pt-1">
+                                {/* Maintenance Interval with Presets */}
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                                        Maintenance Interval (Months)
+                                    </label>
+                                    <div className="flex gap-2 items-center flex-wrap">
+                                        <div className="w-28">
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                max="60"
+                                                value={editingEquipment?.warranty?.maintenanceIntervalMonths ?? 6}
+                                                onChange={e => {
+                                                    const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                                    setEditingEquipment(prev => prev ? {
+                                                        ...prev,
+                                                        warranty: {
+                                                            ...(prev.warranty || {}),
+                                                            maintenanceIntervalMonths: val
+                                                        }
+                                                    } : null);
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="flex gap-1.5 flex-wrap">
+                                            {[
+                                                { label: '3 mo (Quarterly)', val: 3 },
+                                                { label: '6 mo (Seasonal/Bi-Annual)', val: 6 },
+                                                { label: '12 mo (Annual)', val: 12 }
+                                            ].map(preset => (
+                                                <button
+                                                    key={preset.val}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setEditingEquipment(prev => prev ? {
+                                                            ...prev,
+                                                            warranty: {
+                                                                ...(prev.warranty || {}),
+                                                                maintenanceIntervalMonths: preset.val
+                                                            }
+                                                        } : null);
+                                                    }}
+                                                    className={`text-[11px] px-2.5 py-1 rounded-md font-medium transition-colors border ${
+                                                        (editingEquipment?.warranty?.maintenanceIntervalMonths ?? 6) === preset.val
+                                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                                    }`}
+                                                >
+                                                    {preset.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Dates: Last Maintained & Install Date */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <Input
+                                        label="Last Maintained Date"
+                                        type="date"
+                                        value={editingEquipment?.warranty?.lastMaintenanceDate || ''}
+                                        onChange={e => setEditingEquipment(prev => prev ? {
+                                            ...prev,
+                                            warranty: {
+                                                ...(prev.warranty || {}),
+                                                lastMaintenanceDate: e.target.value
+                                            }
+                                        } : null)}
+                                        placeholder="YYYY-MM-DD"
+                                    />
+                                    <Input
+                                        label="Installation Date"
+                                        type="date"
+                                        value={editingEquipment?.installDate || ''}
+                                        onChange={e => setEditingEquipment(prev => prev ? {
+                                            ...prev,
+                                            installDate: e.target.value
+                                        } : null)}
+                                        placeholder="YYYY-MM-DD"
+                                    />
+                                </div>
+
+                                {/* Warranty Coverage Information */}
+                                <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                        Manufacturer & Labor Warranty
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <Input
+                                            label="Manufacturer Parts Warranty (Months)"
+                                            type="number"
+                                            value={editingEquipment?.warranty?.manufacturerDurationMonths ?? ''}
+                                            onChange={e => {
+                                                const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                                setEditingEquipment(prev => prev ? {
+                                                    ...prev,
+                                                    warranty: {
+                                                        ...(prev.warranty || {}),
+                                                        manufacturerDurationMonths: val
+                                                    }
+                                                } : null);
+                                            }}
+                                            placeholder="e.g. 120 (10 yrs)"
+                                        />
+                                        <Input
+                                            label="Labor Warranty (Months)"
+                                            type="number"
+                                            value={editingEquipment?.warranty?.laborDurationMonths ?? ''}
+                                            onChange={e => {
+                                                const val = e.target.value === '' ? undefined : Number(e.target.value);
+                                                setEditingEquipment(prev => prev ? {
+                                                    ...prev,
+                                                    warranty: {
+                                                        ...(prev.warranty || {}),
+                                                        laborDurationMonths: val
+                                                    }
+                                                } : null);
+                                            }}
+                                            placeholder="e.g. 12 or 24"
+                                        />
+                                    </div>
+                                    <div className="mt-2.5">
+                                        <Input
+                                            label="Warranty Notes / Terms"
+                                            type="text"
+                                            value={editingEquipment?.warranty?.warrantyNotes || editingEquipment?.warranty?.manufacturerTerms || ''}
+                                            onChange={e => setEditingEquipment(prev => prev ? {
+                                                ...prev,
+                                                warranty: {
+                                                    ...(prev.warranty || {}),
+                                                    warrantyNotes: e.target.value,
+                                                    manufacturerTerms: e.target.value
+                                                }
+                                            } : null)}
+                                            placeholder="e.g. 10-year parts registered, replace filters monthly"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                     
                     <div className="flex justify-end pt-2">

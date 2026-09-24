@@ -259,7 +259,7 @@ const MockUpdatingCharts = ({ activeTab }: { activeTab: 'layout' | 'users' | 'an
 
 const IntegrationsMarquee = () => {
     const integrations = [
-        'QuickBooks', 'Google Local Services', 'Mailchimp', 'Zapier', 'Twilio', 'Stripe', 'Square', 'Angi', 'Yelp', 'Xero', 'Salesforce', 'HubSpot', 'Podium', 'Thumbtack', 'ServiceMagic', 'HomeAdvisor', 'Gusto'
+        'QuickBooks', 'Google Local Services', 'Mailchimp', 'Zapier', 'Twilio', 'TekTrakker Payments', 'Hearth', 'Angi', 'Yelp', 'Xero', 'Salesforce', 'HubSpot', 'Podium', 'Thumbtack', 'ServiceMagic', 'HomeAdvisor', 'Gusto'
     ];
     return (
         <div className="w-full bg-white border-y border-slate-200 py-10 overflow-hidden relative">

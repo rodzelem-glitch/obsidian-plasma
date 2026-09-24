@@ -58,15 +58,15 @@ export const PAINTING_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organizationId'>
     { name: 'Concrete Stain & Seal (Per Sqft)', description: 'Acid stain or solid color stain for patios/driveways.', baseCost: 0.85, avgLabor: 0.1, category: 'Painting' },
 
     // --- 7. CLEANING & PRESSURE WASHING ---
-    { name: 'Pressure Washing - Siding (Per Sqft)', description: 'Soft wash removal of algae, mold, and dirt.', baseCost: 0.05, avgLabor: 0.01, category: 'Maintenance' },
-    { name: 'Pressure Washing - Driveway/Walkway (Per Sqft)', description: 'High-pressure surface cleaning of concrete.', baseCost: 0.08, avgLabor: 0.02, category: 'Maintenance' },
-    { name: 'Gutter Exterior - Hand Scrub (Per LF)', description: 'Removal of "tiger stripes" from gutter faces.', baseCost: 0.50, avgLabor: 0.1, category: 'Maintenance' },
+    { name: 'Pressure Washing - Siding (Per Sqft)', description: 'Soft wash removal of algae, mold, and dirt.', baseCost: 0.05, avgLabor: 0.01, category: 'Painting' },
+    { name: 'Pressure Washing - Driveway/Walkway (Per Sqft)', description: 'High-pressure surface cleaning of concrete.', baseCost: 0.08, avgLabor: 0.02, category: 'Painting' },
+    { name: 'Gutter Exterior - Hand Scrub (Per LF)', description: 'Removal of "tiger stripes" from gutter faces.', baseCost: 0.50, avgLabor: 0.1, category: 'Painting' },
     { name: 'Deck Stripping (Chemical)', description: 'Apply stripping agent and power wash to remove old stain.', baseCost: 0.75, avgLabor: 0.1, category: 'Painting' },
-    { name: 'Roof Soft Wash (Per Sqft)', description: 'Chemical treatment to remove gloeocapsa magma (black streaks).', baseCost: 0.15, avgLabor: 0.03, category: 'Maintenance' },
+    { name: 'Roof Soft Wash (Per Sqft)', description: 'Chemical treatment to remove gloeocapsa magma (black streaks).', baseCost: 0.15, avgLabor: 0.03, category: 'Painting' },
 
     // --- 8. DIAGNOSTICS & COLOR CONSULT ---
-    { name: 'Color Consultation - In Home', description: 'Professional selection of color palettes and finishes with samples.', baseCost: 0, avgLabor: 1.5, category: 'Diagnostics' },
-    { name: 'Moisture Testing - Wood/Drywall', description: 'Pin-style moisture probe testing prior to coating.', baseCost: 0, avgLabor: 0.5, category: 'Diagnostics' },
-    { name: 'Adhesion Tape Test', description: 'ASTM standard testing to verify bond of existing coatings.', baseCost: 0, avgLabor: 0.75, category: 'Diagnostics' },
-    { name: 'Lead Paint Test (Swab)', description: 'Instant chemical swab test for lead presence.', baseCost: 10, avgLabor: 0.25, category: 'Diagnostics' }
+    { name: 'Color Consultation - In Home', description: 'Professional selection of color palettes and finishes with samples.', baseCost: 0, avgLabor: 1.5, category: 'Painting' },
+    { name: 'Moisture Testing - Wood/Drywall', description: 'Pin-style moisture probe testing prior to coating.', baseCost: 0, avgLabor: 0.5, category: 'Painting' },
+    { name: 'Adhesion Tape Test', description: 'ASTM standard testing to verify bond of existing coatings.', baseCost: 0, avgLabor: 0.75, category: 'Painting' },
+    { name: 'Lead Paint Test (Swab)', description: 'Instant chemical swab test for lead presence.', baseCost: 10, avgLabor: 0.25, category: 'Painting' }
 ];

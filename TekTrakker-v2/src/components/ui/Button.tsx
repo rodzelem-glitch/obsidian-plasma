@@ -17,6 +17,7 @@ const Button: React.FC<ButtonProps> = ({
     className, 
     children, 
     as: Component = 'button',
+    type,
     href,
     onClick,
     ...props 
@@ -40,18 +41,27 @@ const Button: React.FC<ButtonProps> = ({
         solid: "bg-primary-600 text-white hover:bg-primary-700 focus-visible:ring-primary-500 shadow-sm hover:shadow-md" // Map solid to primary
     };
 
+    const isDisabled = Boolean(isLoading || props.disabled);
+
     const handleClick = (e: any) => {
-        if (!isLoading && !props.disabled) {
-            triggerHapticFeedback();
+        if (isDisabled) {
+            if (e && typeof e.preventDefault === 'function') {
+                e.preventDefault();
+            }
+            return;
         }
+        triggerHapticFeedback();
         if (onClick) {
             onClick(e);
         }
     };
 
+    const buttonType = Component === 'button' ? (type || 'button') : type;
+
     const combinedProps = {
-        className: `${baseClass} ${sizeClasses[size]} ${variantClasses[variant] || variantClasses.primary} ${className || ''}`,
-        disabled: isLoading || props.disabled,
+        type: buttonType,
+        className: `${baseClass} ${sizeClasses[size]} ${variantClasses[variant] || variantClasses.primary} ${isDisabled ? 'pointer-events-none opacity-60' : ''} ${className || ''}`,
+        disabled: isDisabled,
         href,
         onClick: handleClick,
         ...props

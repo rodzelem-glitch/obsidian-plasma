@@ -35,6 +35,21 @@ export const onNotificationCreated = functions.firestore
                 return;
             }
 
+            const customData: Record<string, string> = {
+                notificationId: context.params.notificationId,
+                url: notification.link || notification.url || '/',
+                link: notification.link || notification.url || '/',
+                type: notification.type || 'general'
+            };
+
+            if (notification.data && typeof notification.data === 'object') {
+                for (const [key, value] of Object.entries(notification.data)) {
+                    if (value !== undefined && value !== null) {
+                        customData[key] = String(value);
+                    }
+                }
+            }
+
             const message = {
                 notification: {
                     title: notification.title || 'New Notification',
@@ -45,10 +60,7 @@ export const onNotificationCreated = functions.firestore
                         channelId: 'default',
                     }
                 },
-                data: {
-                    url: notification.link || notification.url || '/',
-                    type: notification.type || 'general'
-                },
+                data: customData,
                 tokens: tokens
             };
 

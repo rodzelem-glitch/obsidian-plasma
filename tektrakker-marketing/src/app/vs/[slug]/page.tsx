@@ -30,7 +30,7 @@ const COMPARISON_DATA: Record<string, CompetitorData> = {
         title: 'TekTrakker vs. ServiceTitan System Audit & Comparison',
         description: 'While ServiceTitan is an established giant in the enterprise FSM market, its legacy SQL database structure, per-user pricing model, and rigid workflows create significant overhead. TekTrakker offers a modern, optimistic event-driven system built on serverless architecture with flat-rate pricing and flexible offline autonomy.',
         targetAudience: 'Mid-to-large-scale contractors looking to eliminate per-user software bill-creep and transition to a more agile, offline-first mobile workflow.',
-        pricingSummary: 'ServiceTitan relies on custom enterprise pricing that scales with user seats and technician licenses, often running thousands of dollars monthly. TekTrakker offers a flat-rate Enterprise plan at $350/mo for unlimited users with no per-job commissions.',
+        pricingSummary: 'ServiceTitan relies on custom enterprise pricing that scales with user seats and technician licenses, often running thousands of dollars monthly. TekTrakker offers a flat-rate Enterprise plan at $749/mo for unlimited users with no per-job commissions.',
         strengths: [
             'Established brand with 10+ years of operational history.',
             'Deep, highly rigid workflows that prevent human error before write.',
@@ -42,7 +42,7 @@ const COMPARISON_DATA: Record<string, CompetitorData> = {
             'Limited offline mobile capabilities that require constant connectivity for job completion.'
         ],
         comparison: [
-            { feature: 'Pricing Structure', tektrakker: 'Flat $350/mo (Unlimited Users)', competitor: 'Per-User Custom Quotes ($$$)', hasT: true, hasC: false },
+            { feature: 'Pricing Structure', tektrakker: 'Flat $749/mo (Unlimited Users)', competitor: 'Per-User Custom Quotes ($$$)', hasT: true, hasC: false },
             { feature: 'Database Architecture', tektrakker: 'Modern Serverless Google Cloud + Event Sourcing', competitor: 'Relational SQL Monolith', hasT: true, hasC: false },
             { feature: 'Offline Mobile Sync', tektrakker: 'Offline-First SQLite Cache + Store-and-Forward Sync', competitor: 'Online-Dependent Caching', hasT: true, hasC: false },
             { feature: 'QuickBooks Integration', tektrakker: 'Direct, Native Bi-directional Sync', competitor: 'Direct Sync (but high maintenance)', hasT: true, hasC: true },
@@ -70,7 +70,7 @@ const COMPARISON_DATA: Record<string, CompetitorData> = {
         title: 'TekTrakker vs. Jobber Feature & System Comparison',
         description: 'Jobber is a popular, easy-to-use tool for small residential trade businesses. However, as service companies grow, Jobber\'s per-seat pricing scaling, thin offline functionality, and lack of advanced AI dispatching become bottlenecks. TekTrakker provides a more robust, architecturally mature platform designed to support scale without seat costs.',
         targetAudience: 'Growing service businesses with 5+ technicians who are outgrowing Jobber\'s basic scheduling features and looking for advanced dispatching and AI integrations.',
-        pricingSummary: 'Jobber pricing escalates rapidly as you add seats (e.g., their Grow plan caps at 15 users for ~$249/mo, with extra costs). TekTrakker provides unlimited users on its Enterprise plan for a flat $350/mo, saving hundreds of dollars monthly for larger teams.',
+        pricingSummary: 'Jobber pricing escalates rapidly as you add seats (e.g., their Grow plan caps at 15 users for ~$249/mo, with extra costs). TekTrakker provides unlimited users on its Enterprise plan for a flat $749/mo, saving hundreds of dollars monthly for larger teams.',
         strengths: [
             'Very clean, intuitive user interface for small teams.',
             'Strong customer-facing notification templates.',
@@ -82,7 +82,7 @@ const COMPARISON_DATA: Record<string, CompetitorData> = {
             'Lacks a free homeowner portal, leading to manual client scheduling updates.'
         ],
         comparison: [
-            { feature: 'Pricing Structure', tektrakker: 'Flat $350/mo (Unlimited Users)', competitor: 'Per-Seat Tiered Plans (caps at 15 users)', hasT: true, hasC: false },
+            { feature: 'Pricing Structure', tektrakker: 'Flat $749/mo (Unlimited Users)', competitor: 'Per-Seat Tiered Plans (caps at 15 users)', hasT: true, hasC: false },
             { feature: 'Offline Mobile Sync', tektrakker: 'Offline-First SQLite Cache + Store-and-Forward Sync', competitor: 'Limited caching (needs connection)', hasT: true, hasC: false },
             { feature: 'AI Dispatch Agent', tektrakker: 'AI Virtual Worker dispatcher ($49.99/mo add-on)', competitor: 'No native AI scheduler', hasT: true, hasC: false },
             { feature: 'QuickBooks Integration', tektrakker: 'Direct, Native Bi-directional Sync', competitor: 'Direct Sync (standard API)', hasT: true, hasC: true },
@@ -105,7 +105,7 @@ const COMPARISON_DATA: Record<string, CompetitorData> = {
         title: 'TekTrakker vs. Housecall Pro Feature & System Comparison',
         description: 'Housecall Pro is a widely used FSM tool for residential service providers. However, its pricing is per-user, and it charges commissions on booking widgets and other features. TekTrakker offers a direct alternative with a flat-rate pricing scheme, a free homeowner consumer portal, and advanced AI automation capabilities.',
         targetAudience: 'HVAC, plumbing, and electrical business owners who want to avoid per-user scaling fees, booking commissions, and lack of true offline sync.',
-        pricingSummary: 'Housecall Pro charges per user seat and takes transaction fees/commissions. TekTrakker charges a flat monthly rate ($350 for unlimited users) with zero transaction commissions or booking fees.',
+        pricingSummary: 'Housecall Pro charges per user seat and takes transaction fees/commissions. TekTrakker charges a flat monthly rate ($749 for unlimited users) with zero transaction commissions or booking fees.',
         strengths: [
             'Solid client marketing features and postcards.',
             'Intuitive scheduling board for dispatchers.',
@@ -117,7 +117,7 @@ const COMPARISON_DATA: Record<string, CompetitorData> = {
             'Thin offline mobile database causing connection errors in basements.'
         ],
         comparison: [
-            { feature: 'Pricing Structure', tektrakker: 'Flat $350/mo (Unlimited Users)', competitor: 'Per-User pricing + booking commissions', hasT: true, hasC: false },
+            { feature: 'Pricing Structure', tektrakker: 'Flat $749/mo (Unlimited Users)', competitor: 'Per-User pricing + booking commissions', hasT: true, hasC: false },
             { feature: 'Offline Mobile Sync', tektrakker: 'Offline-First SQLite Cache + Store-and-Forward Sync', competitor: 'Partial caching (connection-dependent)', hasT: true, hasC: false },
             { feature: 'Booking Commissions', tektrakker: 'Zero booking fees or commissions', competitor: 'Charges commissions on online bookings', hasT: true, hasC: false },
             { feature: 'Free Homeowner Vault', tektrakker: '100% free consumer portal for clients', competitor: 'No native homeowner portal', hasT: true, hasC: false },

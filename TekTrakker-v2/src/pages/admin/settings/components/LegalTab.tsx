@@ -2,7 +2,8 @@
 import React from 'react';
 import Card from 'components/ui/Card';
 import Textarea from 'components/ui/Textarea';
-import { Scale, Shield } from 'lucide-react';
+import { Scale, Shield, ShieldCheck } from 'lucide-react';
+import SiteSealEmbed from 'components/payment/SiteSealEmbed';
 
 interface LegalTabProps {
     termsAndConditions: string;
@@ -11,6 +12,8 @@ interface LegalTabProps {
     setCustomerTerms: (val: string) => void;
     proposalTerms: string;
     setProposalTerms: (val: string) => void;
+    pricingDisclaimer?: string;
+    setPricingDisclaimer?: (val: string) => void;
     proposalDisclaimer: string;
     setProposalDisclaimer: (val: string) => void;
     invoiceTerms: string;
@@ -19,6 +22,8 @@ interface LegalTabProps {
     setMembershipTerms: (val: string) => void;
     complianceFooter: string;
     setComplianceFooter: (val: string) => void;
+    pciComplianceSealHtml?: string;
+    setPciComplianceSealHtml?: (val: string) => void;
     proposalProtectionMode: 'none' | 'summary' | 'nda';
     setProposalProtectionMode: (val: 'none' | 'summary' | 'nda') => void;
     proposalNdaContent: string;
@@ -35,10 +40,12 @@ const LegalTab: React.FC<LegalTabProps> = ({
     termsAndConditions, setTermsAndConditions,
     customerTerms, setCustomerTerms,
     proposalTerms, setProposalTerms,
+    pricingDisclaimer = '', setPricingDisclaimer,
     proposalDisclaimer, setProposalDisclaimer,
     invoiceTerms, setInvoiceTerms,
     membershipTerms, setMembershipTerms,
     complianceFooter, setComplianceFooter,
+    pciComplianceSealHtml = '', setPciComplianceSealHtml,
     proposalProtectionMode, setProposalProtectionMode,
     proposalNdaContent, setProposalNdaContent,
     warrantyDisclaimer = '', setWarrantyDisclaimer,
@@ -89,10 +96,61 @@ const LegalTab: React.FC<LegalTabProps> = ({
                     )}
                 </div>
 
-                <Textarea label="Proposal Disclaimer" value={proposalDisclaimer} onChange={e => setProposalDisclaimer(e.target.value)} rows={4} placeholder="Estimates are valid for 30 days..." />
+                <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                            Pricing &amp; Estimate Disclaimer (Applied to All Customer Proposals &amp; Bids)
+                        </label>
+                    </div>
+                    <Textarea 
+                        value={pricingDisclaimer || proposalDisclaimer} 
+                        onChange={e => {
+                            setPricingDisclaimer?.(e.target.value);
+                            setProposalDisclaimer(e.target.value);
+                        }} 
+                        rows={4} 
+                        placeholder="e.g. Quoted installation price is based on a standard installation and includes only the equipment and scope specifically listed in this proposal..." 
+                    />
+                    <div className="flex flex-wrap gap-2 pt-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider self-center">Quick Insert:</span>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const val = "Quoted installation price is based on a standard installation and includes only the equipment and scope specifically listed in this proposal. Price does not include additional refrigerant, copper line set or additional copper piping, ductwork modifications or replacement, electrical upgrades, drain modifications, structural repairs, code-required upgrades, or other unforeseen materials or labor unless specifically stated. If additional work or materials are found to be necessary during installation, TekAir Inc. will notify the customer and obtain approval for any additional charges before proceeding whenever reasonably possible.";
+                                setPricingDisclaimer?.(val);
+                                setProposalDisclaimer(val);
+                            }}
+                            className="text-[10px] bg-primary-50 dark:bg-primary-950/40 hover:bg-primary-100 dark:hover:bg-primary-900/60 text-primary-700 dark:text-primary-300 font-bold px-2.5 py-1 rounded-lg border border-primary-200 dark:border-primary-800 cursor-pointer transition-all"
+                        >
+                            + Standard Installation Scope &amp; Unforeseen Conditions (TekAir)
+                        </button>
+                    </div>
+                </div>
                 <Textarea label="Invoice Terms" value={invoiceTerms} onChange={e => setInvoiceTerms(e.target.value)} rows={4} placeholder="Payment due upon receipt..." />
                 <Textarea label="Membership Terms" value={membershipTerms} onChange={e => setMembershipTerms(e.target.value)} rows={4} placeholder="Terms for recurring service plans..." />
                 <Textarea label="Compliance Footer (Email/PDF)" value={complianceFooter} onChange={e => setComplianceFooter(e.target.value)} rows={2} placeholder="License info displayed on all documents..." />
+
+                <div className="border border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-900/50 space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-black text-slate-700 dark:text-slate-300">
+                        <ShieldCheck className="text-emerald-500" size={18} />
+                        <span>PCI DSS Compliance &amp; Security Site Seal</span>
+                    </div>
+                    <Textarea 
+                        label="Site Seal Script or HTML Snippet" 
+                        value={pciComplianceSealHtml} 
+                        onChange={e => setPciComplianceSealHtml?.(e.target.value)} 
+                        rows={3} 
+                        placeholder="<script type='text/javascript' src='https://rapidscansecure.com/siteseal/siteseal.js?code=...'></script>" 
+                    />
+                    <p className="text-[10px] text-slate-400">
+                        Paste the snippet provided by your PCI Compliance scanning vendor. This displays the verified security badge across all customer checkout portals.
+                    </p>
+                    {pciComplianceSealHtml && (
+                        <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 flex justify-center">
+                            <SiteSealEmbed sealHtml={pciComplianceSealHtml} />
+                        </div>
+                    )}
+                </div>
 
                 <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4">
                     <h4 className="text-sm font-black text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">🛡️ Warranty Coverage Settings</h4>

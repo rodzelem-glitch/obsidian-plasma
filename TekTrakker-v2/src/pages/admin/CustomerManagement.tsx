@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { useAppContext } from 'context/AppContext';
 import Button from 'components/ui/Button';
 import CustomerMasterModal from 'components/modals/CustomerMasterModal';
-import { PlusCircle } from 'lucide-react';
+import { CommercialReferenceModal } from 'components/modals/CommercialReferenceModal';
+import { PlusCircle, Briefcase } from 'lucide-react';
 import QuickAddCustomer from './customers/components/QuickAddCustomer';
 import CustomerSearch from './customers/components/CustomerSearch';
 import CustomerTable from './customers/components/CustomerTable';
@@ -16,6 +17,7 @@ const CustomerManagement: React.FC = () => {
     const { t } = useLanguage();
     
     const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+    const [isCommercialRefModalOpen, setIsCommercialRefModalOpen] = useState(false);
 
     useEffect(() => {
         const custId = searchParams.get('custId');
@@ -29,6 +31,15 @@ const CustomerManagement: React.FC = () => {
     const [sortBy, setSortBy] = useState('date_desc');
     const [page, setPage] = useState(1);
     const itemsPerPage = 20;
+
+    if (state.currentUser?.role === 'Subcontractor') {
+        return (
+            <div className="p-8 text-center bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm my-6">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">{t("Access Restricted")}</h3>
+                <p className="text-sm text-slate-500 mt-2">{t("Customer database and customer records are restricted for subcontractor accounts.")}</p>
+            </div>
+        );
+    }
 
     const isAdmin = state.currentUser?.role === 'admin' || state.currentUser?.role === 'master_admin' || state.currentUser?.role === 'both';
     const myTeams = (state.teams || []).filter(t => t.memberIds?.includes(state.currentUser?.id || ''));
@@ -87,11 +98,27 @@ const CustomerManagement: React.FC = () => {
                 />
             )}
 
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                
-                <Button onClick={() => setIsCreating(!isCreating)} data-tour="quick-add-customer-btn" className="w-auto flex items-center gap-2">
-                    <PlusCircle size={18} /> {t("Quick Add")}
-                </Button>
+            <CommercialReferenceModal
+                isOpen={isCommercialRefModalOpen}
+                onClose={() => setIsCommercialRefModalOpen(false)}
+            />
+
+            <header className="flex flex-row justify-between items-center gap-4">
+                <div></div>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setIsCommercialRefModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-600/50 shadow-sm transition-all cursor-pointer"
+                        title="View & Export Commercial References"
+                    >
+                        <Briefcase size={14} className="text-blue-600 dark:text-blue-400" />
+                        <span>{t("Commercial References")}</span>
+                    </button>
+                    <Button onClick={() => setIsCreating(!isCreating)} data-tour="quick-add-customer-btn" className="w-auto flex items-center gap-2">
+                        <PlusCircle size={18} /> {t("Quick Add")}
+                    </Button>
+                </div>
             </header>
 
             {isCreating && <QuickAddCustomer onCustomerCreated={handleCustomerCreated} />}

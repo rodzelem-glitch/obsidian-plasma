@@ -11,8 +11,8 @@ export const CONTRACTING_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organizationI
     { name: 'Demo - Drywall (Per Sqft)', description: 'Remove sheetrock and insulation down to studs.', baseCost: 0.10, avgLabor: 0.05, category: 'Contracting' },
     { name: 'Demo - Kitchen Cabinets (Per Box)', description: 'Careful removal of cabinet box (Base or Wall).', baseCost: 0, avgLabor: 0.5, category: 'Contracting' },
     { name: 'Demo - Countertop (Per LF)', description: 'Remove laminate or stone countertop.', baseCost: 5, avgLabor: 0.5, category: 'Contracting' },
-    { name: 'Dumpster Rental - 20 Yard', description: 'Rental and tipping fees for construction debris.', baseCost: 550, avgLabor: 0.5, category: 'Other' },
-    { name: 'Debris Haul Away - Pickup Truck Load', description: 'Load and haul debris (approx 1 ton).', baseCost: 65, avgLabor: 2.0, category: 'Other' },
+    { name: 'Dumpster Rental - 20 Yard', description: 'Rental and tipping fees for construction debris.', baseCost: 550, avgLabor: 0.5, category: 'Contracting' },
+    { name: 'Debris Haul Away - Pickup Truck Load', description: 'Load and haul debris (approx 1 ton).', baseCost: 65, avgLabor: 2.0, category: 'Contracting' },
 
     // --- 2. FRAMING & ROUGH CARPENTRY ---
     { name: 'Wall Framing - 2x4 Non-Load Bearing (Per LF)', description: 'Construct interior partition wall (16" OC).', baseCost: 12, avgLabor: 0.5, category: 'Contracting' },
@@ -99,9 +99,9 @@ export const CONTRACTING_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organizationI
     { name: 'Siding Repair - Hardie/Cement (Per Sqft)', description: 'Replace fiber cement plank.', baseCost: 6, avgLabor: 0.6, category: 'Contracting' },
 
     // --- 11. GENERAL REPAIRS ---
-    { name: 'Handyman Labor (Hourly)', description: 'General repair labor for unspecified tasks.', baseCost: 0, avgLabor: 1.0, category: 'Other' },
+    { name: 'Handyman Labor (Hourly)', description: 'General repair labor for unspecified tasks.', baseCost: 0, avgLabor: 1.0, category: 'Contracting' },
     { name: 'Access Panel Installation', description: 'Cut drywall and install plastic access door.', baseCost: 25, avgLabor: 1.0, category: 'Contracting' },
-    { name: 'TV Wall Mount - Standard', description: 'Mount TV bracket to studs.', baseCost: 15, avgLabor: 1.0, category: 'Accessories' },
-    { name: 'Picture / Mirror Hanging (Heavy)', description: 'Secure mounting for items > 20lbs.', baseCost: 5, avgLabor: 0.5, category: 'Accessories' },
-    { name: 'Furniture Assembly (Per Hour)', description: 'Assembly of flat-pack furniture.', baseCost: 0, avgLabor: 1.0, category: 'Other' }
+    { name: 'TV Wall Mount - Standard', description: 'Mount TV bracket to studs.', baseCost: 15, avgLabor: 1.0, category: 'Contracting' },
+    { name: 'Picture / Mirror Hanging (Heavy)', description: 'Secure mounting for items > 20lbs.', baseCost: 5, avgLabor: 0.5, category: 'Contracting' },
+    { name: 'Furniture Assembly (Per Hour)', description: 'Assembly of flat-pack furniture.', baseCost: 0, avgLabor: 1.0, category: 'Contracting' }
 ];

@@ -58,8 +58,11 @@ const TimeSheetReview: React.FC = () => {
     const handleApprove = async (log: ShiftLog) => {
         if (!selectedEmployeeId) return;
         try {
-            await db.collection('shiftLogs').doc(log.id).update(cleanUndefinedFields({ isApproved: true }));
+            if (!state.isDemoMode) {
+                await db.collection('shiftLogs').doc(log.id).update(cleanUndefinedFields({ isApproved: true }));
+            }
             dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: selectedEmployeeId, log: { ...log, isApproved: true } } });
+            showToast.success("Shift log approved successfully!");
             
             // Automated PTO Accrual Policy Engine: automatically increments employee balance in real-time when timesheet is approved
             const employee = state.users.find(u => u.id === selectedEmployeeId);
@@ -74,9 +77,11 @@ const TimeSheetReview: React.FC = () => {
                 const isSub = employee.id.startsWith('sub-') || employee.role?.toLowerCase() === 'subcontractor';
                 const collectionName = isSub ? 'subcontractors' : 'users';
                 
-                await db.collection(collectionName).doc(employee.id).update(cleanUndefinedFields({
-                    ptoAccrued: newPtoTotal
-                }));
+                if (!state.isDemoMode) {
+                    await db.collection(collectionName).doc(employee.id).update(cleanUndefinedFields({
+                        ptoAccrued: newPtoTotal
+                    }));
+                }
                 
                 dispatch({
                     type: 'UPDATE_EMPLOYEE',
@@ -95,8 +100,11 @@ const TimeSheetReview: React.FC = () => {
         if (!selectedEmployeeId) return;
         try {
             const { id, ...updateData } = updatedLog;
-            await db.collection('shiftLogs').doc(id).update(cleanUndefinedFields(updateData));
+            if (!state.isDemoMode) {
+                await db.collection('shiftLogs').doc(id).update(cleanUndefinedFields(updateData));
+            }
             dispatch({ type: 'UPDATE_SHIFT_LOG', payload: { userId: selectedEmployeeId, log: updatedLog } });
+            showToast.success("Shift log adjusted successfully!");
         } catch (error) {
             console.error("Failed to save shift edit", error);
             showToast.warn("Failed to save changes to the database.");
@@ -104,9 +112,19 @@ const TimeSheetReview: React.FC = () => {
     };
 
     const handleDelete = async (log: ShiftLog) => {
+        if (!selectedEmployeeId) return;
         const confirmed = await globalConfirm('Are you sure you want to permanently delete this shift log? This cannot be undone.', 'Delete Shift');
         if (confirmed) {
-            await db.collection('shiftLogs').doc(log.id).delete();
+            try {
+                if (!state.isDemoMode) {
+                    await db.collection('shiftLogs').doc(log.id).delete();
+                }
+                dispatch({ type: 'DELETE_SHIFT_LOG', payload: { userId: selectedEmployeeId, logId: log.id } });
+                showToast.success("Shift log deleted successfully.");
+            } catch (error) {
+                console.error("Failed to delete shift log", error);
+                showToast.warn("Failed to delete shift log.");
+            }
         }
     };
 
@@ -188,7 +206,7 @@ const TimeSheetReview: React.FC = () => {
                 'cash_tips', 'correction', 'reimbursement', 'personal_note'
             ];
             rows = allRecords.map(row => {
-                const user: any = (state.users || []).find((u: any) => u.id === row.userId);
+                const user: any = combinedUsers.find((u: any) => u.id === row.userId);
                 return [
                     user?.lastName || '',
                     user?.firstName || user?.name || '',
@@ -204,7 +222,7 @@ const TimeSheetReview: React.FC = () => {
         } else if (activePayrollService === 'quickbooks') {
             headers = ['Employee Name', 'Start Date', 'End Date', 'Regular Hours', 'Overtime Hours', 'Commission', 'Billing Rate', 'Service', 'Notes'];
             rows = allRecords.map(row => {
-                const user: any = (state.users || []).find((u: any) => u.id === row.userId);
+                const user: any = combinedUsers.find((u: any) => u.id === row.userId);
                 return [
                     row.name,
                     payrollStartDate,
@@ -253,7 +271,7 @@ const TimeSheetReview: React.FC = () => {
                 'Regular Hours', 'Overtime Hours', 'Commission', 'Total Payout'
             ];
             rows = allRecords.map(row => {
-                const user: any = (state.users || []).find((u: any) => u.id === row.userId);
+                const user: any = combinedUsers.find((u: any) => u.id === row.userId);
                 const rate = Number(user?.payRate) || 0;
                 const uDetails = bankDetails[row.userId] || { routingNumber: '', accountNumber: '', accountType: 'checking' };
                 return [

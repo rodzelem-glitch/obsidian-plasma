@@ -19,11 +19,11 @@ export const MASONRY_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organizationId'>[
     { name: 'Tuckpointing - Wall Area (Per Sqft)', description: 'Comprehensive grinding and repointing of brick wall face (100% repoint).', baseCost: 1.5, avgLabor: 0.25, category: 'Masonry' },
     { name: 'Tuckpointing - Chimney Stack (Per Sqft)', description: 'Grind and repoint chimney brickwork (Requires scaffolding/roof setup).', baseCost: 2.5, avgLabor: 0.4, category: 'Masonry' },
     { name: 'Stone Foundation Repointing (Per Sqft)', description: 'Rake out loose joints in rubble stone foundation and pack with lime mortar.', baseCost: 3.0, avgLabor: 0.5, category: 'Masonry' },
-    { name: 'Brick Cleaning - Pressure Wash & Chemical', description: 'Apply masonry detergent, scrub, and pressure wash to remove carbon/dirt.', baseCost: 0.5, avgLabor: 0.1, category: 'Maintenance' },
+    { name: 'Brick Cleaning - Pressure Wash & Chemical', description: 'Apply masonry detergent, scrub, and pressure wash to remove carbon/dirt.', baseCost: 0.5, avgLabor: 0.1, category: 'Masonry' },
     { name: 'Paint Removal from Brick (Per Sqft)', description: 'Apply chemical stripper, dwell time, and high pressure rinse to remove paint.', baseCost: 4.0, avgLabor: 0.3, category: 'Masonry' },
-    { name: 'Water Repellent Application (Per Sqft)', description: 'Apply siloxane/silane penetrating breathable sealer.', baseCost: 0.65, avgLabor: 0.05, category: 'Maintenance' },
-    { name: 'Efflorescence Removal (Per Sqft)', description: 'Chemical treatment and scrubbing to remove white salt deposits.', baseCost: 0.75, avgLabor: 0.15, category: 'Maintenance' },
-    { name: 'Graffiti Removal - Masonry Surface', description: 'Specialized solvent application and pressure wash removal.', baseCost: 45, avgLabor: 2.0, category: 'Maintenance' },
+    { name: 'Water Repellent Application (Per Sqft)', description: 'Apply siloxane/silane penetrating breathable sealer.', baseCost: 0.65, avgLabor: 0.05, category: 'Masonry' },
+    { name: 'Efflorescence Removal (Per Sqft)', description: 'Chemical treatment and scrubbing to remove white salt deposits.', baseCost: 0.75, avgLabor: 0.15, category: 'Masonry' },
+    { name: 'Graffiti Removal - Masonry Surface', description: 'Specialized solvent application and pressure wash removal.', baseCost: 45, avgLabor: 2.0, category: 'Masonry' },
 
     // --- 3. CHIMNEY & FIREPLACE ---
     { name: 'Chimney Crown - Resurface (CrownSeal)', description: 'Apply flexible elastomeric coating over cracked concrete crown.', baseCost: 120, avgLabor: 2.5, category: 'Masonry' },
@@ -46,9 +46,9 @@ export const MASONRY_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organizationId'>[
     { name: 'Concrete Steps - Standard (Per Riser/LF)', description: 'Form and pour concrete steps.', baseCost: 45, avgLabor: 4.0, category: 'Masonry' },
     { name: 'Garage Floor - Pour (Per Sqft)', description: '4" reinforced slab with smooth trowel finish.', baseCost: 5.00, avgLabor: 0.12, category: 'Masonry' },
     { name: 'Concrete Curb Repair (Per LF)', description: 'Form and pour repair section for damaged curb.', baseCost: 15, avgLabor: 1.5, category: 'Masonry' },
-    { name: 'Concrete Grinding - Trip Hazard', description: 'Grind raised concrete edge to eliminate trip hazard (up to 1 inch).', baseCost: 25, avgLabor: 1.0, category: 'Maintenance' },
-    { name: 'Concrete Sealing - Acrylic (Per Sqft)', description: 'Clean and apply solvent-based acrylic sealer.', baseCost: 0.60, avgLabor: 0.05, category: 'Maintenance' },
-    { name: 'Concrete Crack Repair - Epoxy Injection (Per LF)', description: 'Inject structural epoxy into clean crack.', baseCost: 12, avgLabor: 0.5, category: 'Maintenance' },
+    { name: 'Concrete Grinding - Trip Hazard', description: 'Grind raised concrete edge to eliminate trip hazard (up to 1 inch).', baseCost: 25, avgLabor: 1.0, category: 'Masonry' },
+    { name: 'Concrete Sealing - Acrylic (Per Sqft)', description: 'Clean and apply solvent-based acrylic sealer.', baseCost: 0.60, avgLabor: 0.05, category: 'Masonry' },
+    { name: 'Concrete Crack Repair - Epoxy Injection (Per LF)', description: 'Inject structural epoxy into clean crack.', baseCost: 12, avgLabor: 0.5, category: 'Masonry' },
     { name: 'Self-Leveling Overlay (Per Sqft)', description: 'Prime and pour cementitious overlay to smooth rough concrete.', baseCost: 2.50, avgLabor: 0.1, category: 'Masonry' },
     { name: 'A/C Pad Installation', description: 'Form and pour 3x3 or 4x4 concrete pad for HVAC unit.', baseCost: 85, avgLabor: 4.0, category: 'Masonry' },
 
@@ -60,7 +60,7 @@ export const MASONRY_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organizationId'>[
     { name: 'Flagstone Patio - Wet Lay (Per Sqft)', description: 'Install irregular flagstone on concrete base with mortar joints.', baseCost: 18, avgLabor: 0.4, category: 'Masonry' },
     { name: 'Flagstone Patio - Dry Lay (Per Sqft)', description: 'Install thick flagstone on compacted screenings/sand.', baseCost: 15, avgLabor: 0.35, category: 'Masonry' },
     { name: 'Stone Cap Installation (Per LF)', description: 'Install limestone or bluestone coping on wall.', baseCost: 25, avgLabor: 0.75, category: 'Masonry' },
-    { name: 'Stone Repointing - Patio/Walkway (Per Sqft)', description: 'Grind out cracked joints and reinstall mortar/poly-sand.', baseCost: 2.0, avgLabor: 0.15, category: 'Maintenance' },
+    { name: 'Stone Repointing - Patio/Walkway (Per Sqft)', description: 'Grind out cracked joints and reinstall mortar/poly-sand.', baseCost: 2.0, avgLabor: 0.15, category: 'Masonry' },
     { name: 'Mailbox Column - Brick (Standard)', description: 'Build standard brick mailbox with concrete footing.', baseCost: 350, avgLabor: 16.0, category: 'Masonry' },
     { name: 'Mailbox Column - Stone/Custom', description: 'Build custom stone mailbox.', baseCost: 550, avgLabor: 24.0, category: 'Masonry' },
 
@@ -69,7 +69,7 @@ export const MASONRY_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organizationId'>[
     { name: 'Paver Driveway Installation (Per Sqft)', description: 'Heavy duty base prep and 80mm paver installation.', baseCost: 12.00, avgLabor: 0.25, category: 'Masonry' },
     { name: 'Retaining Wall - SRW Block (Per Sqft Face)', description: 'Install segmental retaining wall blocks with geogrid and drainage.', baseCost: 18.00, avgLabor: 0.4, category: 'Masonry' },
     { name: 'Retaining Wall - Cap Replacement (Per LF)', description: 'Remove loose caps, clean, and re-glue with construction adhesive.', baseCost: 5.00, avgLabor: 0.5, category: 'Masonry' },
-    { name: 'Paver Restoration - Clean & Seal (Per Sqft)', description: 'Pressure wash, re-sand joints, and apply sealer.', baseCost: 1.25, avgLabor: 0.08, category: 'Maintenance' },
+    { name: 'Paver Restoration - Clean & Seal (Per Sqft)', description: 'Pressure wash, re-sand joints, and apply sealer.', baseCost: 1.25, avgLabor: 0.08, category: 'Masonry' },
     { name: 'Paver Repair - Lift & Relay (Per Sqft)', description: 'Fix sunken or heaved paver sections (base repair included).', baseCost: 3.00, avgLabor: 0.3, category: 'Masonry' },
 
     // --- 7. STUCCO & PARGING ---
@@ -89,12 +89,12 @@ export const MASONRY_MASTER_BOOK: Omit<ProposalPreset, 'id' | 'organizationId'>[
 
     // --- 9. TILE & GROUT (Masonry Context) ---
     { name: 'Porch Tile Installation (Per Sqft)', description: 'Install exterior grade tile on concrete porch/steps.', baseCost: 6.00, avgLabor: 0.4, category: 'Masonry' },
-    { name: 'Grout Repair / Regrouting (Per Sqft)', description: 'Remove old grout and install new sanded grout.', baseCost: 1.00, avgLabor: 0.2, category: 'Maintenance' },
+    { name: 'Grout Repair / Regrouting (Per Sqft)', description: 'Remove old grout and install new sanded grout.', baseCost: 1.00, avgLabor: 0.2, category: 'Masonry' },
     { name: 'Tile Loose Repair (Per Tile)', description: 'Remove loose tile, clean substrate, and re-bond.', baseCost: 5.00, avgLabor: 1.0, category: 'Masonry' },
 
     // --- 10. DEMOLITION & HAULING ---
-    { name: 'Masonry Demolition - Hand (Per Hour)', description: 'Jackhammering and removal where machinery cannot access.', baseCost: 25, avgLabor: 1.0, category: 'Other' },
-    { name: 'Concrete Disposal Fee (Per Ton)', description: 'Hauling and tipping fees for clean concrete waste.', baseCost: 65, avgLabor: 0.0, category: 'Other' },
-    { name: 'Dumpster Rental - 10 Yard (Heavy)', description: 'Concrete/Dirt load dumpster.', baseCost: 450, avgLabor: 0.5, category: 'Other' },
-    { name: 'Site Protection & Setup', description: 'Plywood for grass, plastic for windows, dust control.', baseCost: 100, avgLabor: 2.0, category: 'Other' }
+    { name: 'Masonry Demolition - Hand (Per Hour)', description: 'Jackhammering and removal where machinery cannot access.', baseCost: 25, avgLabor: 1.0, category: 'Masonry' },
+    { name: 'Concrete Disposal Fee (Per Ton)', description: 'Hauling and tipping fees for clean concrete waste.', baseCost: 65, avgLabor: 0.0, category: 'Masonry' },
+    { name: 'Dumpster Rental - 10 Yard (Heavy)', description: 'Concrete/Dirt load dumpster.', baseCost: 450, avgLabor: 0.5, category: 'Masonry' },
+    { name: 'Site Protection & Setup', description: 'Plywood for grass, plastic for windows, dust control.', baseCost: 100, avgLabor: 2.0, category: 'Masonry' }
 ];

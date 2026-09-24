@@ -68,3 +68,26 @@ ios/App/App/GoogleService-Info.plist
 /playwright/.cache/
 /playwright/.auth/
 firebase-service-account.json
+
+# Scratch & Debug Scripts
+/scratch/
+/scratch_*
+/relink_*
+/inspect_*
+/search_*
+/verify_*
+/fetch_*
+/fix_*
+/get_*
+/test_*
+/temp_*
+/*.pdf
+/functions/inspect_*
+/functions/send_*
+/functions/*.cjs
+/functions/cleanup_*
+/functions/get_*
+/check_*
+/emulator_screenshot*
+/geo_search_results.json
+/shift_logs_all.json

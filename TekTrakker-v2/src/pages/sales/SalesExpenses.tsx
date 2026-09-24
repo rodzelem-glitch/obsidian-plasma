@@ -569,7 +569,7 @@ const SalesExpenses: React.FC = () => {
                                         return null;
                                     })()}
                                     <label htmlFor={`receipt-upload-${exp.id}`} className={`cursor-pointer ${isUploadingToExpenseId === exp.id ? 'text-blue-400 animate-pulse' : 'text-slate-500 hover:text-primary-600'}`} title={(exp.receiptData || exp.receiptUrl) ? "Replace Receipt" : "Attach Receipt"}>
-                                        <input type="file" title="Upload receipt" id={`receipt-upload-${exp.id}`} className="hidden" accept="image/*" onChange={(e) => handleAttachToExisting(e, exp.id)} />
+                                        <input type="file" multiple accept="image/*,.pdf" title="Upload receipt" id={`receipt-upload-${exp.id}`} className="hidden" onChange={(e) => handleAttachToExisting(e, exp.id)} />
                                         <Paperclip size={16} />
                                     </label>
                                     <button onClick={() => handleDeleteExpense(exp.id)} className="text-red-500 hover:text-red-700" title="Delete Expense"><Trash2 size={16}/></button>

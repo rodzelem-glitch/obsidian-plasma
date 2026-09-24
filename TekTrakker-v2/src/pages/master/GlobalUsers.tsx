@@ -9,7 +9,7 @@ import Input from 'components/ui/Input';
 import Button from 'components/ui/Button';
 import Modal from 'components/ui/Modal';
 import Select from 'components/ui/Select';
-import { Search, User, Building2, Shield, Activity, Mail, Users, Edit, Trash2, AlertTriangle, RefreshCw, Key } from 'lucide-react';
+import { Search, User, Building2, Shield, Activity, Mail, Users, Edit, Trash2, AlertTriangle, RefreshCw, Key, Clock } from 'lucide-react';
 import type { User as AppUser, Organization } from 'types';
 import { db, auth } from 'lib/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -87,6 +87,51 @@ const GlobalUsers: React.FC = () => {
         const admins = validUsers.filter(u => u && (u.role === 'admin' || u.role === 'master_admin')).length;
         return { total: validUsers.length, active, admins };
     }, [users]);
+
+    const formatLastLoginText = (lastLoginAt?: string | null) => {
+        if (!lastLoginAt) return 'Never';
+        try {
+            const d = new Date(lastLoginAt);
+            if (isNaN(d.getTime())) return 'Never';
+
+            const now = new Date();
+            const diffMs = now.getTime() - d.getTime();
+            const diffMins = Math.floor(diffMs / (1000 * 60));
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+            if (diffMins < 2) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffDays === 1) return 'Yesterday';
+            if (diffDays < 30) return `${diffDays}d ago`;
+            return d.toLocaleDateString();
+        } catch {
+            return 'Never';
+        }
+    };
+
+    const formatLastLogin = (lastLoginAt?: string | null) => {
+        if (!lastLoginAt) return <span className="text-slate-400 italic text-xs">Never</span>;
+        try {
+            const d = new Date(lastLoginAt);
+            if (isNaN(d.getTime())) return <span className="text-slate-400 italic text-xs">Never</span>;
+
+            const relative = formatLastLoginText(lastLoginAt);
+
+            return (
+                <div className="flex flex-col">
+                    <span className="font-semibold text-slate-700 dark:text-slate-300 text-xs flex items-center gap-1">
+                        <Clock size={12} className="text-sky-500 shrink-0" />
+                        {relative}
+                    </span>
+                    <span className="text-[10px] text-slate-400">{d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+            );
+        } catch {
+            return <span className="text-slate-400 italic text-xs">Never</span>;
+        }
+    };
 
     // --- ACTIONS ---
 
@@ -195,36 +240,39 @@ const GlobalUsers: React.FC = () => {
             </div>
 
             <Card className="shadow-lg">
-                <div className="flex flex-col md:flex-row gap-4 mb-6">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input 
-                            id="search-users"
-                            name="search-users"
-                            className="pl-10 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-sky-500"
-                            placeholder="Search by name or email..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-                    <div className="flex gap-2 flex-wrap items-center">
+                <div className="space-y-4 mb-6">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div className="relative flex-1 max-w-2xl">
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={20} />
+                            <input 
+                                id="search-users"
+                                name="search-users"
+                                className="pl-11 pr-4 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm font-semibold py-3 outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white dark:focus:bg-slate-900 transition-all shadow-sm"
+                                placeholder="Search by name or email address..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                            />
+                        </div>
                         <Button 
                             variant={showDuplicatesOnly ? "primary" : "secondary"} 
                             onClick={() => setShowDuplicatesOnly(!showDuplicatesOnly)}
-                            className="flex items-center gap-2 whitespace-nowrap !rounded-lg !py-2.5 !text-xs !px-4"
+                            className="flex items-center justify-center gap-2 whitespace-nowrap !rounded-xl !py-3 !text-xs font-bold !px-5 shrink-0 shadow-sm"
                         >
-                            <AlertTriangle size={14} />
+                            <AlertTriangle size={15} />
                             {showDuplicatesOnly ? 'Show All Users' : 'Find Duplicates'}
                         </Button>
-                        <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 hidden lg:block"></div>
+                    </div>
+
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-400 mr-1 shrink-0">Role:</span>
                         {['All', 'admin', 'employee', 'supervisor', 'customer', 'platform_sales', 'master_admin'].map(role => (
                             <button
                                 key={role}
                                 onClick={() => setRoleFilter(role)}
-                                className={`px-4 py-2 text-xs font-black uppercase rounded-lg border transition-all ${
+                                className={`px-3.5 py-1.5 text-xs font-bold uppercase rounded-lg border whitespace-nowrap transition-all ${
                                     roleFilter === role 
-                                        ? 'bg-sky-600 text-white border-sky-600 shadow-md' 
-                                        : 'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'
+                                        ? 'bg-sky-600 text-white border-sky-600 shadow-md scale-[1.02]' 
+                                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50'
                                 }`}
                             >
                                 {role.replace('_', ' ')}
@@ -233,7 +281,7 @@ const GlobalUsers: React.FC = () => {
                     </div>
                 </div>
 
-                <Table headers={['User Identity', 'Organization', 'Access Role', 'Status', 'Actions']}>
+                <Table headers={['User Identity', 'Organization', 'Access Role', 'Status', 'Last Login', 'Actions']}>
                     {filteredUsers.map(u => (
                         <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                             <td className="px-6 py-4">
@@ -244,6 +292,10 @@ const GlobalUsers: React.FC = () => {
                                     <div>
                                         <div className="font-black text-slate-900 dark:text-white">{u.firstName || 'Unknown'} {u.lastName || 'User'}</div>
                                         <div className="text-xs text-slate-400 flex items-center gap-1"><Mail size={10}/> {u.email || 'No Email'}</div>
+                                        <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5 font-medium">
+                                            <Clock size={10} className="text-sky-500 shrink-0"/>
+                                            <span>Last login: <strong className="text-slate-700 dark:text-slate-300">{formatLastLoginText(u.lastLoginAt)}</strong></span>
+                                        </div>
                                     </div>
                                 </div>
                             </td>
@@ -269,6 +321,9 @@ const GlobalUsers: React.FC = () => {
                                     <div className={`w-1.5 h-1.5 rounded-full ${u.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
                                     {u.status}
                                 </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                                {formatLastLogin(u.lastLoginAt)}
                             </td>
                             <td className="px-6 py-4">
                                 <div className="flex gap-2">
@@ -299,7 +354,7 @@ const GlobalUsers: React.FC = () => {
                         </tr>
                     ))}
                     {filteredUsers.length === 0 && (
-                        <tr><td colSpan={5} className="p-6 md:p-12 text-center text-slate-400">No users found.</td></tr>
+                        <tr><td colSpan={6} className="p-6 md:p-12 text-center text-slate-400">No users found.</td></tr>
                     )}
                 </Table>
             </Card>

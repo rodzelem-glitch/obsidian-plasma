@@ -46,8 +46,10 @@ const JobDiscrepancyModal: React.FC<JobDiscrepancyModalProps> = ({
                 updatePayload.timeOnSiteMinutes = discrepancy.suggestedTimeOnSiteMinutes;
             }
 
-            // Update Firestore
-            await db.collection('jobs').doc(discrepancy.jobId).update(cleanUndefinedFields(updatePayload));
+            // Update Firestore if not in demo mode
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(discrepancy.jobId).update(cleanUndefinedFields(updatePayload));
+            }
 
             // Update local state
             const targetJob = state.jobs.find(j => j.id === discrepancy.jobId);
@@ -89,7 +91,9 @@ const JobDiscrepancyModal: React.FC<JobDiscrepancyModalProps> = ({
                     updatePayload.timeOnSiteMinutes = disc.suggestedTimeOnSiteMinutes;
                 }
 
-                await db.collection('jobs').doc(disc.jobId).update(cleanUndefinedFields(updatePayload));
+                if (!state.isDemoMode) {
+                    await db.collection('jobs').doc(disc.jobId).update(cleanUndefinedFields(updatePayload));
+                }
 
                 const targetJob = state.jobs.find(j => j.id === disc.jobId);
                 if (targetJob) {
@@ -110,8 +114,29 @@ const JobDiscrepancyModal: React.FC<JobDiscrepancyModalProps> = ({
         onClose();
     };
 
-    const handleDismiss = (jobId: string) => {
-        setDiscrepancies(prev => prev.filter(d => d.jobId !== jobId));
+    const handleDismiss = async (jobId: string) => {
+        try {
+            if (!state.isDemoMode) {
+                await db.collection('jobs').doc(jobId).update(cleanUndefinedFields({
+                    discrepancyDismissed: true,
+                    updatedAt: new Date().toISOString()
+                }));
+            }
+
+            const targetJob = state.jobs.find(j => j.id === jobId);
+            if (targetJob) {
+                dispatch({
+                    type: 'UPDATE_JOB',
+                    payload: { ...targetJob, discrepancyDismissed: true }
+                });
+            }
+
+            setDiscrepancies(prev => prev.filter(d => d.jobId !== jobId));
+            showToast.success("Time discrepancy alert dismissed.");
+        } catch (err: any) {
+            console.error("Failed to dismiss discrepancy alert:", err);
+            showToast.error("Failed to dismiss alert: " + (err.message || 'Error occurred'));
+        }
     };
 
     return (

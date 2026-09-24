@@ -1,8 +1,9 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 
 interface TextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
     label?: string;
     debounceMs?: number;
+    autoResize?: boolean;
 }
 
 const Textarea: React.FC<TextareaProps> = ({ 
@@ -13,6 +14,8 @@ const Textarea: React.FC<TextareaProps> = ({
     value, 
     onChange, 
     debounceMs = 300, 
+    autoResize = true,
+    style,
     ...props 
 }) => {
     const areaId = useMemo(() => {
@@ -26,6 +29,15 @@ const Textarea: React.FC<TextareaProps> = ({
     const debounceTimeoutRef = useRef(null);
     // Ref to store the latest value to avoid stale closure in debouncing
     const latestValueRef = useRef(localValue);
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+    const adjustHeight = useCallback(() => {
+        if (!autoResize) return;
+        const textarea = textareaRef.current;
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        textarea.style.height = `${textarea.scrollHeight}px`;
+    }, [autoResize]);
 
     // Sync local state when external value changes (e.g. from Voice Input or DB fetch)
     useEffect(() => {
@@ -34,6 +46,16 @@ const Textarea: React.FC<TextareaProps> = ({
             latestValueRef.current = value !== null ? value : '';
         }
     }, [value]);
+
+    useEffect(() => {
+        adjustHeight();
+    }, [localValue, adjustHeight]);
+
+    useEffect(() => {
+        if (!autoResize) return;
+        window.addEventListener('resize', adjustHeight);
+        return () => window.removeEventListener('resize', adjustHeight);
+    }, [autoResize, adjustHeight]);
 
     // Clean up timer on unmount
     useEffect(() => {
@@ -82,16 +104,19 @@ const Textarea: React.FC<TextareaProps> = ({
         <div className="mb-2">
             {label && <label htmlFor={areaId} className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>}
             <textarea 
+                ref={textareaRef}
                 id={areaId}
                 name={props.name || areaId}
-                className={`w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 ${className || ''}`} 
+                className={`w-full rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 ${autoResize ? 'resize-none overflow-hidden transition-[height] duration-75' : ''} ${className || ''}`} 
                 value={localValue}
                 onChange={handleTextareaChange}
                 onBlur={handleBlur}
                 onInput={(e) => {
+                    adjustHeight();
                     // Removed heavy triggerHapticSelectionChanged() call which caused typing lag on mobile
                     if (onInput) onInput(e);
                 }}
+                style={style}
                 {...props} 
             />
         </div>

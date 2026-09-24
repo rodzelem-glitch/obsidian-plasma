@@ -1,5 +1,6 @@
 
 import type { StoredFile } from './file';
+import type { SubLineItem } from './invoice';
 
 
 export interface InventoryItem {
@@ -29,10 +30,15 @@ export interface ShiftEdit {
 
 export interface ShiftLog {
     id: string;
-    organizationId: string;
+    organizationId?: string;
     userId: string; 
     clockIn: string; 
     clockOut?: string | null; 
+    date?: string;
+    hoursWorked?: number;
+    status?: string;
+    clockInLocation?: any;
+    clockOutLocation?: any;
     edits?: ShiftEdit[];
     isApproved?: boolean | null;
 }
@@ -180,13 +186,13 @@ export interface ServiceAgreement {
     customerId: string;
     customerName: string;
     planName: string; 
-    price: number; 
-    billingCycle: 'Monthly' | 'Annual';
-    startDate: string;
-    endDate: string; 
+    price?: number; 
+    billingCycle?: 'Monthly' | 'Annual' | string;
+    startDate?: string;
+    endDate?: string; 
     status: 'Active' | 'Expired' | 'Cancelled';
-    visitsTotal: number; 
-    visitsRemaining: number;
+    visitsTotal?: number; 
+    visitsRemaining?: number;
     termsAccepted?: boolean;
     termsContentSnapshot?: string;
     termsSignedDate?: string;
@@ -194,7 +200,32 @@ export interface ServiceAgreement {
     systemCount?: number;
     autoBillingId?: string;
     autoBillingProcessor?: string;
+    agreementType?: 'membership' | 'contractor' | 'commercial_contract' | 'msa' | string;
+    isContractorAgreement?: boolean;
+    excludeFromMrr?: boolean;
+    contractNumber?: string;
+    effectiveDate?: string;
+    agreementDate?: string;
+    paymentTerms?: string;
+    laborRate?: number;
+    overtimeRate?: number;
+    tripCharge?: number;
+    partsMarkupTier1?: number;
+    partsMarkupTier2?: number;
+    subcontractorMarkupTier1?: number;
+    subcontractorMarkupTier2?: number;
+    salesMarketingFeePct?: number;
+    refrigerant40PctMarkup?: boolean;
+    signers?: string;
+    siteCount?: number;
+    notes?: string;
+    documentHtml?: string;
+    documentUrl?: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
+
+
 
 export interface ProposalItem {
     id: string;
@@ -210,10 +241,13 @@ export interface ProposalItem {
     hourlyRate?: number;
     margin?: number;
     taxable?: boolean;
+    subItems?: SubLineItem[];
 }
 
 export interface Proposal {
     id: string;
+    referenceNumber?: string | null;
+    proposalNumber?: string | null;
     organizationId: string;
     customerId?: string; // Added customerId
     customerName: string;
@@ -232,13 +266,23 @@ export interface Proposal {
     selectedOption?: string | null;
     signature?: string | null;
     signatureDataUrl?: string | null;
+    pricingDisclaimer?: string | null;
+    warrantyTerms?: string | null;
+    warrantyDisclaimer?: string | null;
+    tierItems?: any[];
+    lineItems?: any[];
     title?: string | null;
     sentAt?: string;
+    sentDate?: string;
+    updatedAt?: string;
     remindersSent?: string[];
     proposalTermsAgreed?: boolean | null;
     proposalTermsAgreedAt?: string | null;
     competitorAgreementAgreed?: boolean | null;
     competitorAgreementAgreedAt?: string | null;
+    archived?: boolean;
+    archivedAt?: string | null;
+    archivedBy?: string | null;
 
     // Project-level proposal fields
     isProjectLevel?: boolean;
@@ -247,6 +291,10 @@ export interface Proposal {
     locationAddress?: string;
     poNumber?: string;
     scid?: string;
+    validUntil?: string;
+    customProposalNumber?: string;
+    workOrderNumber?: string;
+    accountNumber?: string;
     laborItems?: any[];
     laborSubtotal?: number;
     roundedLaborProposal?: number;
@@ -266,6 +314,26 @@ export interface Proposal {
     preparedByLicence?: string;
     signedAt?: string | null;
     signatureName?: string | null;
+
+    // Down Payment / Deposit fields
+    requireDeposit?: boolean;
+    depositType?: 'flat' | 'percentage' | 'none';
+    depositValue?: number;
+    depositAmount?: number;
+    depositRequired?: number;
+    depositNotes?: string;
+    depositPaid?: boolean;
+    depositPaidAmount?: number;
+    amountPaid?: number;
+    totalAmount?: number;
+    grandTotal?: number;
+    balanceDue?: number;
+    balanceRemaining?: number;
+    amountDueToday?: number;
+    amountDueNet?: number;
+    paymentTermsLabel?: string;
+    financialStatus?: 'PAID' | 'PARTIALLY_PAID' | 'DEPOSIT_PAID' | 'UNPAID' | 'OVERDUE';
+    displayFormat?: 'itemized' | 'progressive';
 }
 
 export interface Expense {
@@ -292,6 +360,10 @@ export interface Expense {
     updatedById?: string;
     updatedByName?: string;
     expenseType?: 'business' | 'personal';
+    receiptNumber?: string;
+    isPossibleDuplicate?: boolean;
+    duplicateReason?: string;
+    duplicateDismissed?: boolean;
 }
 
 export interface InspectionTemplateItem {
@@ -326,21 +398,34 @@ export interface Vehicle {
 
 export interface VehicleLog {
     id: string;
-    organizationId: string;
-    vehicleId: string;
+    organizationId?: string;
+    vehicleId?: string;
     userId: string;
+    userName?: string;
     date: string;
     startTime?: string;
     endTime?: string;
     type: 'Mileage' | 'Fuel' | 'Maintenance';
-    cost: number;
-    mileage: number;
+    category?: string;
+    cost?: number;
+    amount?: number;
+    subtotal?: number;
+    tax?: number;
+    taxAmount?: number;
+    vendor?: string;
+    vendorName?: string;
+    paidBy?: string;
+    mileage?: number;
+    miles?: number;
     startMileage?: number;
     endMileage?: number;
     isCompanyVehicle?: boolean;
-    notes: string;
+    notes?: string;
+    description?: string;
     receiptData?: string | null;
     receiptUrl?: string | null;
+    receiptUrls?: string[];
+    receipt?: string;
     location?: { lat: number; lng: number };
     startLocation?: { lat: number; lng: number };
     endLocation?: { lat: number; lng: number };
@@ -353,9 +438,14 @@ export interface Notification {
     title: string;
     message: string;
     read: boolean;
+    readBy?: string[];
     link?: string;
     type?: string;
     createdAt: string;
+    data?: Record<string, any>;
+    senderId?: string;
+    body?: string;
+    url?: string;
 }
 
 export interface Review {
@@ -423,15 +513,19 @@ export interface ShopOrder {
 export interface PlatformLead {
     id: string;
     repId?: string;
-    companyName: string;
-    contactName: string;
+    companyName?: string;
+    contactName?: string;
+    company?: string;
+    name?: string;
     email?: string;
     phone?: string;
-    value: number;
-    status: 'New' | 'Contacted' | 'Demo Scheduled' | 'Proposal Sent' | 'Negotiation' | 'Closed Won' | 'Closed Lost';
+    value?: number;
+    source?: string;
+    status?: 'New' | 'Contacted' | 'Demo Scheduled' | 'Proposal Sent' | 'Negotiation' | 'Closed Won' | 'Closed Lost' | string;
     notes?: string;
-    createdAt: string;
-    updatedAt?: string;
+    createdAt?: any;
+    updatedAt?: any;
+    lastUpdated?: any;
     additionalContacts?: { name: string; role: string; email: string; phone: string }[];
 }
 
@@ -446,13 +540,44 @@ export interface PlatformCommission {
     datePaid?: string;
     baseAmount: number; 
     rateUsed: number;
+    customerPaymentStatus?: 'Unpaid' | 'Paid';
+    createdAt?: string;
+    isAnnual?: boolean;
+    mrrValue?: number;
+}
+
+export interface SalesIncentiveContest {
+    id?: string;
+    title: string;
+    description: string;
+    rewardType: 'prize' | 'cash' | 'raffle' | 'experience' | 'custom';
+    rewardValue: string; // e.g. '75" 4K Smart TV' or '$1,000 Cash'
+    startDate: string; // YYYY-MM-DD
+    endDate: string; // YYYY-MM-DD
+    criteriaType: 'top_volume' | 'top_deals' | 'threshold_volume' | 'threshold_deals' | 'raffle';
+    targetThreshold?: number; // e.g. 2500 for $2,500 MRR or 8 for 8 deals
+    isActive: boolean;
+    winnerRepId?: string;
+    winnerRepName?: string;
+    updatedAt?: string;
 }
 
 export interface CommissionSettings {
     baseRate: number;
     acceleratorRate: number;
     annualQuota: number;
-    renewalRate: number;
+    renewalRate: number; // Kept for backwards compatibility (aliases year2Rate)
+    year2Rate?: number;
+    lifetimeRate?: number;
+    quarterlyMinDeals?: number;
+    quarterlyMinVolume?: number;
+    inactivityCliffDays?: number;
+    abandonmentDays?: number;
+    annualPrepaidKickerRate?: number; // e.g. 0.05 (+5 percentage points)
+    monthlyMrrAccelerators?: { minMrr: number; maxMrr?: number; rate: number }[];
+    monthlyMrrBonuses?: { mrr: number; bonus: number }[];
+    annualArrBonuses?: { arr: number; bonus: number }[];
+    activeMonthlyIncentive?: SalesIncentiveContest;
     rampUpMonths: {
         phase1: number;
         phase1QuotaPct: number;
@@ -464,16 +589,19 @@ export interface CommissionSettings {
 export interface PlatformSettings {
     id: string;
     plans: {
-        starter: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
-        growth: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
-        enterprise: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
-        payments_only: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
-        [key: string]: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number };
+        starter: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number; supportResponseTime?: string; includedStorageGB?: number; storageOverageRatePerGB?: number };
+        growth: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number; supportResponseTime?: string; includedStorageGB?: number; storageOverageRatePerGB?: number };
+        business?: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number; supportResponseTime?: string; includedStorageGB?: number; storageOverageRatePerGB?: number };
+        enterprise: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number; supportResponseTime?: string; includedStorageGB?: number; storageOverageRatePerGB?: number };
+        payments_only: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number; supportResponseTime?: string; includedStorageGB?: number; storageOverageRatePerGB?: number };
+        [key: string]: { monthly: number; annual: number; maxUsers: number; features?: string[]; unlimitedUsers?: boolean; ribbonText?: string; aiTokensPerMonth?: number; supportResponseTime?: string; includedStorageGB?: number; storageOverageRatePerGB?: number } | undefined;
     };
     excessUserFee: number;
     subscriptionFee?: number;
     virtualWorkerFee?: number;
     virtualWorkerLifetimeFee?: number;
+    aiPowerPackPrice?: number;
+    aiPowerPackTokens?: number;
     updatedAt: string;
     franchiseFeePct?: number;
     franchiseBaseFee?: number;
@@ -622,6 +750,7 @@ export interface Project {
     assignedSubcontractorIds?: string[]; 
     tags?: string[];
     createdAt: string;
+    updatedAt?: string;
     notesList?: ProjectNote[];
     projectTasks?: ProjectTask[]; // Legacy flat tasks or backlog
     phases?: ProjectPhase[];
@@ -630,6 +759,8 @@ export interface Project {
     riskLog?: RiskLogEntry[];
     permits?: Permit[];
     files?: StoredFile[];
+    removedFiles?: StoredFile[];
+    excludedFileIds?: string[];
     defaultView?: 'board' | 'list' | 'wbs';  // User's preferred PM view
 }
 
@@ -641,6 +772,7 @@ export interface Subcontractor {
     trade: string;
     email: string;
     phone: string;
+    licenseNumber?: string;
     contactPhone?: string;
     status: 'Active' | 'Inactive';
     insuranceExpiry?: string;
@@ -652,11 +784,51 @@ export interface Subcontractor {
     handshakeStatus?: 'None' | 'Pending' | 'Linked';
     referralCode?: string;             // For new invites
     referralExpiry?: string;
-    allowDirectPayment?: boolean;      // Added for B2B control
+    // Compliance & Emergency Lock Bypass
+    temporaryComplianceBypass?: boolean;
+    complianceBypassReason?: string;
 
     // Payment Rules
     paymentType: 'perJob' | 'percentage';
     paymentPercentage?: number; // Optional, only if paymentType is 'percentage'
+}
+
+export interface ChargebackEvidencePhoto {
+    url: string;
+    caption?: string;
+    timestamp?: string;
+    uploadedBy?: string;
+}
+
+export interface ChargebackReceipt {
+    url: string;
+    name: string;
+    amount?: number;
+    type?: 'receipt' | 'work_order' | 'invoice' | 'material_bill';
+    notes?: string;
+}
+
+export interface SubcontractorChargeback {
+    id: string;
+    organizationId: string;
+    subcontractorId: string;
+    subcontractorName: string;
+    jobId?: string;
+    workOrderNumber?: string;
+    customerName?: string;
+    category: 'property_damage' | 'faulty_work' | 'safety_violation' | 'material_loss' | 'other';
+    title: string;
+    description: string;
+    amount: number;
+    date: string;
+    status: 'Pending' | 'Applied' | 'Disputed' | 'Waived';
+    evidencePhotos: ChargebackEvidencePhoto[];
+    receiptsAndInvoices: ChargebackReceipt[];
+    resolutionWorkOrderJobId?: string;
+    deductedFromPayableId?: string | null;
+    createdAt: string;
+    updatedAt?: string;
+    createdBy?: { id: string; name: string; role?: string };
 }
 
 export interface EquipmentRental {
@@ -765,6 +937,9 @@ export interface Appointment {
     customerPhone: string;
     customerEmail?: string;
     address: string;
+    city?: string;
+    state?: string;
+    zip?: string;
     tasks: string[];
     appointmentTime: string;
     status: string;
@@ -773,6 +948,25 @@ export interface Appointment {
     customerId?: string;
     createdAt: string;
     marketingConsent?: { sms: boolean; email: boolean; agreedAt: string; source: string; };
+}
+
+export interface CustomerReferral {
+    id: string;
+    referrerUserId: string;
+    referrerEmail: string;
+    referrerName?: string;
+    businessName: string;
+    contactName: string;
+    contactEmail: string;
+    contactPhone?: string;
+    trade: string;
+    notes?: string;
+    status: 'Invited' | 'Demo Scheduled' | 'Trial Active' | 'Active Customer' | 'Closed Lost';
+    subscriptionPlan?: string;
+    estimatedMonthlyCommission?: number;
+    totalEarnedCommission?: number;
+    lastStatusUpdate?: string;
+    createdAt: string;
 }
 
 

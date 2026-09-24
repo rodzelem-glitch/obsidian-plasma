@@ -1,6 +1,6 @@
 import { cleanUndefinedFields } from './lib/utils';
 
-import React, { useEffect, lazy, Suspense, useCallback } from 'react';
+import React, { useEffect, Suspense, useCallback, useRef } from 'react';
 import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { useAppContext } from './context/AppContext';
 import { User } from './types';
@@ -9,40 +9,48 @@ import { Capacitor } from '@capacitor/core';
 import DemoBanner from './components/DemoBanner';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { lazyWithRetry } from './lib/lazyWithRetry';
 
-// Lazy Loaded Routing Components for Bundle Splitting
-const MasterAdminRoutes = lazy(() => import('./navigation/MasterAdminRoutes'));
-const SalesRoutes = lazy(() => import('./navigation/SalesRoutes'));
-const AdminRoutes = lazy(() => import('./navigation/AdminRoutes'));
-const CustomerRoutes = lazy(() => import('./navigation/CustomerRoutes'));
-const EmployeeRoutes = lazy(() => import('./navigation/EmployeeRoutes'));
-const PublicRoutes = lazy(() => import('./navigation/PublicRoutes'));
+// Lazy Loaded Routing Components with auto-retry and cache-busting self-healing
+const MasterAdminRoutes = lazyWithRetry(() => import('./navigation/MasterAdminRoutes'));
+const SalesRoutes = lazyWithRetry(() => import('./navigation/SalesRoutes'));
+const AdminRoutes = lazyWithRetry(() => import('./navigation/AdminRoutes'));
+const CustomerRoutes = lazyWithRetry(() => import('./navigation/CustomerRoutes'));
+const EmployeeRoutes = lazyWithRetry(() => import('./navigation/EmployeeRoutes'));
+const PublicRoutes = lazyWithRetry(() => import('./navigation/PublicRoutes'));
 
 import LocationTracker from './components/common/LocationTracker';
 import ScrollToTop from './components/common/ScrollToTop';
 import { CallListener } from './components/common/CallListener';
+import { ActiveCallBar } from './components/common/ActiveCallBar';
 import WorkOrderAssociationsModal from './components/modals/WorkOrderAssociationsModal';
 import SubcontractorAgreementsGate from './components/auth/SubcontractorAgreementsGate';
+import { resolveUserRedirectPath, setActiveView, type ActiveViewMode } from './lib/viewState';
 
 
-const PublicProposal = lazy(() => import('./pages/PublicProposal'));
-import PublicProjectProposal from './pages/PublicProjectProposal';
-const PublicEquipmentReport = lazy(() => import('./pages/PublicEquipmentReport'));
-const ComplianceReport = lazy(() => import('./pages/landing/ComplianceReport'));
-const PrivacyPolicy = lazy(() => import('./pages/landing/PrivacyPolicy'));
-const TermsOfService = lazy(() => import('./pages/landing/TermsOfService'));
-const EULA = lazy(() => import('./pages/landing/EULA'));
+const PublicProposal = lazyWithRetry(() => import('./pages/PublicProposal'));
+const PublicProjectProposal = lazyWithRetry(() => import('./pages/PublicProjectProposal'));
+const PublicEquipmentReport = lazyWithRetry(() => import('./pages/PublicEquipmentReport'));
+const PublicServiceReport = lazyWithRetry(() => import('./pages/PublicServiceReport'));
+const PublicTechFormFill = lazyWithRetry(() => import('./pages/PublicTechFormFill'));
+const ComplianceReport = lazyWithRetry(() => import('./pages/landing/ComplianceReport'));
+const PrivacyPolicy = lazyWithRetry(() => import('./pages/landing/PrivacyPolicy'));
+const TermsOfService = lazyWithRetry(() => import('./pages/landing/TermsOfService'));
+const EULA = lazyWithRetry(() => import('./pages/landing/EULA'));
 
 
 // Lazy Load Payment and Marketplace
-const CustomerPayment = lazy(() => import('./pages/CustomerPayment'));
-const MarketplaceDirectory = lazy(() => import('./pages/marketplace/ProviderDirectory'));
-const ProviderProfile = lazy(() => import('./pages/marketplace/ProviderProfile'));
-const Unsubscribe = lazy(() => import('./pages/Unsubscribe'));
+const CustomerPayment = lazyWithRetry(() => import('./pages/CustomerPayment'));
+const MarketplaceDirectory = lazyWithRetry(() => import('./pages/marketplace/ProviderDirectory'));
+const ProviderProfile = lazyWithRetry(() => import('./pages/marketplace/ProviderProfile'));
+const Unsubscribe = lazyWithRetry(() => import('./pages/Unsubscribe'));
 
 // Public widgets - serve app data, not marketing
-const ReviewsWidget = lazy(() => import('./pages/landing/ReviewsWidget'));
-const SubcontractorOnboardingWidget = lazy(() => import('./pages/landing/SubcontractorOnboardingWidget'));
+const ReviewsWidget = lazyWithRetry(() => import('./pages/landing/ReviewsWidget'));
+const SubcontractorOnboardingWidget = lazyWithRetry(() => import('./pages/landing/SubcontractorOnboardingWidget'));
+const PublicAwardWidget = lazyWithRetry(() => import('./pages/public/PublicAwardWidget'));
+const PublicMultiAwardWidget = lazyWithRetry(() => import('./pages/public/PublicMultiAwardWidget'));
+const PublicAwardVerification = lazyWithRetry(() => import('./pages/public/PublicAwardVerification'));
 
 // A simple loading spinner component
 const LoadingSpinner: React.FC = () => (
@@ -87,45 +95,46 @@ const App: React.FC = () => {
 
 
   const getRedirectPath = useCallback((user: User | null, isMasterAdmin: boolean): string => {
-    if (!user) return '/login';
-    if ((user.role as string) === 'kort_tester') return '/admin/kort-playground';
-    if (isMasterAdmin || user.role === 'franchise_admin') return '/master/dashboard';
-    if (user.role === 'platform_sales') return '/sales/dashboard';
-    if (user.role === 'admin' || user.role === 'both' || user.role === 'supervisor') return '/admin/dashboard';
-    if (user.role === 'customer') {
-        if (!user.organizationId || user.organizationId === 'unaffiliated') {
-            return '/marketplace';
-        }
-        return '/portal';
-    }
-    if (user.role === 'employee' || user.role === 'Subcontractor' || user.role === 'Technician') {
-        if (!user.organizationId || user.organizationId === 'unaffiliated') {
-            return '/marketplace';
-        }
-        return '/briefing';
-    }
-    
-    const path = (!user.organizationId || user.organizationId === 'unaffiliated' || !user.role) ? '/marketplace' : '/login';
-    return path;
-  }, []); // Dependencies for useCallback should be empty if it only uses its arguments, or include external state if needed.
+    return resolveUserRedirectPath(user, isMasterAdmin);
+  }, []);
 
   const userId = user?.id;
+
+  // Automatically track and synchronize the user's active view mode across navigations
+  const lastActiveViewRef = useRef<ActiveViewMode | null>(null);
+
+  useEffect(() => {
+    if (!userId || isDemoMode) return;
+    const path = location.pathname;
+    let targetView: ActiveViewMode | null = null;
+    if (path.startsWith('/briefing')) {
+      targetView = 'tech';
+    } else if (path.startsWith('/admin')) {
+      // Do not overwrite Master Admin's default view to 'admin' when inspecting tenant admin routes
+      if (!isMasterAdmin && user?.role !== 'master_admin') {
+        targetView = 'admin';
+      }
+    } else if (path.startsWith('/master')) {
+      targetView = 'master';
+    } else if (path.startsWith('/sales')) {
+      targetView = 'sales';
+    } else if (path.startsWith('/portal')) {
+      targetView = 'customer';
+    }
+
+    if (targetView && targetView !== lastActiveViewRef.current) {
+      lastActiveViewRef.current = targetView;
+      setActiveView(targetView, userId);
+    }
+  }, [location.pathname, userId, isDemoMode, isMasterAdmin, user?.role]);
+
   useEffect(() => {
     if (userId && !isDemoMode) {
       import('./lib/pushNotificationService').then(module => {
         module.setupFCMToken(userId);
       });
-      // TEMPORARY: Reset master platform logo & color locally based on user request
-      if (isMasterAdmin && user?.organizationId) {
-          import('./lib/firebase').then(({ db }) => {
-              db.collection('organizations').doc(user.organizationId).update(cleanUndefinedFields({
-                  logoUrl: null,
-                  primaryColor: null
-              })).catch(() => {});
-          }).catch(() => {});
-      }
     }
-  }, [userId, isMasterAdmin, isDemoMode]);
+  }, [userId, isDemoMode]);
 
   useEffect(() => {
     const applyTheme = async () => {
@@ -134,10 +143,12 @@ const App: React.FC = () => {
         if (Capacitor.isNativePlatform()) {
           try {
             const { StatusBar, Style } = await import('@capacitor/status-bar');
+            await StatusBar.show().catch(() => {});
             await StatusBar.setStyle({ style: Style.Dark });
             if (Capacitor.getPlatform() === 'android') {
+                await StatusBar.setBackgroundColor({ color: '#0f172a' }).catch(() => {});
                 const { NavigationBar } = await import('@capgo/capacitor-navigation-bar');
-                await NavigationBar.setNavigationBarColor({ color: '#0f172a', darkButtons: false });
+                await NavigationBar.setNavigationBarColor({ color: '#0f172a', darkButtons: false }).catch(() => {});
             }
           } catch (e) { console.error(e); }
         }
@@ -146,10 +157,12 @@ const App: React.FC = () => {
         if (Capacitor.isNativePlatform()) {
           try {
             const { StatusBar, Style } = await import('@capacitor/status-bar');
+            await StatusBar.show().catch(() => {});
             await StatusBar.setStyle({ style: Style.Light });
             if (Capacitor.getPlatform() === 'android') {
+                await StatusBar.setBackgroundColor({ color: '#ffffff' }).catch(() => {});
                 const { NavigationBar } = await import('@capgo/capacitor-navigation-bar');
-                await NavigationBar.setNavigationBarColor({ color: '#f8fafc', darkButtons: true });
+                await NavigationBar.setNavigationBarColor({ color: '#f8fafc', darkButtons: true }).catch(() => {});
             }
           } catch (e) { console.error(e); }
         }
@@ -163,13 +176,8 @@ const App: React.FC = () => {
       import('@capacitor/splash-screen').then(({ SplashScreen }) => {
         SplashScreen.hide().catch(console.error);
       });
-      // Hide native controls for immersive swipe-to-reveal mode
       import('@capacitor/status-bar').then(({ StatusBar }) => {
-        StatusBar.hide().catch(console.error);
-      });
-      import('@capgo/capacitor-navigation-bar').then(({ NavigationBar }) => {
-        // Fallback for NavigationBar since it doesn't support hide()
-        NavigationBar.setNavigationBarColor({ color: 'transparent', darkButtons: true }).catch(console.error);
+        StatusBar.show().catch(console.error);
       });
     }
   }, [loading]);
@@ -237,99 +245,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    const handleAppUpdate = (event: any) => {
-      const currentHash = window.location.hash.split('?')[0];
-      const isPublicRoute = currentHash.startsWith('#/invoice/') || 
-                            currentHash.startsWith('#/proposal-view/') || 
-                            currentHash.startsWith('#/project-proposal-view/') || 
-                            currentHash.startsWith('#/report/') ||
-                            currentHash.startsWith('#/public-upload/') ||
-                            currentHash.startsWith('#/unsubscribe') ||
-                            currentHash === '#/unsubscribe' ||
-                            currentHash === '' ||
-                            currentHash === '#/' ||
-                            currentHash === '#/homeowners' ||
-                            currentHash === '#/ai-worker' ||
-                            currentHash === '#/ai-worker-commands' ||
-                            currentHash === '#/privacy' ||
-                            currentHash === '#/terms' ||
-                            currentHash === '#/eula' ||
-                            currentHash === '#/faq' ||
-                            currentHash === '#/franchise' ||
-                            currentHash === '#/franchise-agreement';
-      const isLocalhost = window.location.hostname === 'localhost' || 
-                          window.location.hostname === '127.0.0.1' || 
-                          window.location.hostname.startsWith('192.168.') || 
-                          window.location.hostname.startsWith('10.');
-      
-      if (!user || isPublicRoute || isLocalhost || sessionStorage.getItem('dismiss_app_update') === 'true') {
-        console.info('[PWA] Suppressing update toast:', currentHash, { hasUser: !!user, isLocalhost });
-        return;
-      }
-      const updateSW = event?.detail?.updateSW || (window as any).updateServiceWorker;
-      toast(
-        <div className="flex flex-col gap-3 p-1">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-indigo-400 animate-pulse"></span>
-            <div className="font-extrabold text-sm text-white tracking-wide">A new version of TekTrakker is available!</div>
-          </div>
-          <div className="text-[12px] text-slate-200 leading-relaxed font-medium">An update is required to keep all real-time field tracking and integrations synchronized.</div>
-          <div className="flex items-center gap-3 mt-1">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                toast.dismiss('app-update-toast');
-                if (typeof updateSW === 'function') {
-                  try {
-                    console.log('Invoking updateSW...');
-                    updateSW(true);
-                  } catch (err) {
-                    console.error('Error invoking updateSW:', err);
-                    window.location.reload();
-                  }
-                } else {
-                  window.location.reload();
-                }
-              }}
-              className="px-5 py-2 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 active:scale-95 cursor-pointer"
-            >
-              Update Now
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                sessionStorage.setItem('dismiss_app_update', 'true');
-                toast.dismiss('app-update-toast');
-              }}
-              className="px-5 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-bold transition-all border border-slate-600/50 active:scale-95 cursor-pointer"
-            >
-              Later
-            </button>
-          </div>
-        </div>,
-        {
-          position: 'bottom-center',
-          autoClose: false,
-          toastId: 'app-update-toast',
-          closeButton: false,
-          style: {
-            background: 'rgba(15, 23, 42, 0.95)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            border: '1px solid rgba(99, 102, 241, 0.5)',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 40px rgba(99, 102, 241, 0.15)',
-            color: '#ffffff',
-            borderRadius: '20px',
-            padding: '24px',
-            maxWidth: '420px',
-          }
-        }
-      );
-    };
-    window.addEventListener('app-update-available', handleAppUpdate as any);
-    return () => window.removeEventListener('app-update-available', handleAppUpdate as any);
-  }, [user]);
+
 
   const handleLogout = () => {
     localStorage.setItem('just_logged_out', 'true');
@@ -348,11 +264,18 @@ const App: React.FC = () => {
 
   if (loading || demoRole) {
     const currentHash = window.location.hash.split('?')[0].replace('#', '') || '/';
-    const publicPaths = ['/', '/offer', '/pro', '/pro/apex', '/compliance-view', '/privacy', '/terms', '/eula', '/franchise', '/franchise-agreement', '/ai-worker', '/ai-worker-commands', '/homeowners', '/faq'];
-    // Allow public marketing pages to instantly render the First Contentful Paint without waiting for Firebase Auth handshakes!
+    const publicPrefixes = [
+      '/', '/offer', '/pro', '/compliance-view', '/privacy', '/terms', '/eula', 
+      '/franchise', '/franchise-agreement', '/ai-worker', '/ai-worker-commands', '/homeowners', '/faq',
+      '/invoice', '/pay', '/deposit', '/proposal-view', '/project-proposal-view', '/proposal', 
+      '/public-proposal', '/service-report', '/report', '/tech-form', '/public-upload', '/widgets', 
+      '/site', '/p', '/awards', '/careers', '/book', '/asset', '/equipment', '/register', '/login', '/unsubscribe'
+    ];
+    const isPublicRoute = publicPrefixes.some(p => currentHash === p || currentHash.startsWith(p + '/'));
+    // Allow public marketing & document viewing pages to instantly render the First Contentful Paint without waiting for Firebase Auth handshakes!
     // However, if we are initializing a demo session, we must block the UI and show the loading spinner to prevent 
     // the unauthenticated route from triggering a Navigate to /login before the demo context is built.
-    if (!publicPaths.includes(currentHash) || demoRole) {
+    if (!isPublicRoute || demoRole) {
       return <LoadingSpinner />;
     }
   }
@@ -382,9 +305,11 @@ const App: React.FC = () => {
         theme={state.theme === 'dark' ? 'dark' : 'light'}
         toastClassName="!rounded-xl !shadow-lg !text-sm !font-medium"
         limit={3}
+        style={{ zIndex: 999999 }}
       />
       <DemoBanner />
       <LocationTracker />
+      <ActiveCallBar />
       <BackgroundDelayer>
         <CallListener />
       </BackgroundDelayer>
@@ -413,10 +338,85 @@ const App: React.FC = () => {
                     <CustomerPayment />
                 </Suspense>
             } />
+            <Route path="/invoice/:id" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <CustomerPayment />
+                </Suspense>
+            } />
+            <Route path="/pay/:paymentRequestId" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <CustomerPayment />
+                </Suspense>
+            } />
+            <Route path="/pay/:jobId" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <CustomerPayment />
+                </Suspense>
+            } />
+            <Route path="/pay/:id" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <CustomerPayment />
+                </Suspense>
+            } />
+            <Route path="/deposit/:paymentRequestId" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <CustomerPayment />
+                </Suspense>
+            } />
+            <Route path="/deposit/:jobId" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <CustomerPayment />
+                </Suspense>
+            } />
+            <Route path="/deposit/:id" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <CustomerPayment />
+                </Suspense>
+            } />
             <Route path="/proposal-view/:proposalId" element={<PublicProjectProposal />} />
             <Route path="/project-proposal-view/:proposalId" element={<PublicProjectProposal />} />
+            <Route path="/proposal/:proposalId" element={<PublicProjectProposal />} />
+            <Route path="/public-proposal/:proposalId" element={<PublicProjectProposal />} />
+            <Route path="/proposal" element={user ? <Navigate to={(user.role === 'employee' || user.role === 'Technician' || user.role === 'Subcontractor') ? '/briefing/proposal' : '/admin/proposal'} replace /> : <Navigate to="/login" replace />} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
+            <Route path="/service-report" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <PublicServiceReport />
+                </Suspense>
+            } />
+            <Route path="/service-report/:jobId" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <PublicServiceReport />
+                </Suspense>
+            } />
+            <Route path="/service-report/:id" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <PublicServiceReport />
+                </Suspense>
+            } />
+            <Route path="/report/service/:jobId" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <PublicServiceReport />
+                </Suspense>
+            } />
+            <Route path="/report" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <PublicServiceReport />
+                </Suspense>
+            } />
+            <Route path="/report/:jobId" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <PublicServiceReport />
+                </Suspense>
+            } />
             <Route path="/report/equipment/:customerId" element={<PublicEquipmentReport />} />
+            <Route path="/asset/:customerId" element={<PublicEquipmentReport />} />
+            <Route path="/equipment/:customerId" element={<PublicEquipmentReport />} />
+            <Route path="/tech-form/:jobId" element={
+                <Suspense fallback={<LoadingSpinner />}>
+                    <PublicTechFormFill />
+                </Suspense>
+            } />
 
             {/* Standalone Legal & Verification Documents */}
             <Route path="/compliance-view" element={<ComplianceReport />} />
@@ -426,6 +426,26 @@ const App: React.FC = () => {
 
             {/* Public widgets */}
             <Route path="/widgets/reviews/:orgId" element={<ReviewsWidget />} />
+            <Route path="/widgets/award/:awardId" element={
+                <Suspense fallback={<div className="bg-transparent flex items-center justify-center p-4">Loading Badge...</div>}>
+                    <PublicAwardWidget />
+                </Suspense>
+            } />
+            <Route path="/widgets/awards/:orgId" element={
+                <Suspense fallback={<div className="bg-transparent flex items-center justify-center p-4">Loading Awards Showcase...</div>}>
+                    <PublicMultiAwardWidget />
+                </Suspense>
+            } />
+            <Route path="/awards/verify" element={
+                <Suspense fallback={<div className="flex h-screen items-center justify-center bg-slate-950 text-white">Verifying Award...</div>}>
+                    <PublicAwardVerification />
+                </Suspense>
+            } />
+            <Route path="/awards/verify/:awardId" element={
+                <Suspense fallback={<div className="flex h-screen items-center justify-center bg-slate-950 text-white">Verifying Award...</div>}>
+                    <PublicAwardVerification />
+                </Suspense>
+            } />
             <Route path="/widgets/subcontractor-setup/:orgId" element={<SubcontractorOnboardingWidget />} />
             <Route path="/widgets/subcontractor-onboarding/:orgId" element={<SubcontractorOnboardingWidget />} />
 
