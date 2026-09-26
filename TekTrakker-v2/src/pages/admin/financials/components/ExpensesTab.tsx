@@ -363,6 +363,193 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                     </div>
                 </div>
             ) : (
+                <>
+                {/* Mobile Cards View (App / Mobile View Only) */}
+                <div className="md:hidden space-y-3.5 mb-6">
+                    {sortedExpenses.map((exp: any) => {
+                        const expTotal = Number(exp.amount) || 0;
+                        const expTax = Number(exp.taxAmount) || 0;
+                        const expSubtotal = Number(exp.subtotal) || (expTotal ? Math.max(0, expTotal - expTax) : 0);
+                        const isFlagged = exp.isPossibleDuplicate && !exp.duplicateDismissed;
+                        const displayReceiptNum = exp.receiptNumber || `REC-${exp.id?.slice(-6)}`;
+
+                        const possibleReceipt = exp.receiptData || exp.receiptUrl || exp.receipt || exp.image || exp.imageUrl || exp.photo || exp.photoUrl || exp.attachment || exp.fileUrl;
+                        const possibleUrls = exp.receiptUrls && exp.receiptUrls.length > 0 ? exp.receiptUrls : (possibleReceipt ? [possibleReceipt] : []);
+
+                        return (
+                            <div key={`exp-card-${exp.id}`} className={`bg-white dark:bg-slate-900 border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all space-y-3 ${
+                                isFlagged ? 'border-amber-300 dark:border-amber-700 bg-amber-50/30' : 'border-slate-200 dark:border-slate-800'
+                            }`}>
+                                {/* Header: Receipt # & Category & Total Amount */}
+                                <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                                    <div>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                                {displayReceiptNum}
+                                            </span>
+                                            <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${
+                                                exp.expenseType === 'personal' 
+                                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' 
+                                                : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400'
+                                            }`}>
+                                                {exp.expenseType === 'personal' ? t('Personal') : t('Business')}
+                                            </span>
+                                            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                                                {t(exp.category)}
+                                            </span>
+                                        </div>
+                                        <div className="font-bold text-slate-900 dark:text-white text-sm mt-1">
+                                            {exp.vendor}
+                                        </div>
+                                    </div>
+
+                                    <div className="text-right shrink-0">
+                                        <div className="font-black text-base text-red-600 font-mono">
+                                            -${expTotal.toFixed(2)}
+                                        </div>
+                                        <div className="text-[10px] text-slate-400">
+                                            Sub: ${expSubtotal.toFixed(2)} {expTax > 0 ? `| Tax: $${expTax.toFixed(2)}` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Duplicate Alert Banner */}
+                                {isFlagged && (
+                                    <div className="flex items-center justify-between gap-2 bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200 px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700 text-xs">
+                                        <span className="inline-flex items-center gap-1 font-bold">
+                                            <AlertTriangle size={13} />
+                                            {t("Possible Duplicate")}
+                                        </span>
+                                        <button 
+                                            onClick={() => handleDismissDuplicate(exp.id, exp.type)} 
+                                            className="px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-extrabold rounded shadow-xs"
+                                        >
+                                            {t("Keep Separate")}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Date & Description */}
+                                <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                                    <div className="flex items-center gap-1.5 text-[11px]">
+                                        <span className="text-slate-400">📅</span>
+                                        <span>{exp.date}</span>
+                                    </div>
+                                    {exp.description && (
+                                        <p className="text-slate-700 dark:text-slate-300 line-clamp-2">
+                                            {exp.description}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Receipt Attachment Bar & Actions */}
+                                <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                    <div className="flex items-center gap-2">
+                                        {possibleUrls.length > 0 ? (
+                                            <div className="flex items-center gap-1.5">
+                                                <button 
+                                                    onClick={() => setViewingReceipt(possibleUrls)} 
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-lg font-bold text-xs shadow-xs"
+                                                    title={t("View Receipt")}
+                                                >
+                                                    <Paperclip size={13} />
+                                                    {t("Receipt")}
+                                                    {possibleUrls.length > 1 && <span className="ml-0.5 text-[9px] bg-blue-600 text-white px-1 rounded-full">{possibleUrls.length}</span>}
+                                                </button>
+                                                {isAdmin && (
+                                                    <button onClick={() => handleDeleteReceipt(exp.id, exp.type)} className="text-red-500 hover:text-red-700 p-1" title={t("Delete Receipt")}>
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <button 
+                                                    onClick={() => handleCapture(exp.id, CameraSource.Camera)}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold"
+                                                    title={t("Take Photo")}
+                                                >
+                                                    <CameraIcon size={13} />
+                                                    <span>{t("Camera")}</span>
+                                                </button>
+                                                <button 
+                                                    onClick={() => {
+                                                        if (Capacitor.isNativePlatform()) {
+                                                            handleCapture(exp.id, CameraSource.Photos);
+                                                        } else {
+                                                            document.getElementById(`file-input-mobile-${exp.id}`)?.click();
+                                                        }
+                                                    }}
+                                                    className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold"
+                                                    title={t("Upload Image")}
+                                                >
+                                                    <ImageIcon size={13} />
+                                                    <span>{t("Upload")}</span>
+                                                </button>
+                                                <input 
+                                                    id={`file-input-mobile-${exp.id}`}
+                                                    type="file" 
+                                                    multiple
+                                                    accept="image/*,.pdf" 
+                                                    className="hidden" 
+                                                    aria-label={t("Upload Receipt")}
+                                                    title={t("Upload Receipt")} 
+                                                    onChange={(e) => {
+                                                        const files = e.target.files ? Array.from(e.target.files) : [];
+                                                        if (files.length > 0 && (window as any).handleAttachReceipt) {
+                                                            files.forEach((file, idx) => {
+                                                                (window as any).handleAttachReceipt(exp.id, exp.type, file, idx);
+                                                            });
+                                                            showToast.success(t(`${files.length} receipt file(s) attached and sent for processing!`));
+                                                        }
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-1">
+                                        <button 
+                                            onClick={() => handleEditExpense(exp)} 
+                                            className="p-1.5 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded-lg border border-blue-200 dark:border-blue-900/40" 
+                                            title={t("Edit Expense")}
+                                        >
+                                            <Edit size={14} />
+                                        </button>
+                                        <button 
+                                            aria-label={t("Copy Reference")} 
+                                            title={t("Copy Reference")} 
+                                            onClick={(e) => { e.stopPropagation(); handleCopyRef(exp.id); }} 
+                                            className="p-1.5 text-slate-400 hover:text-primary-600 bg-slate-100 dark:bg-slate-800 rounded-lg"
+                                        >
+                                            <Copy size={14} />
+                                        </button>
+                                        <button 
+                                            aria-label={t("Share Expense")} 
+                                            title={t("Share Expense")} 
+                                            onClick={(e) => { e.stopPropagation(); setShareModalExp(exp); }} 
+                                            className="p-1.5 text-slate-400 hover:text-primary-600 bg-slate-100 dark:bg-slate-800 rounded-lg"
+                                        >
+                                            <Share2 size={14} />
+                                        </button>
+                                        {isAdmin && (
+                                            <button 
+                                                onClick={() => handleDeleteExpense(exp.id, exp.type)} 
+                                                className="p-1.5 text-red-500 hover:text-red-700 bg-red-50 dark:bg-red-950/30 rounded-lg border border-red-200 dark:border-red-900/40" 
+                                                title={t("Delete Expense")}
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
                 <Table headers={[t('Receipt #'), t('Date'), t('Vendor'), t('Category'), t('Description'), t('Subtotal'), t('Tax Paid'), t('Total'), t('Receipt'), t('Actions')]}>
                     {sortedExpenses.map((exp: any) => {
                         const expTotal = Number(exp.amount) || 0;
@@ -491,6 +678,8 @@ const ExpensesTab: React.FC<ExpensesTabProps> = ({
                     );
                 })}
                 </Table>
+                </div>
+                </>
             )}
         </Card>
     );

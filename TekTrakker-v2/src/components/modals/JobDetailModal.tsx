@@ -1299,43 +1299,8 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                     onClick={async () => {
                                         setIsDownloadingPdf(true);
                                         try {
-                                            // @ts-ignore - html2pdf has no types available right now
-                                            const html2pdf = (await import('html2pdf.js')).default;
                                             const htmlContent = generateEmailHtml(!isAdmin, true);
-                                            
-                                            const wrapper = document.createElement('div');
-                                            wrapper.style.position = 'absolute';
-                                            wrapper.style.left = '-9999px';
-                                            wrapper.style.top = '-9999px';
-                                            
-                                            const container = document.createElement('div');
-                                            container.innerHTML = htmlContent;
-                                            container.style.width = '740px';
-                                            container.style.backgroundColor = '#ffffff';
-                                            container.style.padding = '0px';
-                                            container.style.margin = '0px';
-                                            container.style.boxSizing = 'border-box';
-                                            
-                                            wrapper.appendChild(container);
-                                            document.body.appendChild(wrapper);
-                                            
-                                            container.querySelectorAll('img').forEach((img) => {
-                                                if (img.src && img.src.includes('tektrakker.web.app/tektrakker-logo-web.png')) {
-                                                    img.src = '/tektrakker-logo-web.png';
-                                                }
-                                            });
-                                            
-                                            const images = container.getElementsByTagName('img');
-                                            const promises = Array.from(images).map(img => {
-                                                if (img.complete) return Promise.resolve();
-                                                return new Promise<void>(resolve => {
-                                                    img.onload = () => resolve();
-                                                    img.onerror = () => resolve();
-                                                });
-                                            });
-                                            await Promise.all(promises);
-                                            
-                                            const { getStandardPdfFilename } = await import('../../lib/pdfHelper');
+                                            const { renderHtmlToSmartPdf, getStandardPdfFilename } = await import('../../lib/pdfHelper');
                                             const fileName = getStandardPdfFilename('Service_Report', {
                                                 id: job.id,
                                                 workOrderNumber: job.workOrderNumber,
@@ -1344,20 +1309,18 @@ const JobDetailModal: React.FC<JobDetailModalProps> = ({
                                                 date: job.appointmentTime || job.scheduledDate || job.createdAt
                                             });
                                             
-                                            const opt: any = {
-                                                margin:       [0.25, 0.25, 0.25, 0.25],
-                                                filename:     fileName,
-                                                image:        { type: 'jpeg', quality: 0.98 },
-                                                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 740, backgroundColor: '#ffffff' },
-                                                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-                                                pagebreak:    { mode: ['css', 'legacy'], avoid: ['.pdf-avoid-break', '.pdf-card', '.pdf-photo', '.pdf-unit-card', '.pdf-timeline-item', 'tr', 'img', 'blockquote', '.avoid-break'] }
-                                            };
-                                            
-                                            const pdfDataUri = await html2pdf().from(container).set(opt).output('datauristring');
+                                            const result = await renderHtmlToSmartPdf(htmlContent, {
+                                                filename: fileName,
+                                                margin: [0.25, 0.25, 0.25, 0.25],
+                                                windowWidth: 740,
+                                                pdfFormat: 'letter',
+                                                pdfOrientation: 'portrait',
+                                                scale: 2,
+                                                quality: 0.98
+                                            });
+
                                             const { downloadFile } = await import('../../lib/downloadHelper');
-                                            await downloadFile(pdfDataUri, fileName);
-                                            
-                                            document.body.removeChild(wrapper);
+                                            await downloadFile(result.dataUri, fileName);
                                         } catch (err) {
                                             console.error('Failed to generate PDF:', err);
                                             showToast.error('Failed to download PDF report.');

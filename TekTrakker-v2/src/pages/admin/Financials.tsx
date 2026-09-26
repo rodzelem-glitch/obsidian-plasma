@@ -1713,7 +1713,7 @@ const Financials: React.FC = () => {
                                     if (fileInfo.isPdf) {
                                         return (
                                             <iframe 
-                                                src={url} 
+                                                src={fileInfo.previewUrl} 
                                                 className="w-full h-[60vh] bg-white rounded-xl border-none"
                                                 title="Receipt Document"
                                             />

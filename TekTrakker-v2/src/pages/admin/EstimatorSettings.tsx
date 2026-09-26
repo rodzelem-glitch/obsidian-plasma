@@ -337,6 +337,48 @@ const EstimatorSettings: React.FC = () => {
                             />
                         </div>
 
+                        {/* Mobile Presets Cards View */}
+                        <div className="md:hidden space-y-3 mb-4">
+                            {filteredPresets.map((preset: ProposalPreset) => {
+                                const markupFactor = 1 + (markupPct / 100);
+                                const retail = ((preset.baseCost * markupFactor) + (preset.avgLabor * laborRate)) * multiplier;
+                                return (
+                                    <div key={preset.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm space-y-2.5">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <div className="font-bold text-gray-900 dark:text-white text-sm flex items-center gap-1.5 flex-wrap">
+                                                    <span>{preset.name}</span>
+                                                    {(preset as any).customerId && (
+                                                        <span className="px-2 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-800 tracking-wider uppercase">
+                                                            Contract Exclusive
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {preset.description && (
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{preset.description}</div>
+                                                )}
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 px-2 py-0.5 rounded-lg border border-primary-100 dark:border-primary-800 shrink-0">
+                                                {preset.category ? t(preset.category) : t('Other')}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-700">
+                                            <div className="font-mono font-black text-emerald-600 dark:text-emerald-400 text-lg">
+                                                ${retail.toFixed(2)}
+                                            </div>
+                                            <div className="flex gap-1">
+                                                <button aria-label={t("Edit Preset")} title={t("Edit Preset")} onClick={() => {setCurrentPreset(preset); setIsModalOpen(true);}} className="p-2 text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-700 rounded-lg transition-colors"><Plus size={16}/></button>
+                                                <button aria-label={t("Delete Preset")} title={t("Delete Preset")} onClick={() => handleDelete(preset.id)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block">
                         <Table headers={[t('Vertical'), t('Task Details'), t('Retail Estimate'), t('Actions')]}>
                             {filteredPresets.map((preset: ProposalPreset) => {
                                 const markupFactor = 1 + (markupPct / 100);
@@ -370,6 +412,7 @@ const EstimatorSettings: React.FC = () => {
                                 );
                             })}
                         </Table>
+                        </div>
                         {filteredPresets.length === 0 && (
                             <div className="text-center py-20 bg-slate-50 dark:bg-slate-800/50 rounded-xl m-4 border-2 border-dashed border-slate-200">
                                 <Book className="mx-auto text-slate-300 mb-4" size={48} />

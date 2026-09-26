@@ -1831,8 +1831,223 @@ CRITICAL:
                             </select>
                         </div>
                     </Card>
-                    {/* Main Table List */}
-                    <Card className="p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-xl rounded-2xl bg-white dark:bg-slate-900">
+
+                    {/* Mobile Proposals Cards View (App / Mobile View Only) */}
+                    <div className="md:hidden space-y-3.5 mb-6">
+                        {filteredProposals.map((p) => {
+                            const val = p.recommendedRoundedTotal || p.calculatedTotal || p.total || 0;
+                            const linkedJob = (state.jobs || []).find((j: any) => (p.linkedJobIds || []).includes(j.id) || j.proposalId === p.id || j.projectId === p.id || j.id === p.jobId);
+                            const linkedCust = (state.customers || []).find((c: any) => c.id === p.customerId || c.name?.trim().toLowerCase() === p.customerName?.trim().toLowerCase());
+
+                            let siteLocName = (p as any).serviceLocationName || (p as any).locationName || (p as any).siteName || linkedJob?.locationName || '';
+                            let siteLocAddr = (p as any).serviceLocationAddress || (p as any).locationAddress || (p as any).siteAddress || (p as any).address || linkedJob?.address || '';
+
+                            if (linkedCust?.serviceLocations?.length) {
+                                const matchedLoc = linkedCust.serviceLocations.find((l: any) =>
+                                    (p.locationId && l.id === p.locationId) ||
+                                    (siteLocName && (l.name?.trim().toLowerCase() === siteLocName.trim().toLowerCase() || l.propertyName?.trim().toLowerCase() === siteLocName.trim().toLowerCase())) ||
+                                    (siteLocAddr && l.address && siteLocAddr.toLowerCase().includes(l.address.toLowerCase()))
+                                ) || (linkedCust.serviceLocations.length === 1 ? linkedCust.serviceLocations[0] : null);
+
+                                if (matchedLoc) {
+                                    if (!siteLocName || siteLocName === p.customerName) siteLocName = matchedLoc.propertyName || matchedLoc.name || siteLocName;
+                                    if (!siteLocAddr) siteLocAddr = matchedLoc.address || '';
+                                }
+                            }
+
+                            const hasBeenOpened = p.status === 'Opened' || p.trackingHistory?.some((entry: any) => entry.status === 'Opened');
+
+                            return (
+                                <div key={p.id} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-3">
+                                    {/* Top Row: Date, ID, Status */}
+                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-mono font-bold text-slate-400">
+                                                #{p.proposalNumber || p.id}
+                                            </span>
+                                            <span className="text-xs text-slate-400">•</span>
+                                            <span className="text-xs font-bold text-slate-500 uppercase">
+                                                {new Date(p.createdAt).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            {p.archived ? (
+                                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                                    <Archive size={11} />
+                                                    {t("Archived")}
+                                                </span>
+                                            ) : (
+                                                <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full ${
+                                                    p.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800' :
+                                                    p.status === 'Sent' ? 'bg-blue-100 text-blue-800' :
+                                                    p.status === 'Opened' ? 'bg-indigo-100 text-indigo-800' :
+                                                    (p.status === 'Declined' || p.status === 'Denied') ? 'bg-rose-100 text-rose-800' :
+                                                    'bg-amber-100 text-amber-800'
+                                                }`}>
+                                                    {p.status}
+                                                </span>
+                                            )}
+                                            {p.archived && (
+                                                <span className="text-[10px] text-slate-500 font-medium">
+                                                    ({p.status === 'Accepted' ? t("Job Completed") : p.status})
+                                                </span>
+                                            )}
+                                            {hasBeenOpened && p.status !== 'Accepted' && (
+                                                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
+                                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                                                    {t("Opened")}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Customer & Total Value */}
+                                    <div className="flex items-baseline justify-between gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+                                        <div className="min-w-0 flex-1">
+                                            <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Customer</span>
+                                            <p className="font-black text-slate-950 dark:text-white text-sm truncate" title={p.customerName}>
+                                                {p.customerName || t('No Customer Specified')}
+                                            </p>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Total Value</span>
+                                            <span className="font-black text-base text-slate-900 dark:text-white">
+                                                {formatCurrency(val)}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Site Location & PO */}
+                                    {(siteLocName || siteLocAddr || p.poNumber || p.scid || p.title) && (
+                                        <div className="space-y-1.5 pt-1 text-xs">
+                                            {(siteLocName || siteLocAddr) && (
+                                                <div>
+                                                    <span className="text-[9px] font-extrabold uppercase text-indigo-500 dark:text-indigo-400 tracking-wider flex items-center gap-1">
+                                                        <MapPin size={10} /> Site Location
+                                                    </span>
+                                                    {siteLocName && (
+                                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block truncate" title={siteLocName}>
+                                                            {siteLocName}
+                                                        </span>
+                                                    )}
+                                                    {siteLocAddr && (
+                                                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block truncate" title={siteLocAddr}>
+                                                            {siteLocAddr}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {(p.poNumber || p.scid) && (
+                                                <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                                                    {p.poNumber && (
+                                                        <span>PO:{' '}
+                                                            <button
+                                                                onClick={() => dispatch({ type: 'SET_VIEWING_WORK_ORDER', payload: { workOrderNumber: p.poNumber, customerId: p.customerId || null } })}
+                                                                className="text-slate-700 dark:text-slate-300 font-bold hover:underline transition cursor-pointer border-none bg-transparent p-0 inline font-sans text-xs"
+                                                            >
+                                                                {p.poNumber}
+                                                            </button>
+                                                        </span>
+                                                    )}
+                                                    {p.scid && <span>SCID: <strong className="text-slate-700 dark:text-slate-300">{p.scid}</strong></span>}
+                                                </div>
+                                            )}
+                                            {p.title && !siteLocName && !siteLocAddr && (
+                                                <p className="text-xs text-slate-400 italic">{p.title}</p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Action Buttons */}
+                                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-1.5 text-xs">
+                                        <button 
+                                            title={t("Edit Proposal")}
+                                            onClick={() => navigate(`/admin/project-proposals?editId=${p.id}`)}
+                                            className="flex items-center gap-1 px-2.5 py-1 bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 rounded-md text-purple-700 dark:text-purple-300 hover:bg-purple-100/80 dark:hover:bg-purple-900/40 transition-colors font-bold shadow-sm"
+                                        >
+                                            <Edit2 size={13} />
+                                            {t("Edit")}
+                                        </button>
+                                        <button 
+                                            title={t("Send to Customer")}
+                                            onClick={() => handleOpenSendModal(p)}
+                                            className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-md text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/40 transition-colors font-bold shadow-sm"
+                                        >
+                                            <Send size={13} />
+                                            {t("Send")}
+                                        </button>
+                                        <button 
+                                            title={t("Send via SMS")}
+                                            onClick={() => setSmsModalProposal(p)}
+                                            className="flex items-center gap-1 px-2.5 py-1 bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/40 rounded-md text-teal-700 dark:text-teal-300 hover:bg-teal-100/80 dark:hover:bg-teal-900/40 transition-colors font-bold shadow-sm"
+                                        >
+                                            <MessageSquare size={13} />
+                                            {t("SMS")}
+                                        </button>
+                                        <button 
+                                            title={t("Copy Public Link")}
+                                            onClick={() => copyPublicLink(p.id)}
+                                            className="flex items-center gap-1 px-2 py-1 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-md text-blue-700 dark:text-blue-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/40 transition-colors font-bold shadow-sm"
+                                        >
+                                            <Copy size={13} />
+                                            {t("Link")}
+                                        </button>
+                                        <a 
+                                            href={`/#/project-proposal-view/${p.id}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            title={t("Open Public View")}
+                                            className="flex items-center gap-1 px-2 py-1 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40 rounded-md text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/40 transition-colors font-bold shadow-sm"
+                                        >
+                                            <ExternalLink size={13} />
+                                            {t("View")}
+                                        </a>
+                                        {p.status !== 'Accepted' && (
+                                            <button 
+                                                title={t("Verbal Accept")}
+                                                onClick={() => handleVerbalAccept(p)}
+                                                className="flex items-center gap-1 px-2.5 py-1 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-md text-amber-700 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-900/40 transition-colors font-bold shadow-sm"
+                                            >
+                                                <CheckCircle size={13} />
+                                                {t("Accept")}
+                                            </button>
+                                        )}
+                                        <button 
+                                            title={p.archived ? t("Restore Proposal") : t("Archive Proposal")}
+                                            aria-label={p.archived ? "Restore Proposal" : "Archive Proposal"}
+                                            onClick={() => handleArchiveProposal(p, !p.archived)}
+                                            className={`flex items-center gap-1 px-2.5 py-1 border rounded-md transition-colors font-bold shadow-sm ${
+                                                p.archived 
+                                                    ? 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-900/40' 
+                                                    : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                            }`}
+                                        >
+                                            {p.archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                                            {p.archived ? t("Restore") : t("Archive")}
+                                        </button>
+                                        <button 
+                                            title={t("Delete")}
+                                            onClick={() => handleDelete(p.id)}
+                                            className="flex items-center gap-1 px-2 py-1 bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-md text-red-700 dark:text-red-300 hover:bg-red-100/80 dark:hover:bg-red-900/40 transition-colors font-bold shadow-sm ml-auto"
+                                        >
+                                            <Trash2 size={13} />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {filteredProposals.length === 0 && (
+                            <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-400 font-medium italic">
+                                <AlertCircle size={24} className="mx-auto mb-2 text-slate-300 dark:text-slate-700" />
+                                <span>{t("No project proposals found matching criteria.")}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Main Table List (Desktop View Only) */}
+                    <div className="hidden md:block">
+                        <Card className="p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-xl rounded-2xl bg-white dark:bg-slate-900">
                         <Table headers={[t('Date'), t('Proposal ID'), t('Customer & Site Location'), t('PO / SCID'), t('Total Value'), t('Status')]}>
                             {filteredProposals.map((p) => {
                                  const val = p.recommendedRoundedTotal || p.calculatedTotal || p.total || 0;
@@ -2046,6 +2261,7 @@ CRITICAL:
                             )}
                         </Table>
                     </Card>
+                    </div>
                 </div>
             ) : (
                 // --- INTERACTIVE BUILDER / EDITOR MODE ---

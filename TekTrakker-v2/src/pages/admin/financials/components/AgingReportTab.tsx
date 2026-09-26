@@ -796,6 +796,141 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                     <p className="text-xs text-slate-400 mt-1">{t("Try resetting filters or adjusting search parameters.")}</p>
                 </div>
             ) : (
+                <>
+                {/* Mobile Cards View (App / Mobile View Only) */}
+                <div className="md:hidden space-y-3.5 mb-6">
+                    {displayedJobs.map((job: any) => {
+                        const total = Number(job.invoice.totalAmount) || Number(job.invoice.amount) || Number(job.invoice.grandTotal) || 0;
+                        const paid = Number(job.invoice.amountPaid) || (job.invoice.payments ? job.invoice.payments.reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) : 0) || Number(job.depositPaid ? job.depositAmount : 0) || 0;
+                        const outstanding = getJobDue(job);
+                        const days = job._agingDays || getJobDaysElapsed(job, agingBasis, new Date().getTime());
+                        const { customerName, locationName, locationAddress, poNumber } = getJobEntities(job);
+
+                        const sentTime = job.invoice?.sentAt || (job as any).invoiceSentAt || (job.invoice as any)?.emailSentAt;
+                        const isOpened = Boolean(job.invoice?.opened || job.invoice?.status === 'Opened');
+                        const reminders: string[] = job.invoice?.remindersSent || [];
+
+                        return (
+                            <div key={`ar-card-${job.id}`} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all space-y-3">
+                                {/* Header: Invoice #, Aging Days Badge, & Balance Due */}
+                                <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-mono text-xs font-black text-slate-900 dark:text-white">
+                                                {job.invoice.id}
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black inline-flex items-center gap-1 ${
+                                                days > 45 ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800' :
+                                                days > 30 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800' :
+                                                'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                                            }`}>
+                                                {days} {t("Days")}
+                                            </span>
+                                            {poNumber && (
+                                                <span className="font-mono text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800/60">
+                                                    PO: {poNumber}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="font-bold text-slate-800 dark:text-slate-200 text-sm mt-1">
+                                            {customerName}
+                                        </div>
+                                    </div>
+
+                                    <div className="text-right shrink-0">
+                                        <div className="text-base font-black text-slate-900 dark:text-white font-mono">
+                                            {fmt(outstanding)}
+                                        </div>
+                                        {paid > 0 && (
+                                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                                {t("Orig")}: {fmt(total)} (-{fmt(paid)})
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Location & Date Info */}
+                                <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                                    {(locationName || locationAddress) && (
+                                        <div className="flex items-start gap-1.5">
+                                            <span className="text-slate-400 shrink-0">📍</span>
+                                            <span className="line-clamp-2">
+                                                {locationName && <strong className="font-semibold text-slate-700 dark:text-slate-300">{locationName} — </strong>}
+                                                {locationAddress}
+                                            </span>
+                                        </div>
+                                    )}
+                                    <div className="flex items-center gap-2 text-[11px] pt-0.5">
+                                        <span className="text-slate-400 shrink-0">📅</span>
+                                        <span>
+                                            {job.appointmentTime ? new Date(job.appointmentTime).toLocaleDateString() : (job.createdAt ? new Date(job.createdAt).toLocaleDateString() : 'N/A')}
+                                        </span>
+                                        {job.invoice.sentAt ? (
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                                • {t("Sent")}: {new Date(job.invoice.sentAt).toLocaleDateString()}
+                                            </span>
+                                        ) : (
+                                            <span className="text-slate-400 italic">• {t("Not Sent")}</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Tracking Info */}
+                                {sentTime && (
+                                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        <span className="inline-flex items-center gap-1 font-bold">
+                                            <Send size={11} className="text-blue-500" />
+                                            {t("Sent")}: {new Date(sentTime).toLocaleDateString([], { month: 'numeric', day: 'numeric' })}
+                                        </span>
+                                        {isOpened ? (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" />
+                                                {t("Opened")}
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">{t("Unopened")}</span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Actions Toolbar */}
+                                <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                    <button 
+                                        onClick={() => setViewingInvoiceJob(job)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 rounded-lg text-blue-700 dark:text-blue-300 font-bold shadow-xs"
+                                    >
+                                        <Eye size={13} />
+                                        {t("View")}
+                                    </button>
+                                    <button 
+                                        onClick={() => setSendInvoiceModalConfig({ isOpen: true, job })}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs"
+                                    >
+                                        <Send size={13} />
+                                        {t("Email")}
+                                    </button>
+                                    <button 
+                                        onClick={() => setSmsModalJob(job)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900/40 rounded-lg text-teal-700 dark:text-teal-300 font-bold shadow-xs"
+                                    >
+                                        <MessageSquare size={13} />
+                                        {t("SMS")}
+                                    </button>
+                                    <button 
+                                        onClick={() => setSendInvoiceModalConfig({ isOpen: true, job })}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-lg text-amber-700 dark:text-amber-300 font-bold shadow-xs"
+                                    >
+                                        <Bell size={13} />
+                                        {t("Reminder")}
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
                 <Table headers={[t('Customer / Service Site'), t('PO / WO #'), t('Invoice #'), t('Visit / Service Date'), t('Age (Days)'), t('Amount / Balance Due'), t('Sent & Tracking'), t('Actions')]}>
                     {displayedJobs.map((job: any) => {
                         const total = Number(job.invoice.totalAmount) || Number(job.invoice.amount) || Number(job.invoice.grandTotal) || 0;
@@ -993,6 +1128,8 @@ const AgingReportTab: React.FC<AgingReportTabProps> = ({ jobs }) => {
                         );
                     })}
                 </Table>
+                </div>
+                </>
             )}
 
             {/* Invoice Viewer Modal */}

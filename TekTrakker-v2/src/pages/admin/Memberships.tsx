@@ -390,6 +390,121 @@ const Memberships: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Mobile Cards View (App / Mobile View Only) */}
+                <div className="md:hidden space-y-3.5 mb-6">
+                    {filteredAgreements.map(a => {
+                        const classMeta = getAgreementClassification(a);
+                        return (
+                            <div 
+                                key={`agreement-card-${a.id}`}
+                                onClick={() => setViewingAgreement(a)}
+                                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all space-y-3 cursor-pointer"
+                            >
+                                {/* Card Header: Customer, Plan, Type, Status */}
+                                <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                                    <div>
+                                        <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                                            {a.customerName}
+                                        </h4>
+                                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{a.planName}</span>
+                                            {a.contractNumber && (
+                                                <span className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded font-bold">
+                                                    #{a.contractNumber}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${classMeta.badgeColor}`}>
+                                            {classMeta.label}
+                                        </span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${a.status === 'Active' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300' : 'bg-red-100 text-red-800'}`}>
+                                            {a.status}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Scope & Renewal / Term */}
+                                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Scope</span>
+                                        <span className="font-mono font-medium text-slate-700 dark:text-slate-300">
+                                            {a.siteCount ? `${a.siteCount} Sites` : `${a.systemCount || 1} System`}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Renewal / Term</span>
+                                        <span className="font-medium text-slate-700 dark:text-slate-300">
+                                            {formatAgreementDate(a)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Actions Bar */}
+                                <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                    <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">
+                                        Tap to view details
+                                    </span>
+                                    <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setViewingAgreement(a);
+                                            }} 
+                                            className="p-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 rounded-lg border border-indigo-200 dark:border-indigo-900/50" 
+                                            title="View Agreement & Document"
+                                        >
+                                            <Eye size={14}/>
+                                        </button>
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingAgreement({...a});
+                                                setIsEditAgreementModalOpen(true);
+                                            }} 
+                                            className="p-1.5 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 rounded-lg border border-blue-200 dark:border-blue-900/50" 
+                                            title="Edit Agreement"
+                                        >
+                                            <Wrench size={14}/>
+                                        </button>
+                                        {a.status === 'Active' && (
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCancelAgreement(a.id);
+                                                }} 
+                                                className="p-1.5 bg-orange-50 dark:bg-orange-950/40 text-orange-600 dark:text-orange-300 rounded-lg border border-orange-200 dark:border-orange-900/50" 
+                                                title="Cancel Membership"
+                                            >
+                                                <Ban size={14}/>
+                                            </button>
+                                        )}
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteAgreement(a.id);
+                                            }} 
+                                            className="p-1.5 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-900/50" 
+                                            title="Delete Record"
+                                        >
+                                            <Trash2 size={14}/>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {filteredAgreements.length === 0 && (
+                        <div className="p-8 text-center text-slate-400 italic bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
+                            No agreements found matching your filter.
+                        </div>
+                    )}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
                 <Table headers={['Customer', 'Type', 'Plan / Agreement', 'Scope', 'Renewal / Term', 'Status', 'Action']}>
                     {filteredAgreements.map(a => {
                         const classMeta = getAgreementClassification(a);
@@ -475,6 +590,7 @@ const Memberships: React.FC = () => {
                         );
                     })}
                 </Table>
+                </div>
             </Card>
 
             <Modal isOpen={isPlanModalOpen} onClose={() => setIsPlanModalOpen(false)} title={`Edit ${editingPlan?.name}`}>

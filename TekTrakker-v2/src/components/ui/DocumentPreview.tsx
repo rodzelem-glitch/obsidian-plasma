@@ -1388,32 +1388,20 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                 }
             });
             
-            // Temporarily append to body to ensure CSS is computed
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'absolute';
-            wrapper.style.left = '-9999px';
-            wrapper.style.top = '-9999px';
-            wrapper.appendChild(clone);
-            document.body.appendChild(wrapper);
-            
             const fileName = customerName ? `${type}-${customerName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf` : `${type}-${id}.pdf`;
             
-            const opt: any = {
-                margin:       [0.25, 0.25, 0.25, 0.25],
-                filename:     fileName,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 780, backgroundColor: '#ffffff' },
-                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-                pagebreak:    { mode: ['css', 'legacy'], avoid: ['.pdf-avoid-break', '.pdf-card', '.pdf-photo', '.pdf-unit-card', '.pdf-timeline-item', 'tr', 'img', 'blockquote', '.avoid-break'] }
-            };
-            
-            // @ts-ignore - html2pdf has no types available right now
-            const html2pdf = (await import('html2pdf.js')).default;
-            const html2pdfFunc = typeof html2pdf === 'function' ? html2pdf : (html2pdf as any)?.default;
-            const pdfDataUri = await html2pdfFunc().from(clone).set(opt).output('datauristring');
+            const { renderHtmlToSmartPdf } = await import('lib/pdfHelper');
+            const result = await renderHtmlToSmartPdf(clone, {
+                filename: fileName,
+                margin: [0.25, 0.25, 0.25, 0.25],
+                windowWidth: 780,
+                pdfFormat: 'letter',
+                pdfOrientation: 'portrait',
+                scale: 2,
+                quality: 0.98
+            });
             const { downloadFile } = await import('lib/downloadHelper');
-            await downloadFile(pdfDataUri, fileName);
-            document.body.removeChild(wrapper);
+            await downloadFile(result.dataUri, fileName);
         } catch (e) {
             console.error('Download failed', e);
             showToast.warn('Failed to generate PDF directly. Falling back to print dialog...');
@@ -1608,7 +1596,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                                                 ) : fileInfo.isPdf ? (
                                                     <div className="w-full h-full flex flex-col space-y-2">
                                                         <iframe
-                                                            src={fileSrc}
+                                                            src={fileInfo.previewUrl}
                                                             className="w-full h-[650px] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white"
                                                             title={docTitle}
                                                         />
@@ -2001,7 +1989,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ type, data, onClose, 
                                                         ) : fileInfo.isPdf ? (
                                                             <div className="w-full h-full flex flex-col space-y-2">
                                                                 <iframe
-                                                                    src={fileSrc}
+                                                                    src={fileInfo.previewUrl}
                                                                     className="w-full h-[650px] rounded-2xl border border-slate-200 dark:border-slate-800 bg-white"
                                                                     title={docTitle}
                                                                 />

@@ -127,49 +127,134 @@ const FleetManager: React.FC = () => {
                 <Input placeholder="Search Plate, Make, or Barcode..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="max-w-md"/>
             </div>
 
-            <Card>
-                <Table headers={['Vehicle', 'License Plate', 'VIN / ID', 'Assigned To', 'Actions']}>
-                    {filteredVehicles.map(v => {
-                        const assignedUser = employees.find(u => u.id === v.assignedUserId);
-                        return (
-                            <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                <td className="px-6 py-4">
-                                    <div className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                        {v.year} {v.make} {v.model}
-                                        {v.maintenanceInterval && v.lastServiceMileage !== undefined && (() => {
-                                            const latestLog = state.vehicleLogs
-                                                .filter(log => log.vehicleId === v.id || (v.assignedUserId && log.userId === v.assignedUserId))
-                                                .reduce((max, log) => Math.max(max, log.endMileage || 0), 0);
-                                            const isDue = (latestLog - v.lastServiceMileage) >= v.maintenanceInterval;
-                                            return isDue && latestLog > 0 ? (
-                                                <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider title='Maintenance Due'">Due</span>
-                                            ) : null;
-                                        })()}
+            {/* Mobile Cards View (App / Mobile View Only) */}
+            <div className="md:hidden space-y-3.5 mb-6">
+                {filteredVehicles.map(v => {
+                    const assignedUser = employees.find(u => u.id === v.assignedUserId);
+                    const latestLog = state.vehicleLogs
+                        .filter(log => log.vehicleId === v.id || (v.assignedUserId && log.userId === v.assignedUserId))
+                        .reduce((max, log) => Math.max(max, log.endMileage || 0), 0);
+                    const isDue = v.maintenanceInterval && v.lastServiceMileage !== undefined && 
+                        (latestLog - v.lastServiceMileage) >= v.maintenanceInterval && latestLog > 0;
+
+                    return (
+                        <div key={v.id} className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-extrabold text-gray-900 dark:text-white text-base">
+                                            {v.year} {v.make} {v.model}
+                                        </h3>
+                                        {isDue && (
+                                            <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                                                Due
+                                            </span>
+                                        )}
                                     </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm font-mono uppercase">
-                                    <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded hidden md:inline-block">{v.licensePlate}</span>
-                                </td>
-                                <td className="px-6 py-4 text-xs text-gray-500">
-                                    <div>VIN: {v.vin || '-'}</div>
-                                    <div>Tag: {v.barcode || '-'}</div>
-                                </td>
-                                <td className="px-6 py-4 text-sm">
-                                    {assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : <span className="text-gray-400 italic">Unassigned</span>}
-                                </td>
-                                <td className="px-6 py-4 flex flex-wrap gap-3 items-center">
-                                    <button onClick={() => setViewingLogVehicle(v)} className="text-emerald-500 hover:text-emerald-700 flex items-center gap-1 text-xs font-bold" title="View Logs & Maintenance">
-                                        Logs
-                                    </button>
-                                    <button onClick={() => handleEdit(v)} className="text-blue-500 hover:text-blue-700" title="Edit Vehicle"><Edit size={16}/></button>
-                                    <button onClick={() => handleDelete(v.id)} className="text-red-500 hover:text-red-700" title="Delete Vehicle"><Trash2 size={16}/></button>
-                                </td>
-                            </tr>
-                        );
-                    })}
-                    {filteredVehicles.length === 0 && <tr><td colSpan={5} className="p-4 md:p-8 text-center text-gray-500">No vehicles found.</td></tr>}
-                </Table>
-            </Card>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded text-xs font-mono font-bold uppercase text-gray-800 dark:text-gray-200">
+                                            {v.licensePlate}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-[10px] uppercase font-bold text-gray-400 block">Assigned To</span>
+                                    <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                                        {assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : <span className="text-gray-400 italic font-normal">Unassigned</span>}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 p-2.5 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-xs">
+                                <div>
+                                    <span className="text-[10px] uppercase font-bold text-gray-400 block">VIN</span>
+                                    <span className="font-mono text-gray-600 dark:text-gray-300 truncate block">{v.vin || '-'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] uppercase font-bold text-gray-400 block">Tag / Barcode</span>
+                                    <span className="font-mono text-gray-600 dark:text-gray-300">{v.barcode || '-'}</span>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                                <button 
+                                    onClick={() => setViewingLogVehicle(v)} 
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 transition-colors"
+                                    title="View Logs & Maintenance"
+                                >
+                                    <Truck size={14} /> Logs
+                                </button>
+                                <button 
+                                    onClick={() => handleEdit(v)} 
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+                                    title="Edit Vehicle"
+                                >
+                                    <Edit size={14} /> Edit
+                                </button>
+                                <button 
+                                    onClick={() => handleDelete(v.id)} 
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800 hover:bg-red-100 transition-colors"
+                                    title="Delete Vehicle"
+                                >
+                                    <Trash2 size={14} /> Delete
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+                {filteredVehicles.length === 0 && (
+                    <div className="p-8 text-center text-gray-500 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                        No vehicles found.
+                    </div>
+                )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+                <Card>
+                    <Table headers={['Vehicle', 'License Plate', 'VIN / ID', 'Assigned To', 'Actions']}>
+                        {filteredVehicles.map(v => {
+                            const assignedUser = employees.find(u => u.id === v.assignedUserId);
+                            return (
+                                <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                    <td className="px-6 py-4">
+                                        <div className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                                            {v.year} {v.make} {v.model}
+                                            {v.maintenanceInterval && v.lastServiceMileage !== undefined && (() => {
+                                                const latestLog = state.vehicleLogs
+                                                    .filter(log => log.vehicleId === v.id || (v.assignedUserId && log.userId === v.assignedUserId))
+                                                    .reduce((max, log) => Math.max(max, log.endMileage || 0), 0);
+                                                const isDue = (latestLog - v.lastServiceMileage) >= v.maintenanceInterval;
+                                                return isDue && latestLog > 0 ? (
+                                                    <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider title='Maintenance Due'">Due</span>
+                                                ) : null;
+                                            })()}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm font-mono uppercase">
+                                        <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded hidden md:inline-block">{v.licensePlate}</span>
+                                    </td>
+                                    <td className="px-6 py-4 text-xs text-gray-500">
+                                        <div>VIN: {v.vin || '-'}</div>
+                                        <div>Tag: {v.barcode || '-'}</div>
+                                    </td>
+                                    <td className="px-6 py-4 text-sm">
+                                        {assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : <span className="text-gray-400 italic">Unassigned</span>}
+                                    </td>
+                                    <td className="px-6 py-4 flex flex-wrap gap-3 items-center">
+                                        <button onClick={() => setViewingLogVehicle(v)} className="text-emerald-500 hover:text-emerald-700 flex items-center gap-1 text-xs font-bold" title="View Logs & Maintenance">
+                                            Logs
+                                        </button>
+                                        <button onClick={() => handleEdit(v)} className="text-blue-500 hover:text-blue-700" title="Edit Vehicle"><Edit size={16}/></button>
+                                        <button onClick={() => handleDelete(v.id)} className="text-red-500 hover:text-red-700" title="Delete Vehicle"><Trash2 size={16}/></button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                        {filteredVehicles.length === 0 && <tr><td colSpan={5} className="p-4 md:p-8 text-center text-gray-500">No vehicles found.</td></tr>}
+                    </Table>
+                </Card>
+            </div>
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={currentVehicle.id ? "Edit Vehicle" : "Add Vehicle"}>
                 <form onSubmit={handleSave} className="space-y-4">

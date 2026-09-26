@@ -12,7 +12,7 @@ import type { Proposal, Job, Notification } from 'types';
 import { 
     DollarSign, Briefcase, CheckCircle, 
     FileText, Eye, Edit, Trash2, ShieldCheck, Ban, Share2, Copy, Bell, UserPlus, Search, Clock, XCircle,
-    Archive, ArchiveRestore
+    Archive, ArchiveRestore, MapPin
 } from 'lucide-react';
 import DocumentPreview from 'components/ui/DocumentPreview';
 import JobDetailModal from 'components/modals/JobDetailModal';
@@ -825,6 +825,340 @@ const SalesPipeline: React.FC = () => {
                 </div>
                 </div>
 
+                {/* Mobile Proposals Cards View (App / Mobile View Only) */}
+                <div className="md:hidden space-y-3.5 mb-6">
+                    {filteredProposals.map(p => {
+                        const linkedJob = (state.jobs || []).find((j: any) => 
+                            j.id === p.jobId || 
+                            j.proposalId === p.id || 
+                            p.linkedJobIds?.includes(j.id) || 
+                            j.linkedProposalIds?.includes(p.id)
+                        );
+                        const linkedCust = (state.customers || []).find((c: any) => c.id === p.customerId || c.name?.trim().toLowerCase() === p.customerName?.trim().toLowerCase());
+                        const invoiceId = p.invoiceId || linkedJob?.invoice?.id;
+                        const signOffFile = (linkedJob?.files || []).find((f: any) => 
+                            f.fileName === 'SignOff_Sheet.html' || 
+                            f.fileName?.toLowerCase().includes('signoff') ||
+                            f.fileName?.toLowerCase().includes('sign-off') ||
+                            f.fileName?.toLowerCase().includes('sign_off') ||
+                            f.metadata?.label === 'Sign-Off Sheet' || 
+                            f.metadata?.label?.toLowerCase().includes('sign-off') ||
+                            f.metadata?.label?.toLowerCase().includes('signoff') ||
+                            f.label?.toLowerCase().includes('sign-off') ||
+                            f.label?.toLowerCase().includes('signoff') ||
+                            f.category === 'signoff' ||
+                            f.metadata?.category === 'signoff' ||
+                            f.id?.startsWith('signoff-doc')
+                        );
+                        const subBillFile = (linkedJob?.files || []).find((f: any) => f.fileName === 'Subcontractor_Bill.html' || f.metadata?.label === 'Subcontractor Bill' || f.id?.startsWith('subcontractorbill-doc'));
+                        const poNumber = p.poNumber || linkedJob?.poNumber;
+
+                        let locName = (p as any).serviceLocationName || p.locationName || linkedJob?.locationName || '';
+                        let locAddr = (p as any).serviceLocationAddress || p.locationAddress || (p as any).siteAddress || (p as any).address || linkedJob?.address || '';
+
+                        if (linkedCust?.serviceLocations?.length) {
+                            const matchedLoc = linkedCust.serviceLocations.find((l: any) =>
+                                (p.locationId && l.id === p.locationId) ||
+                                (locName && (l.name?.trim().toLowerCase() === locName.trim().toLowerCase() || l.propertyName?.trim().toLowerCase() === locName.trim().toLowerCase())) ||
+                                (locAddr && l.address && locAddr.toLowerCase().includes(l.address.toLowerCase()))
+                            ) || (linkedCust.serviceLocations.length === 1 ? linkedCust.serviceLocations[0] : null);
+
+                            if (matchedLoc) {
+                                if (!locName || locName === p.customerName) locName = matchedLoc.propertyName || matchedLoc.name || locName;
+                                if (!locAddr) locAddr = matchedLoc.address || '';
+                            }
+                        }
+
+                        const hasBeenOpened = p.status === 'Opened' || p.trackingHistory?.some((entry: any) => entry.status === 'Opened');
+
+                        return (
+                            <div key={p.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm space-y-3">
+                                {/* Header: Dates, ID, Status */}
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-mono font-bold text-slate-400">
+                                            #{p.proposalNumber || p.id}
+                                        </span>
+                                        <span className="text-xs text-slate-400">•</span>
+                                        <span className="text-xs text-slate-500 font-bold uppercase">
+                                            {new Date(p.createdAt).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                                            p.status === 'Accepted' ? 'bg-green-100 text-green-800 border-green-200' :
+                                            (p.status === 'Rejected' || p.status === 'Denied') ? 'bg-red-100 text-red-800 border-red-200' :
+                                            p.status === 'Sent' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                                            p.status === 'Opened' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' :
+                                            p.status === 'Pending Approval' ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                                            p.status === 'Expired' ? 'bg-slate-200 text-slate-800 border-slate-300' :
+                                            'bg-gray-100 text-gray-800 border-gray-200'
+                                        }`}>
+                                            {p.status}
+                                        </span>
+                                        {p.archived && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 flex items-center gap-1">
+                                                <Archive size={9} /> Archived
+                                            </span>
+                                        )}
+                                        {hasBeenOpened && p.status !== 'Accepted' && (
+                                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
+                                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                                                Opened
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Customer & Value */}
+                                <div className="flex items-baseline justify-between gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+                                    <div className="min-w-0 flex-1">
+                                        <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Customer</span>
+                                        <div className="font-bold text-gray-900 dark:text-white text-sm truncate">{p.customerName}</div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Value</span>
+                                        <span className="font-mono font-bold text-green-600 dark:text-green-400 text-base">
+                                            {formatCurrency(p.total)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Service Location */}
+                                {(locName || locAddr) && (
+                                    <div className="text-xs pt-1">
+                                        <span className="text-[9px] font-extrabold uppercase text-indigo-500 dark:text-indigo-400 tracking-wider flex items-center gap-1">
+                                            <MapPin size={10} /> Service Location
+                                        </span>
+                                        {locName && <div className="font-semibold text-slate-800 dark:text-slate-200 truncate">{locName}</div>}
+                                        {locAddr && <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate" title={locAddr}>{locAddr}</div>}
+                                    </div>
+                                )}
+
+                                {/* Sent Date & Reminders */}
+                                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-1">
+                                    <span>Sent: {p.sentAt ? `${new Date(p.sentAt).toLocaleDateString()} ${new Date(p.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : <span className="italic text-slate-400">Not Sent</span>}</span>
+                                    {p.remindersSent && p.remindersSent.length > 0 && (
+                                        <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                            {p.remindersSent.length} Reminders
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Linked Documents */}
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                    <span 
+                                        onClick={() => setViewProposal(p)}
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors shadow-sm font-sans"
+                                        title="View Proposal"
+                                    >
+                                        <FileText size={10} />
+                                        {p.proposalNumber || (p.id.startsWith('PROP-') ? p.id : `PROP-${p.id.replace(/^prop-/, '')}`)}
+                                    </span>
+
+                                    {linkedJob && (
+                                        <span 
+                                            onClick={() => setViewingJob(linkedJob)}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors shadow-sm font-sans"
+                                            title="View Job Details"
+                                        >
+                                            <Briefcase size={10} />
+                                            {linkedJob.jobNumber || (linkedJob.id.startsWith('Job-') || linkedJob.id.startsWith('JOB-') ? linkedJob.id : `Job-${linkedJob.id.replace(/^job-/, '')}`)}
+                                        </span>
+                                    )}
+
+                                    {invoiceId && (
+                                        <span 
+                                            onClick={() => setViewingInvoiceJob(linkedJob || { id: p.jobId || '', invoice: { id: invoiceId } })}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors shadow-sm font-sans"
+                                            title="View Invoice"
+                                        >
+                                            <DollarSign size={10} />
+                                            {`INV-${invoiceId}`}
+                                        </span>
+                                    )}
+
+                                    {poNumber && (
+                                        <span 
+                                            onClick={() => dispatch({ type: 'SET_VIEWING_WORK_ORDER', payload: { workOrderNumber: poNumber, customerId: p.customerId } })}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50 cursor-pointer hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors shadow-sm font-sans"
+                                            title={`View Work Order ${poNumber} Associations`}
+                                        >
+                                            <Briefcase size={10} />
+                                            {`WO: ${poNumber}`}
+                                        </span>
+                                    )}
+
+                                    {/* Sign-off */}
+                                    <span 
+                                        onClick={() => {
+                                            if (signOffFile) {
+                                                setPreviewOtherDoc({ ...signOffFile, type: 'Other', title: 'Manager Sign-Off Sheet' });
+                                            } else {
+                                                setActiveSignOffJob(linkedJob || p);
+                                            }
+                                        }}
+                                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition-colors shadow-sm font-sans ${
+                                            signOffFile 
+                                            ? 'bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800/50 hover:bg-teal-100'
+                                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-teal-50 hover:text-teal-700'
+                                        }`}
+                                        title={signOffFile ? "View Subcontractor Manager Sign-Off Sheet" : "Open Blank Sign-off Sheet to Sign"}
+                                    >
+                                        <ShieldCheck size={10} />
+                                        {signOffFile ? "Sign-off" : "+ Sign-off"}
+                                    </span>
+
+                                    {/* Sub Bill */}
+                                    {(() => {
+                                        const lj = linkedJob as any;
+                                        const isSubassigned = !!(lj?.assignedSubcontractorId || lj?.subcontractorId || lj?.subcontractorName || lj?.subcontractor || (p as any).assignedSubcontractorId || (p as any).subcontractorId || (p as any).subcontractorName);
+                                        if (!isSubassigned) return null;
+                                        return (
+                                            <span 
+                                                onClick={() => {
+                                                    if (subBillFile) {
+                                                        setPreviewOtherDoc({ ...subBillFile, type: 'Other', title: 'Subcontractor Bill' });
+                                                    } else {
+                                                        setActiveSubBillJob(linkedJob || p);
+                                                    }
+                                                }}
+                                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition-colors shadow-sm font-sans ${
+                                                    subBillFile 
+                                                    ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/50 hover:bg-amber-100'
+                                                    : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-amber-50 hover:text-amber-700'
+                                                }`}
+                                                title={subBillFile ? "View Subcontractor Bill" : "View Subcontractor Work Order / Bill"}
+                                            >
+                                                <DollarSign size={10} />
+                                                {subBillFile ? "Sub Bill" : "+ Sub Bill"}
+                                            </span>
+                                        );
+                                    })()}
+                                </div>
+
+                                {/* Actions Row */}
+                                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-1.5 text-xs">
+                                    <button 
+                                        onClick={() => setViewProposal(p)} 
+                                        className="flex items-center gap-1 px-2.5 py-1 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-md text-blue-700 dark:text-blue-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/40 transition-colors font-bold shadow-sm"
+                                        title="View"
+                                    >
+                                        <Eye size={13} />
+                                        View
+                                    </button>
+                                    <button 
+                                        onClick={() => handleEditProposal(p.id)} 
+                                        className="flex items-center gap-1 px-2.5 py-1 bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/40 rounded-md text-purple-700 dark:text-purple-300 hover:bg-purple-100/80 dark:hover:bg-purple-900/40 transition-colors font-bold shadow-sm"
+                                        title="Edit"
+                                    >
+                                        <Edit size={13} />
+                                        Edit
+                                    </button>
+                                    {(p.status === 'Sent' || p.status === 'Opened') && (
+                                        <button 
+                                            onClick={() => setRecipientModalConfig({ isOpen: true, proposal: p })} 
+                                            className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40 rounded-md text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/80 dark:hover:bg-indigo-900/40 transition-colors font-bold shadow-sm"
+                                            title="Send Reminder"
+                                        >
+                                            <Bell size={13} />
+                                            Remind
+                                        </button>
+                                    )}
+                                    {p.status === 'Pending Approval' && canApprove && (
+                                        <>
+                                            <button 
+                                                onClick={() => handleStatusChange(p, 'Draft')} 
+                                                className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 rounded-md text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/40 transition-colors font-bold shadow-sm"
+                                                title="Approve"
+                                            >
+                                                <ShieldCheck size={13} />
+                                                Approve
+                                            </button>
+                                            <button 
+                                                onClick={() => handleStatusChange(p, 'Rejected')} 
+                                                className="flex items-center gap-1 px-2.5 py-1 bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-md text-red-700 dark:text-red-300 hover:bg-red-100/80 dark:hover:bg-red-900/40 transition-colors font-bold shadow-sm"
+                                                title="Reject"
+                                            >
+                                                <Ban size={13} />
+                                                Reject
+                                            </button>
+                                        </>
+                                    )}
+                                    {(p.status === 'Sent' || p.status === 'Opened') && (
+                                        <>
+                                            <button 
+                                                onClick={() => handleStatusChange(p, 'Denied')} 
+                                                className="flex items-center gap-1 px-2 py-1 bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-md text-red-700 dark:text-red-300 hover:bg-red-100/80 dark:hover:bg-red-900/40 transition-colors font-bold shadow-sm"
+                                                title="Mark Denied"
+                                            >
+                                                <XCircle size={13} />
+                                                Deny
+                                            </button>
+                                            <button 
+                                                onClick={() => handleStatusChange(p, 'Expired')} 
+                                                className="flex items-center gap-1 px-2 py-1 bg-slate-50/60 dark:bg-slate-950/20 border border-slate-200 dark:border-slate-850 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-900/40 transition-colors font-bold shadow-sm"
+                                                title="Mark Expired"
+                                            >
+                                                <Clock size={13} />
+                                                Expire
+                                            </button>
+                                        </>
+                                    )}
+                                    <button 
+                                        title={p.archived ? "Restore Proposal to Active Pipeline" : "Archive Proposal"} 
+                                        onClick={() => handleArchiveProposal(p, !p.archived)} 
+                                        className={`flex items-center gap-1 px-2.5 py-1 border rounded-md transition-colors font-bold shadow-sm ${
+                                            p.archived 
+                                                ? 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-900/40' 
+                                                : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                        }`}
+                                    >
+                                        {p.archived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+                                        {p.archived ? "Restore" : "Archive"}
+                                    </button>
+                                    <button 
+                                        title="Reassign Customer" 
+                                        onClick={(e) => { e.stopPropagation(); setReassignProposal(p); setNewCustomerId(p.customerId || ''); }} 
+                                        className="flex items-center gap-1 px-2 py-1 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-md text-amber-700 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-900/40 transition-colors font-bold shadow-sm"
+                                    >
+                                        <UserPlus size={13} />
+                                    </button>
+                                    <button 
+                                        title="Copy Reference" 
+                                        onClick={(e) => { e.stopPropagation(); handleCopyRef(p.id); }} 
+                                        className="flex items-center gap-1 px-2 py-1 bg-slate-50/60 dark:bg-slate-950/20 border border-slate-200 dark:border-slate-800 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-900/40 transition-colors font-bold shadow-sm"
+                                    >
+                                        <Copy size={13} />
+                                    </button>
+                                    <button 
+                                        title="Share Proposal" 
+                                        onClick={(e) => { e.stopPropagation(); setShareModalProp(p); }} 
+                                        className="flex items-center gap-1 px-2 py-1 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-md text-blue-700 dark:text-blue-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/40 transition-colors font-bold shadow-sm"
+                                    >
+                                        <Share2 size={13} />
+                                    </button>
+                                    <button 
+                                        title="Delete" 
+                                        onClick={() => handleDeleteProposal(p.id)} 
+                                        className="flex items-center gap-1 px-2 py-1 bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded-md text-red-700 dark:text-red-300 hover:bg-red-100/80 dark:hover:bg-red-900/40 transition-colors font-bold shadow-sm ml-auto"
+                                    >
+                                        <Trash2 size={13} />
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+
+                    {filteredProposals.length === 0 && (
+                        <div className="p-6 md:p-12 text-center text-slate-400 font-medium italic">
+                            No proposals found in this category.
+                        </div>
+                    )}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
                 <Table headers={[
                     'Created Date',
                     'Sent Date',
@@ -1172,6 +1506,7 @@ const SalesPipeline: React.FC = () => {
                     })}
                     {filteredProposals.length === 0 && <tr><td colSpan={9} className="p-6 md:p-12 text-center text-slate-400">No proposals found in this category.</td></tr>}
                 </Table>
+                </div>
             </Card>
 
             {viewProposal && (

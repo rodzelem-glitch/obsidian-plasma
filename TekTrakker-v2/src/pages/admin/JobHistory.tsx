@@ -19,7 +19,7 @@ import { UploadPaperFormModal } from 'components/modals/UploadPaperFormModal';
 import { PrintableFormPreviewModal } from 'components/modals/PrintableFormPreviewModal';
 import LocationAuditModal from 'components/modals/LocationAuditModal';
 import CustomerMasterModal from 'components/modals/CustomerMasterModal';
-import { Printer, FileText, Edit, Trash2, CheckCircle, Clock, MapPin, Wrench, Share2, Copy, Search, X, Users, Link2, Send, Upload, User as UserIcon } from 'lucide-react';
+import { Printer, FileText, Edit, Trash2, CheckCircle, Clock, MapPin, Wrench, Share2, Copy, Search, X, Users, Link2, Send, Upload, User as UserIcon, LayoutGrid, Table as TableIcon, ChevronDown, Phone, Mail } from 'lucide-react';
 import Textarea from 'components/ui/Textarea';
 import { formatAddress , cleanUndefinedFields, resolveSiteLocationName } from 'lib/utils';
 import { useSearchParams } from 'react-router-dom';
@@ -55,6 +55,7 @@ const JobHistory: React.FC = () => {
     const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
     const [auditLocationTarget, setAuditLocationTarget] = useState<{ customerId?: string; locationId?: string } | null>(null);
     const [selectedCustomerMasterId, setSelectedCustomerMasterId] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'auto' | 'cards' | 'table'>('auto');
 
     const toggleJobDetails = (jobId: string) => {
         const next = new Set(expandedJobs);
@@ -524,7 +525,472 @@ const JobHistory: React.FC = () => {
                 </div>
             </div>
 
-            <Card className="p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-xl rounded-2xl">
+            {/* View Mode & Record Summary Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                    Showing <span className="text-slate-900 dark:text-white font-extrabold">{displayedJobs.length}</span> of <span className="text-slate-900 dark:text-white font-extrabold">{filteredJobs.length}</span> jobs
+                </div>
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <button
+                        type="button"
+                        onClick={() => setViewMode(viewMode === 'cards' ? 'auto' : 'cards')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                            viewMode === 'cards'
+                                ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-primary-400 shadow-xs'
+                                : viewMode === 'auto'
+                                ? 'bg-white md:bg-transparent dark:bg-slate-700 md:dark:bg-transparent text-primary-600 md:text-slate-500 dark:text-primary-400 md:dark:text-slate-400 shadow-xs md:shadow-none'
+                                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                        title="Card View (Optimized for Mobile)"
+                    >
+                        <LayoutGrid size={13} />
+                        <span>Cards</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setViewMode(viewMode === 'table' ? 'auto' : 'table')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${
+                            viewMode === 'table'
+                                ? 'bg-white dark:bg-slate-700 text-primary-600 dark:text-primary-400 shadow-xs'
+                                : viewMode === 'auto'
+                                ? 'hidden md:flex md:bg-white md:dark:bg-slate-700 md:text-primary-600 md:dark:text-primary-400 md:shadow-xs'
+                                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                        }`}
+                        title="Table View (Full Columns)"
+                    >
+                        <TableIcon size={13} />
+                        <span>Table</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* MOBILE CARDS VIEW */}
+            <div className={viewMode === 'cards' ? 'space-y-3' : viewMode === 'table' ? 'hidden' : 'md:hidden space-y-3'}>
+                {displayedJobs.map(job => {
+                    const cust = (state.customers || []).find((c: any) => c.id === job.customerId || c.name === job.customerName);
+                    const loc = cust?.serviceLocations?.find((l: any) => l.id === job.locationId || l.address === job.address || l.name === job.locationName || l.propertyName === job.locationName);
+
+                    const payingCustomer = job.customerName || cust?.name || (cust as any)?.companyName || 'Customer';
+                    const siteLocationName = resolveSiteLocationName(job, loc);
+                    const siteAddress = formatAddress(job.address || loc?.address || '');
+
+                    const apptDate = job.appointmentTime ? new Date(job.appointmentTime) : null;
+                    const formattedApptDate = apptDate && !isNaN(apptDate.getTime()) 
+                        ? apptDate.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' })
+                        : '---';
+                    const formattedApptTime = apptDate && !isNaN(apptDate.getTime()) 
+                        ? apptDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                        : '';
+
+                    const timeSummary = getJobTimeSummary(job);
+                    const formattedIn = timeSummary.formattedInTime;
+                    const formattedOut = timeSummary.formattedOutTime;
+                    const formattedDuration = timeSummary.formattedDuration;
+
+                    const invTotal = job.invoice ? (job.invoice.totalAmount || job.invoice.amount || 0) : 0;
+                    const rawInvPaid = job.invoice ? Number(job.invoice.amountPaid || job.invoice.depositPaidAmount || (job.invoice.depositPaid ? (job.invoice.depositAmount || 0) : 0) || 0) : 0;
+                    const invPaid = job.invoice?.status === 'Paid' ? (rawInvPaid > 0 ? rawInvPaid : invTotal) : rawInvPaid;
+                    const invPaidClamped = Math.min(invTotal, Math.max(0, invPaid));
+                    const invRemaining = Math.max(0, invTotal - invPaidClamped);
+                    const isPartiallyPaid = (job.invoice?.status === 'Partially Paid') || (invPaidClamped > 0 && invRemaining > 0);
+                    const effectiveInvStatus = job.invoice ? (
+                        job.invoice.status === 'Paid'
+                            ? 'Paid'
+                            : isPartiallyPaid
+                            ? 'Partially Paid'
+                            : (job.invoice.status || 'Draft')
+                    ) : null;
+
+                    const nonPhotoFiles = (job.files || []).filter((f: any) => !isPhoto(f));
+                    const hasDocs = job.proposalId || job.invoice || job.poNumber || job.subcontractorWorkOrder || nonPhotoFiles.length > 0;
+
+                    const relatedProps = (state.proposals || []).filter((p: any) => 
+                        p.id === job.proposalId || 
+                        p.id === job.projectId || 
+                        p.jobId === job.id || 
+                        job.linkedProposalIds?.includes(p.id) || 
+                        p.linkedJobIds?.includes(job.id)
+                    );
+
+                    return (
+                        <div 
+                            key={`mobile-card-${job.id}`} 
+                            id={`hist-mobile-${job.id}`}
+                            onClick={() => handleViewJob(job)}
+                            className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm hover:shadow-md transition-all p-4 space-y-3 cursor-pointer"
+                        >
+                            {/* Card Top: Scheduled Appt & Status Badge */}
+                            <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-700/60 pb-2.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[10px] font-mono font-black px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                                        #{job.id.substring(0, 8)}
+                                    </span>
+                                    <div className="text-xs font-black text-slate-900 dark:text-white">
+                                        {formattedApptDate} {formattedApptTime && <span className="text-indigo-600 dark:text-indigo-400 font-bold ml-1">{formattedApptTime}</span>}
+                                    </div>
+                                </div>
+                                <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-full shrink-0 ${
+                                    job.jobStatus === 'Completed' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' : 
+                                    (job.jobStatus === 'Needs Review' || job.needsAdminVerification) ? 'bg-amber-400 text-slate-950 font-black animate-pulse border border-amber-500 shadow-xs' :
+                                    job.jobStatus === 'In Progress' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' : 
+                                    job.jobStatus === 'Needs Follow-up' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' : 
+                                    'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-400'
+                                }`}>
+                                    {job.jobStatus === 'Needs Review' ? '⚠️ Needs Review' : job.jobStatus}
+                                </span>
+                            </div>
+
+                            {/* Customer & Location */}
+                            <div className="space-y-1.5">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const targetCustId = job.customerId || (loc as any)?.customerId || (state.customers || []).find((c: any) => c.name?.toLowerCase().trim() === payingCustomer.toLowerCase().trim())?.id;
+                                            if (targetCustId) {
+                                                setSelectedCustomerMasterId(targetCustId);
+                                            } else {
+                                                showToast.info("No customer profile found for this record.");
+                                            }
+                                        }}
+                                        className="group cursor-pointer flex-1 min-w-0"
+                                        title="Open customer master profile"
+                                    >
+                                        <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider flex items-center gap-1 group-hover:text-primary-600">
+                                            <UserIcon size={9} /> Customer ↗
+                                        </span>
+                                        <div className="text-sm font-black text-slate-900 dark:text-white truncate group-hover:text-primary-600 dark:group-hover:text-primary-400 group-hover:underline">
+                                            {payingCustomer}
+                                        </div>
+                                    </div>
+
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); toggleJobDetails(job.id); }} 
+                                        className="text-[10px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 px-2 py-1 rounded-lg text-slate-600 dark:text-slate-300 font-bold uppercase tracking-wider transition-colors shrink-0 flex items-center gap-1"
+                                    >
+                                        {expandedJobs.has(job.id) ? 'Hide' : 'Details'}
+                                        <ChevronDown size={11} className={`transition-transform duration-200 ${expandedJobs.has(job.id) ? 'rotate-180' : ''}`} />
+                                    </button>
+                                </div>
+
+                                <div 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setAuditLocationTarget({
+                                            customerId: job.customerId,
+                                            locationId: job.locationId || loc?.id || 'default'
+                                        });
+                                    }}
+                                    className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors pt-0.5"
+                                    title="Open location audit"
+                                >
+                                    <MapPin size={12} className="text-indigo-500 shrink-0" />
+                                    <span className="truncate">
+                                        {siteLocationName && siteLocationName !== payingCustomer ? `${siteLocationName} - ` : ''}
+                                        {siteAddress || 'No address provided'}
+                                    </span>
+                                </div>
+
+                                {job.poNumber && (
+                                    <div className="pt-0.5">
+                                        <span className="inline-block font-mono text-[9px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/50 px-2 py-0.5 rounded">
+                                            WO: {job.poNumber}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Service Tasks & Equipment */}
+                            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-700/60 text-xs space-y-1.5">
+                                <div className="font-semibold text-slate-900 dark:text-slate-100 text-xs">
+                                    {job.tasks && job.tasks.length > 0 ? job.tasks.join(', ') : 'No tasks listed'}
+                                </div>
+                                {job.unitStates && job.unitStates.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                        {job.unitStates.map(us => {
+                                            const custRef = state.customers?.find(c => c.id === job.customerId);
+                                            const equip = custRef?.equipment?.find(e => e.id === us.assetId);
+                                            const name = equip?.name || equip?.type || 'Serviced Unit';
+                                            return (
+                                                <span key={us.assetId} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white dark:bg-slate-800 rounded text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700" title={name}>
+                                                    <Wrench size={8} /> {name}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Tech & Site Visit Grid */}
+                            <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                                <div className="space-y-0.5">
+                                    <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Assigned Tech</span>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                                        {job.assignedTechnicianName || '-'}
+                                    </div>
+                                    {job.assistants && job.assistants.length > 0 && (
+                                        <div 
+                                            className="text-[10px] text-slate-400 dark:text-slate-500 font-medium flex items-center gap-1 cursor-help"
+                                            title={job.assistants.map((id: string) => {
+                                                const u = state.users?.find((user: any) => user.id === id);
+                                                return u ? `${u.firstName} ${u.lastName}` : '';
+                                            }).filter(Boolean).join(', ')}
+                                        >
+                                            <Users size={10} className="text-slate-400 shrink-0" />
+                                            <span>Crew ({job.assistants.length})</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="space-y-0.5">
+                                    <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider flex items-center gap-1">
+                                        <Clock size={9} /> Site Visit
+                                    </span>
+                                    {timeSummary.hasTimeRecorded ? (
+                                        <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                                            <div className="flex items-center gap-1 flex-wrap">
+                                                {formattedIn && <span className="text-emerald-700 dark:text-emerald-400">In: {formattedIn}</span>}
+                                                {formattedOut && <span className="text-slate-600 dark:text-slate-400">Out: {formattedOut}</span>}
+                                            </div>
+                                            {timeSummary.status === 'in_progress' ? (
+                                                <span className="text-amber-600 dark:text-amber-400 font-black text-[9px] uppercase animate-pulse block mt-0.5">In Progress</span>
+                                            ) : formattedDuration ? (
+                                                <span className="text-[9px] text-slate-400 font-medium block">Duration: {formattedDuration}</span>
+                                            ) : null}
+                                        </div>
+                                    ) : (
+                                        <span className="text-[10px] text-slate-400 italic">Not Logged</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Financial / Invoice Bar */}
+                            <div className="p-2.5 rounded-xl bg-slate-50/80 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
+                                <div>
+                                    <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Invoice & Total</span>
+                                    {job.invoice ? (
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-extrabold text-slate-900 dark:text-white text-sm">
+                                                ${invTotal.toFixed(2)}
+                                            </span>
+                                            {invPaidClamped > 0 && invRemaining > 0 && (
+                                                <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-400">
+                                                    Rem: ${invRemaining.toFixed(2)}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <span className="text-slate-400 text-xs italic">No Invoice</span>
+                                    )}
+                                </div>
+
+                                {effectiveInvStatus && (
+                                    <span className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest rounded-full border ${
+                                        effectiveInvStatus === 'Paid' 
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/30' 
+                                            : effectiveInvStatus === 'Partially Paid'
+                                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/30'
+                                            : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/30'
+                                    }`}>
+                                        {effectiveInvStatus}
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Quick Document Links */}
+                            {hasDocs && (
+                                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                    {job.proposalId && (
+                                        <a 
+                                            href={`/#/proposal-view/${job.proposalId}`} 
+                                            target="_blank" 
+                                            rel="noreferrer" 
+                                            className="inline-flex items-center gap-1 px-2 py-1 bg-white dark:bg-slate-700/60 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] text-indigo-600 dark:text-indigo-400 font-bold hover:underline"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <FileText size={10} /> Proposal
+                                        </a>
+                                    )}
+                                    {job.invoice && (
+                                        <a 
+                                            href={`/#/invoice/${job.id}`} 
+                                            target="_blank" 
+                                            rel="noreferrer" 
+                                            className="inline-flex items-center gap-1 px-2 py-1 bg-white dark:bg-slate-700/60 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <FileText size={10} /> Invoice
+                                        </a>
+                                    )}
+                                    {job.poNumber && (
+                                        <button 
+                                            type="button"
+                                            className="inline-flex items-center gap-1 px-2 py-1 bg-white dark:bg-slate-700/60 border border-slate-200 dark:border-slate-700 rounded-lg text-[10px] text-amber-600 dark:text-amber-400 font-bold"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                dispatch({ 
+                                                    type: 'SET_VIEWING_WORK_ORDER', 
+                                                    payload: { 
+                                                        workOrderNumber: job.poNumber, 
+                                                        customerId: job.customerId 
+                                                    } 
+                                                });
+                                            }}
+                                        >
+                                            <FileText size={10} /> WO #{job.poNumber}
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Expanded Details section */}
+                            {expandedJobs.has(job.id) && (
+                                <div className="p-3 bg-slate-50 dark:bg-slate-900/70 rounded-xl space-y-2 text-xs border border-slate-200 dark:border-slate-700/60" onClick={(e) => e.stopPropagation()}>
+                                    <div className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                        <span className="text-slate-400 font-extrabold uppercase block text-[9px] tracking-wider mb-1 flex items-center gap-1">
+                                            <Clock size={10} className="text-indigo-600 dark:text-indigo-400" /> Site Visit Time Audit
+                                        </span>
+                                        <div className="flex flex-wrap items-center justify-between text-[11px] gap-2">
+                                            <span>In: <strong className="text-emerald-600 dark:text-emerald-400">{timeSummary.formattedInTime || 'Not Logged'}</strong></span>
+                                            <span>Out: <strong className="text-rose-600 dark:text-rose-400">{timeSummary.formattedOutTime || (timeSummary.status === 'in_progress' ? 'Active' : 'Not Logged')}</strong></span>
+                                            {timeSummary.formattedDuration && (
+                                                <span className="font-extrabold text-indigo-600 dark:text-indigo-400">Duration: {timeSummary.formattedDuration}</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {(job.poNumber || (job.invoice as any)?.poNumber) && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-400 font-medium uppercase text-[9px] tracking-wider">PO Number:</span>
+                                            <span className="font-mono font-bold">{job.poNumber || (job.invoice as any)?.poNumber}</span>
+                                        </div>
+                                    )}
+
+                                    {(relatedProps.length > 0 || job.proposalId) && (
+                                        <div>
+                                            <span className="text-slate-400 font-medium uppercase block text-[9px] tracking-wider mb-0.5">
+                                                {relatedProps.length > 1 ? `Proposals (${relatedProps.length})` : 'Proposal'}
+                                            </span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {relatedProps.length > 0 ? (
+                                                    relatedProps.map((p: any) => (
+                                                        <a key={`mob-prop-${p.id}`} href={`/#/proposal-view/${p.id}`} target="_blank" rel="noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline font-bold flex items-center gap-1 text-[10px]">
+                                                            <FileText size={10} /> #{p.id}
+                                                        </a>
+                                                    ))
+                                                ) : (
+                                                    <a href={`/#/proposal-view/${job.proposalId}`} target="_blank" rel="noreferrer" className="text-primary-600 dark:text-primary-400 hover:underline font-bold flex items-center gap-1 text-[10px]">
+                                                        <FileText size={10} /> #{job.proposalId?.substring(0, 8)}
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {job.customerPhone && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-400 font-medium uppercase text-[9px] tracking-wider">Phone:</span>
+                                            <a href={`tel:${job.customerPhone}`} className="text-primary-600 dark:text-primary-400 font-bold flex items-center gap-1">
+                                                <Phone size={10} /> {job.customerPhone}
+                                            </a>
+                                        </div>
+                                    )}
+
+                                    {job.customerEmail && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-400 font-medium uppercase text-[9px] tracking-wider">Email:</span>
+                                            <a href={`mailto:${job.customerEmail}`} className="text-primary-600 dark:text-primary-400 font-bold flex items-center gap-1 truncate max-w-[180px]">
+                                                <Mail size={10} /> {job.customerEmail}
+                                            </a>
+                                        </div>
+                                    )}
+
+                                    {nonPhotoFiles.length > 0 && (
+                                        <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800">
+                                            <span className="text-slate-400 font-medium uppercase block text-[9px] tracking-wider mb-1">Attached Documents ({nonPhotoFiles.length})</span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {nonPhotoFiles.map((file: any, index: number) => (
+                                                    <a 
+                                                        key={file.id || index} 
+                                                        href={file.url || file.dataUrl} 
+                                                        target="_blank" 
+                                                        rel="noreferrer" 
+                                                        className="inline-flex items-center gap-1 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded text-[10px] hover:text-primary-600 dark:hover:text-primary-400 transition-colors shadow-xs"
+                                                    >
+                                                        <FileText size={10} className="text-slate-400" />
+                                                        <span className="truncate max-w-[120px]">{file.label || file.fileName || `Doc ${index+1}`}</span>
+                                                    </a>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {job.notes?.internalNotes && (
+                                        <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800">
+                                            <span className="text-slate-400 font-medium uppercase block text-[9px] tracking-wider">Office Notes</span>
+                                            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 italic font-medium">"{job.notes.internalNotes}"</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Action Buttons Row */}
+                            <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center gap-2">
+                                    <button 
+                                        type="button"
+                                        aria-label="View Job Details" 
+                                        title="View Job Details" 
+                                        onClick={() => handleViewJob(job)} 
+                                        className="px-4 py-1.5 bg-primary-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-primary-700 transition-colors shadow-xs"
+                                    >
+                                        View
+                                    </button>
+                                    {job.invoice && (
+                                        <button 
+                                            type="button"
+                                            aria-label="Send Invoice" 
+                                            title="Send Invoice" 
+                                            onClick={() => setSendInvoiceModalConfig({ isOpen: true, job })} 
+                                            className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-emerald-700 transition-colors shadow-xs flex items-center gap-1"
+                                        >
+                                            <Send size={12} />
+                                            Send Invoice
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button aria-label="Manage Links" title="Manage Links" onClick={() => setLinkingJob(job)} className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"><Link2 size={16}/></button>
+                                    <button aria-label="Copy Reference" title="Copy Reference" onClick={() => handleCopyRef(job.id)} className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"><Copy size={16}/></button>
+                                    <button aria-label="Share Job" title="Share Job" onClick={() => setShareModalJob(job)} className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"><Share2 size={16}/></button>
+                                    <button aria-label="Delete Job" title="Delete Job" onClick={() => handleDeleteJob(job.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"><Trash2 size={16}/></button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {displayedJobs.length === 0 && (
+                    <div className="p-8 text-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-400 font-medium italic">
+                        No matching job history found.
+                    </div>
+                )}
+
+                {hasMore && (
+                    <div className="p-4 text-center">
+                        <button 
+                            onClick={() => setPage(p => p + 1)} 
+                            className="w-full sm:w-auto px-6 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-primary-600 dark:text-primary-400 font-black text-xs uppercase tracking-widest rounded-xl hover:shadow-md active:scale-95 transition-all shadow-xs"
+                        >
+                            Load More Records
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* DESKTOP TABLE VIEW */}
+            <Card className={`p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-xl rounded-2xl ${viewMode === 'table' ? 'block' : viewMode === 'cards' ? 'hidden' : 'hidden md:block'}`}>
                 <Table 
                     headers={['Appointment & Site Visit', 'Customer & Site Location', 'Service & Equipment', 'Tech', 'Status', 'Invoice & Total', 'Linked Documents', 'Actions']}
                     limit={page * itemsPerPage}
@@ -940,7 +1406,7 @@ const JobHistory: React.FC = () => {
                     );
                     })}
                     {displayedJobs.length === 0 && (
-                        <tr><td colSpan={7} className="p-6 md:p-12 text-center text-slate-400 font-medium italic">No matching job history found.</td></tr>
+                        <tr><td colSpan={8} className="p-6 md:p-12 text-center text-slate-400 font-medium italic">No matching job history found.</td></tr>
                     )}
                 </Table>
                 
@@ -951,7 +1417,9 @@ const JobHistory: React.FC = () => {
                         </button>
                     </div>
                 )}
-                {sendInvoiceModalConfig.isOpen && sendInvoiceModalConfig.job && (
+            </Card>
+
+            {sendInvoiceModalConfig.isOpen && sendInvoiceModalConfig.job && (
                 <SendEmailModal
                     isOpen={sendInvoiceModalConfig.isOpen}
                     onClose={() => setSendInvoiceModalConfig({ isOpen: false, job: null })}
@@ -960,7 +1428,6 @@ const JobHistory: React.FC = () => {
                     mode="invoice"
                 />
             )}
-        </Card>
 
             {linkingJob && (
                 <JobLinkingModal 

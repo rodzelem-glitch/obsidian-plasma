@@ -145,9 +145,6 @@ const VirtualWorkerReports: React.FC = () => {
     if (!task.resultMarkdown || !reportContentRef.current) return;
     setIsDownloading(true);
     try {
-      // @ts-ignore - html2pdf has no types available right now
-      const html2pdf = (await import('html2pdf.js')).default;
-      
       const element = reportContentRef.current;
       const clone = element.cloneNode(true) as HTMLElement;
       
@@ -195,32 +192,23 @@ const VirtualWorkerReports: React.FC = () => {
         }
       });
       
-      // Temporarily append clone to body to compute styles
-      const wrapper = document.createElement('div');
-      wrapper.style.position = 'absolute';
-      wrapper.style.left = '-9999px';
-      wrapper.style.top = '-9999px';
-      wrapper.appendChild(clone);
-      document.body.appendChild(wrapper);
-      
       const cleanPrompt = task.prompt.replace(/[^a-z0-9]/gi, '_').toLowerCase();
       const dateStr = new Date(task.queuedAt).toISOString().split('T')[0];
       const fileName = `AI_Report_${cleanPrompt}_${dateStr}.pdf`;
       
-      const opt: any = {
-        margin:       [0.25, 0.25, 0.25, 0.25],
-        filename:     fileName,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 780, backgroundColor: '#ffffff' },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-        pagebreak:    { mode: ['css', 'legacy'], avoid: ['.pdf-card', '.pdf-avoid-break', 'tr', 'img', 'blockquote', 'h1', 'h2', 'h3', 'h4'] }
-      };
+      const { renderHtmlToSmartPdf } = await import('../../lib/pdfHelper');
+      const result = await renderHtmlToSmartPdf(clone, {
+        filename: fileName,
+        margin: [0.25, 0.25, 0.25, 0.25],
+        windowWidth: 790,
+        pdfFormat: 'letter',
+        pdfOrientation: 'portrait',
+        scale: 2,
+        quality: 0.98
+      });
       
-      const pdfDataUri = await html2pdf().from(clone).set(opt).output('datauristring');
       const { downloadFile } = await import('../../lib/downloadHelper');
-      await downloadFile(pdfDataUri, fileName);
-      
-      document.body.removeChild(wrapper);
+      await downloadFile(result.dataUri, fileName);
       showToast.success("PDF report downloaded successfully.");
     } catch (err) {
       console.error("Failed to generate/download PDF:", err);

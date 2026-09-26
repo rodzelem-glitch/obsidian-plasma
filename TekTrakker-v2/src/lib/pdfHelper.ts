@@ -2091,17 +2091,38 @@ export const generateJobReportHtml = (
         ? `font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 740px; margin: 0 auto; color: #1e293b; background-color: #ffffff; box-sizing: border-box; width: 100%; text-align: left;`
         : `font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 760px; margin: 0 auto; color: #1e293b; background-color: #ffffff; padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; box-sizing: border-box; width: 100%; text-align: left;`;
 
+    // Smart density spacing for professional PDF layout vs on-screen preview
+    const mbCard = isPdfOrPrint ? '8px' : '12px';
+    const mbSection = isPdfOrPrint ? '10px' : '14px';
+    const ptSection = isPdfOrPrint ? '8px' : '12px';
+    const padLocation = isPdfOrPrint ? '10px 14px' : '14px 16px';
+    const padCard = isPdfOrPrint ? '8px 12px' : '12px 16px';
+    const padHeader = isPdfOrPrint ? '8px' : '12px';
+    const getPhotoCardHeight = (cols: number) => {
+        if (isPdfOrPrint) {
+            return cols <= 2 ? '138px' : '118px';
+        }
+        return cols <= 2 ? '175px' : '145px';
+    };
+
     let html = `
     <div style="${outerContainerStyle}">
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
             * { box-sizing: border-box; }
-            .pdf-card, .pdf-photo, .pdf-timeline-item, .pdf-avoid-break, .pdf-unit-card, .pdf-table-wrapper {
+            .pdf-card, .pdf-timeline-item, .pdf-avoid-break, .pdf-unit-card, .pdf-table-wrapper {
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
                 break-inside: avoid-page !important;
                 -webkit-column-break-inside: avoid !important;
                 display: block;
+            }
+            .pdf-photo {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                break-inside: avoid-page !important;
+                -webkit-column-break-inside: avoid !important;
+                display: inline-block;
             }
             .pdf-section {
                 break-inside: auto !important;
@@ -2146,8 +2167,8 @@ export const generateJobReportHtml = (
         </style>
 
         <!-- Header & Letterhead Card -->
-        <div class="pdf-card pdf-avoid-break" style="margin-bottom: 12px;">
-            <table class="report-header-table" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border-bottom: 3px solid #0284c7; padding-bottom: 12px; margin-bottom: 12px; width: 100%; box-sizing: border-box;">
+        <div class="pdf-card pdf-avoid-break" style="margin-bottom: ${mbCard};">
+            <table class="report-header-table" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; border-bottom: 3px solid #0284c7; padding-bottom: ${padHeader}; margin-bottom: ${padHeader}; width: 100%; box-sizing: border-box;">
                 <tr>
                     <!-- Left Side: Company Letterhead -->
                     <td class="report-header-left" style="vertical-align: top; text-align: left; padding-bottom: 10px; padding-right: 8px; box-sizing: border-box;" width="50%">
@@ -2182,8 +2203,8 @@ export const generateJobReportHtml = (
             </table>
 
             <!-- 3-COLUMN LOCATION & ENTITY BREAKDOWN -->
-            <div style="background-color: #ffffff; padding: 14px 16px; border-radius: 10px; border: 1px solid #cbd5e1; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 11px; margin-bottom: 10px;">
+            <div style="background-color: #ffffff; padding: ${padLocation}; border-radius: 10px; border: 1px solid #cbd5e1; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 11px; margin-bottom: ${isPdfOrPrint ? '6px' : '10px'};">
                     <tr>
                         <!-- 1. CUSTOMER / PROPERTY MGR -->
                         <td width="33%" style="vertical-align: top; padding-right: 10px;">
@@ -2299,8 +2320,8 @@ export const generateJobReportHtml = (
 
         <!-- ASSOCIATED LOCATION POINTS OF CONTACT (POCS) -->
         ${uniquePocs.length > 0 ? `
-        <div class="pdf-card pdf-avoid-break" style="background-color: #ffffff; padding: 12px 16px; border-radius: 10px; margin-bottom: 12px; border: 1px solid #e2e8f0; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-            <span style="font-size: 8px; font-weight: bold; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: 8px; letter-spacing: 0.5px;">Associated Location Points of Contact (POCs)</span>
+        <div class="pdf-card pdf-avoid-break" style="background-color: #ffffff; padding: ${padCard}; border-radius: 10px; margin-bottom: ${mbCard}; border: 1px solid #e2e8f0; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <span style="font-size: 8px; font-weight: bold; color: #94a3b8; text-transform: uppercase; display: block; margin-bottom: ${isPdfOrPrint ? '5px' : '8px'}; letter-spacing: 0.5px;">Associated Location Points of Contact (POCs)</span>
             <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 11px; border-collapse: collapse;">
                 <tr>
                     ${uniquePocs.map((poc, idx) => `
@@ -2318,8 +2339,8 @@ export const generateJobReportHtml = (
 
         <!-- AGREED WARRANTY COVERAGE & PROTECTIONS -->
         ${(includeWarranty && (wm > 0 || pm > 0)) ? `
-        <div class="pdf-card pdf-avoid-break" style="background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%); border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-            <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <div class="pdf-card pdf-avoid-break" style="background: linear-gradient(135deg, #eff6ff 0%, #e0e7ff 100%); border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; border-radius: 10px; padding: ${padCard}; margin-bottom: ${mbCard}; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+            <div style="margin-bottom: ${isPdfOrPrint ? '5px' : '8px'}; display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 8px; font-weight: 900; color: #1d4ed8; text-transform: uppercase; letter-spacing: 0.5px;">Agreed Warranty Coverage & Protections</span>
             </div>
             <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
@@ -2359,7 +2380,7 @@ export const generateJobReportHtml = (
 
         <!-- TECHNICIAN RECOMMENDATIONS -->
         ${(includeRecommendations && techRecommendations) ? `
-        <div class="pdf-card pdf-avoid-break" style="background-color: #ecfdf5; border-left: 4px solid #10b981; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; text-align: left;">
+        <div class="pdf-card pdf-avoid-break" style="background-color: #ecfdf5; border-left: 4px solid #10b981; padding: ${padCard}; border-radius: 8px; margin-bottom: ${mbCard}; text-align: left;">
             <h4 style="margin: 0 0 6px; color: #065f46; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Technician Direct Recommendations</h4>
             <p style="margin: 0; font-size: 11px; color: #047857; font-weight: 600; line-height: 1.45;">${techRecommendations.replace(/\n/g, '<br />')}</p>
         </div>
@@ -2367,7 +2388,7 @@ export const generateJobReportHtml = (
 
         <!-- TASKS PERFORMED -->
         ${(Array.isArray(job.tasks) && job.tasks.length > 0) ? `
-        <div class="pdf-card pdf-avoid-break" style="margin-bottom: 12px; text-align: left;">
+        <div class="pdf-card pdf-avoid-break" style="margin-bottom: ${mbCard}; text-align: left;">
             <h4 style="margin: 0 0 6px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8;">Tasks Performed</h4>
             <div>
                 ${job.tasks.map((t: string) => `<span style="background-color: #f1f5f9; color: #334155; padding: 4px 10px; border-radius: 16px; font-size: 10px; font-weight: 600; margin-right: 4px; margin-bottom: 4px; display: inline-block; border: 1px solid #e2e8f0;">${t}</span>`).join('')}
@@ -2377,8 +2398,8 @@ export const generateJobReportHtml = (
 
         <!-- SYSTEM PROFILES & SPECIFICATIONS -->
         ${(includeAssets && jobAssets.length > 0) ? `
-        <div style="margin-bottom: 14px; text-align: left;">
-            <div class="pdf-avoid-break" style="margin-bottom: 8px;">
+        <div style="margin-bottom: ${mbSection}; text-align: left;">
+            <div class="pdf-avoid-break" style="margin-bottom: ${isPdfOrPrint ? '5px' : '8px'};">
                 <h4 style="margin: 0; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">System Profiles & Specifications (${jobAssets.length} Units)</h4>
             </div>
             ${jobAssets.map(asset => {
@@ -2399,7 +2420,7 @@ export const generateJobReportHtml = (
                 if (asset.unitTagPhotoUrl || asset.platePhotoUrl || asset.dataPlatePhotoUrl) specPhotos.push({ url: asset.unitTagPhotoUrl || asset.platePhotoUrl || asset.dataPlatePhotoUrl, label: 'Unit Plate' });
 
                 return `
-                <div class="pdf-card pdf-avoid-break pdf-unit-card" style="border: 1px solid #e2e8f0; padding: 14px 16px; border-radius: 10px; background-color: #ffffff; margin-bottom: 12px; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                <div class="pdf-card pdf-avoid-break pdf-unit-card" style="border: 1px solid #e2e8f0; padding: ${padLocation}; border-radius: 10px; background-color: #ffffff; margin-bottom: ${mbCard}; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                     <div style="margin-bottom: 8px;">
                         <h5 style="margin: 0; font-size: 12px; font-weight: 800; color: #0f172a;">${asset.displayName} ${asset.brand ? `• ${asset.brand}` : ''} ${asset.model ? `(${asset.model})` : ''}</h5>
                         <p style="margin: 2px 0 0; font-size: 9px; color: #64748b; font-weight: 700; text-transform: uppercase; font-family: monospace; letter-spacing: 0.5px;">TAG: ${asset.assetTag || asset.tag || 'N/A'} | SERIAL: ${asset.serial || asset.serialNumber || 'N/A'}</p>
@@ -2474,19 +2495,19 @@ export const generateJobReportHtml = (
 
         <!-- PARTS USED -->
         ${(Array.isArray(job.partsUsed) && job.partsUsed.length > 0) ? `
-        <div class="pdf-card pdf-avoid-break" style="margin-bottom: 12px; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; text-align: left;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 11px; border-collapse: collapse;">
+        <div class="pdf-card pdf-avoid-break" style="margin-bottom: ${mbCard}; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; text-align: left; page-break-inside: avoid !important;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="font-size: 10px; border-collapse: collapse;">
                 <thead>
                     <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
-                        <th style="padding: 8px 12px; text-align: left; font-weight: 800; font-size: 9px; color: #475569; text-transform: uppercase;">Parts Used</th>
-                        <th style="padding: 8px 12px; text-align: right; font-weight: 800; font-size: 9px; color: #475569; text-transform: uppercase; width: 60px;">Qty</th>
+                        <th style="padding: 6px 10px; text-align: left; font-weight: 800; font-size: 8px; color: #475569; text-transform: uppercase;">Parts Used</th>
+                        <th style="padding: 6px 10px; text-align: right; font-weight: 800; font-size: 8px; color: #475569; text-transform: uppercase; width: 60px;">Qty</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${job.partsUsed.map((p: any) => `
                     <tr style="border-bottom: 1px solid #f1f5f9;">
-                        <td style="padding: 8px 12px; color: #1e293b; font-weight: 600; text-align: left;">${p.name} ${p.sku ? `<span style="font-size: 8px; color: #94a3b8;">(${p.sku})</span>` : ''}</td>
-                        <td style="padding: 8px 12px; text-align: right; color: #334155; font-weight: 700;">${p.quantity}</td>
+                        <td style="padding: 6px 10px; color: #1e293b; font-weight: 600; text-align: left;">${p.name} ${p.sku ? `<span style="font-size: 8px; color: #94a3b8;">(${p.sku})</span>` : ''}</td>
+                        <td style="padding: 6px 10px; text-align: right; color: #334155; font-weight: 700;">${p.quantity}</td>
                     </tr>
                     `).join('')}
                 </tbody>
@@ -2495,15 +2516,15 @@ export const generateJobReportHtml = (
         ` : ''}
 
         <!-- SECTION 1: INITIAL DIAGNOSIS & BEFORE REPAIR -->
-        <div style="margin-bottom: 14px; text-align: left; border-top: 1px solid #e2e8f0; padding-top: 12px;">
-            <div class="pdf-avoid-break" style="margin-bottom: 10px;">
-                <h3 style="margin: 0; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #4338ca; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">1. Initial Diagnosis & Before Repair</h3>
+        <div style="margin-bottom: ${mbSection}; text-align: left; border-top: 1px solid #e2e8f0; padding-top: ${ptSection};">
+            <div class="pdf-avoid-break" style="margin-bottom: 6px; page-break-inside: avoid !important;">
+                <h3 style="margin: 0; font-size: 11.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #4338ca; border-bottom: 2px solid #e2e8f0; padding-bottom: 3px;">1. Initial Diagnosis & Before Repair</h3>
             </div>
             
             ${beforeReadings.length > 0 ? `
-            <div class="pdf-card pdf-avoid-break" style="background-color: #eef2ff; border: 1px solid #c7d2fe; padding: 10px 14px; border-radius: 8px; margin-bottom: 10px;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #4338ca; display: block; margin-bottom: 3px;">INITIAL MANIFOLD GAUGE READINGS (BEFORE REPAIR)</span>
-                <p style="margin: 0; font-size: 10px; color: #1e293b; line-height: 1.45; font-weight: 600;">
+            <div class="pdf-card pdf-avoid-break" style="background-color: #eef2ff; border: 1px solid #c7d2fe; padding: ${padCard}; border-radius: 8px; margin-bottom: ${mbCard}; page-break-inside: avoid !important;">
+                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #4338ca; display: block; margin-bottom: 2px;">INITIAL MANIFOLD GAUGE READINGS (BEFORE REPAIR)</span>
+                <p style="margin: 0; font-size: 9.5px; color: #1e293b; line-height: 1.4; font-weight: 600;">
                     ${beforeReadings.map((r: any) => `${r.name || r.unitName || r.circuit || 'Reading'}: Suction ${r.suction || 'N/A'}, Discharge ${r.discharge || 'N/A'}, Superheat ${r.superheat || 'N/A'}, Subcooling ${r.subcooling || 'N/A'}`).join('<br />')}
                 </p>
             </div>
@@ -2513,24 +2534,24 @@ export const generateJobReportHtml = (
                 const unitsWithDiag = jobAssets.filter(a => (a.diagnosis && a.diagnosis !== 'N/A') || (a.healthBefore && a.healthBefore !== 'N/A'));
                 if (unitsWithDiag.length === 0) return '';
                 return `
-                <div style="margin-bottom: 10px;">
+                <div style="margin-bottom: ${mbCard};">
                     <span class="pdf-avoid-break" style="font-size: 8px; font-weight: 800; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">Unit-Specific Diagnostic Findings</span>
                     ${unitsWithDiag.map(asset => `
-                    <div class="pdf-card pdf-avoid-break" style="border: 1px solid #e2e8f0; border-left: 4px solid #f59e0b; padding: 10px 12px; border-radius: 6px; background-color: #ffffff; margin-bottom: 6px;">
-                        <div style="margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center;">
-                            <strong style="font-size: 11px; color: #1e293b;">${asset.displayName} ${asset.brand ? `(${asset.brand})` : ''}</strong>
+                    <div class="pdf-card pdf-avoid-break" style="border: 1px solid #e2e8f0; border-left: 4px solid #f59e0b; padding: ${padCard}; border-radius: 6px; background-color: #ffffff; margin-bottom: 5px; page-break-inside: avoid !important;">
+                        <div style="margin-bottom: 2px; display: flex; justify-content: space-between; align-items: center;">
+                            <strong style="font-size: 10.5px; color: #1e293b;">${asset.displayName} ${asset.brand ? `(${asset.brand})` : ''}</strong>
                             ${asset.healthBefore && asset.healthBefore !== 'N/A' ? `<span style="background-color: #fffbeb; color: #d97706; border: 1px solid #fde68a; padding: 1px 5px; border-radius: 8px; font-weight: 800; font-size: 7px; text-transform: uppercase;">Initial Health: ${asset.healthBefore}</span>` : ''}
                         </div>
-                        ${asset.diagnosis && asset.diagnosis !== 'N/A' ? `<div style="font-size: 10px; color: #475569; line-height: 1.4;">${asset.diagnosis}</div>` : ''}
+                        ${asset.diagnosis && asset.diagnosis !== 'N/A' ? `<div style="font-size: 9.5px; color: #475569; line-height: 1.35;">${asset.diagnosis}</div>` : ''}
                     </div>
                     `).join('')}
                 </div>`;
             })()}
 
             ${(includeArrivalNotes || includeDiagnosisNotes) && (arrivalNotes || diagnosisNotes) ? `
-            <div class="pdf-card pdf-avoid-break" style="border: 1px solid #cbd5e1; padding: 12px 14px; border-radius: 8px; background-color: #ffffff; margin-bottom: 10px;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #4338ca; display: block; margin-bottom: 3px; letter-spacing: 0.5px;">DIAGNOSIS & ARRIVAL FINDINGS (FULL FIELD NOTES)</span>
-                <p style="margin: 0; font-size: 10px; color: #334155; line-height: 1.45; font-weight: 500;">
+            <div class="pdf-card pdf-avoid-break" style="border: 1px solid #cbd5e1; padding: ${padCard}; border-radius: 8px; background-color: #ffffff; margin-bottom: ${mbCard}; page-break-inside: avoid !important;">
+                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #4338ca; display: block; margin-bottom: 2px; letter-spacing: 0.5px;">DIAGNOSIS & ARRIVAL FINDINGS (FULL FIELD NOTES)</span>
+                <p style="margin: 0; font-size: 9.5px; color: #334155; line-height: 1.4; font-weight: 500;">
                     ${arrivalNotes && diagnosisNotes && arrivalNotes !== diagnosisNotes 
                         ? `${arrivalNotes.replace(/\n/g, '<br />')}<br /><br />${diagnosisNotes.replace(/\n/g, '<br />')}`
                         : (arrivalNotes || diagnosisNotes).replace(/\n/g, '<br />')}
@@ -2539,17 +2560,17 @@ export const generateJobReportHtml = (
             ` : ''}
 
             ${(includePhotos && beforePhotos.length > 0) ? `
-            <div class="pdf-card pdf-avoid-break" style="margin-bottom: 12px;">
-                <span style="font-size: 8px; font-weight: 800; color: #ef4444; text-transform: uppercase; display: block; margin-bottom: 8px; letter-spacing: 0.5px;">BEFORE REPAIR FIELD PHOTOS</span>
+            <div style="margin-bottom: ${mbCard};">
+                <span class="pdf-avoid-break" style="font-size: 8px; font-weight: 800; color: #ef4444; text-transform: uppercase; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">BEFORE REPAIR FIELD PHOTOS</span>
                 <div style="text-align: left; font-size: 0;">
                     ${beforePhotos.map((p, pIdx) => {
                         const cols = beforePhotos.length === 2 ? 2 : (beforePhotos.length === 1 ? 1 : 3);
                         const isLastInRow = (pIdx % cols === cols - 1);
                         const widthPct = cols === 1 ? '55%' : (cols === 2 ? '48.5%' : '31.8%');
-                        const cardHeight = cols <= 2 ? '175px' : '145px';
+                        const cardHeight = getPhotoCardHeight(cols);
 
                         return `
-                        <div class="pdf-photo" style="display: inline-block; width: ${widthPct}; margin-right: ${isLastInRow ? '0' : '2%'}; margin-bottom: 12px; vertical-align: top; text-align: left; font-size: 11px;">
+                        <div class="pdf-photo pdf-avoid-break" style="display: inline-block; width: ${widthPct}; margin-right: ${isLastInRow ? '0' : '2%'}; margin-bottom: ${mbCard}; vertical-align: top; text-align: left; font-size: 11px; page-break-inside: avoid !important; break-inside: avoid !important;">
                             <a href="${p.url}" target="_blank" style="display: block; width: 100%; height: ${cardHeight}; border-radius: 6px; overflow: hidden; border: 1.5px solid #ef4444; background-color: #0f172a; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.06); text-decoration: none;">
                                 <table width="100%" height="100%" cellpadding="0" cellspacing="0" style="width: 100%; height: ${cardHeight}; border-collapse: collapse;">
                                     <tr>
@@ -2558,11 +2579,11 @@ export const generateJobReportHtml = (
                                         </td>
                                     </tr>
                                 </table>
-                                <span style="position: absolute; top: 5px; left: 5px; background-color: #ef4444; color: #ffffff; padding: 2px 6px; border-radius: 4px; font-size: 7px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.25);">BEFORE REPAIR</span>
-                                ${p.dateBadge ? `<span style="position: absolute; bottom: 5px; right: 5px; background-color: rgba(15, 23, 42, 0.85); color: #ffffff; padding: 2px 6px; border-radius: 4px; font-size: 7.5px; font-weight: 700; letter-spacing: 0.3px; box-shadow: 0 1px 2px rgba(0,0,0,0.3);">${p.dateBadge}</span>` : ''}
+                                <span style="position: absolute; top: 4px; left: 4px; background-color: #ef4444; color: #ffffff; padding: 1.5px 5px; border-radius: 3px; font-size: 6.5px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.25);">BEFORE REPAIR</span>
+                                ${p.dateBadge ? `<span style="position: absolute; bottom: 4px; right: 4px; background-color: rgba(15, 23, 42, 0.85); color: #ffffff; padding: 1.5px 5px; border-radius: 3px; font-size: 7px; font-weight: 700; letter-spacing: 0.3px; box-shadow: 0 1px 2px rgba(0,0,0,0.3);">${p.dateBadge}</span>` : ''}
                             </a>
-                            <span style="font-size: 9.5px; font-weight: 800; color: #1e293b; display: block; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.3px; line-height: 1.25;">${p.label}</span>
-                            ${p.subLabel ? `<span style="font-size: 8.5px; font-weight: 700; color: #4338ca; display: block; margin-top: 1px; line-height: 1.25;">${p.subLabel}</span>` : ''}
+                            <span style="font-size: 9px; font-weight: 800; color: #1e293b; display: block; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.3px; line-height: 1.2;">${p.label}</span>
+                            ${p.subLabel ? `<span style="font-size: 8px; font-weight: 700; color: #4338ca; display: block; margin-top: 1px; line-height: 1.2;">${p.subLabel}</span>` : ''}
                         </div>
                         `;
                     }).join('')}
@@ -2572,22 +2593,22 @@ export const generateJobReportHtml = (
         </div>
 
         <!-- SECTION 2: RESOLUTION & AFTER REPAIR VERIFICATION -->
-        <div style="margin-bottom: 14px; text-align: left; border-top: 1px solid #e2e8f0; padding-top: 12px;">
-            <div class="pdf-avoid-break" style="margin-bottom: 10px;">
-                <h3 style="margin: 0; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #059669; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;">2. Resolution & After Repair Verification</h3>
+        <div style="margin-bottom: ${mbSection}; text-align: left; border-top: 1px solid #e2e8f0; padding-top: ${ptSection};">
+            <div class="pdf-avoid-break" style="margin-bottom: 6px; page-break-inside: avoid !important;">
+                <h3 style="margin: 0; font-size: 11.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #059669; border-bottom: 2px solid #e2e8f0; padding-bottom: 3px;">2. Resolution & After Repair Verification</h3>
             </div>
             
             ${job.refrigerantLog || job.refrigerantAdded ? `
-            <div class="pdf-card pdf-avoid-break" style="background-color: #f5f3ff; border: 1px solid #ddd6fe; padding: 10px 14px; border-radius: 8px; margin-bottom: 10px;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #7c3aed; display: block; margin-bottom: 3px; letter-spacing: 0.5px;">REFRIGERANT MANAGEMENT LOG</span>
-                <p style="margin: 0; font-size: 10px; color: #4c1d95; font-weight: 600; line-height: 1.45;">${job.refrigerantLog || job.refrigerantAdded}</p>
+            <div class="pdf-card pdf-avoid-break" style="background-color: #f5f3ff; border: 1px solid #ddd6fe; padding: ${padCard}; border-radius: 8px; margin-bottom: ${mbCard}; page-break-inside: avoid !important;">
+                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #7c3aed; display: block; margin-bottom: 2px; letter-spacing: 0.5px;">REFRIGERANT MANAGEMENT LOG</span>
+                <p style="margin: 0; font-size: 9.5px; color: #4c1d95; font-weight: 600; line-height: 1.4;">${job.refrigerantLog || job.refrigerantAdded}</p>
             </div>
             ` : ''}
 
             ${afterReadings.length > 0 ? `
-            <div class="pdf-card pdf-avoid-break" style="background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: 10px 14px; border-radius: 8px; margin-bottom: 10px;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #047857; display: block; margin-bottom: 3px; letter-spacing: 0.5px;">FINAL MANIFOLD GAUGE READINGS</span>
-                <p style="margin: 0; font-size: 10px; color: #065f46; line-height: 1.45; font-weight: 600;">
+            <div class="pdf-card pdf-avoid-break" style="background-color: #ecfdf5; border: 1px solid #a7f3d0; padding: ${padCard}; border-radius: 8px; margin-bottom: ${mbCard}; page-break-inside: avoid !important;">
+                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #047857; display: block; margin-bottom: 2px; letter-spacing: 0.5px;">FINAL MANIFOLD GAUGE READINGS</span>
+                <p style="margin: 0; font-size: 9.5px; color: #065f46; line-height: 1.4; font-weight: 600;">
                     ${afterReadings.map((r: any) => `${r.name || r.unitName || r.circuit || 'Reading'} Final: Suction ${r.suction || 'N/A'}, Discharge ${r.discharge || 'N/A'}, Superheat ${r.superheat || 'N/A'}, Subcooling ${r.subcooling || 'N/A'}`).join('<br />')}
                 </p>
             </div>
@@ -2597,47 +2618,47 @@ export const generateJobReportHtml = (
                 const unitsWithRepair = jobAssets.filter(a => (a.repair && a.repair !== 'N/A') || (a.healthAfter && a.healthAfter !== 'N/A') || (a.recommendations && a.recommendations !== 'N/A'));
                 if (unitsWithRepair.length === 0) return '';
                 return `
-                <div style="margin-bottom: 10px;">
+                <div style="margin-bottom: ${mbCard};">
                     <span class="pdf-avoid-break" style="font-size: 8px; font-weight: 800; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 4px; letter-spacing: 0.5px;">Unit-Specific Resolution & Work Done</span>
                     ${unitsWithRepair.map(asset => `
-                    <div class="pdf-card pdf-avoid-break" style="border: 1px solid #e2e8f0; border-left: 4px solid #10b981; padding: 10px 12px; border-radius: 6px; background-color: #ffffff; margin-bottom: 6px;">
-                        <div style="margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center;">
-                            <strong style="font-size: 11px; color: #1e293b;">${asset.displayName} ${asset.brand ? `(${asset.brand})` : ''}</strong>
+                    <div class="pdf-card pdf-avoid-break" style="border: 1px solid #e2e8f0; border-left: 4px solid #10b981; padding: ${padCard}; border-radius: 6px; background-color: #ffffff; margin-bottom: 5px; page-break-inside: avoid !important;">
+                        <div style="margin-bottom: 2px; display: flex; justify-content: space-between; align-items: center;">
+                            <strong style="font-size: 10.5px; color: #1e293b;">${asset.displayName} ${asset.brand ? `(${asset.brand})` : ''}</strong>
                             ${asset.healthAfter && asset.healthAfter !== 'N/A' ? `<span style="background-color: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; padding: 1px 5px; border-radius: 8px; font-weight: 800; font-size: 7px; text-transform: uppercase;">Post-Service Health: ${asset.healthAfter}</span>` : ''}
                         </div>
-                        ${asset.repair && asset.repair !== 'N/A' ? `<div style="font-size: 10px; color: #475569; line-height: 1.4; margin-bottom: 3px;"><strong>Repairs Performed:</strong> ${asset.repair}</div>` : ''}
-                        ${asset.recommendations && asset.recommendations !== 'N/A' ? `<div style="font-size: 10px; color: #4338ca; line-height: 1.4;"><strong>Unit Recommendations:</strong> ${asset.recommendations}</div>` : ''}
+                        ${asset.repair && asset.repair !== 'N/A' ? `<div style="font-size: 9.5px; color: #475569; line-height: 1.35; margin-bottom: 2px;"><strong>Repairs Performed:</strong> ${asset.repair}</div>` : ''}
+                        ${asset.recommendations && asset.recommendations !== 'N/A' ? `<div style="font-size: 9.5px; color: #4338ca; line-height: 1.35;"><strong>Unit Recommendations:</strong> ${asset.recommendations}</div>` : ''}
                     </div>
                     `).join('')}
                 </div>`;
             })()}
 
             ${(includeWorkNotes && workNotes) ? `
-            <div class="pdf-card pdf-avoid-break" style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; background-color: #ffffff;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #10b981; display: block; margin-bottom: 3px; letter-spacing: 0.5px;">WORK PERFORMED NOTES</span>
-                <p style="margin: 0; font-size: 10px; color: #334155; line-height: 1.45; font-weight: 500;">${workNotes.replace(/\n/g, '<br />')}</p>
+            <div class="pdf-card pdf-avoid-break" style="border: 1px solid #cbd5e1; border-radius: 8px; padding: ${padCard}; margin-bottom: ${mbCard}; background-color: #ffffff; page-break-inside: avoid !important;">
+                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #10b981; display: block; margin-bottom: 2px; letter-spacing: 0.5px;">WORK PERFORMED NOTES</span>
+                <p style="margin: 0; font-size: 9.5px; color: #334155; line-height: 1.4; font-weight: 500;">${workNotes.replace(/\n/g, '<br />')}</p>
             </div>
             ` : ''}
 
             ${(includeCompletionNotes && completionNotes) ? `
-            <div class="pdf-card pdf-avoid-break" style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px;">
-                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #6366f1; display: block; margin-bottom: 3px; letter-spacing: 0.5px;">Completion Summary</span>
-                <p style="margin: 0; font-size: 10px; color: #334155; line-height: 1.45; font-weight: 500;">${completionNotes.replace(/\n/g, '<br />')}</p>
+            <div class="pdf-card pdf-avoid-break" style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: ${padCard}; margin-bottom: ${mbCard}; page-break-inside: avoid !important;">
+                <span style="font-weight: 800; text-transform: uppercase; font-size: 8px; color: #6366f1; display: block; margin-bottom: 2px; letter-spacing: 0.5px;">Completion Summary</span>
+                <p style="margin: 0; font-size: 9.5px; color: #334155; line-height: 1.4; font-weight: 500;">${completionNotes.replace(/\n/g, '<br />')}</p>
             </div>
             ` : ''}
 
             ${(includePhotos && duringPhotos.length > 0) ? `
-            <div class="pdf-card pdf-avoid-break" style="margin-bottom: 12px;">
-                <span style="font-size: 8px; font-weight: 800; color: #2563eb; text-transform: uppercase; display: block; margin-bottom: 8px; letter-spacing: 0.5px;">IN-PROGRESS WORK & SERVICE PHOTOS</span>
+            <div style="margin-bottom: ${mbCard};">
+                <span class="pdf-avoid-break" style="font-size: 8px; font-weight: 800; color: #2563eb; text-transform: uppercase; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">IN-PROGRESS WORK & SERVICE PHOTOS</span>
                 <div style="text-align: left; font-size: 0;">
                     ${duringPhotos.map((p, pIdx) => {
                         const cols = duringPhotos.length === 2 ? 2 : (duringPhotos.length === 1 ? 1 : 3);
                         const isLastInRow = (pIdx % cols === cols - 1);
                         const widthPct = cols === 1 ? '55%' : (cols === 2 ? '48.5%' : '31.8%');
-                        const cardHeight = cols <= 2 ? '175px' : '145px';
+                        const cardHeight = getPhotoCardHeight(cols);
 
                         return `
-                        <div class="pdf-photo" style="display: inline-block; width: ${widthPct}; margin-right: ${isLastInRow ? '0' : '2%'}; margin-bottom: 12px; vertical-align: top; text-align: left; font-size: 11px;">
+                        <div class="pdf-photo pdf-avoid-break" style="display: inline-block; width: ${widthPct}; margin-right: ${isLastInRow ? '0' : '2%'}; margin-bottom: ${mbCard}; vertical-align: top; text-align: left; font-size: 11px; page-break-inside: avoid !important; break-inside: avoid !important;">
                             <a href="${p.url}" target="_blank" style="display: block; width: 100%; height: ${cardHeight}; border-radius: 6px; overflow: hidden; border: 1.5px solid #2563eb; background-color: #0f172a; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.06); text-decoration: none;">
                                 <table width="100%" height="100%" cellpadding="0" cellspacing="0" style="width: 100%; height: ${cardHeight}; border-collapse: collapse;">
                                     <tr>
@@ -2646,11 +2667,11 @@ export const generateJobReportHtml = (
                                         </td>
                                     </tr>
                                 </table>
-                                <span style="position: absolute; top: 5px; left: 5px; background-color: #2563eb; color: #ffffff; padding: 2px 6px; border-radius: 4px; font-size: 7px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.25);">WORK IN PROGRESS</span>
-                                ${p.dateBadge ? `<span style="position: absolute; bottom: 5px; right: 5px; background-color: rgba(15, 23, 42, 0.85); color: #ffffff; padding: 2px 6px; border-radius: 4px; font-size: 7.5px; font-weight: 700; letter-spacing: 0.3px; box-shadow: 0 1px 2px rgba(0,0,0,0.3);">${p.dateBadge}</span>` : ''}
+                                <span style="position: absolute; top: 4px; left: 4px; background-color: #2563eb; color: #ffffff; padding: 1.5px 5px; border-radius: 3px; font-size: 6.5px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.25);">WORK IN PROGRESS</span>
+                                ${p.dateBadge ? `<span style="position: absolute; bottom: 4px; right: 4px; background-color: rgba(15, 23, 42, 0.85); color: #ffffff; padding: 1.5px 5px; border-radius: 3px; font-size: 7px; font-weight: 700; letter-spacing: 0.3px; box-shadow: 0 1px 2px rgba(0,0,0,0.3);">${p.dateBadge}</span>` : ''}
                             </a>
-                            <span style="font-size: 9.5px; font-weight: 800; color: #1e293b; display: block; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.3px; line-height: 1.25;">${p.label}</span>
-                            ${p.subLabel ? `<span style="font-size: 8.5px; font-weight: 700; color: #2563eb; display: block; margin-top: 1px; line-height: 1.25;">${p.subLabel}</span>` : ''}
+                            <span style="font-size: 9px; font-weight: 800; color: #1e293b; display: block; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.3px; line-height: 1.2;">${p.label}</span>
+                            ${p.subLabel ? `<span style="font-size: 8px; font-weight: 700; color: #2563eb; display: block; margin-top: 1px; line-height: 1.2;">${p.subLabel}</span>` : ''}
                         </div>
                         `;
                     }).join('')}
@@ -2659,17 +2680,17 @@ export const generateJobReportHtml = (
             ` : ''}
 
             ${(includePhotos && afterPhotos.length > 0) ? `
-            <div class="pdf-card pdf-avoid-break" style="margin-bottom: 12px;">
-                <span style="font-size: 8px; font-weight: 800; color: #10b981; text-transform: uppercase; display: block; margin-bottom: 8px; letter-spacing: 0.5px;">AFTER REPAIR & VERIFICATION PHOTOS</span>
+            <div style="margin-bottom: ${mbCard};">
+                <span class="pdf-avoid-break" style="font-size: 8px; font-weight: 800; color: #10b981; text-transform: uppercase; display: block; margin-bottom: 6px; letter-spacing: 0.5px;">AFTER REPAIR & VERIFICATION PHOTOS</span>
                 <div style="text-align: left; font-size: 0;">
                     ${afterPhotos.map((p, pIdx) => {
                         const cols = afterPhotos.length === 2 ? 2 : (afterPhotos.length === 1 ? 1 : 3);
                         const isLastInRow = (pIdx % cols === cols - 1);
                         const widthPct = cols === 1 ? '55%' : (cols === 2 ? '48.5%' : '31.8%');
-                        const cardHeight = cols <= 2 ? '175px' : '145px';
+                        const cardHeight = getPhotoCardHeight(cols);
 
                         return `
-                        <div class="pdf-photo" style="display: inline-block; width: ${widthPct}; margin-right: ${isLastInRow ? '0' : '2%'}; margin-bottom: 12px; vertical-align: top; text-align: left; font-size: 11px;">
+                        <div class="pdf-photo pdf-avoid-break" style="display: inline-block; width: ${widthPct}; margin-right: ${isLastInRow ? '0' : '2%'}; margin-bottom: ${mbCard}; vertical-align: top; text-align: left; font-size: 11px; page-break-inside: avoid !important; break-inside: avoid !important;">
                             <a href="${p.url}" target="_blank" style="display: block; width: 100%; height: ${cardHeight}; border-radius: 6px; overflow: hidden; border: 1.5px solid #10b981; background-color: #0f172a; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.06); text-decoration: none;">
                                 <table width="100%" height="100%" cellpadding="0" cellspacing="0" style="width: 100%; height: ${cardHeight}; border-collapse: collapse;">
                                     <tr>
@@ -2678,11 +2699,11 @@ export const generateJobReportHtml = (
                                         </td>
                                     </tr>
                                 </table>
-                                <span style="position: absolute; top: 5px; left: 5px; background-color: #10b981; color: #ffffff; padding: 2px 6px; border-radius: 4px; font-size: 7px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.25);">AFTER VERIFIED</span>
-                                ${p.dateBadge ? `<span style="position: absolute; bottom: 5px; right: 5px; background-color: rgba(15, 23, 42, 0.85); color: #ffffff; padding: 2px 6px; border-radius: 4px; font-size: 7.5px; font-weight: 700; letter-spacing: 0.3px; box-shadow: 0 1px 2px rgba(0,0,0,0.3);">${p.dateBadge}</span>` : ''}
+                                <span style="position: absolute; top: 4px; left: 4px; background-color: #10b981; color: #ffffff; padding: 1.5px 5px; border-radius: 3px; font-size: 6.5px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 1px 2px rgba(0,0,0,0.25);">AFTER VERIFIED</span>
+                                ${p.dateBadge ? `<span style="position: absolute; bottom: 4px; right: 4px; background-color: rgba(15, 23, 42, 0.85); color: #ffffff; padding: 1.5px 5px; border-radius: 3px; font-size: 7px; font-weight: 700; letter-spacing: 0.3px; box-shadow: 0 1px 2px rgba(0,0,0,0.3);">${p.dateBadge}</span>` : ''}
                             </a>
-                            <span style="font-size: 9.5px; font-weight: 800; color: #1e293b; display: block; margin-top: 5px; text-transform: uppercase; letter-spacing: 0.3px; line-height: 1.25;">${p.label}</span>
-                            ${p.subLabel ? `<span style="font-size: 8.5px; font-weight: 700; color: #059669; display: block; margin-top: 1px; line-height: 1.25;">${p.subLabel}</span>` : ''}
+                            <span style="font-size: 9px; font-weight: 800; color: #1e293b; display: block; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.3px; line-height: 1.2;">${p.label}</span>
+                            ${p.subLabel ? `<span style="font-size: 8px; font-weight: 700; color: #059669; display: block; margin-top: 1px; line-height: 1.2;">${p.subLabel}</span>` : ''}
                         </div>
                         `;
                     }).join('')}
@@ -2698,71 +2719,71 @@ export const generateJobReportHtml = (
             if (!shouldShow) return '';
 
             return `
-        <div class="pdf-card pdf-avoid-break" style="margin-bottom: 14px; border-top: 1px solid #e2e8f0; padding-top: 12px; text-align: left;">
-            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 14px 16px;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 8px;">
+        <div class="pdf-card pdf-avoid-break" style="margin-bottom: ${mbSection}; border-top: 1px solid #e2e8f0; padding-top: ${ptSection}; text-align: left; page-break-inside: avoid !important; break-inside: avoid !important;">
+            <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: ${padCard};">
+                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 6px;">
                     <tr>
                         <td align="left" style="font-size: 8.5px; font-weight: 900; color: #059669; text-transform: uppercase; letter-spacing: 0.5px;">
                             Signed Work Validation &amp; Client Sign-Off
                         </td>
-                        <td align="right" style="font-size: 9px; color: #059669; font-weight: 800; text-transform: uppercase;">
+                        <td align="right" style="font-size: 8.5px; color: #059669; font-weight: 800; text-transform: uppercase;">
                             ✓ Verified On-Site
                         </td>
                     </tr>
                 </table>
                 <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
                     <tr>
-                        <td style="vertical-align: middle; padding-right: 14px;" width="52%">
+                        <td style="vertical-align: middle; padding-right: 12px;" width="52%">
                             ${attachedSignOffPdf ? `
-                            <p style="margin: 0 0 4px; font-size: 10px; color: #1e293b; font-weight: 700;">Attached Sign-Off Document: <strong>${attachedSignOffPdf.fileName || 'Signed_Signoff_Sheet.pdf'}</strong></p>
+                            <p style="margin: 0 0 3px; font-size: 9.5px; color: #1e293b; font-weight: 700;">Attached Sign-Off Document: <strong>${attachedSignOffPdf.fileName || 'Signed_Signoff_Sheet.pdf'}</strong></p>
                             ${(attachedSignOffPdf.url || attachedSignOffPdf.dataUrl) ? `
-                            <a href="${attachedSignOffPdf.url || attachedSignOffPdf.dataUrl}" target="_blank" style="display: inline-block; margin-top: 2px; padding: 4px 10px; background-color: #0284c7; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 700; font-size: 9.5px;">
+                            <a href="${attachedSignOffPdf.url || attachedSignOffPdf.dataUrl}" target="_blank" style="display: inline-block; margin-top: 2px; padding: 3px 8px; background-color: #0284c7; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: 700; font-size: 9px;">
                                 View Signed PDF Document &rarr;
                             </a>
                             ` : ''}
                             ` : ''}
                             ${(!attachedSignOffPdf && (job.signOffSheetUrl || (job as any)?.signoffSheetUrl)) ? `
-                            <p style="margin: 0 0 4px; font-size: 10px; color: #1e293b; font-weight: 700;">Attached Sign-Off Sheet: <strong>Sign-Off Document</strong></p>
-                            <a href="${job.signOffSheetUrl || (job as any)?.signoffSheetUrl}" target="_blank" style="display: inline-block; margin-top: 2px; padding: 4px 10px; background-color: #059669; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 700; font-size: 9.5px;">
+                            <p style="margin: 0 0 3px; font-size: 9.5px; color: #1e293b; font-weight: 700;">Attached Sign-Off Sheet: <strong>Sign-Off Document</strong></p>
+                            <a href="${job.signOffSheetUrl || (job as any)?.signoffSheetUrl}" target="_blank" style="display: inline-block; margin-top: 2px; padding: 3px 8px; background-color: #059669; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: 700; font-size: 9px;">
                                 View Signed Work Order Form &rarr;
                             </a>
                             ` : ''}
-                            <p style="margin: 4px 0 0; font-size: 10px; color: #475569; line-height: 1.45;">
+                            <p style="margin: 3px 0 0; font-size: 9.5px; color: #475569; line-height: 1.4;">
                                 ${job.customerFeedback || 'Client / store manager verified work completion on-site and authorized sign-off.'}
                             </p>
                         </td>
                         <td style="vertical-align: middle; text-align: right;" width="48%">
-                            <table style="width: 215px; margin-left: auto; border: 2px dashed #059669; background-color: #f0fdf4; border-radius: 8px; border-collapse: separate; padding: 8px 10px;" cellpadding="0" cellspacing="0">
+                            <table style="width: 200px; margin-left: auto; border: 1.5px dashed #059669; background-color: #f0fdf4; border-radius: 6px; border-collapse: separate; padding: 6px 8px;" cellpadding="0" cellspacing="0">
                                 <tr>
-                                    <td align="center" style="font-size: 8.5px; font-weight: 900; color: #059669; text-transform: uppercase; letter-spacing: 0.8px; padding-bottom: 2px;">
+                                    <td align="center" style="font-size: 8px; font-weight: 900; color: #059669; text-transform: uppercase; letter-spacing: 0.8px; padding-bottom: 2px;">
                                         ✓ SIGNATURE ON FILE
                                     </td>
                                 </tr>
                                 ${reportSignatureSrc ? `
                                 <tr>
-                                    <td align="center" style="vertical-align: middle; height: 50px; padding: 2px 0;">
-                                        <img src="${reportSignatureSrc}" style="height: 46px; max-width: 190px; display: block; margin: 0 auto; border: 0;" alt="Client Signature" />
+                                    <td align="center" style="vertical-align: middle; height: 42px; padding: 2px 0;">
+                                        <img src="${reportSignatureSrc}" style="height: 38px; max-width: 180px; display: block; margin: 0 auto; border: 0;" alt="Client Signature" />
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td align="center" style="font-size: 10px; font-weight: 800; color: #0f172a; padding-top: 2px;">
+                                    <td align="center" style="font-size: 9.5px; font-weight: 800; color: #0f172a; padding-top: 1px;">
                                         ${clientSignerName}
                                     </td>
                                 </tr>
                                 ` : `
                                 <tr>
-                                    <td align="center" style="font-size: 12px; font-weight: 800; color: #0f172a; height: 45px; vertical-align: middle; font-family: 'Brush Script MT', cursive, sans-serif; font-style: italic;">
+                                    <td align="center" style="font-size: 11px; font-weight: 800; color: #0f172a; height: 38px; vertical-align: middle; font-family: 'Brush Script MT', cursive, sans-serif; font-style: italic;">
                                         ${clientSignerName}
                                     </td>
                                 </tr>
                                 `}
                                 <tr>
-                                    <td align="center" style="font-size: 8px; color: #64748b; padding-top: 2px;">
+                                    <td align="center" style="font-size: 7.5px; color: #64748b; padding-top: 1px;">
                                         ${attachedSignOffPdf?.metadata?.dateOfService || (job as any)?.signOff?.dateOfService || reportDateStr} &bull; Store Manager Sign-Off
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td align="center" style="font-size: 7.5px; color: #059669; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 2px;">
+                                    <td align="center" style="font-size: 7px; color: #059669; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding-top: 1px;">
                                         OFFICIAL CLIENT VERIFICATION
                                     </td>
                                 </tr>
@@ -2785,8 +2806,8 @@ export const generateJobReportHtml = (
             const invStatus = (invoiceObj.status || 'Pending').toUpperCase();
 
             return `
-            <div class="pdf-card pdf-avoid-break" style="margin-bottom: 14px; border-top: 1px solid #f1f5f9; padding-top: 12px; text-align: left;">
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 10px;">
+            <div style="margin-bottom: ${mbSection}; border-top: 1px solid #f1f5f9; padding-top: ${ptSection}; text-align: left;">
+                <table class="pdf-avoid-break" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 8px; page-break-inside: avoid !important;">
                     <tr>
                         <td style="text-align: left; vertical-align: middle;">
                             <h4 style="margin: 0; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #4f46e5;">Invoice Summary: #${invoiceObj.id || 'INV'}</h4>
@@ -2797,45 +2818,45 @@ export const generateJobReportHtml = (
                     </tr>
                 </table>
                 
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 10px; margin-bottom: 10px;">
+                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 9.5px; margin-bottom: 8px;">
                     <thead>
-                        <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
-                            <th style="padding: 6px 8px; text-align: left; font-weight: 800; color: #64748b; font-size: 8px; text-transform: uppercase;">Description</th>
-                            <th style="padding: 6px 8px; text-align: center; font-weight: 800; color: #64748b; width: 40px; font-size: 8px; text-transform: uppercase;">Qty</th>
-                            <th style="padding: 6px 8px; text-align: right; font-weight: 800; color: #64748b; width: 80px; font-size: 8px; text-transform: uppercase;">Total</th>
+                        <tr class="pdf-avoid-break" style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0; page-break-inside: avoid !important;">
+                            <th style="padding: 5px 8px; text-align: left; font-weight: 800; color: #64748b; font-size: 8px; text-transform: uppercase;">Description</th>
+                            <th style="padding: 5px 8px; text-align: center; font-weight: 800; color: #64748b; width: 40px; font-size: 8px; text-transform: uppercase;">Qty</th>
+                            <th style="padding: 5px 8px; text-align: right; font-weight: 800; color: #64748b; width: 80px; font-size: 8px; text-transform: uppercase;">Total</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${invItems.map((item: any) => `
-                            <tr style="border-bottom: 1px solid #f1f5f9;">
-                                <td style="padding: 6px 8px; text-align: left;">
+                            <tr class="pdf-avoid-break" style="border-bottom: 1px solid #f1f5f9; page-break-inside: avoid !important; break-inside: avoid !important;">
+                                <td style="padding: 5px 8px; text-align: left;">
                                     <div style="font-weight: 700; color: #1e293b;">${item.name || item.description || ''}</div>
-                                    ${(item.quantity > 1 || (item.unitPrice && item.unitPrice !== item.total)) ? `<div style="font-size: 9px; font-weight: 700; color: #4f46e5; margin-top: 1px;">${item.quantity || 1} units @ $${Number(item.unitPrice || 0).toFixed(2)} / unit</div>` : ''}
-                                    ${item.description && item.description !== item.name ? `<div style="font-size: 9px; color: #64748b; margin-top: 1px;">${item.description}</div>` : ''}
+                                    ${(item.quantity > 1 || (item.unitPrice && item.unitPrice !== item.total)) ? `<div style="font-size: 8.5px; font-weight: 700; color: #4f46e5; margin-top: 1px;">${item.quantity || 1} units @ $${Number(item.unitPrice || 0).toFixed(2)} / unit</div>` : ''}
+                                    ${item.description && item.description !== item.name ? `<div style="font-size: 8.5px; color: #64748b; margin-top: 1px;">${item.description}</div>` : ''}
                                 </td>
-                                <td style="padding: 6px 8px; text-align: center; color: #475569;">${item.quantity || 1}</td>
-                                <td style="padding: 6px 8px; text-align: right; font-weight: 700; color: #1e293b;">$${Number(item.total || ((item.unitPrice || 0) * (item.quantity || 1))).toFixed(2)}</td>
+                                <td style="padding: 5px 8px; text-align: center; color: #475569;">${item.quantity || 1}</td>
+                                <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: #1e293b;">$${Number(item.total || ((item.unitPrice || 0) * (item.quantity || 1))).toFixed(2)}</td>
                             </tr>
                         `).join('')}
                     </tbody>
                 </table>
                 
-                <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 10px;">
+                <table class="pdf-avoid-break" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 9.5px; page-break-inside: avoid !important; break-inside: avoid !important;">
                     <tr>
                         <td style="width: 50%;"></td>
                         <td style="width: 50%;">
                             <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
                                 <tr>
-                                    <td style="padding: 3px 0; color: #64748b; text-align: left; font-weight: 600;">Subtotal</td>
-                                    <td style="padding: 3px 0; font-weight: 700; text-align: right; color: #1e293b;">$${invSubtotal.toFixed(2)}</td>
+                                    <td style="padding: 2.5px 0; color: #64748b; text-align: left; font-weight: 600;">Subtotal</td>
+                                    <td style="padding: 2.5px 0; font-weight: 700; text-align: right; color: #1e293b;">$${invSubtotal.toFixed(2)}</td>
                                 </tr>
                                 <tr>
-                                    <td style="padding: 3px 0; color: #64748b; text-align: left; font-weight: 600;">Tax</td>
-                                    <td style="padding: 3px 0; font-weight: 700; text-align: right; color: #1e293b;">$${invTax.toFixed(2)}</td>
+                                    <td style="padding: 2.5px 0; color: #64748b; text-align: left; font-weight: 600;">Tax</td>
+                                    <td style="padding: 2.5px 0; font-weight: 700; text-align: right; color: #1e293b;">$${invTax.toFixed(2)}</td>
                                 </tr>
                                 <tr style="border-top: 2px solid #0f172a;">
-                                    <td style="padding: 6px 0; font-weight: 800; text-align: left; color: #0f172a; font-size: 12px;">Grand Total</td>
-                                    <td style="padding: 6px 0; font-weight: 900; text-align: right; color: #4f46e5; font-size: 14px;">$${invTotal.toFixed(2)}</td>
+                                    <td style="padding: 5px 0; font-weight: 800; text-align: left; color: #0f172a; font-size: 11px;">Grand Total</td>
+                                    <td style="padding: 5px 0; font-weight: 900; text-align: right; color: #4f46e5; font-size: 13px;">$${invTotal.toFixed(2)}</td>
                                 </tr>
                             </table>
                         </td>
@@ -2846,42 +2867,42 @@ export const generateJobReportHtml = (
 
         <!-- TECHNICIAN THANK YOU NOTE CARD -->
         ${includeThankYouNote ? `
-        <div class="pdf-card pdf-avoid-break" style="background-color: #f5f3ff; border: 1px solid #ddd6fe; border-left: 4px solid #7c3aed; padding: 14px 16px; border-radius: 10px; margin-bottom: 12px; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 10px;">
+        <div class="pdf-card pdf-avoid-break" style="background-color: #f5f3ff; border: 1px solid #ddd6fe; border-left: 4px solid #7c3aed; padding: ${padCard}; border-radius: 8px; margin-bottom: ${mbSection}; text-align: left; box-shadow: 0 1px 3px rgba(0,0,0,0.02); page-break-inside: avoid !important; break-inside: avoid !important;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; margin-bottom: 8px;">
                 <tr>
                     ${avatarUrl ? `
-                    <td width="46" style="vertical-align: top; padding-right: 10px;">
-                        <img src="${avatarUrl}" width="40" height="40" style="border-radius: 50%; object-fit: cover; border: 2px solid #7c3aed; display: block;" alt="${techName}" />
+                    <td width="42" style="vertical-align: top; padding-right: 10px;">
+                        <img src="${avatarUrl}" width="36" height="36" style="border-radius: 50%; object-fit: cover; border: 2px solid #7c3aed; display: block;" alt="${techName}" />
                     </td>
                     ` : `
-                    <td width="46" style="vertical-align: top; padding-right: 10px;">
-                        <div style="width: 40px; height: 40px; border-radius: 50%; background-color: #e0e7ff; color: #7c3aed; text-align: center; line-height: 40px; font-size: 16px; font-weight: bold; border: 2px solid #7c3aed;">♥</div>
+                    <td width="42" style="vertical-align: top; padding-right: 10px;">
+                        <div style="width: 36px; height: 36px; border-radius: 50%; background-color: #e0e7ff; color: #7c3aed; text-align: center; line-height: 36px; font-size: 15px; font-weight: bold; border: 2px solid #7c3aed;">♥</div>
                     </td>
                     `}
                     <td style="vertical-align: top; text-align: left;">
-                        <span style="font-size: 8px; font-weight: 800; color: #7c3aed; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px;">A Personal Thank You</span>
-                        <h4 style="margin: 0 0 2px; color: #1e1b4b; font-size: 12px; font-weight: 800;">From ${techName} <span style="font-size: 10px; font-weight: bold; color: #64748b;">(${techRole})</span></h4>
-                        <p style="margin: 0; font-size: 11px; color: #3730a3; font-style: italic; line-height: 1.45;">"${thankYouNoteText.replace(/\n/g, '<br />')}"</p>
+                        <span style="font-size: 8px; font-weight: 800; color: #7c3aed; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 1px;">A Personal Thank You</span>
+                        <h4 style="margin: 0 0 1px; color: #1e1b4b; font-size: 11px; font-weight: 800;">From ${techName} <span style="font-size: 9.5px; font-weight: bold; color: #64748b;">(${techRole})</span></h4>
+                        <p style="margin: 0; font-size: 10px; color: #3730a3; font-style: italic; line-height: 1.4;">"${thankYouNoteText.replace(/\n/g, '<br />')}"</p>
                     </td>
                 </tr>
             </table>
 
-            <div style="border-top: 1px dashed #ddd6fe; padding-top: 10px; text-align: center;">
-                <p style="margin: 0 0 6px; font-weight: 800; font-size: 10px; color: #1e1b4b;">How did we do? Support us with a quick review!</p>
+            <div style="border-top: 1px dashed #ddd6fe; padding-top: 8px; text-align: center;">
+                <p style="margin: 0 0 5px; font-weight: 800; font-size: 9.5px; color: #1e1b4b;">How did we do? Support us with a quick review!</p>
                 <div>
-                    ${googleReview ? `<a href="${googleReview}" style="background-color: #f59e0b; color: white; padding: 6px 14px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 10px; display: inline-block; margin-right: 6px; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">Review on Google</a>` : ''}
-                    <a href="${ttReview}" style="background-color: #0284c7; color: white; padding: 6px 14px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 10px; display: inline-block; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2);">Review on TekTrakker</a>
+                    ${googleReview ? `<a href="${googleReview}" style="background-color: #f59e0b; color: white; padding: 5px 12px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 9.5px; display: inline-block; margin-right: 6px; box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);">Review on Google</a>` : ''}
+                    <a href="${ttReview}" style="background-color: #0284c7; color: white; padding: 5px 12px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 9.5px; display: inline-block; box-shadow: 0 2px 4px rgba(2, 132, 199, 0.2);">Review on TekTrakker</a>
                 </div>
             </div>
         </div>
         ` : ''}
 
         <!-- FOOTER & LEGAL -->
-        <div class="pdf-section" style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #e2e8f0; text-align: left;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 10px; color: #64748b;">
+        <div class="pdf-section pdf-avoid-break" style="margin-top: ${mbCard}; padding-top: 8px; border-top: 1px dashed #e2e8f0; text-align: left; page-break-inside: avoid !important; break-inside: avoid !important;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse; font-size: 9.5px; color: #64748b;">
                 <tr>
-                    <td style="vertical-align: top; padding-right: 16px; text-align: left;" width="50%">
-                        <h4 style="margin: 0 0 3px; font-size: 11px; font-weight: bold; color: #334155;">${orgName}</h4>
+                    <td style="vertical-align: top; padding-right: 14px; text-align: left;" width="50%">
+                        <h4 style="margin: 0 0 2px; font-size: 10.5px; font-weight: bold; color: #334155;">${orgName}</h4>
                         ${orgAddress ? `<p style="margin: 0 0 2px; line-height: 1.35;">${orgAddress}</p>` : ''}
                         ${orgPhone ? `<p style="margin: 0 0 2px;"><strong>Phone:</strong> ${orgPhone}</p>` : ''}
                         ${orgEmail ? `<p style="margin: 0 0 2px;"><strong>Email:</strong> <a href="mailto:${orgEmail}" style="color: #4f46e5; text-decoration: none;">${orgEmail}</a></p>` : ''}
@@ -2889,20 +2910,20 @@ export const generateJobReportHtml = (
                         ${orgLicense ? `<p style="margin: 0 0 2px;"><strong>License #:</strong> ${orgLicense}</p>` : ''}
                     </td>
                     <td style="vertical-align: top; text-align: right;" width="50%">
-                        <p style="margin: 0 0 2px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; font-size: 8px; color: #94a3b8;">Service report generated via TekTrakker Platform</p>
-                        <p style="margin: 0 0 6px; font-size: 8px; color: #94a3b8;">Official customer service document.</p>
-                        ${complianceFooter ? `<p style="margin: 0; font-size: 8px; line-height: 1.35; color: #94a3b8; font-style: italic;">${complianceFooter}</p>` : ''}
+                        <p style="margin: 0 0 2px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; font-size: 7.5px; color: #94a3b8;">Service report generated via TekTrakker Platform</p>
+                        <p style="margin: 0 0 5px; font-size: 7.5px; color: #94a3b8;">Official customer service document.</p>
+                        ${complianceFooter ? `<p style="margin: 0; font-size: 7.5px; line-height: 1.35; color: #94a3b8; font-style: italic;">${complianceFooter}</p>` : ''}
                     </td>
                 </tr>
                 ${orgTerms ? `
                 <tr>
-                    <td colspan="2" style="padding-top: 8px; border-top: 1px dashed #e2e8f0; margin-top: 8px; font-size: 8px; color: #94a3b8; line-height: 1.35; text-align: left;">
+                    <td colspan="2" style="padding-top: 6px; border-top: 1px dashed #e2e8f0; margin-top: 6px; font-size: 7.5px; color: #94a3b8; line-height: 1.3; text-align: left;">
                         <strong>Terms & Disclaimers:</strong> ${orgTerms}
                     </td>
                 </tr>
                 ` : ''}
             </table>
-            <div style="text-align: center; margin-top: 10px; padding-top: 6px; border-top: 1px solid #f1f5f9;">
+            <div style="text-align: center; margin-top: 8px; padding-top: 5px; border-top: 1px solid #f1f5f9;">
                 <span style="font-size: 7px; font-weight: bold; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px;">POWERED BY TekTrakker</span>
             </div>
         </div>
@@ -2910,6 +2931,310 @@ export const generateJobReportHtml = (
     `;
 
     return html;
+};
+
+export interface SmartPdfOptions {
+    filename?: string;
+    margin?: [number, number, number, number]; // [top, right, bottom, left] in inches. Default: [0.25, 0.25, 0.25, 0.25]
+    windowWidth?: number; // default 740
+    pdfFormat?: string | [number, number]; // default 'letter'
+    pdfOrientation?: 'portrait' | 'landscape'; // default 'portrait'
+    scale?: number; // default 2
+    quality?: number; // default 0.98
+}
+
+export interface SmartPdfResult {
+    dataUri: string;
+    base64: string;
+    blob: Blob;
+    pdf: any; // jsPDF instance
+}
+
+/**
+ * Scans backwards from idealEndCanvasY up to minSearchY in the canvas to find a horizontal row with
+ * no (or minimal) dark pixels (the whitespace gap between text lines/elements).
+ * This prevents horizontal text glyph slicing.
+ */
+function findCleanCanvasSplit(
+    canvas: HTMLCanvasElement,
+    currentY: number,
+    idealEndY: number,
+    minSearchY: number
+): number {
+    const searchHeight = Math.max(1, idealEndY - minSearchY);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return idealEndY;
+
+    try {
+        const imgData = ctx.getImageData(0, minSearchY, canvas.width, searchHeight);
+        const data = imgData.data;
+        const width = canvas.width;
+
+        let bestY = idealEndY;
+        let lowestDarkCount = Infinity;
+
+        // Scan backwards from bottom (idealEndY - 1) up to minSearchY
+        for (let row = searchHeight - 1; row >= 0; row--) {
+            let darkPixelCount = 0;
+            const rowOffset = row * width * 4;
+
+            // Sample every 4th pixel across width (ignoring 20px padding left/right)
+            for (let x = 20; x < width - 20; x += 4) {
+                const idx = rowOffset + x * 4;
+                const r = data[idx];
+                const g = data[idx + 1];
+                const b = data[idx + 2];
+                // Non-white pixel indicates text glyph, image, or border
+                if (r < 235 || g < 235 || b < 235) {
+                    darkPixelCount++;
+                }
+            }
+
+            // If we found a completely white row (0 dark pixels), this is an ideal break between lines
+            if (darkPixelCount === 0) {
+                return minSearchY + row;
+            }
+
+            if (darkPixelCount < lowestDarkCount) {
+                lowestDarkCount = darkPixelCount;
+                bestY = minSearchY + row;
+            }
+        }
+
+        // If a very clean row (<= 2 dark pixels) was found, use it
+        if (lowestDarkCount <= 2) {
+            return bestY;
+        }
+    } catch (e) {
+        console.warn("Could not inspect canvas pixels for slicing:", e);
+    }
+
+    return idealEndY;
+}
+
+/**
+ * Renders HTML content or a DOM element into a crisp, multi-page PDF using smart canvas pagination.
+ * Prevents horizontal clipping of photos, table rows, and text lines while avoiding large blank spaces.
+ */
+export const renderHtmlToSmartPdf = async (
+    content: string | HTMLElement,
+    options: SmartPdfOptions = {}
+): Promise<SmartPdfResult> => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+        throw new Error('renderHtmlToSmartPdf is only supported in browser environments.');
+    }
+
+    const {
+        margin = [0.25, 0.25, 0.25, 0.25],
+        windowWidth = 740,
+        pdfFormat = 'letter',
+        pdfOrientation = 'portrait',
+        scale = 2,
+        quality = 0.98
+    } = options;
+
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = '-9999px';
+    wrapper.style.top = '0px';
+    wrapper.style.width = `${windowWidth}px`;
+    wrapper.style.zIndex = '-9999';
+    wrapper.style.backgroundColor = '#ffffff';
+
+    const container = document.createElement('div');
+    if (typeof content === 'string') {
+        container.innerHTML = content;
+    } else {
+        container.appendChild(content.cloneNode(true));
+    }
+    container.style.width = `${windowWidth}px`;
+    container.style.backgroundColor = '#ffffff';
+    container.style.padding = '0px';
+    container.style.margin = '0px';
+    container.style.boxSizing = 'border-box';
+
+    wrapper.appendChild(container);
+    document.body.appendChild(wrapper);
+
+    try {
+        // Pre-fix local/web logo URLs if needed
+        container.querySelectorAll('img').forEach((img) => {
+            if (img.src && img.src.includes('tektrakker.web.app/tektrakker-logo-web.png')) {
+                img.src = '/tektrakker-logo-web.png';
+            }
+        });
+
+        // Wait for all images inside container to load
+        const images = container.getElementsByTagName('img');
+        const imgPromises = Array.from(images).map(img => {
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            return new Promise<void>(resolve => {
+                img.onload = () => resolve();
+                img.onerror = () => resolve();
+                setTimeout(resolve, 2500);
+            });
+        });
+        await Promise.all(imgPromises);
+
+        // Pre-measure protected elements in CSS pixel coordinates relative to container top
+        const containerRect = container.getBoundingClientRect();
+        const protectedSelectors = [
+            '.pdf-photo',
+            '.pdf-avoid-break',
+            '.pdf-unit-card',
+            '.pdf-timeline-item',
+            'tr',
+            'img',
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            '.pdf-card',
+            'blockquote'
+        ];
+
+        const rawElements = container.querySelectorAll(protectedSelectors.join(', '));
+        const protectedElements: { top: number; bottom: number; height: number; el: Element }[] = [];
+        rawElements.forEach(el => {
+            const r = el.getBoundingClientRect();
+            const top = r.top - containerRect.top;
+            const bottom = r.bottom - containerRect.top;
+            const height = bottom - top;
+            if (height > 4) {
+                protectedElements.push({ top, bottom, height, el });
+            }
+        });
+
+        // Import html2canvas dynamically
+        // @ts-ignore
+        const html2canvasModule: any = await import('html2canvas');
+        const html2canvas: any = html2canvasModule.default || html2canvasModule;
+
+        const canvas = await html2canvas(container, {
+            scale,
+            useCORS: true,
+            logging: false,
+            windowWidth,
+            backgroundColor: '#ffffff'
+        });
+
+        // @ts-ignore
+        const { jsPDF } = await import('jspdf');
+        const pdf = new jsPDF({
+            unit: 'in',
+            format: pdfFormat,
+            orientation: pdfOrientation
+        });
+
+        const pageWidthInches = pdf.internal.pageSize.getWidth();
+        const pageHeightInches = pdf.internal.pageSize.getHeight();
+
+        const marginTop = margin[0];
+        const marginRight = margin[1];
+        const marginBottom = margin[2];
+        const marginLeft = margin[3];
+
+        const contentWidthInches = pageWidthInches - marginLeft - marginRight;
+        const contentHeightInches = pageHeightInches - marginTop - marginBottom;
+
+        const scaleFactor = canvas.width / contentWidthInches; // Canvas pixels per inch
+        const maxPageCanvasHeight = contentHeightInches * scaleFactor; // Max canvas height per page
+        const maxPageCssHeight = maxPageCanvasHeight / scale; // Max CSS height per page
+
+        // Filter protected elements:
+        // Giant containers (> 65% of maxPageCssHeight) should not block pagination as atomic units;
+        // their child elements (individual photos, rows) are protected instead to prevent huge blank gaps.
+        const maxAtomicHeight = maxPageCssHeight * 0.65;
+        const validProtected = protectedElements.filter(pe => pe.height <= maxAtomicHeight);
+
+        let currentY = 0; // In canvas pixels
+        let pageIndex = 0;
+
+        while (currentY < canvas.height) {
+            const remainingCanvasHeight = canvas.height - currentY;
+            if (remainingCanvasHeight <= maxPageCanvasHeight) {
+                // Final page fits completely
+                const pageCanvas = document.createElement('canvas');
+                pageCanvas.width = canvas.width;
+                pageCanvas.height = remainingCanvasHeight;
+                const ctx = pageCanvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+                    ctx.drawImage(canvas, 0, currentY, canvas.width, remainingCanvasHeight, 0, 0, canvas.width, remainingCanvasHeight);
+                }
+
+                if (pageIndex > 0) pdf.addPage();
+                const imgData = pageCanvas.toDataURL('image/jpeg', quality);
+                const drawnHeightInches = remainingCanvasHeight / scaleFactor;
+                pdf.addImage(imgData, 'JPEG', marginLeft, marginTop, contentWidthInches, drawnHeightInches);
+                break;
+            }
+
+            const idealEndCanvasY = currentY + maxPageCanvasHeight;
+            const idealEndCssY = idealEndCanvasY / scale;
+            const currentCssY = currentY / scale;
+            const minPageCssY = currentCssY + (maxPageCssHeight * 0.45); // Page must be at least 45% full before a break
+
+            // Find protected elements cut by idealEndCssY
+            let splitCandidateCssY = idealEndCssY;
+            let foundProtectedCut = false;
+
+            const cutElements = validProtected.filter(pe => pe.top < idealEndCssY && pe.bottom > idealEndCssY && pe.top >= minPageCssY);
+
+            if (cutElements.length > 0) {
+                // Find the earliest top of cut elements
+                const earliestTop = Math.min(...cutElements.map(pe => pe.top));
+                // Cut 3 CSS pixels above the element to give clean breathing room
+                splitCandidateCssY = earliestTop - 3;
+                foundProtectedCut = true;
+            }
+
+            let finalSplitCanvasY = Math.floor(splitCandidateCssY * scale);
+
+            // If no protected element was cut, look for a clean text line gap (whitespace row)
+            // within the bottom 90 canvas pixels (~45 CSS pixels) to prevent horizontal line slicing through text
+            if (!foundProtectedCut) {
+                finalSplitCanvasY = findCleanCanvasSplit(canvas, currentY, idealEndCanvasY, Math.floor(idealEndCanvasY - (90 * (scale / 2))));
+            }
+
+            // Safety fallback: ensure at least 30% of page height is advanced to prevent infinite loops
+            if (finalSplitCanvasY <= currentY + (maxPageCanvasHeight * 0.3)) {
+                finalSplitCanvasY = Math.floor(idealEndCanvasY);
+            }
+
+            const sliceHeight = finalSplitCanvasY - currentY;
+            const pageCanvas = document.createElement('canvas');
+            pageCanvas.width = canvas.width;
+            pageCanvas.height = sliceHeight;
+            const ctx = pageCanvas.getContext('2d');
+            if (ctx) {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+                ctx.drawImage(canvas, 0, currentY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+            }
+
+            if (pageIndex > 0) pdf.addPage();
+            const imgData = pageCanvas.toDataURL('image/jpeg', quality);
+            const drawnHeightInches = sliceHeight / scaleFactor;
+            pdf.addImage(imgData, 'JPEG', marginLeft, marginTop, contentWidthInches, drawnHeightInches);
+
+            currentY = finalSplitCanvasY;
+            pageIndex++;
+        }
+
+        const dataUri = pdf.output('datauristring');
+        const base64 = dataUri.split('base64,')[1] || dataUri;
+        const blob = pdf.output('blob');
+
+        return {
+            dataUri,
+            base64,
+            blob,
+            pdf
+        };
+    } finally {
+        if (wrapper.parentNode) {
+            wrapper.parentNode.removeChild(wrapper);
+        }
+    }
 };
 
 /**
@@ -2926,53 +3251,18 @@ export const generateJobReportPdfAttachment = async (job: any, org: any, customM
 
     if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         try {
-            // @ts-ignore - html2pdf has no types available right now
-            const html2pdf = (await import('html2pdf.js')).default;
             const htmlContent = generateJobReportHtml(job, org, customMessage, { isPdfOrPrint: true, ...options });
-
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'fixed';
-            wrapper.style.left = '-9999px';
-            wrapper.style.top = '0';
-            wrapper.style.width = '740px';
-            wrapper.style.zIndex = '-1000';
-
-            const container = document.createElement('div');
-            container.innerHTML = htmlContent;
-            container.style.width = '740px';
-            container.style.backgroundColor = '#ffffff';
-            container.style.padding = '0px';
-            container.style.margin = '0px';
-            container.style.boxSizing = 'border-box';
-
-            wrapper.appendChild(container);
-            document.body.appendChild(wrapper);
-
-            // Wait for all images inside container to load
-            const images = container.getElementsByTagName('img');
-            const promises = Array.from(images).map(img => {
-                if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-                return new Promise<void>(resolve => {
-                    img.onload = () => resolve();
-                    img.onerror = () => resolve();
-                    setTimeout(resolve, 2000);
-                });
+            const result = await renderHtmlToSmartPdf(htmlContent, {
+                filename,
+                margin: [0.25, 0.25, 0.25, 0.25],
+                windowWidth: 740,
+                pdfFormat: 'letter',
+                pdfOrientation: 'portrait',
+                scale: 2,
+                quality: 0.98
             });
-            await Promise.all(promises);
 
-            const opt: any = {
-                margin:       [0.25, 0.25, 0.25, 0.25],
-                filename:     filename,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 740, backgroundColor: '#ffffff' },
-                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-                pagebreak:    { mode: ['css', 'legacy'], avoid: ['.pdf-avoid-break', '.pdf-card', '.pdf-photo', '.pdf-unit-card', '.pdf-timeline-item', 'tr', 'img', 'blockquote', '.avoid-break'] }
-            };
-
-            const pdfDataUri = await html2pdf().from(container).set(opt).output('datauristring');
-            document.body.removeChild(wrapper);
-
-            const base64Part = pdfDataUri.split('base64,')[1] || pdfDataUri;
+            const base64Part = result.base64;
 
             let downloadUrl = '';
             try {
@@ -2991,7 +3281,7 @@ export const generateJobReportPdfAttachment = async (job: any, org: any, customM
                 contentType: 'application/pdf'
             };
         } catch (e) {
-            console.error("Error generating HTML PDF report via html2pdf:", e);
+            console.error("Error generating HTML PDF report via renderHtmlToSmartPdf:", e);
         }
     }
 
@@ -5242,50 +5532,18 @@ export const generateSubcontractorStatementPdfAttachment = async (
 
     if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         try {
-            // @ts-ignore - html2pdf has no types available right now
-            const html2pdf = (await import('html2pdf.js')).default;
             const htmlContent = generateSubcontractorStatementHtml(options);
-
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'absolute';
-            wrapper.style.left = '-9999px';
-            wrapper.style.top = '-9999px';
-
-            const container = document.createElement('div');
-            container.innerHTML = htmlContent;
-            container.style.width = '780px';
-            container.style.backgroundColor = '#ffffff';
-            container.style.padding = '0px';
-            container.style.margin = '0px';
-            container.style.boxSizing = 'border-box';
-
-            wrapper.appendChild(container);
-            document.body.appendChild(wrapper);
-
-            // Wait for all images inside container to load
-            const images = container.getElementsByTagName('img');
-            const promises = Array.from(images).map(img => {
-                if (img.complete) return Promise.resolve();
-                return new Promise<void>(resolve => {
-                    img.onload = () => resolve();
-                    img.onerror = () => resolve();
-                });
+            const result = await renderHtmlToSmartPdf(htmlContent, {
+                filename,
+                margin: [0.25, 0.25, 0.25, 0.25],
+                windowWidth: 780,
+                pdfFormat: 'letter',
+                pdfOrientation: 'portrait',
+                scale: 2,
+                quality: 0.98
             });
-            await Promise.all(promises);
 
-            const opt: any = {
-                margin:       [0.25, 0.25, 0.25, 0.25],
-                filename:     filename,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 780, backgroundColor: '#ffffff' },
-                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-                pagebreak:    { mode: ['css', 'legacy'], avoid: ['.pdf-avoid-break', '.pdf-card', '.pdf-unit-card', 'tr', 'img', 'blockquote', '.avoid-break', '.chargeback-section', '.remittance-box', '.receipts-section', '.photo-card', '.statement-notes'] }
-            };
-
-            const pdfDataUri = await html2pdf().from(container).set(opt).output('datauristring');
-            document.body.removeChild(wrapper);
-
-            const base64Part = pdfDataUri.split('base64,')[1] || pdfDataUri;
+            const base64Part = result.base64;
 
             let downloadUrl = '';
             try {
@@ -5305,7 +5563,7 @@ export const generateSubcontractorStatementPdfAttachment = async (
                 type: 'SubcontractorStatement'
             };
         } catch (e) {
-            console.error("Error generating Subcontractor Statement PDF via html2pdf:", e);
+            console.error("Error generating Subcontractor Statement PDF via renderHtmlToSmartPdf:", e);
         }
     }
 
@@ -5327,51 +5585,22 @@ export const generateWarrantyContractPdfAttachment = async (
 ): Promise<EmailAttachment> => {
     const filename = `Warranty_Contract_${contract.contractNumber || contract.id || Date.now()}.pdf`;
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         try {
-            // @ts-ignore
-            // @ts-ignore
-            const html2pdfModule: any = await import('html2pdf.js');
-            const html2pdf: any = html2pdfModule.default || html2pdfModule;
-
             const { generateWarrantyContractHtml } = await import('./warrantyHelper');
             const htmlContent = generateWarrantyContractHtml(contract, organization);
 
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'fixed';
-            wrapper.style.left = '-9999px';
-            wrapper.style.top = '0';
-            wrapper.style.width = '780px';
-            wrapper.style.zIndex = '-1000';
-
-            const container = document.createElement('div');
-            container.innerHTML = htmlContent;
-            wrapper.appendChild(container);
-            document.body.appendChild(wrapper);
-
-            const images = container.getElementsByTagName('img');
-            const promises = Array.from(images).map(img => {
-                if (img.complete) return Promise.resolve();
-                return new Promise<void>(resolve => {
-                    img.onload = () => resolve();
-                    img.onerror = () => resolve();
-                });
+            const result = await renderHtmlToSmartPdf(htmlContent, {
+                filename,
+                margin: [0.2, 0.2, 0.2, 0.2],
+                windowWidth: 780,
+                pdfFormat: 'letter',
+                pdfOrientation: 'portrait',
+                scale: 2,
+                quality: 0.98
             });
-            await Promise.all(promises);
 
-            const opt: any = {
-                margin:       [0.2, 0.2, 0.2, 0.2],
-                filename:     filename,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 780, backgroundColor: '#ffffff' },
-                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-                pagebreak:    { mode: ['css', 'legacy'], avoid: ['.pdf-avoid-break', '.meta-box', '.highlight-card', '.sig-table', 'tr', 'img', 'blockquote'] }
-            };
-
-            const pdfDataUri = await html2pdf().from(container).set(opt).output('datauristring');
-            document.body.removeChild(wrapper);
-
-            const base64Part = pdfDataUri.split('base64,')[1] || pdfDataUri;
+            const base64Part = result.base64;
 
             let downloadUrl = '';
             try {
@@ -5391,7 +5620,7 @@ export const generateWarrantyContractPdfAttachment = async (
                 type: 'WarrantyContract'
             };
         } catch (e) {
-            console.error("Error generating Warranty Contract PDF via html2pdf:", e);
+            console.error("Error generating Warranty Contract PDF via renderHtmlToSmartPdf:", e);
         }
     }
 
@@ -6359,24 +6588,11 @@ export const downloadStandaloneSignOffPdf = async (job: any, org: any): Promise<
     const attachment = await generateStandaloneSignOffPdfAttachment(job, org);
     if (!attachment) return;
 
+    const { downloadFile } = await import('./downloadHelper');
     if (attachment.content) {
-        const byteCharacters = atob(attachment.content);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray], { type: 'application/pdf' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = attachment.filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        await downloadFile(`data:application/pdf;base64,${attachment.content}`, attachment.filename);
     } else if (attachment.path) {
-        window.open(attachment.path, '_blank');
+        await downloadFile(attachment.path, attachment.filename);
     }
 };
 

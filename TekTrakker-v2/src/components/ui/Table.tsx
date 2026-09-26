@@ -192,7 +192,7 @@ const Table: React.FC<TableProps> = ({ headers, children, limit, className, cont
                 const existingClass = cellProps.className || '';
                 if (!existingClass.includes('sticky')) {
                     return React.cloneElement(cell as React.ReactElement<any>, {
-                        className: `${existingClass} sticky right-0 z-10 bg-white dark:bg-slate-800 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.1)]`.trim()
+                        className: `${existingClass} md:sticky md:right-0 z-10 bg-white dark:bg-slate-800 md:shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.1)]`.trim()
                     });
                 }
             }
@@ -260,7 +260,7 @@ const Table: React.FC<TableProps> = ({ headers, children, limit, className, cont
                                 <th 
                                     key={i} 
                                     onClick={() => isSortable && handleSort(i)}
-                                    className={`sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 text-left text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider whitespace-nowrap ${isSortable ? 'cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 select-none' : ''} ${isActionsCol ? 'sticky right-0 top-0 z-30 bg-slate-200 dark:bg-slate-800 shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.1)]' : ''}`}
+                                    className={`sticky top-0 z-20 bg-slate-100 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 text-left text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider whitespace-nowrap ${isSortable ? 'cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 select-none' : ''} ${isActionsCol ? 'md:sticky md:right-0 top-0 z-30 bg-slate-200 dark:bg-slate-800 md:shadow-[-4px_0_8px_-2px_rgba(0,0,0,0.1)]' : ''}`}
                                 >
                                     <div className="flex items-center gap-1.5">
                                         <span>{h}</span>

@@ -26,10 +26,13 @@ export async function downloadFile(url: string, filename: string): Promise<void>
                     });
                 }
 
+                // Strip data URI scheme prefix (e.g. "data:application/pdf;base64,") so Capacitor Filesystem receives clean raw base64
+                const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+
                 // Write file to device
                 const savedFile = await Filesystem.writeFile({
                     path: filename,
-                    data: base64Data,
+                    data: cleanBase64,
                     directory: Directory.Documents,
                     recursive: true
                 });

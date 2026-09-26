@@ -1070,38 +1070,66 @@ export const TradePartnersHubModal: React.FC<TradePartnersHubModalProps> = ({
                                                     </button>
 
                                                     {isExpanded && (
-                                                        <div className="mt-3 overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg">
-                                                            <table className="w-full text-xs text-left">
-                                                                <thead className="bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
-                                                                    <tr>
-                                                                        <th className="p-2.5">Scope / Item</th>
-                                                                        <th className="p-2.5">Category</th>
-                                                                        <th className="p-2.5 text-center">Qty</th>
-                                                                        <th className="p-2.5 text-right">Unit Cost</th>
-                                                                        <th className="p-2.5 text-right">Total</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                                                    {quote.lineItems.map(item => (
-                                                                        <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                                                                            <td className="p-2.5">
-                                                                                <div className="font-bold text-slate-900 dark:text-white">{item.name}</div>
-                                                                                {item.description && <div className="text-[11px] text-slate-400">{item.description}</div>}
-                                                                            </td>
-                                                                            <td className="p-2.5">
-                                                                                <span className="capitalize px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-bold">
-                                                                                    {item.category?.replace('_', ' ') || 'Equipment'}
-                                                                                </span>
-                                                                            </td>
-                                                                            <td className="p-2.5 text-center">{item.quantity}</td>
-                                                                            <td className="p-2.5 text-right">${item.unitCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                                                            <td className="p-2.5 text-right font-bold text-slate-900 dark:text-white">
+                                                        <div className="mt-3">
+                                                            {/* Mobile Line Items View */}
+                                                            <div className="md:hidden space-y-2">
+                                                                {quote.lineItems.map(item => (
+                                                                    <div key={item.id} className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 shadow-sm space-y-1.5">
+                                                                        <div className="flex items-start justify-between gap-2">
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <div className="font-bold text-slate-900 dark:text-white text-xs">{item.name}</div>
+                                                                                {item.description && <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.description}</div>}
+                                                                            </div>
+                                                                            <span className="capitalize px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 text-[10px] font-bold border border-slate-200 dark:border-slate-600 shrink-0">
+                                                                                {item.category?.replace('_', ' ') || 'Equipment'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                                                                            <div className="text-slate-500 dark:text-slate-400">
+                                                                                Qty: <span className="font-bold text-slate-800 dark:text-slate-200">{item.quantity}</span> × ${item.unitCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                                            </div>
+                                                                            <div className="font-bold text-slate-900 dark:text-white text-sm">
                                                                                 ${item.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                                                            </td>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+
+                                                            {/* Desktop Table View */}
+                                                            <div className="hidden md:block overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-lg">
+                                                                <table className="w-full text-xs text-left">
+                                                                    <thead className="bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
+                                                                        <tr>
+                                                                            <th className="p-2.5">Scope / Item</th>
+                                                                            <th className="p-2.5">Category</th>
+                                                                            <th className="p-2.5 text-center">Qty</th>
+                                                                            <th className="p-2.5 text-right">Unit Cost</th>
+                                                                            <th className="p-2.5 text-right">Total</th>
                                                                         </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
+                                                                    </thead>
+                                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                                        {quote.lineItems.map(item => (
+                                                                            <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                                                                <td className="p-2.5">
+                                                                                    <div className="font-bold text-slate-900 dark:text-white">{item.name}</div>
+                                                                                    {item.description && <div className="text-[11px] text-slate-400">{item.description}</div>}
+                                                                                </td>
+                                                                                <td className="p-2.5">
+                                                                                    <span className="capitalize px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-bold">
+                                                                                        {item.category?.replace('_', ' ') || 'Equipment'}
+                                                                                    </span>
+                                                                                </td>
+                                                                                <td className="p-2.5 text-center">{item.quantity}</td>
+                                                                                <td className="p-2.5 text-right">${item.unitCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                                                                <td className="p-2.5 text-right font-bold text-slate-900 dark:text-white">
+                                                                                    ${item.totalCost.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                                                </td>
+                                                                            </tr>
+                                                                        ))}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1177,7 +1205,79 @@ export const TradePartnersHubModal: React.FC<TradePartnersHubModalProps> = ({
                                 </p>
                             </div>
 
-                            <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-sm">
+                            {/* Mobile Lines of Credit Cards View */}
+                            <div className="md:hidden space-y-3">
+                                {partners.map(p => {
+                                    const limit = p.creditLimit || 0;
+                                    const bal = p.currentBalance || 0;
+                                    const avail = Math.max(0, limit - bal);
+                                    const util = limit > 0 ? (bal / limit) * 100 : 0;
+
+                                    return (
+                                        <div key={p.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-2.5">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div>
+                                                    <h4 className="font-bold text-slate-900 dark:text-white text-sm">{p.name}</h4>
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        <span className="capitalize text-[11px] text-slate-500">
+                                                            {p.category.replace('_', ' ')}
+                                                        </span>
+                                                        {p.accountNumber && (
+                                                            <>
+                                                                <span className="text-slate-300 dark:text-slate-700">•</span>
+                                                                <span className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-400">
+                                                                    #{p.accountNumber}
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                                                    util > 80 ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
+                                                }`}>
+                                                    {util > 80 ? 'High Utilization' : 'Good Standing'}
+                                                </span>
+                                            </div>
+
+                                            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                                <div>
+                                                    <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Credit Limit</span>
+                                                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                                        ${limit.toLocaleString('en-US', { minimumFractionDigits: 0 })}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Balance</span>
+                                                    <span className="font-mono font-bold text-slate-600 dark:text-slate-400">
+                                                        ${bal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[9px] font-extrabold uppercase text-slate-400 block">Available</span>
+                                                    <span className={`font-mono font-bold ${avail < 2000 ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                                        ${avail.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100 dark:border-slate-800">
+                                                <span className="text-slate-500 font-medium">Payment Terms:</span>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="font-bold text-slate-800 dark:text-slate-200">{p.paymentTerms}</span>
+                                                    {p.earlyPayDiscount && (
+                                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                                                            {p.earlyPayDiscount.percentage}% 10d
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Desktop Table View */}
+                            <div className="hidden md:block overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-sm">
                                 <table className="w-full text-xs text-left">
                                     <thead className="bg-slate-100 dark:bg-slate-800 font-bold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                                         <tr>

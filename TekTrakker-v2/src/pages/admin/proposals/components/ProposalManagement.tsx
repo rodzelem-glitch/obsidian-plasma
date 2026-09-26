@@ -7,7 +7,7 @@ import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import Button from 'components/ui/Button';
 import Select from 'components/ui/Select';
-import { Search, Eye, Send, Trash2, Bell } from 'lucide-react';
+import { Search, Eye, Send, Trash2, Bell, Calendar, Clock } from 'lucide-react';
 import { getBaseUrl , cleanUndefinedFields } from 'lib/utils';
 import type { Proposal } from 'types';
 import { db, firebase } from 'lib/firebase';
@@ -312,7 +312,160 @@ const ProposalManagement: React.FC = () => {
                 </div>
             </div>
 
-            <Card className="p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-lg rounded-2xl">
+            {/* Mobile Cards View (App / Mobile View Only) */}
+            <div className="md:hidden space-y-3.5 mb-6">
+                {filteredProposals.map(p => {
+                    const hasBeenOpened = p.status === 'Opened' || p.trackingHistory?.some((entry: any) => entry.status === 'Opened');
+                    const propNum = p.proposalNumber || p.id?.slice(-6);
+
+                    return (
+                        <div key={`prop-mgmt-card-${p.id}`} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all space-y-3">
+                            {/* Card Header: Proposal ID, Created & Status */}
+                            <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                                <div>
+                                    <span className="font-mono font-bold text-sm text-indigo-600 dark:text-indigo-400">
+                                        #{propNum}
+                                    </span>
+                                    <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                                        <Calendar size={12} className="text-slate-400" />
+                                        <span>{new Date(p.createdAt).toLocaleDateString()}</span>
+                                    </div>
+                                    {p.sentAt && (
+                                        <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                                            <Clock size={11} className="text-slate-400" />
+                                            <span>Sent: {new Date(p.sentAt).toLocaleDateString()}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                                        <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full ${
+                                            p.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
+                                            p.status === 'Sent' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300' :
+                                            p.status === 'Opened' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300' :
+                                            (p.status === 'Declined' || p.status === 'Denied') ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' :
+                                            p.status === 'Expired' ? 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-300' :
+                                            'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                                        }`}>
+                                            {p.status}
+                                        </span>
+                                        {p.archived && (
+                                            <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 flex items-center gap-1">
+                                                <Archive size={10} /> Archived
+                                            </span>
+                                        )}
+                                    </div>
+                                    {hasBeenOpened && p.status !== 'Accepted' && (
+                                        <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
+                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                                            Opened
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Customer & Value */}
+                            <div className="flex items-baseline justify-between gap-2">
+                                <div className="space-y-0.5">
+                                    <h4 className="font-black text-sm text-slate-900 dark:text-white line-clamp-1">
+                                        {p.customerName || 'No Customer Specified'}
+                                    </h4>
+                                    {p.title && (
+                                        <p className="text-xs text-slate-500 line-clamp-1">
+                                            {p.title}
+                                        </p>
+                                    )}
+                                </div>
+                                <span className="font-black text-base text-slate-900 dark:text-white shrink-0">
+                                    ${p.total?.toLocaleString()}
+                                </span>
+                            </div>
+
+                            {/* Reminders summary if any */}
+                            {p.remindersSent && p.remindersSent.length > 0 && (
+                                <div className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2 rounded-xl border border-amber-200 dark:border-amber-900/40">
+                                    <Bell size={13} className="shrink-0" />
+                                    <span>{p.remindersSent.length} reminder(s) sent</span>
+                                    <span className="text-[10px] text-amber-600 dark:text-amber-500 font-mono ml-auto">
+                                        Last: {new Date(p.remindersSent[p.remindersSent.length - 1]).toLocaleDateString()}
+                                    </span>
+                                </div>
+                            )}
+
+                            {/* Mobile Actions Bar */}
+                            <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                <div className="flex items-center gap-1">
+                                    <button 
+                                        title="View Proposal" 
+                                        aria-label="View Proposal" 
+                                        onClick={(e) => { e.stopPropagation(); setViewProposalId(p.id); }} 
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 rounded-lg text-blue-700 dark:text-blue-300 font-bold"
+                                    >
+                                        <Eye size={13} />
+                                        View
+                                    </button>
+                                    <button 
+                                        title="Send Proposal" 
+                                        aria-label="Send Proposal" 
+                                        onClick={(e) => { e.stopPropagation(); setRecipientModalConfig({ isOpen: true, proposal: p, type: 'send' }); }} 
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/40 rounded-lg text-emerald-700 dark:text-emerald-300 font-bold"
+                                    >
+                                        <Send size={13} />
+                                        Send
+                                    </button>
+                                    {(p.status === 'Sent' || p.status === 'Opened') && (
+                                        <button 
+                                            title="Send Reminder" 
+                                            aria-label="Send Reminder" 
+                                            onClick={(e) => { e.stopPropagation(); setRecipientModalConfig({ isOpen: true, proposal: p, type: 'reminder' }); }} 
+                                            className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/40 rounded-lg text-indigo-700 dark:text-indigo-300 font-bold"
+                                        >
+                                            <Bell size={13} />
+                                            Remind
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                    <button 
+                                        title="Reassign Customer" 
+                                        aria-label="Reassign Customer" 
+                                        onClick={(e) => { e.stopPropagation(); setReassignProposal(p); setNewCustomerId(p.customerId || ''); }} 
+                                        className="p-1.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-lg text-amber-700 dark:text-amber-300"
+                                    >
+                                        <UserPlus size={14} />
+                                    </button>
+                                    <button 
+                                        title={p.archived ? "Restore Proposal" : "Archive Proposal"} 
+                                        aria-label={p.archived ? "Restore Proposal" : "Archive Proposal"} 
+                                        onClick={(e) => { e.stopPropagation(); handleArchiveProposal(p, !p.archived); }} 
+                                        className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300"
+                                    >
+                                        {p.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                                    </button>
+                                    <button 
+                                        title="Delete Proposal" 
+                                        aria-label="Delete Proposal" 
+                                        onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }} 
+                                        className="p-1.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-lg text-red-600 dark:text-red-400"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {filteredProposals.length === 0 && (
+                    <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-400 font-medium italic">
+                        No proposals found.
+                    </div>
+                )}
+            </div>
+
+            {/* Desktop Table View */}
+            <Card className="hidden md:block p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-lg rounded-2xl">
                 <Table headers={['Created Date', 'Sent Date', 'ID', 'Customer', 'Value', 'Status', 'Reminders Sent']}>
                     {filteredProposals.map(p => (
                         <tbody key={p.id} className="border-b border-slate-200 dark:border-slate-700 last:border-b-0">

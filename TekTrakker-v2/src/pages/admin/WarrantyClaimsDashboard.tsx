@@ -267,8 +267,59 @@ const WarrantyClaimsDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Claims Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+      {/* Mobile Warranty Claims View */}
+      <div className="md:hidden space-y-3">
+        {filteredClaims.map((claim) => {
+          const customer = state.customers?.find(c => c.id === claim.customerId);
+          const equipment = customer?.equipment?.find(e => e.id === claim.equipmentId);
+
+          return (
+            <div
+              key={claim.id}
+              onClick={() => setEditingClaim(claim as WarrantyClaim)}
+              className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm space-y-2.5 cursor-pointer active:scale-[0.99] transition-transform"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-white text-sm">{equipment?.model || 'Unknown Model'}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    {equipment?.brand || 'Unknown MFR'} {equipment?.serial ? `• SN: ${equipment.serial}` : ''}
+                  </div>
+                </div>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border shrink-0 ${getStatusColor(claim.status)}`}>
+                  {getStatusIcon(claim.status)}
+                  {claim.status}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between text-xs pt-1.5 border-t border-slate-100 dark:border-slate-700">
+                <div className="text-slate-500 dark:text-slate-400">
+                  {claim.rmaNumber && <div>RMA: <span className="font-bold text-slate-700 dark:text-slate-300">{claim.rmaNumber}</span></div>}
+                  <div>Date: {claim.claimDate ? format(new Date(claim.claimDate), 'MMM d, yyyy') : (claim.createdAt ? format(new Date(claim.createdAt), 'MMM d, yyyy') : 'N/A')}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-slate-900 dark:text-white text-base">${(claim.amountClaimed || 0).toFixed(2)}</div>
+                  {claim.status === 'Credit Received' && (
+                    <div className="text-emerald-600 dark:text-emerald-500 text-[10px] font-bold">
+                      Rec'd: ${(claim.amountApproved || 0).toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {filteredClaims.length === 0 && (
+          <div className="p-8 text-center bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-500">
+            <Shield className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600 mb-2" />
+            <p className="font-medium">No warranty claims found</p>
+          </div>
+        )}
+      </div>
+
+      {/* Claims Table (Desktop Only) */}
+      <div className="hidden md:block bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
             <thead className="bg-slate-50 dark:bg-slate-900/50">

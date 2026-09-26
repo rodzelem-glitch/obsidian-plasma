@@ -835,7 +835,62 @@ const TimeAndMileage: React.FC = () => {
 
             <Card>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">{t("Recent Shifts")}</h3>
-                <div className="overflow-x-auto overflow-y-auto max-h-[60vh] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                
+                {/* Mobile Cards View (App / Mobile View Only) */}
+                <div className="md:hidden space-y-3 mb-4">
+                    {userShiftLogs.slice(0, 10).map((log) => {
+                        const start = new Date(log.clockIn);
+                        const end = log.clockOut ? new Date(log.clockOut) : null;
+                        const duration = end ? ((end.getTime() - start.getTime()) / 3600000).toFixed(2) + ' ' + t('hrs') : t('Active');
+                        const latestEdit = log.edits && log.edits.length > 0 ? log.edits[0] : null;
+
+                        return (
+                            <div key={log.id} className={`p-4 rounded-xl border space-y-2.5 shadow-sm ${latestEdit ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/60' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'}`}>
+                                <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                        <div className="font-extrabold text-sm text-gray-900 dark:text-white">
+                                            {start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                            {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : t('Active')}
+                                        </div>
+                                    </div>
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-black font-mono ${end ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300 border border-primary-200 dark:border-primary-800' : 'bg-emerald-100 text-emerald-700 animate-pulse'}`}>
+                                        {duration}
+                                    </span>
+                                </div>
+
+                                {latestEdit && (
+                                    <div className="p-2 rounded-lg bg-amber-100/70 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-700/60 text-[11px] text-amber-900 dark:text-amber-200">
+                                        <span className="font-bold">{t("Edited by")} {latestEdit.adminName || 'Admin'}:</span> {latestEdit.reason || t('Admin adjustment')}
+                                    </div>
+                                )}
+
+                                <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700/60 text-xs">
+                                    <span className="text-[10px] uppercase font-bold text-gray-400">{t("GPS Location")}</span>
+                                    <div className="flex items-center gap-3">
+                                        {log.startLocation ? (
+                                            <a href={`https://maps.google.com/?q=${log.startLocation.lat},${log.startLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 font-bold text-blue-600 dark:text-blue-400 hover:underline">
+                                                <MapPinIcon className="w-3.5 h-3.5"/> {t("Clock In")}
+                                            </a>
+                                        ) : <span className="text-gray-400 italic text-[11px]">{t("No GPS")}</span>}
+                                        {log.endLocation && (
+                                            <a href={`https://maps.google.com/?q=${log.endLocation.lat},${log.endLocation.lng}`} target="_blank" rel="noreferrer" className="flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400 hover:underline">
+                                                <MapPinIcon className="w-3.5 h-3.5"/> {t("Clock Out")}
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {userShiftLogs.length === 0 && (
+                        <p className="text-sm text-gray-500 text-center py-6">{t("No shifts recorded.")}</p>
+                    )}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto overflow-y-auto max-h-[60vh] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
                     <table className="min-w-full border-separate border-spacing-0 divide-y divide-gray-200 dark:divide-gray-700">
                         <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10 shadow-xs border-b border-gray-200 dark:border-gray-700">
                             <tr>

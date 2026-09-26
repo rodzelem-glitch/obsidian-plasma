@@ -3468,11 +3468,23 @@ export const OrganizationDrive: React.FC = () => {
                                         title={displayTitle} 
                                     />
                                 ) : typeInfo.isPdf ? (
-                                    <iframe 
-                                        src={fileSrc} 
-                                        className="w-full h-[60vh] border-0 bg-white rounded-lg" 
-                                        title={displayTitle} 
-                                    />
+                                    <div className="w-full h-[60vh] flex flex-col space-y-2">
+                                        <iframe 
+                                            src={typeInfo.previewUrl} 
+                                            className="w-full h-full border-0 bg-white rounded-lg" 
+                                            title={displayTitle} 
+                                        />
+                                        <div className="text-center">
+                                            <a 
+                                                href={fileSrc} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="text-xs text-indigo-400 hover:underline font-bold"
+                                            >
+                                                Having trouble viewing? Tap here to open PDF in a new tab.
+                                            </a>
+                                        </div>
+                                    </div>
                                 ) : typeInfo.googleDocsViewerUrl ? (
                                     <iframe 
                                         src={typeInfo.googleDocsViewerUrl} 

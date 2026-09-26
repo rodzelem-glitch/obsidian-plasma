@@ -100,14 +100,9 @@ export const ContractedRatesAndAgreementsSection: React.FC<ContractedRatesAndAgr
     const handleDownloadDocument = async (title: string, contentHtml: string) => {
         setIsDownloadingPdf(true);
         try {
-            // @ts-ignore
-            const html2pdf = (await import('html2pdf.js')).default;
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'absolute';
-            wrapper.style.left = '-9999px';
-            wrapper.style.top = '-9999px';
-            wrapper.innerHTML = `
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 32px; color: #0f172a; line-height: 1.6;">
+            const fileName = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}_Executed.pdf`;
+            const docHtml = `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #0f172a; line-height: 1.6;">
                     <div style="border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <h2 style="font-size: 20px; font-weight: 900; margin: 0; color: #0f172a;">${organization?.name || 'TekTrakker Services'}</h2>
@@ -124,21 +119,18 @@ export const ContractedRatesAndAgreementsSection: React.FC<ContractedRatesAndAgr
                     ${contentHtml}
                 </div>
             `;
-            document.body.appendChild(wrapper);
-
-            const opt: any = {
+            const { renderHtmlToSmartPdf } = await import('../../../lib/pdfHelper');
+            const result = await renderHtmlToSmartPdf(docHtml, {
+                filename: fileName,
                 margin: [0.25, 0.25, 0.25, 0.25],
-                filename: `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}_Executed.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, windowWidth: 780, backgroundColor: '#ffffff' },
-                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
-                pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', 'img', 'blockquote', 'h1', 'h2', 'h3', 'h4', '.avoid-break', '.pdf-card', '.pdf-avoid-break'] }
-            };
-
-            const pdfDataUri = await html2pdf().from(wrapper).set(opt).output('datauristring');
+                windowWidth: 780,
+                pdfFormat: 'letter',
+                pdfOrientation: 'portrait',
+                scale: 2,
+                quality: 0.98
+            });
             const { downloadFile } = await import('../../../lib/downloadHelper');
-            await downloadFile(pdfDataUri, `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}_Executed.pdf`);
-            document.body.removeChild(wrapper);
+            await downloadFile(result.dataUri, fileName);
         } catch (e) {
             console.error('Failed to download document PDF:', e);
             alert('Failed to generate PDF download.');

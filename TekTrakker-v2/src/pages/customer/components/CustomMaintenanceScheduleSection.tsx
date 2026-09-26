@@ -77,58 +77,53 @@ export const CustomMaintenanceScheduleSection: React.FC<CustomMaintenanceSchedul
     const handleExportManifest = async () => {
         setIsExportingPdf(true);
         try {
-            // @ts-ignore
-            const html2pdf = (await import('html2pdf.js')).default;
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'absolute';
-            wrapper.style.left = '-9999px';
-            wrapper.style.top = '-9999px';
+            const fileName = `${customer.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_Supplies_Manifest.pdf`;
 
             const unitsHtml = coveredEquipment.map(eq => {
                 const rule = agreement?.coveredUnitRules?.find(r => r.unitId === eq.id);
                 const consumables = rule?.consumables || [];
                 return `
-                    <div style="margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; background: #ffffff;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 10px;">
+                    <div class="pdf-card pdf-avoid-break" style="margin-bottom: 14px; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #ffffff; page-break-inside: avoid !important;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; margin-bottom: 8px;">
                             <div>
-                                <strong style="font-size: 14px; color: #0f172a;">${eq.brand} ${eq.model} (${eq.type || 'Equipment'})</strong>
-                                <p style="margin: 2px 0 0 0; font-size: 11px; color: #64748b;">Serial: ${eq.serial || 'N/A'} · Location: ${eq.physicalLocation || 'Main Facility'}</p>
+                                <strong style="font-size: 13px; color: #0f172a;">${eq.brand} ${eq.model} (${eq.type || 'Equipment'})</strong>
+                                <p style="margin: 2px 0 0 0; font-size: 10px; color: #64748b;">Serial: ${eq.serial || 'N/A'} · Location: ${eq.physicalLocation || 'Main Facility'}</p>
                             </div>
-                            <span style="font-size: 11px; font-weight: bold; background: #f1f5f9; padding: 4px 8px; border-radius: 4px;">
+                            <span style="font-size: 10px; font-weight: bold; background: #f1f5f9; padding: 3px 6px; border-radius: 4px;">
                                 ${rule?.serviceFrequency || agreement?.frequency || 'Quarterly'} Service
                             </span>
                         </div>
-                        <p style="margin: 0 0 6px 0; font-size: 11px; font-weight: bold; color: #334155; text-transform: uppercase;">Required Consumables &amp; Supplies:</p>
+                        <p style="margin: 0 0 4px 0; font-size: 10px; font-weight: bold; color: #334155; text-transform: uppercase;">Required Consumables &amp; Supplies:</p>
                         ${consumables.length > 0 ? `
-                            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 10px;">
                                 <thead>
                                     <tr style="background: #f8fafc; text-align: left; color: #64748b;">
-                                        <th style="padding: 6px; border: 1px solid #e2e8f0;">Item</th>
-                                        <th style="padding: 6px; border: 1px solid #e2e8f0;">Size / Part #</th>
-                                        <th style="padding: 6px; border: 1px solid #e2e8f0;">Qty</th>
-                                        <th style="padding: 6px; border: 1px solid #e2e8f0;">Interval</th>
+                                        <th style="padding: 5px; border: 1px solid #e2e8f0;">Item</th>
+                                        <th style="padding: 5px; border: 1px solid #e2e8f0;">Size / Part #</th>
+                                        <th style="padding: 5px; border: 1px solid #e2e8f0;">Qty</th>
+                                        <th style="padding: 5px; border: 1px solid #e2e8f0;">Interval</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     ${consumables.map(c => `
-                                        <tr>
-                                            <td style="padding: 6px; border: 1px solid #e2e8f0;">${c.name}</td>
-                                            <td style="padding: 6px; border: 1px solid #e2e8f0; font-family: monospace; font-weight: bold;">${c.sizeOrPartNo}</td>
-                                            <td style="padding: 6px; border: 1px solid #e2e8f0;">${c.quantity}</td>
-                                            <td style="padding: 6px; border: 1px solid #e2e8f0;">Every ${c.intervalMonths || 3} Months</td>
+                                        <tr class="pdf-avoid-break" style="page-break-inside: avoid !important;">
+                                            <td style="padding: 5px; border: 1px solid #e2e8f0;">${c.name}</td>
+                                            <td style="padding: 5px; border: 1px solid #e2e8f0; font-family: monospace; font-weight: bold;">${c.sizeOrPartNo}</td>
+                                            <td style="padding: 5px; border: 1px solid #e2e8f0;">${c.quantity}</td>
+                                            <td style="padding: 5px; border: 1px solid #e2e8f0;">Every ${c.intervalMonths || 3} Months</td>
                                         </tr>
                                     `).join('')}
                                 </tbody>
                             </table>
                         ` : `
-                            <p style="margin: 0; font-size: 11px; color: #64748b;">Filter Specs: ${eq.filterType || '16x25x1'} · Standard maintenance tune-up included.</p>
+                            <p style="margin: 0; font-size: 10px; color: #64748b;">Filter Specs: ${eq.filterType || '16x25x1'} · Standard maintenance tune-up included.</p>
                         `}
                     </div>
                 `;
             }).join('');
 
-            wrapper.innerHTML = `
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 28px; color: #0f172a; line-height: 1.5;">
+            const manifestHtml = `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #0f172a; line-height: 1.5;">
                     <div style="border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <h2 style="font-size: 18px; font-weight: 900; margin: 0; color: #0f172a;">${organization?.name || 'TekTrakker Services'}</h2>
@@ -147,21 +142,19 @@ export const CustomMaintenanceScheduleSection: React.FC<CustomMaintenanceSchedul
                     ${unitsHtml}
                 </div>
             `;
-            document.body.appendChild(wrapper);
 
-            const opt: any = {
+            const { renderHtmlToSmartPdf } = await import('../../../lib/pdfHelper');
+            const result = await renderHtmlToSmartPdf(manifestHtml, {
+                filename: fileName,
                 margin: [0.25, 0.25, 0.25, 0.25],
-                filename: `${customer.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_Supplies_Manifest.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, windowWidth: 780, backgroundColor: '#ffffff' },
-                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
-                pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', 'img', 'blockquote', 'h1', 'h2', 'h3', 'h4', '.avoid-break', '.pdf-card', '.pdf-avoid-break'] }
-            };
-
-            const pdfDataUri = await html2pdf().from(wrapper).set(opt).output('datauristring');
+                windowWidth: 780,
+                pdfFormat: 'letter',
+                pdfOrientation: 'portrait',
+                scale: 2,
+                quality: 0.98
+            });
             const { downloadFile } = await import('../../../lib/downloadHelper');
-            await downloadFile(pdfDataUri, `${customer.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_Supplies_Manifest.pdf`);
-            document.body.removeChild(wrapper);
+            await downloadFile(result.dataUri, fileName);
         } catch (e) {
             console.error('Failed to export manifest PDF:', e);
             alert('Failed to export supplies manifest.');

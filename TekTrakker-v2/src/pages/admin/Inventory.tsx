@@ -14,6 +14,7 @@ import { db } from 'lib/firebase';
 import type { InventoryItem } from 'types';
 import RefrigerantLog from './RefrigerantLog';
 import { BarcodeScannerButton } from 'components/ui/BarcodeScanner';
+import { Trash2 } from 'lucide-react';
 
 const Inventory: React.FC = () => {
     const { state, dispatch } = useAppContext();
@@ -269,7 +270,132 @@ const Inventory: React.FC = () => {
                         </div>
                     </div>
 
-            <Card>
+            {/* Mobile Cards View (App / Mobile View Only) */}
+            <div className="md:hidden space-y-3.5 mb-6">
+                {filteredInventory.map(item => {
+                    const isLow = item.quantity <= item.minQuantity;
+
+                    return (
+                        <div key={`inv-card-${item.id}`} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all space-y-3">
+                            {/* Card Header: Name, Category, Quantity Badge */}
+                            <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                                <div>
+                                    <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                                        {item.name}
+                                    </h4>
+                                    <span className="text-xs text-slate-500">
+                                        {item.category}
+                                    </span>
+                                </div>
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isLow ? 'bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/50' : 'bg-green-500/20 text-green-600 dark:text-green-400'}`}>
+                                    {item.quantity} {isLow && 'Low Stock'}
+                                </span>
+                            </div>
+
+                            {/* SKU, Barcode, Location */}
+                            <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                                <div>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase block">SKU / Barcode</span>
+                                    <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{item.sku}</span>
+                                    {item.barcode && <div className="text-[10px] text-slate-400 font-mono">BC: {item.barcode}</div>}
+                                </div>
+                                <div>
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Location</span>
+                                    <span className="text-slate-700 dark:text-slate-300 font-medium">{item.location}</span>
+                                </div>
+                            </div>
+
+                            {/* Financials & Actions Bar */}
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                <div className="flex items-center gap-3">
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 uppercase block font-semibold">Cost</span>
+                                        <span className="text-slate-500 dark:text-slate-400 font-semibold">${item.cost.toFixed(2)}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 uppercase block font-semibold">Retail</span>
+                                        <span className="text-slate-900 dark:text-white font-black">${item.price.toFixed(2)}</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                                    <button 
+                                        onClick={() => handleConvertToCylinder(item)} 
+                                        className="px-2 py-1 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40 rounded-lg text-xs font-bold"
+                                    >
+                                        Cylinder
+                                    </button>
+                                    <button 
+                                        onClick={() => handleTransferInit(item)} 
+                                        className="px-2 py-1 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-bold"
+                                    >
+                                        Transfer
+                                    </button>
+                                    <button 
+                                        onClick={() => handleEdit(item)} 
+                                        className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-bold"
+                                    >
+                                        Edit
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDelete(item.id)} 
+                                        className="p-1.5 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-lg"
+                                        title="Delete Item"
+                                    >
+                                        <Trash2 size={13} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {filteredInventory.length === 0 && (
+                    <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <p className="text-gray-500 dark:text-gray-400 mb-4 text-xs">No inventory items found matching "{searchTerm}".</p>
+                        {searchTerm && (
+                            <Button 
+                                disabled={isSaving}
+                                onClick={async () => {
+                                    const newItem = {
+                                        ...initialItem,
+                                        barcode: searchTerm,
+                                        sku: searchTerm
+                                    };
+                                    
+                                    if (/^\d{8,14}$/.test(searchTerm)) {
+                                        setIsSaving(true);
+                                        try {
+                                            const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${searchTerm}`);
+                                            if (res.ok) {
+                                                const data = await res.json();
+                                                if (data.items && data.items.length > 0) {
+                                                    const match = data.items[0];
+                                                    newItem.name = match.title || `${match.brand || ''} ${match.model || ''}`.trim();
+                                                    showToast.warn(`Found product match: ${newItem.name}`);
+                                                }
+                                            }
+                                        } catch (e) {
+                                            console.error("Lookup failed", e);
+                                        } finally {
+                                            setIsSaving(false);
+                                        }
+                                    }
+                                    
+                                    setEditingItem(newItem);
+                                    setIsModalOpen(true);
+                                }}
+                                className="text-xs"
+                            >
+                                {isSaving ? 'Looking up product data...' : `+ Add "${searchTerm}" to Inventory`}
+                            </Button>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Desktop Table View */}
+            <Card className="hidden md:block">
                 <Table headers={['Item Name', 'SKU', 'Location', 'Qty', 'Cost', 'Retail', 'Action']}>
                     {filteredInventory.map(item => (
                         <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">

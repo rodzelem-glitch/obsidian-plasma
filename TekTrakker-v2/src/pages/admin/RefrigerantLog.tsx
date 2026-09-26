@@ -572,35 +572,105 @@ const RefrigerantLog: React.FC = () => {
             </div>
 
             {activeTab === 'cylinders' ? (
-                 <Card className="p-0 overflow-hidden shadow-lg border-slate-200 dark:border-slate-700">
-                    <Table headers={['Cylinder #', 'Type', 'Status', 'Current Wt (lbs)', 'Tare Wt', 'Net Content', 'Actions']}>
-                        {cylinders.map(cyl => (
-                            <tr key={cyl.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/80">
-                                <td className="px-6 py-4 font-black">{cyl.cylinderNo}</td>
-                                <td className="px-6 py-4 text-xs font-bold uppercase">{cyl.type}</td>
-                                <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${cyl.status === 'Empty' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                                        {cyl.status}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 font-mono font-bold">{cyl.currentWeight}</td>
-                                <td className="px-6 py-4 text-slate-400 font-mono text-xs">{cyl.tareWeight}</td>
-                                <td className="px-6 py-4 font-bold text-blue-600">{(cyl.currentWeight - cyl.tareWeight).toFixed(2)} lbs</td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex justify-end gap-2">
-                                        <button onClick={() => { setEditingCylinder(cyl); setIsCylinderModalOpen(true); }} className="text-blue-500 hover:text-blue-700" aria-label="Edit Cylinder" title="Edit Cylinder">
-                                            <Edit size={16} />
+                <div>
+                    {/* Mobile Cards View (App / Mobile View Only) */}
+                    <div className="md:hidden space-y-3.5 mb-6">
+                        {cylinders.map(cyl => {
+                            const netContent = Number((cyl.currentWeight - cyl.tareWeight).toFixed(2));
+                            return (
+                                <div key={cyl.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-black text-slate-900 dark:text-white text-base">#{cyl.cylinderNo}</span>
+                                                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                                    {cyl.type}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1">
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${cyl.status === 'Empty' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                    {cyl.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-[10px] uppercase font-bold text-slate-400">Net Content</div>
+                                            <div className="text-base font-black text-blue-600 dark:text-blue-400">
+                                                {netContent} lbs
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-lg text-xs">
+                                        <div>
+                                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Current Weight</span>
+                                            <span className="font-mono font-bold text-slate-700 dark:text-slate-200">{cyl.currentWeight} lbs</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] uppercase font-bold text-slate-400 block">Tare Weight</span>
+                                            <span className="font-mono text-slate-500 dark:text-slate-400">{cyl.tareWeight} lbs</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-end gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        <button 
+                                            onClick={() => { setEditingCylinder(cyl); setIsCylinderModalOpen(true); }} 
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+                                            aria-label="Edit Cylinder"
+                                        >
+                                            <Edit size={14} /> Edit
                                         </button>
-                                        <button onClick={() => handleDeleteCylinder(cyl.id)} className="text-red-500 hover:text-red-700" aria-label="Delete Cylinder" title="Delete Cylinder">
-                                            <Trash2 size={16} />
+                                        <button 
+                                            onClick={() => handleDeleteCylinder(cyl.id)} 
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800 hover:bg-red-100 transition-colors"
+                                            aria-label="Delete Cylinder"
+                                        >
+                                            <Trash2 size={14} /> Delete
                                         </button>
                                     </div>
-                                </td>
-                            </tr>
-                        ))}
-                        {cylinders.length === 0 && <tr><td colSpan={7} className="p-12 text-center text-slate-400 italic">No cylinders registered. Add your first tank to track inventory.</td></tr>}
-                    </Table>
-                 </Card>
+                                </div>
+                            );
+                        })}
+                        {cylinders.length === 0 && (
+                            <div className="p-8 text-center text-slate-400 italic bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                                No cylinders registered. Add your first tank to track inventory.
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block">
+                        <Card className="p-0 overflow-hidden shadow-lg border-slate-200 dark:border-slate-700">
+                            <Table headers={['Cylinder #', 'Type', 'Status', 'Current Wt (lbs)', 'Tare Wt', 'Net Content', 'Actions']}>
+                                {cylinders.map(cyl => (
+                                    <tr key={cyl.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/80">
+                                        <td className="px-6 py-4 font-black">{cyl.cylinderNo}</td>
+                                        <td className="px-6 py-4 text-xs font-bold uppercase">{cyl.type}</td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${cyl.status === 'Empty' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                                {cyl.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 font-mono font-bold">{cyl.currentWeight}</td>
+                                        <td className="px-6 py-4 text-slate-400 font-mono text-xs">{cyl.tareWeight}</td>
+                                        <td className="px-6 py-4 font-bold text-blue-600">{(cyl.currentWeight - cyl.tareWeight).toFixed(2)} lbs</td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button onClick={() => { setEditingCylinder(cyl); setIsCylinderModalOpen(true); }} className="text-blue-500 hover:text-blue-700" aria-label="Edit Cylinder" title="Edit Cylinder">
+                                                    <Edit size={16} />
+                                                </button>
+                                                <button onClick={() => handleDeleteCylinder(cyl.id)} className="text-red-500 hover:text-red-700" aria-label="Delete Cylinder" title="Delete Cylinder">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {cylinders.length === 0 && <tr><td colSpan={7} className="p-12 text-center text-slate-400 italic">No cylinders registered. Add your first tank to track inventory.</td></tr>}
+                            </Table>
+                        </Card>
+                    </div>
+                </div>
             ) : (
                 <>
                     <div className="flex gap-4 overflow-x-auto pb-2">
@@ -612,41 +682,116 @@ const RefrigerantLog: React.FC = () => {
                         ))}
                     </div>
 
-                    <Card className="p-0 overflow-hidden shadow-lg border-slate-200 dark:border-slate-700">
-                        <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                    {/* Mobile Cards View (App / Mobile View Only) */}
+                    <div className="md:hidden space-y-3.5 mb-6">
+                        <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 mb-3">
                             <Select label="" value={filterType} onChange={e => setFilterType(e.target.value)}>
                                 <option value="All">All Refrigerants</option>
                                 {REFRIGERANTS.map(r => <option key={r} value={r}>{r}</option>)}
                             </Select>
                         </div>
-                        <Table headers={['Date', 'Type', 'Activity', 'Amount (lbs)', 'Cylinder #', 'Target / Vendor', 'Tech', 'Linked Documents', 'Actions']}>
-                            {displayedEntries.map(entry => (
-                                <tr key={entry.id} className={entry.type === 'Purchase' ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/80 cursor-default'}>
-                                    <td className="px-6 py-4 text-sm text-slate-500 font-medium">{new Date(entry.date).toLocaleDateString()}</td>
-                                    <td className="px-6 py-4 font-black text-slate-900 dark:text-white tracking-tight">{entry.refType}</td>
-                                    <td className="px-6 py-4 text-[10px] uppercase font-bold tracking-widest text-slate-500">{entry.type}</td>
-                                    <td className={`px-6 py-4 font-mono font-bold ${entry.amount > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                        {entry.amount > 0 ? '+' : ''}{entry.amount.toFixed(2)}
-                                    </td>
-                                    <td className="px-6 py-4 text-xs font-mono text-slate-400">{entry.cylinderNo}</td>
-                                    <td className="px-6 py-4 text-sm font-bold text-slate-700 dark:text-slate-300">{entry.reference}</td>
-                                    <td className="px-6 py-4 text-xs font-medium text-slate-500">{entry.technician}</td>
-                                    <td className="px-6 py-4 text-xs font-medium text-slate-500">{renderLinkedDocsForRefrigerant(entry)}</td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex justify-end gap-2">
-                                            <button onClick={() => handleEdit(entry)} className="text-blue-500 hover:text-blue-700" aria-label="Edit Record" title="Edit Record">
-                                                <Edit size={16} />
-                                            </button>
-                                            <button onClick={() => handleDelete(entry.id)} className="text-red-500 hover:text-red-700" aria-label="Delete Record" title="Delete Record">
-                                                <Trash2 size={16} />
-                                            </button>
+                        {displayedEntries.map(entry => {
+                            const isPurchase = entry.type === 'Purchase';
+                            return (
+                                <div key={entry.id} className={`p-4 rounded-xl border shadow-sm space-y-3 ${isPurchase ? 'bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/60' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-black text-slate-900 dark:text-white text-base">{entry.refType}</span>
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${isPurchase ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>
+                                                    {entry.type}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-slate-500 font-medium mt-1">
+                                                {new Date(entry.date).toLocaleDateString()} • Cylinder: <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{entry.cylinderNo || 'N/A'}</span>
+                                            </div>
                                         </div>
-                                    </td>
-                                </tr>
-                            ))}
-                            {displayedEntries.length === 0 && <tr><td colSpan={9} className="p-6 md:p-12 text-center text-slate-400 italic">No refrigerant activity found.</td></tr>}
-                        </Table>
-                    </Card>
+                                        <div className="text-right">
+                                            <span className={`text-lg font-black font-mono ${entry.amount > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                {entry.amount > 0 ? '+' : ''}{entry.amount.toFixed(2)} lbs
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] uppercase font-bold text-slate-400">Target / Vendor</span>
+                                            <span className="font-bold text-slate-800 dark:text-slate-200">{entry.reference || '-'}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] uppercase font-bold text-slate-400">Technician</span>
+                                            <span className="font-medium text-slate-700 dark:text-slate-300">{entry.technician || '-'}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800">
+                                            <span className="text-[10px] uppercase font-bold text-slate-400">Linked Doc</span>
+                                            <div>{renderLinkedDocsForRefrigerant(entry)}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-end gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        <button 
+                                            onClick={() => handleEdit(entry)} 
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+                                            aria-label="Edit Record"
+                                        >
+                                            <Edit size={14} /> Edit
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDelete(entry.id)} 
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800 hover:bg-red-100 transition-colors"
+                                            aria-label="Delete Record"
+                                        >
+                                            <Trash2 size={14} /> Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {displayedEntries.length === 0 && (
+                            <div className="p-8 text-center text-slate-400 italic bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                                No refrigerant activity found.
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block">
+                        <Card className="p-0 overflow-hidden shadow-lg border-slate-200 dark:border-slate-700">
+                            <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                                <Select label="" value={filterType} onChange={e => setFilterType(e.target.value)}>
+                                    <option value="All">All Refrigerants</option>
+                                    {REFRIGERANTS.map(r => <option key={r} value={r}>{r}</option>)}
+                                </Select>
+                            </div>
+                            <Table headers={['Date', 'Type', 'Activity', 'Amount (lbs)', 'Cylinder #', 'Target / Vendor', 'Tech', 'Linked Documents', 'Actions']}>
+                                {displayedEntries.map(entry => (
+                                    <tr key={entry.id} className={entry.type === 'Purchase' ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/80 cursor-default'}>
+                                        <td className="px-6 py-4 text-sm text-slate-500 font-medium">{new Date(entry.date).toLocaleDateString()}</td>
+                                        <td className="px-6 py-4 font-black text-slate-900 dark:text-white tracking-tight">{entry.refType}</td>
+                                        <td className="px-6 py-4 text-[10px] uppercase font-bold tracking-widest text-slate-500">{entry.type}</td>
+                                        <td className={`px-6 py-4 font-mono font-bold ${entry.amount > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                            {entry.amount > 0 ? '+' : ''}{entry.amount.toFixed(2)}
+                                        </td>
+                                        <td className="px-6 py-4 text-xs font-mono text-slate-400">{entry.cylinderNo}</td>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700 dark:text-slate-300">{entry.reference}</td>
+                                        <td className="px-6 py-4 text-xs font-medium text-slate-500">{entry.technician}</td>
+                                        <td className="px-6 py-4 text-xs font-medium text-slate-500">{renderLinkedDocsForRefrigerant(entry)}</td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="flex justify-end gap-2">
+                                                <button onClick={() => handleEdit(entry)} className="text-blue-500 hover:text-blue-700" aria-label="Edit Record" title="Edit Record">
+                                                    <Edit size={16} />
+                                                </button>
+                                                <button onClick={() => handleDelete(entry.id)} className="text-red-500 hover:text-red-700" aria-label="Delete Record" title="Delete Record">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {displayedEntries.length === 0 && <tr><td colSpan={9} className="p-6 md:p-12 text-center text-slate-400 italic">No refrigerant activity found.</td></tr>}
+                            </Table>
+                        </Card>
+                    </div>
                 </>
             )}
 

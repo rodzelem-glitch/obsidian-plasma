@@ -311,8 +311,150 @@ const JobsTab: React.FC<JobsTabProps> = ({
                 </div>
             </div>
 
-            {/* Jobs Table */}
-            <Card className="p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl">
+            {/* Mobile Cards View (App / Mobile View Only) */}
+            <div className="md:hidden space-y-3.5 mb-6">
+                {filteredJobs.map(job => {
+                    const jobDisplayId = job.jobNumber || `#${job.id.slice(-6).toUpperCase()}`;
+                    const invAmount = job.invoice?.totalAmount || job.invoice?.amount || 0;
+                    const invStatus = job.invoice?.status || 'Unpaid';
+
+                    return (
+                        <div key={`job-card-${job.id}`} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all space-y-3">
+                            {/* Card Header: Job #, Date & Status */}
+                            <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                                <div>
+                                    <span className="font-mono font-bold text-sm text-blue-600 dark:text-blue-400">
+                                        {jobDisplayId}
+                                    </span>
+                                    <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                                        <Calendar size={12} className="text-slate-400" />
+                                        {job.appointmentTime ? new Date(job.appointmentTime).toLocaleDateString() : t('Not Scheduled')}
+                                    </div>
+                                </div>
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusBadgeClass(job.jobStatus)}`}>
+                                    {t(job.jobStatus || 'Scheduled')}
+                                </span>
+                            </div>
+
+                            {/* Scope / Tasks & Special Instructions */}
+                            <div className="space-y-1">
+                                <p className="font-bold text-xs text-slate-900 dark:text-white line-clamp-2">
+                                    {job.tasks && job.tasks.length > 0 ? job.tasks.join(', ') : t('General Service')}
+                                </p>
+                                {job.specialInstructions && (
+                                    <p className="text-[10px] text-slate-400 line-clamp-2 italic">
+                                        {job.specialInstructions}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* Details: Assigned Tech, PO, Address */}
+                            <div className="grid grid-cols-1 gap-1.5 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-200 font-medium">
+                                        <User size={13} className="text-slate-400 shrink-0" />
+                                        {job.assignedTechnicianName || <span className="italic text-slate-400">{t("Unassigned")}</span>}
+                                    </span>
+                                    {job.poNumber && (
+                                        <span className="text-[11px] font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-200/60 dark:bg-slate-700/60 px-1.5 py-0.5 rounded">
+                                            PO: {job.poNumber}
+                                        </span>
+                                    )}
+                                </div>
+                                {job.address && (
+                                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 truncate pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
+                                        <MapPin size={12} className="text-slate-400 shrink-0" />
+                                        <span className="truncate">{job.address}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Invoice info & Actions bar */}
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                <div>
+                                    {job.invoice?.id ? (
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => onManageInvoice(job.id)}
+                                                className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                                            >
+                                                #{job.invoice.id}
+                                            </button>
+                                            <span className="text-xs font-black text-slate-900 dark:text-white">
+                                                ${invAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${invStatus === 'Paid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'}`}>
+                                                {t(invStatus)}
+                                            </span>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => onManageInvoice(job.id)}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-900/40 rounded-lg text-xs font-bold"
+                                        >
+                                            <DollarSign size={13} />
+                                            {t("Create Invoice")}
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => onViewJobDetails(job)}
+                                        className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg hover:text-blue-600"
+                                        title={t("View Full Details & Diagnostics")}
+                                    >
+                                        <Eye size={15} />
+                                    </button>
+                                    <button
+                                        onClick={() => onEditJob(job)}
+                                        className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg hover:text-amber-600"
+                                        title={t("Edit / Reschedule Appointment")}
+                                    >
+                                        <Edit size={15} />
+                                    </button>
+                                    <button
+                                        onClick={() => onManageInvoice(job.id)}
+                                        className="p-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-900/40 hover:bg-emerald-100"
+                                        title={t("Manage Invoice")}
+                                    >
+                                        <DollarSign size={15} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleUnlinkJob(job)}
+                                        className="p-1.5 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-900/40 hover:bg-red-100"
+                                        title={t("Unlink from Project")}
+                                    >
+                                        <Unlink size={15} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {filteredJobs.length === 0 && (
+                    <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                            <Wrench size={32} className="text-slate-300 dark:text-slate-600" />
+                            <p className="font-bold text-xs text-slate-600 dark:text-slate-300">
+                                {searchTerm || statusFilter !== 'ALL' ? t("No jobs match your filter.") : t("No jobs linked to this project yet.")}
+                            </p>
+                            <div className="flex gap-2 mt-2">
+                                <Button onClick={onCreateJob} className="text-xs h-8 bg-blue-600 hover:bg-blue-700">
+                                    + {t("Create New Job")}
+                                </Button>
+                                <Button onClick={() => setIsImportModalOpen(true)} variant="secondary" className="text-xs h-8">
+                                    {t("Import Existing Job")}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Jobs Table (Desktop View) */}
+            <Card className="hidden md:block p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-sm rounded-2xl">
                 <Table headers={[t('Job # / Date'), t('Scope / Tasks'), t('Status'), t('Assigned Tech'), t('PO / SCID'), t('Invoice'), t('Actions')]}>
                     {filteredJobs.map(job => {
                         const jobDisplayId = job.jobNumber || `#${job.id.slice(-6).toUpperCase()}`;

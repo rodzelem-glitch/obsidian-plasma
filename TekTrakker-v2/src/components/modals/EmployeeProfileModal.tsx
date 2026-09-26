@@ -1696,7 +1696,7 @@ const EmployeeProfileModal: React.FC<EmployeeProfileModalProps> = ({ isOpen, onC
                             if (fileInfo.isImage) {
                                 return <img src={url} className="w-full h-full object-contain" alt={viewerDoc.label} />;
                             } else if (fileInfo.isPdf) {
-                                return <iframe src={url} className="w-full h-full border-0 bg-white" title={viewerDoc.label} />;
+                                return <iframe src={fileInfo.previewUrl} className="w-full h-full border-0 bg-white" title={viewerDoc.label} />;
                             } else if (fileInfo.isHtml) {
                                 return <iframe src={url} className="w-full h-full border-0 bg-white" title={viewerDoc.label} />;
                             } else if (fileInfo.googleDocsViewerUrl) {

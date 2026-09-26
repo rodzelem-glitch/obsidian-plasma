@@ -882,7 +882,7 @@ export const BriefingExpensesModal: React.FC<BriefingExpensesModalProps> = ({
               {fileInfo.isImage ? (
                 <img src={viewingReceiptUrl} alt="Receipt" className="max-w-full max-h-[65vh] object-contain rounded-lg shadow-md" />
               ) : fileInfo.isPdf ? (
-                <iframe src={viewingReceiptUrl} className="w-full h-[60vh] border-0 bg-white rounded-lg" title="Receipt PDF" />
+                <iframe src={fileInfo.previewUrl} className="w-full h-[60vh] border-0 bg-white rounded-lg" title="Receipt PDF" />
               ) : fileInfo.isHtml ? (
                 <iframe src={viewingReceiptUrl} className="w-full h-[60vh] border-0 bg-white rounded-lg" title="Receipt Document" />
               ) : fileInfo.googleDocsViewerUrl ? (

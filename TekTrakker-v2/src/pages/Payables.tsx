@@ -388,7 +388,214 @@ const Payables: React.FC = () => {
                     </div>
                 </div>
 
-                <Table headers={['Subcontractor / Partner', 'Customer / Job', 'Work Order #', 'Date', "Organization's NTE", "Subcontractor's NTE", "Actual Payable", 'Status', 'Actions']}>
+            {/* Mobile Cards View (App / Mobile View Only) */}
+            <div className="md:hidden space-y-3.5 mb-6">
+                {filteredPayables.map(p => {
+                    const extUrl = (p as any).externalInvoiceUrl;
+                    const invNo = (p as any).invoiceNumber;
+                    const subPhone = p.subcontractorPhone;
+
+                    const subObj = state.subcontractors?.find(s => s.id === p.subcontractorId) || {
+                        id: p.subcontractorId,
+                        companyName: p.companyName,
+                        email: (p as any).subcontractorEmail || '',
+                        phone: p.subcontractorPhone || '',
+                        trade: 'Subcontractor'
+                    } as Subcontractor;
+
+                    const jobCBs = chargebacks.filter(cb => {
+                        if (cb.status !== 'Applied' && cb.status !== 'Pending') return false;
+                        if (cb.subcontractorId !== p.subcontractorId) return false;
+                        if (cb.jobId && p.jobId) return cb.jobId === p.jobId;
+                        if (cb.workOrderNumber && (p.workOrderNumber || p.poNumber)) {
+                            return cb.workOrderNumber === p.workOrderNumber || cb.workOrderNumber === p.poNumber;
+                        }
+                        if ((cb as any).payableId && (cb as any).payableId === p.id) return true;
+                        return false;
+                    });
+                    const jobCBDeduction = jobCBs.reduce((sum, cb) => sum + (Number(cb.amount) || 0), 0);
+                    const netActualPayable = Math.max(0, p.amount - jobCBDeduction);
+
+                    return (
+                        <div key={`payable-card-${p.id}`} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all space-y-3">
+                            {/* Card Header: Subcontractor, Status & Date */}
+                            <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <Building2 size={16} className="text-slate-400 shrink-0" />
+                                        <span className="font-extrabold text-sm text-slate-900 dark:text-white">
+                                            {p.companyName}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        {subPhone && (
+                                            <a 
+                                                href={`tel:${subPhone.replace(/\D/g, '')}`} 
+                                                className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 dark:text-purple-300 font-mono"
+                                            >
+                                                <Phone size={10} /> {subPhone}
+                                            </a>
+                                        )}
+                                        <span className="text-[10px] text-slate-400">
+                                            {new Date(p.createdAt).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                        p.status === 'Paid' 
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' 
+                                            : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                                    }`}>
+                                        {p.status === 'Paid' ? <CheckCircle size={10} /> : <Clock size={10} />}
+                                        {p.status}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Job & Customer Details */}
+                            <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                                <div>
+                                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Customer / Job</span>
+                                    <span className="font-bold text-slate-800 dark:text-slate-200 block truncate">
+                                        {p.customerName || 'N/A'}
+                                    </span>
+                                    {p.jobId && <span className="text-[10px] font-mono text-slate-400">Job #{p.jobId}</span>}
+                                </div>
+                                <div>
+                                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Work Order / PO</span>
+                                    {p.workOrderNumber || p.poNumber ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => dispatch({ 
+                                                type: 'SET_VIEWING_WORK_ORDER', 
+                                                payload: { 
+                                                    workOrderNumber: p.workOrderNumber || p.poNumber, 
+                                                    customerId: p.customerId || null 
+                                                } 
+                                            })}
+                                            className="font-mono text-xs font-bold text-blue-600 hover:underline"
+                                        >
+                                            {p.workOrderNumber || p.poNumber}
+                                        </button>
+                                    ) : (
+                                        <span className="text-slate-400 text-xs">--</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Chips: AutoCalculated, InvNo, ExtUrl, Chargeback Deduction */}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                {p.isAutoCalculated && (
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                                        <Sparkles size={9} /> Completed Job
+                                    </span>
+                                )}
+                                {invNo && (
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                        #{invNo}
+                                    </span>
+                                )}
+                                {jobCBDeduction > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setStatementSub(subObj)}
+                                        className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 px-1.5 py-0.5 rounded"
+                                    >
+                                        <AlertTriangle size={9} className="text-rose-600" /> -${jobCBDeduction.toFixed(2)} Deduction
+                                    </button>
+                                )}
+                                {extUrl && (
+                                    <a 
+                                        href={extUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[9px] font-bold text-blue-600 hover:underline bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded"
+                                    >
+                                        <ExternalLink size={9} /> Invoice File
+                                    </a>
+                                )}
+                            </div>
+
+                            {/* NTE & Actual Payable Breakout */}
+                            <div className="grid grid-cols-3 gap-2 text-center bg-slate-100/70 dark:bg-slate-800/60 p-2.5 rounded-xl text-xs">
+                                <div>
+                                    <span className="text-[9px] text-slate-400 font-bold uppercase block">Org NTE</span>
+                                    <span className="font-mono text-slate-600 dark:text-slate-300">
+                                        {p.orgNTE ? `$${p.orgNTE.toFixed(2)}` : '--'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-[9px] text-slate-400 font-bold uppercase block">Sub NTE</span>
+                                    <span className="font-mono text-slate-600 dark:text-slate-300">
+                                        {p.subNTE ? `$${p.subNTE.toFixed(2)}` : '--'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-[9px] text-indigo-500 font-bold uppercase block">Payable</span>
+                                    <span className="font-mono font-black text-sm text-slate-900 dark:text-white">
+                                        ${(jobCBDeduction > 0 ? netActualPayable : p.amount).toFixed(2)}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Mobile Actions Bar */}
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setStatementSub(subObj)}
+                                        className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs font-bold flex items-center gap-1"
+                                        title="Statement"
+                                    >
+                                        <Receipt size={13} /> Statement
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setChargebackSub(subObj)}
+                                        className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-lg text-xs font-bold flex items-center gap-1"
+                                        title="Log Chargeback"
+                                    >
+                                        <AlertTriangle size={13} />
+                                    </button>
+                                </div>
+
+                                <div>
+                                    {p.status === 'Unpaid' ? (
+                                        isAdmin ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleMarkPaid(p)}
+                                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs text-xs"
+                                            >
+                                                <DollarSign size={13} /> Mark Paid
+                                            </button>
+                                        ) : (
+                                            <span className="text-xs font-bold text-slate-400 uppercase italic">
+                                                Unpaid
+                                            </span>
+                                        )
+                                    ) : (
+                                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                            ✓ Settled
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {filteredPayables.length === 0 && (
+                    <div className="p-8 text-center text-slate-400 italic bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs">
+                        No subcontractor payables found.
+                    </div>
+                )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+            <Table headers={['Subcontractor / Partner', 'Customer / Job', 'Work Order #', 'Date', "Organization's NTE", "Subcontractor's NTE", "Actual Payable", 'Status', 'Actions']}>
                     {filteredPayables.map(p => {
                         const extUrl = (p as any).externalInvoiceUrl;
                         const invNo = (p as any).invoiceNumber;
@@ -675,6 +882,7 @@ const Payables: React.FC = () => {
                         </tr>
                     )}
                 </Table>
+                </div>
             </Card>
 
             {/* Subcontractor Statement Modal */}

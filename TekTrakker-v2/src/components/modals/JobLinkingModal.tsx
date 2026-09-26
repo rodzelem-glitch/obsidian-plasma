@@ -2241,11 +2241,23 @@ const JobLinkingModal: React.FC<JobLinkingModalProps> = ({ isOpen, onClose, job 
                                     {fileInfo.isImage ? (
                                         <img src={docUrl} alt="Work Order Document" className="max-h-[70vh] w-auto mx-auto object-contain rounded-xl border border-slate-200 dark:border-slate-800" />
                                     ) : fileInfo.isPdf ? (
-                                        <iframe
-                                            src={docUrl}
-                                            title="Work Order Preview"
-                                            className="w-full h-[70vh] rounded-xl border border-slate-200 dark:border-slate-800 bg-white"
-                                        />
+                                        <div className="w-full flex flex-col space-y-2">
+                                            <iframe
+                                                src={fileInfo.previewUrl}
+                                                title="Work Order Preview"
+                                                className="w-full h-[70vh] rounded-xl border border-slate-200 dark:border-slate-800 bg-white"
+                                            />
+                                            <div className="text-center">
+                                                <a
+                                                    href={docUrl || rawUrl || '#'}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-bold"
+                                                >
+                                                    Having trouble viewing? Tap here to open PDF externally.
+                                                </a>
+                                            </div>
+                                        </div>
                                     ) : fileInfo.isHtml ? (
                                         <iframe
                                             srcDoc={docUrl.startsWith('data:text/html;base64,') ? decodeURIComponent(escape(atob(docUrl.split('base64,')[1]))) : undefined}
@@ -2261,7 +2273,7 @@ const JobLinkingModal: React.FC<JobLinkingModalProps> = ({ isOpen, onClose, job 
                                         />
                                     ) : (
                                         <iframe
-                                            src={docUrl}
+                                            src={fileInfo.previewUrl || docUrl}
                                             title="Work Order Preview"
                                             className="w-full h-[70vh] rounded-xl border border-slate-200 dark:border-slate-800 bg-white"
                                         />

@@ -551,6 +551,390 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                 </div>
             )}
 
+            {/* Mobile Cards View (App / Mobile View Only) */}
+            <div className="md:hidden space-y-3.5 mb-6">
+                {sortedInvoices.length === 0 ? (
+                    <div className="p-8 text-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-500">
+                        {t("No invoices found.")}
+                    </div>
+                ) : (
+                    sortedInvoices.map((job: any) => {
+                        const linkedProposal = (state.proposals || []).find((p: any) => p.id === job.proposalId || p.jobId === job.id || (job.invoice?.id && p.invoiceId === job.invoice.id));
+                        const linkedFollowUpJob = (jobs || []).find((other: any) => 
+                            other.id !== job.id && (other.parentJobId === job.id || (job.linkedJobIds || []).includes(other.id) || (other.linkedJobIds || []).includes(job.id)) && other.invoice
+                        );
+                        const signOffFile = (job.files || []).find((f: any) => 
+                            f.fileName === 'SignOff_Sheet.html' || 
+                            f.fileName?.toLowerCase().includes('signoff') ||
+                            f.fileName?.toLowerCase().includes('sign-off') ||
+                            f.fileName?.toLowerCase().includes('sign_off') ||
+                            f.metadata?.label === 'Sign-Off Sheet' || 
+                            f.metadata?.label?.toLowerCase().includes('sign-off') ||
+                            f.metadata?.label?.toLowerCase().includes('signoff') ||
+                            f.label?.toLowerCase().includes('sign-off') ||
+                            f.label?.toLowerCase().includes('signoff') ||
+                            f.category === 'signoff' ||
+                            f.metadata?.category === 'signoff' ||
+                            f.id?.startsWith('signoff-doc')
+                        );
+                        const subBillFile = (job.files || []).find((f: any) => f.fileName === 'Subcontractor_Bill.html' || f.metadata?.label === 'Subcontractor Bill' || f.id?.startsWith('subcontractorbill-doc') || f.fileName?.startsWith('Subcontractor_Bill_'));
+                        const isSubassigned = !!(job.assignedSubcontractorId || job.subcontractorId || job.subcontractorName || job.subcontractor || job.subcontractorCompany || job.subcontractorEmail);
+                        const poNumber = job.poNumber || job.invoice?.poNumber || linkedProposal?.poNumber;
+
+                        const checkIn = job.checkInTime || (job.timeEntries && job.timeEntries[0]?.checkInTime);
+                        const checkOut = job.checkOutTime || (job.timeEntries && job.timeEntries[0]?.checkOutTime);
+                        const formattedIn = checkIn ? new Date(checkIn).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
+                        const formattedOut = checkOut ? new Date(checkOut).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : null;
+
+                        const totalAmount = Number(job.invoice?.totalAmount) || Number(job.invoice?.amount) || 0;
+                        const rawAmountPaid = Number(job.invoice?.amountPaid || job.invoice?.depositPaidAmount || (job.invoice?.depositPaid ? (job.invoice?.depositAmount || 0) : 0) || 0);
+                        const amountPaid = Math.min(totalAmount, Math.max(0, job.invoice?.status === 'Paid' ? (rawAmountPaid > 0 ? rawAmountPaid : totalAmount) : rawAmountPaid));
+                        const balanceRemaining = Math.max(0, totalAmount - amountPaid);
+                        const isPartiallyPaid = (job.invoice?.status === 'Partially Paid') || (amountPaid > 0 && balanceRemaining > 0);
+                        const effectiveStatus = job.invoice?.status === 'Paid' 
+                            ? 'Paid' 
+                            : isPartiallyPaid 
+                            ? 'Partially Paid' 
+                            : (job.invoice?.status || 'Unpaid');
+
+                        const invIdRaw = job.invoice?.id != null ? String(job.invoice.id) : '';
+                        const displayInvoiceId = invIdRaw 
+                            ? (invIdRaw.startsWith('INV-') ? invIdRaw : `INV-${invIdRaw}`) 
+                            : `INV-${job.id}`;
+
+                        const linkedCust = (state.customers || []).find((c: any) => c.id === job.customerId || c.name?.trim().toLowerCase() === job.customerName?.trim().toLowerCase());
+
+                        let rawLocName = job.locationName || job.serviceLocationName || '';
+                        let rawLocAddr = job.address || job.serviceAddress || job.locationAddress || '';
+
+                        let locName = typeof rawLocName === 'string' ? rawLocName : formatAddress(rawLocName);
+                        let locAddr = formatAddress(rawLocAddr);
+
+                        if (linkedCust?.serviceLocations?.length) {
+                            const matchedLoc = linkedCust.serviceLocations.find((l: any) =>
+                                (job.locationId && l.id === job.locationId) ||
+                                (locName && (l.name?.trim().toLowerCase() === locName.trim().toLowerCase() || l.propertyName?.trim().toLowerCase() === locName.trim().toLowerCase())) ||
+                                (locAddr && l.address && locAddr.toLowerCase().includes(formatAddress(l.address).toLowerCase()))
+                            ) || (linkedCust.serviceLocations.length === 1 ? linkedCust.serviceLocations[0] : null);
+
+                            if (matchedLoc) {
+                                if (!locName || locName === getCustomerDisplayName(job)) {
+                                    locName = matchedLoc.propertyName || matchedLoc.name || formatAddress(matchedLoc.address) || locName;
+                                }
+                                if (!locAddr) locAddr = formatAddress(matchedLoc.address);
+                            }
+                        }
+
+                        const deadlineDays = linkedCust?.submissionRules?.submissionDeadlineDays || (job.customerId === 'cust-1787187506048' ? 20 : null);
+                        let deadlineElement = null;
+                        if (deadlineDays) {
+                            const isSettled = effectiveStatus === 'Paid' || job.invoice?.status === 'Paid';
+                            if (!isSettled) {
+                                const workDateStr = job.checkOutTime || job.appointmentTime || (job as any).completedDate || job.invoice?.invoiceDate || job.createdAt;
+                                const workDate = workDateStr ? new Date(workDateStr) : new Date();
+                                const elapsed = Math.max(0, Math.floor((Date.now() - workDate.getTime()) / (1000 * 60 * 60 * 24)));
+                                const left = deadlineDays - elapsed;
+                                deadlineElement = (
+                                    <span 
+                                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border shadow-xs font-sans ${
+                                            left < 0 
+                                                ? 'bg-rose-950 text-rose-200 border-rose-600 animate-pulse font-black' 
+                                                : left <= 5 
+                                                ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700 animate-pulse font-black' 
+                                                : left <= 10 
+                                                ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700' 
+                                                : 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                                        }`}
+                                        title={`Impact 20-Day Cutoff: ${left < 0 ? `${Math.abs(left)} days past deadline!` : `${left} days left to submit raw PDF invoice`}`}
+                                    >
+                                        <Clock size={10} />
+                                        {left < 0 ? `🛑 Past 20d Cutoff (${Math.abs(left)}d)` : `⏱️ ${left}d Cutoff`}
+                                    </span>
+                                );
+                            }
+                        }
+
+                        const sentTime = job.invoice?.sentAt || (job as any).invoiceSentAt || (job.invoice as any)?.emailSentAt;
+                        const isOpened = Boolean(job.invoice?.opened || job.invoice?.status === 'Opened');
+                        const reminders: string[] = job.invoice?.remindersSent || [];
+
+                        return (
+                            <div key={`mobile-card-${job.id}`} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all space-y-3">
+                                {/* Header: Invoice # & Amount & Status */}
+                                <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-mono text-xs font-black text-slate-900 dark:text-white">
+                                                {displayInvoiceId}
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                effectiveStatus === 'Paid' 
+                                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                                                : effectiveStatus === 'Partially Paid' 
+                                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+                                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                            }`}>
+                                                {t(effectiveStatus)}
+                                            </span>
+                                            {isOpened && effectiveStatus !== 'Paid' && (
+                                                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
+                                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
+                                                    {t("Opened")}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                const targetCustId = job.customerId || linkedCust?.id;
+                                                if (targetCustId) {
+                                                    setSelectedCustomerId(targetCustId);
+                                                } else {
+                                                    showToast.info("No customer profile found for this record.");
+                                                }
+                                            }}
+                                            className="cursor-pointer group/cust hover:text-primary-600 dark:hover:text-primary-400 inline-flex items-center gap-1 transition-colors mt-1"
+                                            title="Click to open customer profile"
+                                        >
+                                            <span className="font-bold text-slate-800 dark:text-slate-200 group-hover/cust:underline text-sm">
+                                                {getCustomerDisplayName(job)}
+                                            </span>
+                                            <span className="text-xs text-slate-400 group-hover/cust:text-primary-600">↗</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="text-right shrink-0">
+                                        <div className="font-black text-base text-slate-900 dark:text-white font-mono">
+                                            ${totalAmount.toFixed(2)}
+                                        </div>
+                                        {amountPaid > 0 && balanceRemaining > 0 && (
+                                            <div className="text-[10px] font-semibold text-blue-600 dark:text-blue-400">
+                                                ${balanceRemaining.toFixed(2)} {t("Remaining")}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Location & Appointment Details */}
+                                <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                                    {(locName || locAddr) && (
+                                        <div className="flex items-start gap-1.5">
+                                            <span className="text-slate-400 shrink-0">📍</span>
+                                            <span className="line-clamp-2">
+                                                {locName && <strong className="font-semibold text-slate-700 dark:text-slate-300">{locName} — </strong>}
+                                                {locAddr}
+                                            </span>
+                                        </div>
+                                    )}
+                                    {job.appointmentTime && (
+                                        <div className="flex items-center gap-1.5 text-[11px]">
+                                            <span className="text-slate-400 shrink-0">📅</span>
+                                            <span>{new Date(job.appointmentTime).toLocaleDateString()}</span>
+                                            {(formattedIn || formattedOut) && (
+                                                <span className="font-mono text-slate-400">
+                                                    ({formattedIn ? `In: ${formattedIn}` : ''}{formattedOut ? ` | Out: ${formattedOut}` : ''})
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                    {(job.invoice.paymentMethod || job.invoice.paidDate) && (
+                                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold flex items-center gap-2 pt-0.5">
+                                            {job.invoice.paymentMethod && <span>{t("Method")}: <strong className="text-slate-700 dark:text-slate-300">{t(job.invoice.paymentMethod)}</strong></span>}
+                                            {job.invoice.paidDate && <span>{t("Processed")}: <strong className="text-slate-700 dark:text-slate-300">{new Date(job.invoice.paidDate).toLocaleDateString()}</strong></span>}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Linked Documents Chips */}
+                                <div className="flex flex-wrap gap-1.5 items-center pt-2 border-t border-slate-100 dark:border-slate-800">
+                                    <span 
+                                        onClick={() => setEditingInvoiceId(job.id)} 
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 cursor-pointer hover:bg-blue-100 transition-colors shadow-xs"
+                                        title={t("Edit / View Invoice")}
+                                    >
+                                        <FileText size={10} />
+                                        {displayInvoiceId}
+                                    </span>
+
+                                    {deadlineElement}
+
+                                    <span 
+                                        onClick={() => setViewingJob(job)} 
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50 cursor-pointer hover:bg-indigo-100 transition-colors shadow-xs"
+                                        title={t("View Job Details")}
+                                    >
+                                        <Briefcase size={10} />
+                                        {job.jobNumber || (job.id.startsWith('Job-') || job.id.startsWith('JOB-') ? job.id : `Job-${job.id.replace(/^job-/, '')}`)}
+                                    </span>
+
+                                    {linkedProposal && (
+                                        <span 
+                                            onClick={() => setViewingProposal(linkedProposal)}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/50 shadow-xs"
+                                            title={t("View Proposal")}
+                                        >
+                                            <FileText size={10} />
+                                            {linkedProposal.proposalNumber || `PROP-${linkedProposal.id.replace(/^prop-/, '')}`}
+                                        </span>
+                                    )}
+
+                                    {poNumber && (
+                                        <span 
+                                            onClick={() => dispatch({ type: 'SET_VIEWING_WORK_ORDER', payload: { workOrderNumber: poNumber, customerId: job.customerId } })}
+                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/50 cursor-pointer shadow-xs"
+                                        >
+                                            <Briefcase size={10} />
+                                            WO: {poNumber}
+                                        </span>
+                                    )}
+
+                                    <span 
+                                        onClick={() => {
+                                            if (signOffFile) {
+                                                setPreviewOtherDoc({ ...signOffFile, type: 'Other', title: t('Manager Sign-Off Sheet') });
+                                            } else {
+                                                setActiveSignOffJob(job);
+                                            }
+                                        }}
+                                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer shadow-xs ${
+                                            signOffFile 
+                                            ? 'bg-teal-50 dark:bg-teal-950/30 text-teal-700 dark:text-teal-300 border-teal-200' 
+                                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200'
+                                        }`}
+                                    >
+                                        <ShieldCheck size={10} />
+                                        {signOffFile ? t("Sign-off") : t("+ Sign-off")}
+                                    </span>
+
+                                    {isSubassigned && (
+                                        <span 
+                                            onClick={() => {
+                                                if (subBillFile) {
+                                                    setPreviewOtherDoc({ ...subBillFile, type: 'Other', title: t('Subcontractor Bill') });
+                                                } else {
+                                                    setActiveSubBillJob(job);
+                                                }
+                                            }}
+                                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer shadow-xs ${
+                                                subBillFile 
+                                                ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200' 
+                                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200'
+                                            }`}
+                                        >
+                                            <DollarSign size={10} />
+                                            {subBillFile ? t("Sub Bill") : t("+ Sub Bill")}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Delivery & Tracking Details if Sent */}
+                                {sentTime && (
+                                    <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        <span className="inline-flex items-center gap-1 font-bold">
+                                            <Send size={11} className="text-blue-500" />
+                                            {t("Sent")}: {new Date(sentTime).toLocaleDateString([], { month: 'numeric', day: 'numeric' })}
+                                        </span>
+                                        {isOpened ? (
+                                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" />
+                                                {t("Opened")}
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">{t("Unopened")}</span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Action Buttons Toolbar */}
+                                <div className="flex flex-wrap gap-1.5 items-center pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                    <button 
+                                        title={t("View Invoice")} 
+                                        onClick={() => setViewingInvoiceJob(job)} 
+                                        className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 rounded-lg text-blue-700 dark:text-blue-300 font-bold shadow-xs"
+                                    >
+                                        <Eye size={13} />
+                                        {t("View")}
+                                    </button>
+
+                                    <button 
+                                        title={t("Manage Invoice")} 
+                                        onClick={() => setEditingInvoiceId(job.id)} 
+                                        className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/40 rounded-lg text-purple-700 dark:text-purple-300 font-bold shadow-xs"
+                                    >
+                                        <Settings size={13} />
+                                        {t("Manage")}
+                                    </button>
+
+                                    <button 
+                                        aria-label={t("Send Invoice")} 
+                                        title={t("Send Invoice")} 
+                                        onClick={(e) => { e.stopPropagation(); setSendInvoiceModalConfig({ isOpen: true, job }); }} 
+                                        className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs"
+                                    >
+                                        <Send size={13} />
+                                        {t("Send")}
+                                    </button>
+
+                                    <button 
+                                        aria-label={t("Send via SMS")} 
+                                        title={t("Send Invoice Link via SMS Text")} 
+                                        onClick={(e) => { e.stopPropagation(); setSmsModalJob(job); }} 
+                                        className="flex items-center gap-1 px-2.5 py-1.5 bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900/40 rounded-lg text-teal-700 dark:text-teal-300 font-bold shadow-xs"
+                                    >
+                                        <MessageSquare size={13} />
+                                        {t("SMS")}
+                                    </button>
+
+                                    {job.invoice.status !== 'Paid' && (
+                                        <a 
+                                            href={`/#/invoice/${job.id}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/40 rounded-lg text-emerald-700 dark:text-emerald-300 font-bold shadow-xs"
+                                            title={t("Open Public Payment Page")}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <CreditCard size={13} />
+                                            {t("Pay")}
+                                        </a>
+                                    )}
+
+                                    <button 
+                                        aria-label={t("Share Invoice")} 
+                                        title={t("Share Invoice")} 
+                                        onClick={(e) => { e.stopPropagation(); setShareModalInvoice(job); }} 
+                                        className="flex items-center gap-1 px-2 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 font-bold shadow-xs"
+                                    >
+                                        <Share2 size={13} />
+                                    </button>
+
+                                    <button 
+                                        aria-label={t("Copy Reference")} 
+                                        title={t("Copy Reference")} 
+                                        onClick={(e) => { e.stopPropagation(); handleCopyRef(job.id); }} 
+                                        className="flex items-center gap-1 px-2 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-300 font-bold shadow-xs"
+                                    >
+                                        <Copy size={13} />
+                                    </button>
+
+                                    {isAdmin && (
+                                        <button 
+                                            title={t("Delete Invoice")} 
+                                            onClick={() => handleDeleteInvoice(job.id)} 
+                                            className="flex items-center gap-1 px-2 py-1.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-lg text-red-700 dark:text-red-300 font-bold shadow-xs"
+                                        >
+                                            <Trash2 size={13} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
             <Table headers={[
                 t('Invoice #'),
                 t('Customer'),
@@ -1086,6 +1470,7 @@ const InvoicesTab: React.FC<InvoicesTabProps> = ({ jobs, setEditingInvoiceId, ha
                     </tbody>
                 )})}
             </Table>
+            </div>
 
             {sendInvoiceModalConfig.isOpen && sendInvoiceModalConfig.job && (
                 <SendEmailModal

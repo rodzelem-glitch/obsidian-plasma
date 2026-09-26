@@ -31,7 +31,66 @@ const PolicyTrackingTab: React.FC<PolicyTrackingTabProps> = ({ employees, polici
                 </div>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
+            {/* Mobile Cards View (App / Mobile View Only) */}
+            <div className="md:hidden space-y-3.5 mb-6">
+                {employees.map(emp => {
+                    const signedCount = policies.filter(p => {
+                        const signedDate = emp.signedPolicies?.[p.id];
+                        const legacySigned = (p.type === 'Handbook' || p.title.toLowerCase().includes('handbook')) && emp.handbookSignedDate;
+                        return !!signedDate || !!legacySigned;
+                    }).length;
+
+                    return (
+                        <div key={emp.id} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-sm font-black text-slate-900 dark:text-white">{emp.firstName} {emp.lastName}</h4>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t(emp.role.replace('_', ' '))}</span>
+                                </div>
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${signedCount === policies.length && policies.length > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'}`}>
+                                    {signedCount}/{policies.length} {t("Signed")}
+                                </span>
+                            </div>
+
+                            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                {policies.map(p => {
+                                    const signedDate = emp.signedPolicies?.[p.id];
+                                    const legacySigned = (p.type === 'Handbook' || p.title.toLowerCase().includes('handbook')) && emp.handbookSignedDate;
+                                    const isSigned = !!signedDate || !!legacySigned;
+                                    const displayDate = signedDate || (legacySigned ? emp.handbookSignedDate : null);
+
+                                    return (
+                                        <div key={p.id} className="flex items-center justify-between text-xs p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                                            <span className="font-bold text-slate-700 dark:text-slate-300 truncate max-w-[65%]" title={p.title}>
+                                                {t(p.title)}
+                                            </span>
+                                            {isSigned ? (
+                                                <div className="flex items-center gap-1.5 text-emerald-600 font-bold text-[11px]">
+                                                    <CheckCircle size={14} className="text-emerald-500 shrink-0" />
+                                                    <span>{displayDate ? new Date(displayDate).toLocaleDateString() : t('Signed')}</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1 text-slate-400 text-[11px]">
+                                                    <XCircle size={14} className="text-rose-300 shrink-0" />
+                                                    <span className="uppercase text-[9px] font-bold">{t("Pending")}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })}
+                {employees.length === 0 && (
+                    <div className="p-8 text-center text-slate-400 font-medium italic bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                        {t("No employees found in registry.")}
+                    </div>
+                )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-100 dark:border-slate-800">
                 <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
                     <thead className="bg-slate-50 dark:bg-slate-900">
                         <tr>

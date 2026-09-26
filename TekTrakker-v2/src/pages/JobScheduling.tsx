@@ -643,9 +643,315 @@ const JobScheduling: React.FC = () => {
             </header>
 
             {isAdmin ? (
-                <Card>
-                    <div ref={tableRef}>
-                        <Table headers={['Customer & Location', 'Scheduled Appt', 'Invoice & Payment', 'Linked Documents', 'Job Status', 'Assigned Tech', 'Actions']}>
+                <div ref={tableRef}>
+                    {/* Mobile Cards View (App / Mobile View Only) */}
+                    <div className="md:hidden space-y-3.5 mb-6">
+                        {(allJobs as Job[]).map((job: Job) => {
+                            const isHighlighted = job.id === highlightJobId;
+                            const details = renderJobDetailsAndBadges(job);
+
+                            return (
+                                <div 
+                                    key={job.id} 
+                                    data-job-id={job.id} 
+                                    className={`p-4 rounded-xl border bg-white dark:bg-slate-800 shadow-sm space-y-3 transition-all ${
+                                        isHighlighted ? 'border-primary-500 ring-2 ring-primary-500/20 bg-primary-50/20' : 'border-slate-200 dark:border-slate-700'
+                                    }`}
+                                >
+                                    {/* Header: Customer & Site Location + Invoice status badge */}
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="space-y-1 max-w-[70%]">
+                                            <div 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const targetCustId = job.customerId || state.customers.find(c => c.name?.toLowerCase().trim() === details.payingCustomerName.toLowerCase().trim())?.id;
+                                                    if (targetCustId) {
+                                                        setSelectedCustomerMasterId(targetCustId);
+                                                    } else {
+                                                        showToast.info(t("No customer profile found for this record."));
+                                                    }
+                                                }}
+                                                className="cursor-pointer group/cust"
+                                            >
+                                                <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider flex items-center gap-1 group-hover/cust:text-primary-600">
+                                                    <UserIcon size={9} /> Customer ↗
+                                                </span>
+                                                <h3 className="text-slate-900 dark:text-white font-black text-sm tracking-tight truncate group-hover/cust:text-primary-600 group-hover/cust:underline">
+                                                    {details.payingCustomerName}
+                                                </h3>
+                                            </div>
+
+                                            {(details.siteLocationName || details.siteAddress) && (
+                                                <div 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setAuditLocationTarget({
+                                                            customerId: job.customerId,
+                                                            locationId: job.locationId || 'default'
+                                                        });
+                                                    }}
+                                                    className="pt-1 border-t border-slate-100 dark:border-slate-800 cursor-pointer group/loc"
+                                                >
+                                                    <span className="text-[9px] font-extrabold uppercase text-indigo-500 dark:text-indigo-400 tracking-wider flex items-center gap-1 group-hover/loc:underline">
+                                                        <MapPin size={9} /> Site Location ↗
+                                                    </span>
+                                                    {details.siteLocationName && details.siteLocationName !== details.payingCustomerName && (
+                                                        <div className="text-xs font-bold text-slate-700 dark:text-slate-300 truncate group-hover/loc:text-indigo-600">
+                                                            {details.siteLocationName}
+                                                        </div>
+                                                    )}
+                                                    {details.siteAddress && (
+                                                        <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium truncate group-hover/loc:text-indigo-600">
+                                                            {details.siteAddress}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="text-right shrink-0">
+                                            <span className={`px-2 py-0.5 text-[10px] font-black rounded-full uppercase tracking-wider shadow-xs ${
+                                                details.isFullyPaid ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800' :
+                                                details.isPartiallyPaid ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-300 dark:border-blue-800' :
+                                                details.inv.status === 'Unpaid' || details.inv.sentAt || details.totalAmount > 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800' :
+                                                'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                                            }`}>
+                                                {details.isFullyPaid ? `✓ Paid` :
+                                                 details.isPartiallyPaid ? `Partially Paid` :
+                                                 details.totalAmount > 0 ? `Unpaid` :
+                                                 details.inv.status || 'No Invoice'}
+                                            </span>
+                                            {details.totalAmount > 0 && (
+                                                <div className="text-xs font-bold font-mono text-slate-700 dark:text-slate-300 mt-1">
+                                                    ${details.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Appointment & Site Visit */}
+                                    <div className="p-2.5 bg-slate-50 dark:bg-slate-900/50 rounded-lg space-y-2 text-xs">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-[10px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider">Scheduled Appt:</span>
+                                            <input 
+                                                type="datetime-local" 
+                                                aria-label="Appointment Time" 
+                                                title="Appointment Time" 
+                                                value={formatDateTimeForInput(job.appointmentTime)} 
+                                                onChange={(e) => handleJobUpdate(job.id, 'appointmentTime', new Date(e.target.value).toISOString())} 
+                                                className="bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white text-xs rounded p-1 focus:ring-1 focus:ring-primary-500 font-bold"
+                                            />
+                                        </div>
+
+                                        {(details.formattedIn || details.formattedOut || details.formattedDuration) && (
+                                            <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                                                <span className="text-[10px] font-extrabold uppercase text-emerald-600 dark:text-emerald-400 tracking-wider flex items-center gap-1">
+                                                    <Clock size={9} /> Site Visit:
+                                                </span>
+                                                <div className="flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300">
+                                                    {details.formattedIn && <span className="text-emerald-700 dark:text-emerald-400">In: {details.formattedIn}</span>}
+                                                    {details.formattedOut && <span className="text-slate-600 dark:text-slate-400">Out: {details.formattedOut}</span>}
+                                                    {details.formattedDuration && <span className="text-slate-400 font-normal">({details.formattedDuration})</span>}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {details.previousVisitJob && (
+                                            <div className="pt-1.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px]">
+                                                <span className="text-[10px] font-extrabold uppercase text-amber-600 dark:text-amber-400 tracking-wider flex items-center gap-1">
+                                                    <RotateCcw size={9} /> Follow-Up:
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setViewingJob(details.previousVisitJob);
+                                                    }}
+                                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 hover:bg-amber-100"
+                                                >
+                                                    <Briefcase size={10} />
+                                                    <span>JOB-{details.previousVisitJob.id.replace('job-', '')}</span>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Linked Documents Badges */}
+                                    <div className="space-y-1">
+                                        <span className="text-[9px] font-extrabold uppercase text-slate-400 dark:text-slate-500 tracking-wider block">Linked Documents</span>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {details.relatedProposals.length > 0 ? (
+                                                details.relatedProposals.map((proposal: any) => {
+                                                    const displayId = resolveDocumentDisplayId('proposal', proposal).id;
+                                                    return (
+                                                        <span 
+                                                            key={`mob-prop-${proposal.id}`}
+                                                            onClick={() => setViewingProposal(proposal)}
+                                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-100 dark:border-blue-800/50 cursor-pointer hover:bg-blue-100"
+                                                        >
+                                                            <Briefcase size={10} />
+                                                            {displayId}
+                                                        </span>
+                                                    );
+                                                })
+                                            ) : (
+                                                <span 
+                                                    onClick={() => handleCreateProposalForJob(job)}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+                                                >
+                                                    <Briefcase size={10} />
+                                                    {t("+ Proposal")}
+                                                </span>
+                                            )}
+
+                                            <span 
+                                                onClick={() => setViewingJob(job)}
+                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800/50 cursor-pointer hover:bg-indigo-100"
+                                            >
+                                                <Briefcase size={10} />
+                                                {`JOB-${job.id.replace('job-', '')}`}
+                                            </span>
+
+                                            {job.invoice ? (
+                                                <span 
+                                                    onClick={() => setViewingInvoiceJob(job)}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/50 cursor-pointer hover:bg-emerald-100"
+                                                >
+                                                    <DollarSign size={10} />
+                                                    {job.invoice.id || job.invoice.invoiceNumber || job.invoice.number ? `INV-${String(job.invoice.id || job.invoice.invoiceNumber || job.invoice.number).replace(/^INV-?/i, '')}` : `INV-${job.jobNumber || String(job.id).replace(/^job-?/i, '')}`}
+                                                </span>
+                                            ) : (
+                                                <span 
+                                                    onClick={() => handleCreateInvoiceForJob(job)}
+                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer"
+                                                >
+                                                    <DollarSign size={10} />
+                                                    {t("+ Invoice")}
+                                                </span>
+                                            )}
+
+                                            {(() => {
+                                                const hasSignOff = !!(details.signOffFile || job.signOff || job.signOffSheetUrl || job.customerSignature || job.signature);
+                                                return (
+                                                    <span 
+                                                        onClick={() => {
+                                                            if (details.signOffFile) {
+                                                                setPreviewOtherDoc({ ...details.signOffFile, type: 'Other', title: t('Sign-Off Sheet') });
+                                                            } else if (job.signOffSheetUrl) {
+                                                                setPreviewOtherDoc({ id: `signoff-${job.id}`, dataUrl: job.signOffSheetUrl, url: job.signOffSheetUrl, fileName: 'SignOff_Sheet.html', type: 'Other', title: t('Sign-Off Sheet') });
+                                                            } else {
+                                                                setActiveSignOffJob(job);
+                                                            }
+                                                        }}
+                                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
+                                                            hasSignOff 
+                                                            ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800/60 hover:bg-amber-100' 
+                                                            : 'bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-amber-50'
+                                                        }`}
+                                                    >
+                                                        <ShieldCheck size={10} />
+                                                        {hasSignOff ? t("✍️ Sign-Off") : t("✍️ + Sign-Off")}
+                                                    </span>
+                                                );
+                                            })()}
+
+                                            {details.isSubassigned && (
+                                                <span 
+                                                    onClick={() => {
+                                                        if (details.subBillFile) {
+                                                            setPreviewOtherDoc({ ...details.subBillFile, type: 'Other', title: t('Subcontractor Bill') });
+                                                        } else {
+                                                            setViewingWorkOrderJob(job);
+                                                        }
+                                                    }}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer ${
+                                                        details.subBillFile 
+                                                        ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 border-teal-100 dark:border-teal-800/50 hover:bg-teal-100' 
+                                                        : 'bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-teal-50'
+                                                    }`}
+                                                >
+                                                    <DollarSign size={10} />
+                                                    {details.subBillFile ? t('💵 Sub Bill') : t('💵 + Sub Bill')}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Status & Tech Assignment Dropdowns */}
+                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        <div>
+                                            <label className="text-[9px] font-extrabold uppercase text-slate-400 block mb-1">Status</label>
+                                            <select 
+                                                aria-label="Job Status"
+                                                title="Job Status"
+                                                value={job.jobStatus}
+                                                onChange={(e) => handleJobUpdate(job.id, 'jobStatus', e.target.value)}
+                                                className={`block w-full border border-gray-300 dark:border-gray-600 rounded-md py-1.5 px-2 text-xs font-bold focus:ring-primary-500 focus:border-primary-500 ${job.jobStatus === 'Completed' ? 'bg-green-50 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'}`}
+                                            >
+                                                <option value="Scheduled">Scheduled</option>
+                                                <option value="In Progress">In Progress</option>
+                                                <option value="Completed">Completed</option>
+                                                <option value="Cancelled">Cancelled</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-[9px] font-extrabold uppercase text-slate-400 block mb-1">Assigned Tech</label>
+                                            <select 
+                                                aria-label="Assign Technician"
+                                                title="Assign Technician"
+                                                value={job.assignedTechnicianId || ''}
+                                                onChange={(e) => handleJobUpdate(job.id, 'assignedTechnicianId', e.target.value)}
+                                                className="block w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md py-1.5 px-2 text-xs text-gray-900 dark:text-white focus:ring-primary-500 focus:border-primary-500"
+                                            >
+                                                <option value="">Unassigned</option>
+                                                {employees.map((tech: User) => (
+                                                    <option key={tech.id} value={tech.id}>{tech.firstName} {tech.lastName}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                        <button 
+                                            aria-label="Send SMS Message" 
+                                            title="Send SMS" 
+                                            onClick={() => openSmsModal(job)} 
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 border border-primary-200 dark:border-primary-800 hover:bg-primary-100"
+                                        >
+                                            <MessageSquare size={13} /> SMS
+                                        </button>
+                                        <button 
+                                            aria-label="Edit Job" 
+                                            title="Edit Job" 
+                                            onClick={() => setEditingFullJob(job)} 
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100"
+                                        >
+                                            <Edit size={13} /> Edit
+                                        </button>
+                                        <button 
+                                            aria-label="Delete Job" 
+                                            title="Delete Job" 
+                                            onClick={() => handleDeleteJob(job.id)} 
+                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800 hover:bg-red-100"
+                                        >
+                                            <Trash2 size={13} /> Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {allJobs.length === 0 && (
+                            <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                                No active jobs found. All completed and paid jobs are in History.
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block">
+                        <Card>
+                            <Table headers={['Customer & Location', 'Scheduled Appt', 'Invoice & Payment', 'Linked Documents', 'Job Status', 'Assigned Tech', 'Actions']}>
                             {(allJobs as Job[]).map((job: Job) => {
                                 const isHighlighted = job.id === highlightJobId;
                                 const details = renderJobDetailsAndBadges(job);
@@ -1086,9 +1392,10 @@ const JobScheduling: React.FC = () => {
                                     </td>
                                 </tr>
                             )}
-                        </Table>
+                            </Table>
+                        </Card>
                     </div>
-                </Card>
+                </div>
             ) : (
                 <div className="space-y-8">
                     {Object.keys(groupedJobs).map((dateStr) => (

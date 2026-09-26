@@ -6853,7 +6853,17 @@ const CustomerMasterModal: React.FC<CustomerMasterModalProps> = ({ isOpen, onClo
                                     />
                                 ) : fileInfo.isPdf ? (
                                     <div className="w-full h-[60vh] flex flex-col space-y-2">
-                                        <iframe src={fileSrc} className="w-full h-full border-0 bg-white rounded-lg" title={viewingFile.fileName || "PDF Preview"} />
+                                        <iframe src={fileInfo.previewUrl} className="w-full h-full border-0 bg-white rounded-lg" title={viewingFile.fileName || "PDF Preview"} />
+                                        <div className="text-center">
+                                            <a 
+                                                href={fileSrc} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="text-xs text-indigo-400 hover:underline font-bold"
+                                            >
+                                                Having trouble viewing? Tap here to open PDF in a new tab.
+                                            </a>
+                                        </div>
                                     </div>
                                 ) : fileInfo.googleDocsViewerUrl ? (
                                     <iframe src={fileInfo.googleDocsViewerUrl} className="w-full h-[60vh] border-0 bg-white rounded-lg" title={viewingFile.fileName || "Document Preview"} />

@@ -3,7 +3,7 @@ import React from 'react';
 import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import { User } from 'types';
-import { Trash2, Clock } from 'lucide-react';
+import { Trash2, Clock, Mail, Phone, Edit } from 'lucide-react';
 
 interface EmployeeRosterProps {
     employees: User[];
@@ -72,6 +72,108 @@ const EmployeeRoster: React.FC<EmployeeRosterProps> = ({
 
     return (
         <Card>
+            {/* Mobile Cards View (App / Mobile View Only) */}
+            <div className="md:hidden space-y-3 p-1">
+                {employees.map(emp => {
+                    const online = isOnline(emp);
+                    return (
+                        <div key={`emp-card-${emp.id}`} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all space-y-3">
+                            {/* Header: Name, ID, Online dot, Role, Status */}
+                            <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${online ? 'bg-green-500 ring-4 ring-green-100 dark:ring-green-950/40' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                                        <span className="font-bold text-base text-slate-900 dark:text-white">
+                                            {emp.firstName} {emp.lastName}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-[10px] text-slate-400 font-mono">
+                                            {emp.id}
+                                        </span>
+                                        <span className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded font-semibold capitalize">
+                                            {emp.role?.replace('_', ' ')}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div className="text-right flex flex-col items-end">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${emp.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300' : 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300'}`}>
+                                        {emp.status || 'Active'}
+                                    </span>
+                                    <span className="text-[9px] text-slate-400 mt-1">
+                                        {online ? 'Online recently' : 'Offline'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Contact Details */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                                {emp.email && (
+                                    <div className="flex items-center gap-1.5 truncate">
+                                        <Mail size={13} className="text-slate-400 shrink-0" />
+                                        <a href={`mailto:${emp.email}`} className="truncate hover:text-blue-600">
+                                            {emp.email}
+                                        </a>
+                                    </div>
+                                )}
+                                {emp.phone && (
+                                    <div className="flex items-center gap-1.5">
+                                        <Phone size={13} className="text-slate-400 shrink-0" />
+                                        <a href={`tel:${emp.phone}`} className="hover:text-blue-600 font-mono">
+                                            {emp.phone}
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Last Login Info & Action Bar */}
+                            <div className="flex items-center justify-between pt-1 text-xs">
+                                <div>
+                                    {formatLastLogin(emp.lastLoginAt)}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <button 
+                                        onClick={() => handleEdit(emp)} 
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-900/50 rounded-lg text-xs font-bold hover:bg-blue-100"
+                                    >
+                                        <Edit size={12} />
+                                        Edit
+                                    </button>
+                                    {emp.role === 'Subcontractor' && onViewTechs && (
+                                        <button 
+                                            onClick={() => onViewTechs(emp)} 
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900/50 rounded-lg text-xs font-bold hover:bg-indigo-100"
+                                        >
+                                            Crew
+                                        </button>
+                                    )}
+                                    <button 
+                                        onClick={() => handleArchive(emp.id)} 
+                                        className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-orange-600 dark:text-orange-400 rounded-lg text-xs font-bold hover:bg-orange-50"
+                                    >
+                                        Archive
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDelete(emp.id)} 
+                                        className="p-1.5 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded-lg hover:bg-red-100"
+                                        title="Delete Employee"
+                                    >
+                                        <Trash2 size={13} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+                {employees.length === 0 && (
+                    <div className="p-8 text-center text-gray-500 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        No employees found.
+                    </div>
+                )}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
             <Table headers={['Name / ID', 'Role', 'Contact', 'Status', 'Last Login', 'Actions']}>
                 {employees.map(emp => {
                     const online = isOnline(emp);
@@ -115,6 +217,7 @@ const EmployeeRoster: React.FC<EmployeeRosterProps> = ({
                     <tr><td colSpan={6} className="p-4 md:p-8 text-center text-gray-500">No employees found.</td></tr>
                 )}
             </Table>
+            </div>
         </Card>
     );
 };

@@ -48,6 +48,62 @@ const DisputesTab: React.FC<DisputesTabProps> = ({ disputes }) => {
                     <p className="text-xs mt-2">{t("Any chargebacks filed by customers will appear here.")}</p>
                 </div>
             ) : (
+                <>
+                {/* Mobile Cards View (App / Mobile View Only) */}
+                <div className="md:hidden space-y-3 mb-4">
+                    {disputes.map(d => (
+                        <div key={`dispute-card-${d.id}`} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all space-y-2.5">
+                            <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2">
+                                <div>
+                                    <span className="font-black text-lg text-red-600 dark:text-red-400">
+                                        ${(d.amount / 100).toFixed(2)}
+                                    </span>
+                                    <div className="text-xs text-slate-500 mt-0.5 capitalize">
+                                        {t(d.reason || 'Unknown').replace(/_/g, ' ')}
+                                    </div>
+                                </div>
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                    d.status === 'won' ? 'bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300' :
+                                    d.status === 'lost' ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300' :
+                                    d.status === 'needs_response' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' :
+                                    'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300'
+                                }`}>
+                                    {t(d.status || 'pending').replace(/_/g, ' ')}
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl">
+                                <div>
+                                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Date</span>
+                                    <span className="font-medium text-slate-700 dark:text-slate-300">
+                                        {new Date(d.created * 1000 || d.created).toLocaleDateString()}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">Charge ID</span>
+                                    <span className="font-mono text-slate-600 dark:text-slate-400 truncate block">
+                                        {d.chargeId || d.charge_id || '--'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {d.status === 'needs_response' && (
+                                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                                    <button 
+                                        onClick={() => handleSubmitEvidence(d.id)}
+                                        disabled={submitting === d.id}
+                                        className="text-xs px-3.5 py-1.5 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 disabled:opacity-50 shadow-xs"
+                                    >
+                                        {submitting === d.id ? t('Submitting...') : t('Submit Evidence')}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+
+                {/* Desktop Table View */}
+                <div className="hidden md:block">
                 <Table headers={[t('Date'), t('Amount'), t('Status'), t('Reason'), t('Charge ID'), t('Action')]}>
                     {disputes.map(d => (
                         <tr key={d.id}>
@@ -87,6 +143,8 @@ const DisputesTab: React.FC<DisputesTabProps> = ({ disputes }) => {
                         </tr>
                     ))}
                 </Table>
+                </div>
+                </>
             )}
         </Card>
     );

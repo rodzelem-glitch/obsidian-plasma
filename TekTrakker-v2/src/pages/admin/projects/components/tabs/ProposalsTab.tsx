@@ -7,7 +7,7 @@ import Card from 'components/ui/Card';
 import Table from 'components/ui/Table';
 import Button from 'components/ui/Button';
 import Modal from 'components/ui/Modal';
-import { FileText, Eye, Send, Sparkles, AlertCircle, CheckCircle, Download, Link2, Unlink, Search, X } from 'lucide-react';
+import { FileText, Eye, Send, Sparkles, AlertCircle, CheckCircle, Download, Link2, Unlink, Search, X, Calendar } from 'lucide-react';
 import type { Project, Proposal } from 'types';
 import showToast from 'lib/toast';
 import { db } from 'lib/firebase';
@@ -331,7 +331,134 @@ const ProposalsTab: React.FC<ProposalsTabProps> = ({ project }) => {
                 </div>
             </div>
 
-            <Card className="p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-lg rounded-2xl">
+            {/* Mobile Cards View (App / Mobile View Only) */}
+            <div className="md:hidden space-y-3.5 mb-6">
+                {projectProposals.map((p) => {
+                    const val = p.recommendedRoundedTotal || p.calculatedTotal || p.total || 0;
+                    const propNum = p.proposalNumber || p.id?.slice(-6);
+                    const hasBeenOpened = p.status === 'Opened' || p.trackingHistory?.some((entry: any) => entry.status === 'Opened');
+
+                    return (
+                        <div key={`prop-card-${p.id}`} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs hover:shadow-md transition-all space-y-3">
+                            {/* Card Header: Proposal ID, Date & Status */}
+                            <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                                <div>
+                                    <span className="font-mono font-bold text-sm text-indigo-600 dark:text-indigo-400">
+                                        #{propNum}
+                                    </span>
+                                    <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                                        <Calendar size={12} className="text-slate-400" />
+                                        {p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                    <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-full ${
+                                        p.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' :
+                                        p.status === 'Sent' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300' :
+                                        p.status === 'Opened' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300' :
+                                        (p.status === 'Declined' || p.status === 'Denied') ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' :
+                                        p.status === 'Expired' ? 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-300' :
+                                        'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                                    }`}>
+                                        {p.status}
+                                    </span>
+                                    {hasBeenOpened && p.status !== 'Accepted' && (
+                                        <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold flex items-center gap-1">
+                                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse"></span>
+                                            {t("Opened")}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Title & Amount */}
+                            <div className="flex items-baseline justify-between gap-2">
+                                <h4 className="font-bold text-sm text-slate-900 dark:text-white line-clamp-1">
+                                    {p.title || t("Project Pricing Proposal")}
+                                </h4>
+                                <span className="font-black text-base text-slate-900 dark:text-white shrink-0">
+                                    {formatCurrency(val)}
+                                </span>
+                            </div>
+
+                            {/* Linked Meta (PO / SCID / Invoice) */}
+                            {(p.poNumber || p.scid || p.invoiceId) && (
+                                <div className="flex flex-wrap items-center gap-2 text-xs bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                                    {p.poNumber && (
+                                        <button
+                                            onClick={() => dispatch({ type: 'SET_VIEWING_WORK_ORDER', payload: { workOrderNumber: p.poNumber, customerId: p.customerId || null } })}
+                                            className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-blue-600 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded"
+                                        >
+                                            PO: {p.poNumber}
+                                        </button>
+                                    )}
+                                    {p.scid && (
+                                        <span className="text-xs font-mono text-slate-500 bg-slate-200/40 dark:bg-slate-700/40 px-2 py-0.5 rounded">
+                                            SCID: {p.scid}
+                                        </span>
+                                    )}
+                                    {p.invoiceId && (
+                                        <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50">
+                                            Inv: #{p.invoiceId.toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Actions bar */}
+                            <div className="flex items-center justify-end gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                                <button 
+                                    title={t("View/Edit Proposal")} 
+                                    aria-label={t("View/Edit Proposal")} 
+                                    onClick={() => handleViewProposal(p.id)} 
+                                    className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg hover:text-indigo-600"
+                                >
+                                    <Eye size={15}/>
+                                </button>
+                                <a 
+                                    href={`/#/project-proposal-view/${p.id}`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    title={t("Public View")} 
+                                    className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg hover:text-emerald-600"
+                                >
+                                    <FileText size={15}/>
+                                </a>
+                                {p.status !== 'Accepted' && (
+                                    <button 
+                                        title={t("Verbal Accept")} 
+                                        aria-label={t("Verbal Accept")} 
+                                        onClick={() => handleVerbalAccept(p)} 
+                                        className="p-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 rounded-lg border border-amber-200 dark:border-amber-900/40 hover:bg-amber-100"
+                                    >
+                                        <CheckCircle size={15}/>
+                                    </button>
+                                )}
+                                <button 
+                                    title={t("Unlink from Project")} 
+                                    aria-label={t("Unlink from Project")} 
+                                    onClick={() => handleUnlinkProposal(p)} 
+                                    className="p-1.5 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-lg border border-red-200 dark:border-red-900/40 hover:bg-red-100"
+                                >
+                                    <Unlink size={15}/>
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {projectProposals.length === 0 && (
+                    <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-400 font-medium italic">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                            <AlertCircle size={24} className="text-slate-300" />
+                            <span>{t("No proposals linked to this project yet.")}</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Desktop Table View */}
+            <Card className="hidden md:block p-0 overflow-hidden border-slate-200 dark:border-slate-700 shadow-lg rounded-2xl">
                 <Table headers={[t('Date'), t('Proposal ID'), t('Title'), t('PO / SCID'), t('Total Value'), t('Status'), t('Actions')]}>
                     {projectProposals.map((p) => {
                         const val = p.recommendedRoundedTotal || p.calculatedTotal || p.total || 0;

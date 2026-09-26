@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 /**
  * Universal File & Document Preview Helper
  * Detects MIME types and extensions reliably across Firebase Storage URLs (with query params),
@@ -15,12 +17,44 @@ export interface FileTypeInfo {
     extension: string;
     resolvedUrl: string;
     googleDocsViewerUrl: string | null;
+    /** The optimal URL to use inside an iframe. On mobile/Capacitor, routes PDFs via Google Docs Viewer to avoid blank iframe bugs. */
+    previewUrl: string;
+}
+
+/**
+ * Detects if the current environment is a mobile device or native mobile app (Capacitor/WebView)
+ * where iframes do not have a built-in PDF viewer plugin.
+ */
+export function isMobileOrNative(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+        if (typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform()) {
+            return true;
+        }
+    } catch (_) {}
+
+    if (typeof navigator !== 'undefined') {
+        const ua = navigator.userAgent || navigator.vendor || (window as any).opera || '';
+        if (/android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(ua)) {
+            return true;
+        }
+        if (navigator.maxTouchPoints > 1 && /macintosh/i.test(ua)) {
+            return true;
+        }
+    }
+
+    if (window.innerWidth <= 768 && ('ontouchstart' in window || (navigator && navigator.maxTouchPoints > 0))) {
+        return true;
+    }
+
+    return false;
 }
 
 export function detectFileType(
     urlOrDataUrl?: string | null,
     fileName?: string | null,
-    declaredMimeType?: string | null
+    declaredMimeType?: string | null,
+    options?: { forceGoogleDocsViewer?: boolean; forceDirectViewer?: boolean }
 ): FileTypeInfo {
     const rawUrl = (urlOrDataUrl || '').trim();
     const rawName = (fileName || '').trim();
@@ -88,9 +122,24 @@ export function detectFileType(
                    ['txt', 'log', 'json', 'xml', 'md'].includes(extension);
 
     const isWebUrl = rawUrl.startsWith('http://') || rawUrl.startsWith('https://');
-    const googleDocsViewerUrl = isWebUrl && isOfficeDoc 
+    const googleDocsViewerUrl = isWebUrl && (isOfficeDoc || isPdf) 
         ? `https://docs.google.com/viewer?url=${encodeURIComponent(rawUrl)}&embedded=true` 
         : null;
+
+    // For PDFs on mobile/native WebViews (Android Capacitor, etc.):
+    // The native WebView has no built-in PDF viewer plugin inside iframes and shows a blank box.
+    // When a public web URL is available, we route through Google Docs Viewer so the PDF renders inline.
+    // On desktop browsers with built-in PDFium/PDF viewer plugins, direct URL is used for full fidelity.
+    let previewUrl = rawUrl;
+    if (options?.forceGoogleDocsViewer && googleDocsViewerUrl) {
+        previewUrl = googleDocsViewerUrl;
+    } else if (options?.forceDirectViewer) {
+        previewUrl = rawUrl;
+    } else if (isPdf && googleDocsViewerUrl && isMobileOrNative()) {
+        previewUrl = googleDocsViewerUrl;
+    } else if (isOfficeDoc && googleDocsViewerUrl) {
+        previewUrl = googleDocsViewerUrl;
+    }
 
     return {
         isPdf,
@@ -102,6 +151,7 @@ export function detectFileType(
         isText,
         extension,
         resolvedUrl: rawUrl,
-        googleDocsViewerUrl
+        googleDocsViewerUrl,
+        previewUrl
     };
 }

@@ -322,54 +322,35 @@ const DocumentCreator: React.FC = () => {
         setDownloadingDocId(doc.id);
         
         try {
-            // @ts-ignore
-            const html2pdf = (await import('html2pdf.js')).default;
-            
-            const wrapper = document.createElement('div');
-            wrapper.innerHTML = DOMPurify.sanitize(doc.content);
-            wrapper.style.padding = '0px';
-            wrapper.style.margin = '0px';
-            wrapper.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-            wrapper.style.color = '#000';
-            wrapper.style.lineHeight = '1.6';
-            wrapper.style.width = '780px'; // Exact printable width in pixels for Letter page
-            wrapper.style.height = 'auto';
-            wrapper.style.overflow = 'visible';
-            
-            // Basic styling for prose
-            const style = document.createElement('style');
-            style.textContent = `
-                h1, h2, h3, h4 { margin-top: 24px; margin-bottom: 16px; font-weight: bold; break-inside: avoid; page-break-inside: avoid; }
-                p { margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
-                ul { list-style-type: disc; margin-left: 24px; margin-bottom: 16px; }
-                ol { list-style-type: decimal; margin-left: 24px; margin-bottom: 16px; }
-                li { margin-bottom: 8px; break-inside: avoid; page-break-inside: avoid; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
-                tr { break-inside: avoid; page-break-inside: avoid; }
-                th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-                .avoid-break, .pdf-card, .pdf-avoid-break { break-inside: avoid !important; page-break-inside: avoid !important; }
+            const filename = `${doc.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+            const contentHtml = `
+                <div style="padding: 0px; margin: 0px; font-family: system-ui, -apple-system, sans-serif; color: #000; line-height: 1.6; width: 780px;">
+                    <style>
+                        h1, h2, h3, h4 { margin-top: 24px; margin-bottom: 16px; font-weight: bold; break-inside: avoid; page-break-inside: avoid; }
+                        p { margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
+                        ul { list-style-type: disc; margin-left: 24px; margin-bottom: 16px; }
+                        ol { list-style-type: decimal; margin-left: 24px; margin-bottom: 16px; }
+                        li { margin-bottom: 8px; break-inside: avoid; page-break-inside: avoid; }
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; break-inside: avoid; page-break-inside: avoid; }
+                        tr { break-inside: avoid; page-break-inside: avoid; }
+                        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+                        .avoid-break, .pdf-card, .pdf-avoid-break { break-inside: avoid !important; page-break-inside: avoid !important; }
+                    </style>
+                    ${DOMPurify.sanitize(doc.content)}
+                </div>
             `;
-            wrapper.appendChild(style);
-
-            // Temporarily append to body within a hidden wrapper to compute dimensions cleanly
-            const container = document.createElement('div');
-            container.style.position = 'absolute';
-            container.style.left = '-9999px';
-            container.style.top = '-9999px';
-            container.appendChild(wrapper);
-            document.body.appendChild(container);
-
-            const opt: Record<string, unknown> = {
-                margin:       [0.25, 0.25, 0.25, 0.25],
-                filename:     `${doc.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true, logging: false, windowWidth: 780, backgroundColor: '#ffffff' },
-                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
-                pagebreak:    { mode: ['css', 'legacy'], avoid: ['tr', 'img', 'blockquote', 'h1', 'h2', 'h3', 'h4', '.avoid-break', '.pdf-card', '.pdf-avoid-break'] }
-            };
-
-            await html2pdf().from(wrapper).set(opt).save();
-            document.body.removeChild(container);
+            const { renderHtmlToSmartPdf } = await import('../../lib/pdfHelper');
+            const result = await renderHtmlToSmartPdf(contentHtml, {
+                filename,
+                margin: [0.25, 0.25, 0.25, 0.25],
+                windowWidth: 780,
+                pdfFormat: 'letter',
+                pdfOrientation: 'portrait',
+                scale: 2,
+                quality: 0.98
+            });
+            const { downloadFile } = await import('../../lib/downloadHelper');
+            await downloadFile(result.dataUri, filename);
             showToast.success("PDF downloaded successfully.");
         } catch (error) {
             console.error("PDF generation failed:", error);

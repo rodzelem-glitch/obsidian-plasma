@@ -573,9 +573,6 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
         if (!lastExecutedTool || !lastExecutedParams) return;
         setIsGeneratingPDF(true);
         try {
-            // @ts-ignore - html2pdf has no types available right now
-            const html2pdf = (await import('html2pdf.js')).default;
-            
             const activeJob = state.jobs.find((j: any) => j.id === jobId) || state.jobs.find((j: any) => j.id === state.activeJobIdForWorkflow);
             const customerName = activeJob?.customerName || 'N/A';
             const jobAddress = activeJob?.address || 'N/A';
@@ -594,8 +591,7 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
                 `;
             }).join('');
             
-            const container = document.createElement('div');
-            container.innerHTML = `
+            const contentHtml = `
                 <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; background: #ffffff; line-height: 1.5;">
                     <!-- Header -->
                     <div style="border-bottom: 2px solid #7c3aed; padding-bottom: 20px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: start;">
@@ -658,16 +654,19 @@ export async function executeSynthesizedTool(orgId: string, params: any) {
                 </div>
             `;
             
-            const opt: any = {
-                margin: [8, 8, 8, 8],
-                filename: `Report-${lastExecutedTool.toolName}-${lastExecutedRecordId || Date.now()}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-                pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', 'img', 'blockquote', '.avoid-break', '.pdf-card', '.pdf-avoid-break'] }
-            };
-            
-            await html2pdf().from(container).set(opt).save();
+            const fileName = `Report-${lastExecutedTool.toolName}-${lastExecutedRecordId || Date.now()}.pdf`;
+            const { renderHtmlToSmartPdf } = await import('../../../lib/pdfHelper');
+            const result = await renderHtmlToSmartPdf(contentHtml, {
+                filename: fileName,
+                margin: [0.3, 0.3, 0.3, 0.3],
+                windowWidth: 780,
+                pdfFormat: 'a4',
+                pdfOrientation: 'portrait',
+                scale: 2,
+                quality: 0.98
+            });
+            const { downloadFile } = await import('../../../lib/downloadHelper');
+            await downloadFile(result.dataUri, fileName);
             showToast.success("PDF Report generated and downloaded successfully!");
         } catch (err: any) {
             console.error("PDF generation failed:", err);

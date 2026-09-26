@@ -237,32 +237,26 @@ export const AgreementViewerModal: React.FC<AgreementViewerModalProps> = ({
     const handleDownloadPdf = async () => {
         setIsExporting(true);
         try {
-            // @ts-ignore
-            const html2pdf = (await import('html2pdf.js')).default;
             const content = resolveContractHtml();
-            const wrapper = document.createElement('div');
-            wrapper.style.position = 'absolute';
-            wrapper.style.left = '-9999px';
-            wrapper.style.top = '-9999px';
-            wrapper.innerHTML = `
-                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 32px; color: #0f172a; line-height: 1.6;">
+            const filename = `${agreement.customerName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${agreement.id}_Agreement.pdf`;
+            const htmlString = `
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #0f172a; line-height: 1.6;">
                     ${content}
                 </div>
             `;
-            document.body.appendChild(wrapper);
+            const { renderHtmlToSmartPdf } = await import('../../lib/pdfHelper');
+            const result = await renderHtmlToSmartPdf(htmlString, {
+                filename,
+                margin: [0.3, 0.3, 0.3, 0.3],
+                windowWidth: 800,
+                pdfFormat: 'letter',
+                pdfOrientation: 'portrait',
+                scale: 2,
+                quality: 0.98
+            });
 
-            const opt = {
-                margin: [0.3, 0.3, 0.3, 0.3] as [number, number, number, number],
-                filename: `${agreement.customerName.replace(/[^a-zA-Z0-9_-]/g, '_')}_${agreement.id}_Agreement.pdf`,
-                image: { type: 'jpeg' as const, quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, windowWidth: 800 },
-                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' as const }
-            };
-
-            const pdfDataUri = await html2pdf().from(wrapper).set(opt).output('datauristring');
             const { downloadFile } = await import('../../lib/downloadHelper');
-            await downloadFile(pdfDataUri, opt.filename);
-            document.body.removeChild(wrapper);
+            await downloadFile(result.dataUri, filename);
             showToast.success('Agreement PDF downloaded.');
         } catch (e) {
             console.error('Failed to export agreement PDF:', e);
